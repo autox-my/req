@@ -1,0 +1,32 @@
+schema: req.claim/0
+claim_id: REQ-0008
+statement: >-
+  The benchmark harness shall report a false merge rate of exactly zero on the
+  parity and adversarial mutation corpora.
+modality: SHALL
+subject: BENCH
+attribute: false_merge_rate
+operator: EQ
+value: "0.0"
+unit: none
+conditions:
+  - corpus_set == parity_and_adversarial
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/canonical-hashing.md
+  date: 2026-10-07
+  rejected_alternatives:
+    - a nonzero soft bound (any false merge can silently delete a requirement)
+  assumptions: []
+relations:
+  - type: derives-from
+    to: REQ-0005

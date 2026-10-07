@@ -1,0 +1,32 @@
+schema: req.claim/0
+claim_id: REQ-0020
+statement: >-
+  Each relation shall be serialized exactly once, on the outgoing side of its
+  origin claim.
+modality: SHALL
+subject: REQ_TOOL
+attribute: relation_storage
+operator: EQ
+value: outgoing_side_once
+unit: none
+conditions: []
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/claim-format.md
+  date: 2026-10-07
+  rejected_alternatives:
+    - storing each edge on both endpoints (two places to drift)
+  assumptions:
+    - incoming relations are always derived by traversal, never copied
+relations:
+  - type: derives-from
+    to: REQ-0002

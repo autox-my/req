@@ -1,0 +1,30 @@
+schema: req.claim/0
+claim_id: REQ-0005
+statement: >-
+  The req tool shall require human ratification before any two claims are merged.
+modality: SHALL
+subject: REQ_TOOL
+attribute: claim_merge
+operator: EQ
+value: human_ratification_required
+unit: none
+conditions: []
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/adr/0004-model-proposes-human-disposes.md
+  date: 2026-10-07
+  rejected_alternatives:
+    - auto merge on equal canonical hash (even hash equality alone is only a proposal)
+  assumptions: []
+relations:
+  - type: derives-from
+    to: REQ-0004

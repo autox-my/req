@@ -1,0 +1,33 @@
+schema: req.claim/0
+claim_id: REQ-0003
+statement: >-
+  The req tool shall express permanent product variation as a selection governed by
+  applicability predicates over one claim set.
+modality: SHALL
+subject: REQ_TOOL
+attribute: variant_model
+operator: EQ
+value: applicability_selectors
+unit: none
+conditions: []
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/adr/0003-variants-are-selectors.md
+  date: 2026-10-07
+  rejected_alternatives:
+    - branch per variant (git native, transient, diverges long-lived)
+    - copy paste per variant
+    - inheritance hierarchy with overrides
+  assumptions: []
+relations:
+  - type: derives-from
+    to: REQ-0001

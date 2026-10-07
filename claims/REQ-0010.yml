@@ -1,0 +1,32 @@
+schema: req.claim/0
+claim_id: REQ-0010
+statement: >-
+  The benchmark harness should show a false split rate of at most 0.30 on the
+  parity corpus at v0.
+modality: SHOULD
+subject: BENCH
+attribute: false_split_rate
+operator: LE
+value: "0.3"
+unit: none
+conditions:
+  - corpus_set == parity
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/canonical-hashing.md
+  date: 2026-10-07
+  rejected_alternatives: []
+  assumptions:
+    - soft target, expressed with SHOULD not SHALL, tightening expected across rule versions
+relations:
+  - type: refines
+    to: REQ-0008

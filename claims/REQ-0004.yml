@@ -1,0 +1,32 @@
+schema: req.claim/0
+claim_id: REQ-0004
+statement: >-
+  The req tool's semantic layer shall emit proposals for reviewer ratification and
+  shall never rewrite a claim or merge two claims automatically.
+modality: SHALL
+subject: REQ_TOOL
+attribute: semantic_layer_output
+operator: EQ
+value: proposals_only
+unit: none
+conditions: []
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/adr/0004-model-proposes-human-disposes.md
+  date: 2026-10-07
+  rejected_alternatives:
+    - LLM driven merge with deterministic fallback
+    - no semantic layer at all (textual merge on prose)
+  assumptions: []
+relations:
+  - type: refines
+    to: REQ-0001

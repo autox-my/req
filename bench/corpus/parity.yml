@@ -1,0 +1,74 @@
+schema: req.bench.corpus/0
+version: 1
+rules: >
+  Labelers see only `a` and `b`, never the label, the note, or any tool output.
+  Two independent labelers, third-party adjudication on disagreement (hashing spec
+  6.2). This seed set is small and self-authored-heavy by design; the falsification
+  run still needs the external corpora listed in docs/canonical-hashing.md 6.1.
+
+equivalent:
+  - id: E-001
+    a: The system shall respond within 200 ms.
+    b: The system shall respond no later than 200 ms.
+    source: docs/canonical-hashing.md worked example
+  - id: E-002
+    a: The system shall complete the check within 150 ms.
+    b: The system shall complete the check within 0.15 seconds.
+    source: unit convenience factor, hashing spec T1.4
+  - id: E-003
+    a: The system shall not exceed 2.5 amps of standby current.
+    b: The system shall not exceed 2.50 A of standby current.
+    source: unit alias plus zero strip plus casing, T1.3-4
+  - id: E-004
+    a: The module shall store at least 1,000 records.
+    b: The module shall store at least 1000 records.
+    source: grouping, T1.2
+  - id: E-005
+    a: The system shall apply at most 12 kN to the pedal.
+    b: The system shall apply at most 12000 N to the pedal.
+    source: scaled exact factor, T1.4
+  - id: E-006
+    a: Requirements are managed as claims, not as documents.
+    b: The unit of requirements work is a claim, not a document.
+    source: this project's own conversation paraphrase, 2026-10
+    note: dogfood pair
+  - id: E-007
+    a: Requirements are decisions, not documents.
+    b: The tool should model decisions rather than documents.
+    source: this project's own conversation paraphrase, 2026-10
+    note: order and verb class differ, Tier-1 cannot collapse these, Tier-2 proposal expected, so a false split is acceptable and informative
+  - id: E-008
+    a: The system shall apply at least 12 kN to the pedal.
+    b: At least 12 kN shall be applied to the pedal.
+    source: voice plus word order, hashing spec T1.10
+    note: agent elision is conventional in requirement prose, Tier-2 proposal expected, never auto-collapse
+
+not_equivalent:
+  - id: N-001
+    a: The system shall log each command.
+    b: The system may log each command.
+    source: modality trap, T1.6
+  - id: N-002
+    a: The system shall respond within 200 ms.
+    b: The system shall respond in fewer than 200 ms.
+    source: LE vs LT, T1.5
+  - id: N-003
+    a: The system shall respond within 200 ms.
+    b: The system shall respond within 250 ms.
+    source: value trap, T1.3
+  - id: N-004
+    a: The system shall log each command.
+    b: The system shall log each command when auto-brake is enabled.
+    source: condition added, T1.8
+  - id: N-005
+    a: The system shall respond under 200 ms.
+    b: The system shall respond within 200 ms.
+    source: ambiguous comparator must lint and must not silently collapse, T1.5
+  - id: N-006
+    a: The system shall display an alert within 3 seconds.
+    b: The charging station shall display an alert within 3 seconds.
+    source: unregistered subject swap, T1.7
+  - id: N-007
+    a: A conflict is recorded information about a disagreement, and the losing side is preserved.
+    b: A merge conflict is a build failure.
+    source: same vocabulary, different meaning, adversarial for similarity layers

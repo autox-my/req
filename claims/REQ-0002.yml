@@ -1,0 +1,32 @@
+schema: req.claim/0
+claim_id: REQ-0002
+statement: >-
+  The req tool shall record each acceptance or rejection of a change as a signed
+  Decision carrying role, meaning, timestamp, and any dissent.
+modality: SHALL
+subject: REQ_TOOL
+attribute: decision_records
+operator: EQ
+value: first_class_signed_objects
+unit: none
+conditions: []
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/adr/0005-authority-is-a-signed-decision.md
+  date: 2026-10-07
+  rejected_alternatives:
+    - signed commits as approvals
+    - the hosting platform event log
+  assumptions: []
+relations:
+  - type: derives-from
+    to: REQ-0001

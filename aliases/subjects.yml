@@ -1,0 +1,24 @@
+schema: req.subject_registry/0
+version: 1
+rules: >
+  Each surface alias must resolve to exactly one subject, and alias sets must be
+  kept disjoint. Unlisted aliases are proposed by Tier-2 (may resolve to X?), never
+  collapsed silently. Bumping `version` triggers re-canonicalization *candidates*
+  for claims using affected subjects — never a silent rehash.
+subjects:
+  REQ_TOOL:
+    label: The req tool
+    aliases:
+      - the req tool
+      - the tool
+      - the engine
+  CANONICALIZER:
+    label: The canonicalizer
+    aliases:
+      - the canonicalizer
+      - tier 1 rules
+  BENCH:
+    label: The benchmark harness
+    aliases:
+      - the benchmark harness
+      - the bench harness

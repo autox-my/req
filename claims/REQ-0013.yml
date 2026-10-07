@@ -1,0 +1,31 @@
+schema: req.claim/0
+claim_id: REQ-0013
+statement: >-
+  The req tool shall deliver a non engineer author's edit as a Proposal inside an
+  explicit Working set.
+modality: SHALL
+subject: REQ_TOOL
+attribute: non_engineer_edit_output
+operator: EQ
+value: proposal_in_working_set
+unit: none
+conditions: []
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/design.md
+  date: 2026-10-07
+  rejected_alternatives:
+    - direct write from the web UI into the claim store
+  assumptions: []
+relations:
+  - type: refines
+    to: REQ-0004

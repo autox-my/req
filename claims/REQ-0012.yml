@@ -1,0 +1,33 @@
+schema: req.claim/0
+claim_id: REQ-0012
+statement: >-
+  The req tool shall need no network access for any claim operation when the
+  deployment is configured offline.
+modality: SHALL
+subject: REQ_TOOL
+attribute: claim_operations_network_dependency
+operator: EQ
+value: none_when_configured_offline
+unit: none
+conditions: []
+applicability:
+  - deployment_mode == air_gapped
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/design.md
+  date: 2026-10-07
+  rejected_alternatives:
+    - any provider that must be reachable to run a claim operation
+  assumptions:
+    - local models must suffice in air gapped deployments, cloud providers stay optional plugins
+relations:
+  - type: derives-from
+    to: REQ-0007

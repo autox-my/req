@@ -1,0 +1,32 @@
+schema: req.claim/0
+claim_id: REQ-0015
+statement: >-
+  The req tool shall not operate a continuous two-way synchronization bridge
+  between a web database and the requirement files.
+modality: SHALL-NOT
+subject: REQ_TOOL
+attribute: continuous_bidirectional_file_sync
+operator: EQ
+value: absent
+unit: none
+conditions: []
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/design.md
+  date: 2026-10-07
+  rejected_alternatives:
+    - bidirectional Git bot (the rival Req proposal, its fatal Gap 3)
+  assumptions:
+    - negation expressed via SHALL-NOT plus slots, not by prose
+relations:
+  - type: refines
+    to: REQ-0014

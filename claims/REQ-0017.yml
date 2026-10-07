@@ -1,0 +1,34 @@
+schema: req.claim/0
+claim_id: REQ-0017
+statement: >-
+  Each claim file shall store its canonical form bytes such that recomputing
+  sha256 of the versioned tag concatenated with those bytes reproduces the stored
+  address at all times.
+modality: SHALL
+subject: REQ_TOOL
+attribute: canonical_cache
+operator: EQ
+value: stored_recomputable
+unit: none
+conditions: []
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/canonical-hashing.md
+  date: 2026-10-07
+  rejected_alternatives:
+    - recomputing canonical form from the statement on every read
+  assumptions:
+    - a cached pure function is verifiable by recomputation, history is never
+      rewritten when rules change
+relations:
+  - type: refines
+    to: REQ-0007

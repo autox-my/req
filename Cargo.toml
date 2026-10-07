@@ -1,0 +1,22 @@
+[package]
+name = "req"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "The req engine: Tier-1 canonicalizer, claim model, and the FMR gate."
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+yaml_serde = "0.10"
+rust_decimal = "1.43"
+sha2 = "0.10"
+unicode-normalization = "0.1"
+
+# Deliberately ABSENT from the core crate (ADR 0009 / hashing spec §7):
+#   - no model I/O of any kind (providers are a process boundary)
+#   - no network client (claim operations are offline; gix joins the lockfile only
+#     when L1 git-native serialization is implemented)
+# Every dependency above is upstream-pinned by Cargo.lock at first build; the pin is
+# part of the rules' provenance (a lockfile bump is a Tier-1 rules bump).

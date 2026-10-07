@@ -1,0 +1,12 @@
+# Rust build artifacts
+/target/
+Cargo.lock.bak
+
+# Session scratch (never part of the deliverable tree)
+.scratch/
+
+# Editors
+*.swp
+.idea/
+.vscode/
+.cargo-home/

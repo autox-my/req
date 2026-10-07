@@ -1,0 +1,32 @@
+schema: req.claim/0
+claim_id: REQ-0018
+statement: >-
+  Structured claim fields holding numeric values shall be serialized as exact
+  decimal strings.
+modality: SHALL
+subject: REQ_TOOL
+attribute: numeric_value_encoding
+operator: EQ
+value: exact_decimal_strings
+unit: none
+conditions:
+  - field == value
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/canonical-hashing.md
+  date: 2026-10-07
+  rejected_alternatives:
+    - floating point representations (rounding must never decide identity)
+  assumptions: []
+relations:
+  - type: refines
+    to: REQ-0017

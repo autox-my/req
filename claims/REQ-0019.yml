@@ -1,0 +1,31 @@
+schema: req.claim/0
+claim_id: REQ-0019
+statement: >-
+  The req tool shall emit a lint finding for any construct its normalization rules
+  cannot decide rather than guessing a resolution.
+modality: SHALL
+subject: REQ_TOOL
+attribute: undecidable_parse_policy
+operator: EQ
+value: lint_not_guess
+unit: none
+conditions: []
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/canonical-hashing.md
+  date: 2026-10-07
+  rejected_alternatives:
+    - resolving bare dB or ambiguous modality by default rule
+  assumptions: []
+relations:
+  - type: refines
+    to: REQ-0007
