@@ -63,9 +63,10 @@ export OCR_NO_UPDATE=1
 - Test suite: `cargo test` — check `EXIT=$?` on the *cargo* command.
   **Never pipe a check through `tail`/`grep`**: the pipeline's status is not the
   command's, and `EXIT=$?` after a pipe reports the wrong program.
-- The gate that matters: `cargo run -q -- bench` — FMR = 0 hard gate. Exit codes:
-  **0 = PASS, 1 = FAIL, 3 = UNVERIFIABLE**. Writes
-  `bench/results/<rules>-<label>.json`.
+- The gate that matters: `cargo run -q -- bench [corpus.yml]` — FMR = 0 hard gate,
+  over the seed parity corpus by default. Exit codes: **0 = PASS, 1 = FAIL,
+  3 = UNVERIFIABLE**. Writes `bench/results/<corpus-stem>-rules-v<N>.json`; results
+  are append-only, one record per rules version.
 - Claim diagnostics: `cargo run -q -- canon` — per-claim parity-invariant report
   (unstructured tag, modality, subject, value/unit, operator). Exit 3 when the
   registry or a claim file cannot be read.
@@ -121,8 +122,11 @@ after installing.
   requirements, in req's own format.
 - `aliases/subjects.yml` — subject registry. Alias sets must be disjoint; an
   unregistered surface stays literal (never silently collapsed).
-- `bench/corpus/parity.yml` — E/N pairs and adversarial traps, labels written from
-  the spec. `bench/results/` — one record per rules version; append, do not rewrite.
+- `bench/corpus/parity.yml` — the seed E/N pairs and adversarial traps, labels written
+  from the spec. `bench/corpus/external-v1.yml` — other projects' real requirement
+  prose, labelled by construction, built by `tools/corpus/build_external.py` (sources
+  pinned by commit SHA). `bench/results/` — one record per corpus and rules version;
+  append, do not rewrite.
 - `src/` — `lib.rs` (the library surface), `main.rs` (thin CLI over it), `model.rs`
   (claim/registry/corpus types), `canon.rs` (Tier-1 pipeline + diagnostics),
   `bench.rs` (the gate + its tests).

@@ -35,7 +35,11 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
 - **T1.1 Casing** — lowercase prose tokens. Preserve underscore/identifiers
   (``brake_type``, ``REQ-402``) and unit symbols until T1.5 has run.
 - **T1.2 Whitespace/punctuation** — collapse internal runs; trim; drop the terminal
-  period; numeral grouping (``1,000`` → ``1000``).
+  period; numeral grouping (``1,000`` → ``1000``). **T1.2b: strip Markdown emphasis
+  delimiters** (``**``, backticks) — added after real external prose (Doorstop writes
+  ``**shall**``) showed the modality being missed entirely and the claim falling to the
+  unstructured fallback. Only delimiter pairs are stripped: a lone ``*`` may be a
+  wildcard and ``_`` is meaningful inside identifiers (T1.1).
 - **T1.3 Numbers** — decimal parse; **never round, never truncate**; strip trailing
   zeros after the point only (``0.150`` ≡ ``0.15``); scientific notation → expanded
   pure decimal; equality is by value, not by presentation.
@@ -108,15 +112,23 @@ mutation — an address that changes between runs would make every Baseline unau
 
 ### 6.1 Corpora
 
-1. **Parity set** — labeled Equivalent / Not-equivalent pairs from real text: the
-   bundled examples of StrictDoc, Sphinx-Needs and Doorstop; the public PROMISE NFR
-   natural-language requirements set; and this project's own dogfood corpus.
-2. **Adversarial mutation set** — minimal meaning-changing edits constructed to tempt
-   collapse: SHALL↔MAY; ``0.2 s`` vs ``0.25 s``; ``within``↔``fewer than`` (LE↔LT);
-   an added condition; a swapped subject; ``at least 12 kN`` vs ``≥ 12000 N`` (must
-   collapse); ``12,000 N`` vs ``12000 N`` (must collapse).
+1. **Seed parity set** (`bench/corpus/parity.yml`) — equivalent pairs, the adversarial
+   trap set (minimal meaning-changing edits: SHALL↔MAY, ``0.2 s`` vs ``0.25 s``,
+   ``within``↔``fewer than``, an added condition, a swapped subject, ambiguous
+   ``under``, a false-vocabulary pair) and this project's own dogfood claims. Labels
+   were written from the spec, never from the tool.
+2. **External corpus v1** (`bench/corpus/external-v1.yml`, built by
+   `tools/corpus/build_external.py`) — real requirement prose written by *other*
+   projects: StrictDoc's own L1 requirements and Doorstop's own requirements, pinned by
+   commit SHA. Pairs are labelled **by construction** (the transformation applied),
+   never by the canonicalizer, so the labels are an independent oracle. Tier-1-scoped:
+   equivalence uses meaning-preserving normalizations only; paraphrase, voice and word
+   order are Tier-2 and out of scope here.
 3. **Natural duplicate run** — whole real documents; measures collapse of true
-   duplicates vs near-duplicates.
+   duplicates vs near-duplicates. Not yet implemented.
+4. **Not yet sourced** — Sphinx-Needs' bundled examples are test fixtures without prose
+   (and its ``.. need::`` examples were not reachable in the restructured docs); the
+   public PROMISE NFR set is not imported yet.
 
 ### 6.2 Labeling
 
@@ -128,6 +140,7 @@ third. Labels are versioned YAML in the repository.
 | Metric | Definition | Gate |
 |---|---|---|
 | FMR (false-merge rate) | collapsed / all Not-equivalent pairs | **= 0.0 — hard gate** |
+| Structural coverage (Not-equivalent) | pairs where *both* sides parsed to a structured form | reported per corpus; a pair that cannot be structurally checked is **never** counted as verified |
 | FSR (false-split rate) | split / all Equivalent pairs | reported; v0 soft target ≤ 0.30 |
 | Trap-class FMR | per adversarial class (LE/LT, modality, unit, condition, subject) | = 0.0 per class |
 | Direction accuracy | classification on a direction gold set | ≥ 0.95 on structural cases |
@@ -136,6 +149,26 @@ third. Labels are versioned YAML in the repository.
 
 The harness reports **PASS / FAIL / UNVERIFIABLE** as three distinct outcomes — a broken
 corpus or harness is never accidentally a pass (the same principle as ADR 0005).
+
+#### Recorded runs (append-only)
+
+- **Seed parity corpus**, rules v1 — FMR 0.0 (7 traps), FSR 0.0 (5 structured
+  equivalents), 3 Tier-2 candidates:
+  `bench/results/parity-rules-v1.json`.
+- **External corpus v1**, rules v1 — 338 pairs from other projects' real requirements,
+  labelled by construction: **FMR 0.0 across 160 meaning-changing mutations, with 0
+  structurally unverifiable pairs** (the pass is not vacuous) and **FSR 1/173 =
+  0.58%**: `bench/results/external-v1-rules-v1.json`. Two findings, recorded rather
+  than papered over:
+  1. the single split is a **multi-clause** statement ("…shall allow… NOTE: …shall
+     include…"). The transform changed the first modal, but the second obligation sits
+     in the unparsed tail, so a meaning-preserving change there splits. Tier-1 parses
+     one obligation per claim and does not yet **decompose clauses** — the next rule
+     candidate, and a Tier-1 decomposition rather than a Tier-2 proposal.
+  2. 16 `untestable_comparator` lints are **false positives on standard names**
+     ("IEC 61508"): the word before the number is a name, not a comparator. This is the
+     safe direction (a lint is noise, never a merge), but it erodes trust in the lint;
+     the rule should require a comparator-*shaped* word, not merely a non-filler one.
 
 ### 6.4 Tier-2 provider funnel (if/when the gate passes)
 

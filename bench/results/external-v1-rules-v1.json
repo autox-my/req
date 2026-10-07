@@ -1,0 +1,135 @@
+{
+  "corpus": "bench/corpus/external-v1.yml",
+  "corpus_sha256": "a0623e669ffabe4937a85f93bb1eb63664012d6616264fae3adf99cefa836919",
+  "degraded": [],
+  "fmr": {
+    "collapses": 0,
+    "hard_gate": "PASS",
+    "hit_pairs": [],
+    "not_equivalent_total": 160,
+    "rate": 0.0,
+    "structurally_unverifiable_pairs": 0
+  },
+  "fsr": {
+    "hit_pairs": [
+      "E-ST-SDOC-SSS-49-MS"
+    ],
+    "rate": 0.005780346820809248,
+    "splits": 1,
+    "structured_equivalent_total": 173
+  },
+  "lints": [
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"iec\" is not in the T1.5 table",
+      "pair": "E-ST-SDOC-SSS-78-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"iec\" is not in the T1.5 table",
+      "pair": "E-ST-SDOC-SSS-78-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"iec\" is not in the T1.5 table",
+      "pair": "E-ST-SDOC-SSS-78-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"iec\" is not in the T1.5 table",
+      "pair": "E-ST-SDOC-SSS-78-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"apache\" is not in the T1.5 table",
+      "pair": "E-ST-SDOC-SSS-40-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"apache\" is not in the T1.5 table",
+      "pair": "E-ST-SDOC-SSS-40-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"apache\" is not in the T1.5 table",
+      "pair": "E-ST-SDOC-SSS-40-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"apache\" is not in the T1.5 table",
+      "pair": "E-ST-SDOC-SSS-40-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"iec\" is not in the T1.5 table",
+      "pair": "N-ST-SDOC-SSS-78-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"iec\" is not in the T1.5 table",
+      "pair": "N-ST-SDOC-SSS-78-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"iec\" is not in the T1.5 table",
+      "pair": "N-ST-SDOC-SSS-78-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"iec\" is not in the T1.5 table",
+      "pair": "N-ST-SDOC-SSS-78-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"apache\" is not in the T1.5 table",
+      "pair": "N-ST-SDOC-SSS-40-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"apache\" is not in the T1.5 table",
+      "pair": "N-ST-SDOC-SSS-40-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"apache\" is not in the T1.5 table",
+      "pair": "N-ST-SDOC-SSS-40-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"apache\" is not in the T1.5 table",
+      "pair": "N-ST-SDOC-SSS-40-PF",
+      "side": "b"
+    }
+  ],
+  "pairs_total": 338,
+  "rules_v": 1,
+  "schema": "req.bench.result/0",
+  "tier2": {
+    "candidates": 5,
+    "collapsed_at_tier1": 5,
+    "ids": [
+      "E-DO-REQ002-CP",
+      "E-DO-REQ006-CP",
+      "E-DO-REQ010-CP",
+      "E-DO-REQ018-CP",
+      "E-DO-REQ019-CP"
+    ],
+    "note": "pairs needing the provider funnel; excluded from the FSR headline by design"
+  },
+  "verdict": "PASS"
+}

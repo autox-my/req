@@ -117,8 +117,17 @@ A perfect tool is defined by the tensions it resolves, not the features it lists
    3 Tier-2 candidates (E-006/7/8 — voice, paraphrase — are the provider funnel's rule,
    by design); 1 lint (N-005's "under" is never guessed); verdict **PASS**. Results:
    [bench/results/rules-v0-seed-first-run.json](../bench/results/rules-v0-seed-first-run.json).
-   This is the *seed-corpus* gate; the external corpora falsification (step 4's
-   headline claim) is the next measured run.
+   *External run, 2026-10-07 (rules v1): 338 pairs built from other projects' real
+   requirements — StrictDoc's own L1 requirements and Doorstop's own requirements,
+   labelled by construction: **FMR = 0.0 across 160 meaning-changing mutations, with 0
+   structurally unverifiable pairs** (the pass is not vacuous); FSR = 1/173 = 0.58%.
+   The headline holds on external prose.* Two findings recorded
+   ([canonical-hashing.md §6.3](canonical-hashing.md)): the single split is a
+   multi-clause statement whose second obligation sits in the unparsed tail (clause
+   decomposition is the next rule candidate), and 16 `untestable_comparator` lints are
+   false positives on standard names ("IEC 61508"). Results:
+   [bench/results/external-v1-rules-v1.json](../bench/results/external-v1-rules-v1.json),
+   [bench/results/parity-rules-v1.json](../bench/results/parity-rules-v1.json).
 5. **Semantic proposals** — pluggable provider behind a stable interface; Tier-2 only.
 6. **Structural merge + conflict classification** (needs direction, hence the canonical
    layer).

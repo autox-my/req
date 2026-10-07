@@ -15,7 +15,6 @@ use crate::model::{Corpus, Registry};
 
 const CORPUS_REL: &str = "bench/corpus/parity.yml";
 const REGISTRY_REL: &str = "aliases/subjects.yml";
-const RESULTS_FILE: &str = "bench/results/rules-v0-seed-first-run.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PairKind {
@@ -55,10 +54,113 @@ fn classify(label_eq: bool, a: &CanonicalForm, b: &CanonicalForm) -> PairKind {
     }
 }
 
-pub fn run() -> i32 {
+/// The gate's outcome. Computed without any I/O so it can be tested at the seam
+/// (see tests/gate.rs) and reused by any caller.
+pub struct Evaluation {
+    /// Collapses among `not_equivalent` pairs — the hard gate. Non-empty = FAIL.
+    pub fmr_hits: Vec<String>,
+    /// Splits among equivalent pairs where both sides parsed to a bounded claim.
+    pub fsr_hits: Vec<String>,
+    /// (pair id, collapsed at Tier 1) — equivalent pairs needing the provider funnel.
+    pub tier2: Vec<(String, bool)>,
+    pub lints: Vec<serde_json::Value>,
+    pub structured_equivalent: usize,
+    pub not_equivalent_total: usize,
+    /// `not_equivalent` pairs where a side fell to the unstructured fallback: no
+    /// merge happened, so the FMR property holds — but the pair was not
+    /// structurally verified, and that is reported rather than assumed away.
+    pub unverifiable_not_equivalent: usize,
+    pub rows: Vec<String>,
+    pub verdict: &'static str,
+}
+
+/// Evaluate one corpus: pure, no files touched, nothing printed.
+pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
+    let mut fmr_hits: Vec<String> = Vec::new();
+    let mut fsr_hits: Vec<String> = Vec::new();
+    let mut tier2: Vec<(String, bool)> = Vec::new(); // (id, collapsed)
+    let mut lints: Vec<serde_json::Value> = Vec::new();
+    let mut structured_equivalent: usize = 0;
+    let mut unverifiable_not_equivalent: usize = 0;
+    let mut rows: Vec<String> = Vec::new();
+
+    let push_lints = |pair_id: &str,
+                      side: &str,
+                      ls: &Vec<crate::canon::Lint>,
+                      out: &mut Vec<serde_json::Value>| {
+        for l in ls {
+            out.push(json!({"pair": pair_id, "side": side, "code": l.code, "detail": l.detail}));
+        }
+    };
+
+    for pair in &corpus.equivalent {
+        let (fa, la) = canonicalize_statement(&pair.a, registry);
+        let (fb, lb) = canonicalize_statement(&pair.b, registry);
+        let kind = classify(true, &fa, &fb);
+        let collapsed = collapse(&fa, &fb);
+        let structured = !fa.unstructured && !fb.unstructured;
+        if structured {
+            structured_equivalent += 1;
+        }
+        match kind {
+            PairKind::Collapse => {}
+            PairKind::Split => fsr_hits.push(pair.id.clone()),
+            PairKind::Unstructured => tier2.push((pair.id.clone(), collapsed)),
+        }
+        push_lints(&pair.id, "a", &la, &mut lints);
+        push_lints(&pair.id, "b", &lb, &mut lints);
+        rows.push(format!(
+            "{:<8} {:<15} collapsed={:<5} structured={}",
+            pair.id, "equivalent", collapsed, structured
+        ));
+    }
+
+    for pair in &corpus.not_equivalent {
+        let (fa, la) = canonicalize_statement(&pair.a, registry);
+        let (fb, lb) = canonicalize_statement(&pair.b, registry);
+        let kind = classify(false, &fa, &fb);
+        let collapsed = collapse(&fa, &fb);
+        match kind {
+            PairKind::Collapse => fmr_hits.push(pair.id.clone()),
+            // Cannot merge (one side has no structured form), so the FMR property
+            // holds — but the pair was not structurally verified. Counted, never
+            // silently dropped.
+            PairKind::Unstructured => unverifiable_not_equivalent += 1,
+            PairKind::Split => {}
+        }
+        push_lints(&pair.id, "a", &la, &mut lints);
+        push_lints(&pair.id, "b", &lb, &mut lints);
+        rows.push(format!(
+            "{:<8} {:<15} collapsed={}",
+            pair.id, "not_equivalent", collapsed
+        ));
+    }
+
+    Evaluation {
+        verdict: if fmr_hits.is_empty() { "PASS" } else { "FAIL" },
+        fmr_hits,
+        fsr_hits,
+        tier2,
+        lints,
+        structured_equivalent,
+        not_equivalent_total: corpus.not_equivalent.len(),
+        unverifiable_not_equivalent,
+        rows,
+    }
+}
+
+/// Run the gate over a corpus file — the seed parity corpus by default — and
+/// record the result under `bench/results/`.
+/// Exit codes: 0 PASS / 1 FAIL / 3 UNVERIFIABLE (a degraded run is 3).
+pub fn run(corpus_path: Option<&str>) -> i32 {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let corpus_path = root.join(CORPUS_REL);
-    let corpus = match Corpus::load(corpus_path.to_str().unwrap()) {
+    let rel = corpus_path.unwrap_or(CORPUS_REL);
+    let path = if std::path::Path::new(rel).is_absolute() {
+        std::path::PathBuf::from(rel)
+    } else {
+        root.join(rel)
+    };
+    let corpus = match Corpus::load(path.to_str().unwrap()) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] corpus load failed: {e}");
@@ -77,121 +179,74 @@ pub fn run() -> i32 {
         ),
     };
 
-    let mut fmr_hits: Vec<String> = Vec::new();
-    let mut fsr_hits: Vec<String> = Vec::new();
-    let mut tier2: Vec<(String, bool)> = Vec::new(); // (id, collapsed)
-    let mut lints: Vec<serde_json::Value> = Vec::new();
-    let mut structured_equivalent: usize = 0;
-    let mut row_lines: Vec<String> = Vec::new();
-
-    let push_lints = |pair_id: &str,
-                      side: &str,
-                      ls: &Vec<crate::canon::Lint>,
-                      out: &mut Vec<serde_json::Value>| {
-        for l in ls {
-            out.push(json!({"pair": pair_id, "side": side, "code": l.code, "detail": l.detail}));
-        }
+    let ev = evaluate(&corpus, &registry);
+    let fmr_rate = if ev.not_equivalent_total == 0 {
+        0.0
+    } else {
+        ev.fmr_hits.len() as f64 / ev.not_equivalent_total as f64
     };
-
-    for pair in &corpus.equivalent {
-        let (fa, la) = canonicalize_statement(&pair.a, &registry);
-        let (fb, lb) = canonicalize_statement(&pair.b, &registry);
-        let kind = classify(true, &fa, &fb);
-        let collapsed = collapse(&fa, &fb);
-        let structured = !fa.unstructured && !fb.unstructured;
-        if structured {
-            structured_equivalent += 1;
-        }
-        match kind {
-            PairKind::Collapse => {}
-            PairKind::Split => fsr_hits.push(pair.id.clone()),
-            PairKind::Unstructured => tier2.push((pair.id.clone(), collapsed)),
-        }
-        push_lints(&pair.id, "a", &la, &mut lints);
-        push_lints(&pair.id, "b", &lb, &mut lints);
-        row_lines.push(format!(
-            "{:<6} {:<11} collapsed={:<5} structured={}",
-            pair.id, "equivalent", collapsed, structured
-        ));
-    }
-
-    for pair in &corpus.not_equivalent {
-        let (fa, la) = canonicalize_statement(&pair.a, &registry);
-        let (fb, lb) = canonicalize_statement(&pair.b, &registry);
-        let kind = classify(false, &fa, &fb);
-        let collapsed = collapse(&fa, &fb);
-        if matches!(kind, PairKind::Collapse) {
-            fmr_hits.push(pair.id.clone());
-        }
-        push_lints(&pair.id, "a", &la, &mut lints);
-        push_lints(&pair.id, "b", &lb, &mut lints);
-        row_lines.push(format!(
-            "{:<6} {:<14} collapsed={}",
-            pair.id, "not_equivalent", collapsed
-        ));
-    }
-
+    let fsr_rate = if ev.structured_equivalent == 0 {
+        0.0
+    } else {
+        ev.fsr_hits.len() as f64 / ev.structured_equivalent as f64
+    };
+    let corpus_sha =
+        crate::canon::sha256_hex_raw(&std::fs::read(path.to_str().unwrap()).unwrap_or_default());
     let pair_total = corpus.equivalent.len() + corpus.not_equivalent.len();
-    let fmr_rate = if corpus.not_equivalent.is_empty() {
-        0.0
+    let verdict = if degraded.is_empty() {
+        ev.verdict
     } else {
-        fmr_hits.len() as f64 / corpus.not_equivalent.len() as f64
-    };
-    let fsr_rate = if structured_equivalent == 0 {
-        0.0
-    } else {
-        fsr_hits.len() as f64 / structured_equivalent as f64
-    };
-
-    let corpus_sha = crate::canon::sha256_hex_raw(
-        &std::fs::read(corpus_path.to_str().unwrap()).unwrap_or_default(),
-    );
-
-    let verdict = if !degraded.is_empty() {
         "DEGRADED-PASS/FAIL-SEE-REPORT"
-    } else if fmr_hits.is_empty() {
-        "PASS"
-    } else {
-        "FAIL"
     };
 
+    let fmr_n = ev.fmr_hits.len();
+    let fmr_pairs = ev.fmr_hits;
+    let fsr_n = ev.fsr_hits.len();
+    let fsr_pairs = ev.fsr_hits;
     let report = json!({
         "schema": "req.bench.result/0",
         "rules_v": RULES_V,
-        "corpus": CORPUS_REL,
+        "corpus": rel,
         "corpus_sha256": corpus_sha,
         "pairs_total": pair_total,
         "fmr": {
-            "collapses": fmr_hits.len(),
-            "not_equivalent_total": corpus.not_equivalent.len(),
+            "collapses": fmr_n,
+            "not_equivalent_total": ev.not_equivalent_total,
             "rate": fmr_rate,
             "hard_gate": if fmr_rate == 0.0 { "PASS" } else { "FAIL" },
-            "hit_pairs": fmr_hits,
+            "hit_pairs": fmr_pairs,
+            "structurally_unverifiable_pairs": ev.unverifiable_not_equivalent,
         },
         "fsr": {
-            "splits": fsr_hits.len(),
-            "structured_equivalent_total": structured_equivalent,
+            "splits": fsr_n,
+            "structured_equivalent_total": ev.structured_equivalent,
             "rate": fsr_rate,
-            "hit_pairs": fsr_hits,
+            "hit_pairs": fsr_pairs,
         },
         "tier2": {
-            "candidates": tier2.len(),
-            "collapsed_at_tier1": tier2.iter().filter(|(_, c)| *c).count(),
-            "ids": tier2.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>(),
+            "candidates": ev.tier2.len(),
+            "collapsed_at_tier1": ev.tier2.iter().filter(|(_, c)| *c).count(),
+            "ids": ev.tier2.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>(),
             "note": "pairs needing the provider funnel; excluded from the FSR headline by design"
         },
-        "lints": lints,
+        "lints": ev.lints,
         "degraded": degraded,
         "verdict": verdict,
     });
 
-    for row in &row_lines {
+    for row in &ev.rows {
         println!("{row}");
     }
     let pretty = serde_json::to_string_pretty(&report).unwrap_or_default();
     println!("{pretty}");
 
-    let out_path = root.join(RESULTS_FILE);
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("corpus");
+    let out_path = root
+        .join("bench/results")
+        .join(format!("{stem}-rules-v{RULES_V}.json"));
     if let Some(parent) = out_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
