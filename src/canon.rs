@@ -28,10 +28,11 @@ use crate::model::Registry;
 /// Tier-1 normalization-rules version. 0 -> 1 added Markdown emphasis stripping
 /// (T1.2b); 1 -> 2 added prohibition via "never", multi-obligation detection,
 /// qualitative-predicate classification, and a precise comparator lint; 2 -> 3 fixed
-/// the predicate span and made the canonical bytes valid JSON (the modality enum was
-/// interpolated unquoted). Addresses computed under older rules are
+/// the predicate span and made the canonical bytes valid JSON; 3 -> 4 stopped
+/// resolving "may not"/"may never" (ambiguous negation scope — a real false merge on
+/// the widened external corpus). Addresses computed under older rules are
 /// re-canonicalization candidates, never silently rewritten (hashing spec §5).
-pub const RULES_V: u32 = 3;
+pub const RULES_V: u32 = 4;
 /// Versioned domain tag — a rules bump never silently re-hashes ratified history
 /// (hashing spec §5 freeze policy).
 pub const ADDRESS_TAG: &[u8] = b"req.claim.v1\0";
@@ -573,14 +574,16 @@ const COMPARATOR_PHRASES: &[(&str, Comp)] = &[
 const MODALITY_PHRASES: &[(&str, Modality)] = &[
     ("shall not", Modality::ShallNot),
     ("must not", Modality::ShallNot),
-    ("may not", Modality::ShallNot),
+    // "may not" / "may never" are deliberately ABSENT: the scope of the negation is
+    // ambiguous in English (prohibition vs permission to refrain), T1.6 never
+    // sanctioned resolving them, and resolving them produced a real false merge on
+    // the widened external corpus. They are linted and left unstructured below.
     // "never" negates too: "shall never X" is a prohibition, not an obligation to
     // X. Reading it as SHALL would put the wrong modality into the audit artifact.
     // (Absorbed negation runs first, so "shall never exceed 200" still resolves as
     // SHALL with comparator LE — the comparison's negation, not the modality's.)
     ("shall never", Modality::ShallNot),
     ("must never", Modality::ShallNot),
-    ("may never", Modality::ShallNot),
     ("shall", Modality::Shall),
     ("must", Modality::Shall),
     ("may", Modality::May),
@@ -855,6 +858,26 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
         }
     }
 
+    // "may not X" / "may never X": the *scope* of the negation is not a Tier-1
+    // question — "is not permitted to X" and "is permitted to not X" are different
+    // obligations written with the same words. T1.6 never listed them, and resolving
+    // them produced a real false merge on the widened external corpus (a shall->may
+    // mutation collapsed). Ambiguous → linted, unstructured, never guessed. The
+    // absorbed form ("may not exceed 200") is unaffected: there the negation belongs
+    // to the comparison, which is exactly what absorption records.
+    let ambiguous_may_not = absorb_end.is_none()
+        && [["may", "not"], ["may", "never"]]
+            .iter()
+            .any(|p| word_span_start(&words, p).is_some());
+    if ambiguous_may_not {
+        lints.push(Lint {
+            code: "ambiguous_modality".to_string(),
+            detail: "'may not'/'may never' is ambiguous (prohibition vs permission to \
+                     refrain); claim stays unstructured"
+                .to_string(),
+        });
+    }
+
     // ORDER: comparator first (it anchors the value), then the value, then the
     // action. The absorbed-negation case (a comparative directly after the modal)
     // has already set comparator+anchor above; the plain table runs next.
@@ -1024,7 +1047,7 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
             ),
         });
     }
-    let unparseable = second_obligation || untestable_qualifier.is_some();
+    let unparseable = second_obligation || untestable_qualifier.is_some() || ambiguous_may_not;
 
     let Some((subject, _span)) = subject.filter(|_| !unparseable) else {
         // Unstructured fallback (§4): the raw normalized statement.

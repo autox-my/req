@@ -116,3 +116,46 @@ fn gate_fails_on_a_degenerate_not_equivalent_pair() {
     assert!(ev.fmr_hits.contains(&"M-001".to_string()));
     assert_eq!(ev.verdict, "FAIL");
 }
+
+/// Found by the *widened* external corpus (PROMISE NFR prose), rules v4: a
+/// `shall`->`may` mutation collapsed, because the modality table mapped "may not" to
+/// SHALL-NOT. T1.6 never sanctioned that, and "may not X" is genuinely ambiguous —
+/// "is not permitted to X" vs "is permitted to not X". The scope of a negation is not
+/// a Tier-1 question: lint it and stay unstructured, exactly like "will".
+#[test]
+fn may_not_is_ambiguous_and_never_guessed() {
+    let (prohibition, _) = canonicalize_statement(
+        "A surface computer shall not require a user to log in.",
+        &Registry::empty(),
+    );
+    let (ambiguous, lints) = canonicalize_statement(
+        "A surface computer may not require a user to log in.",
+        &Registry::empty(),
+    );
+    assert_eq!(prohibition.modality_str(), "SHALL-NOT");
+    assert!(
+        ambiguous.unstructured,
+        "an ambiguous negation scope must not be resolved"
+    );
+    assert!(
+        lints.iter().any(|l| l.code == "ambiguous_modality"),
+        "lints: {:?}",
+        lints.iter().map(|l| &l.code).collect::<Vec<_>>()
+    );
+    assert_ne!(canonical_json(&prohibition), canonical_json(&ambiguous));
+}
+
+/// The absorbed form is different: there the negation belongs to the *comparison*
+/// ("may not exceed 200" = permitted up to 200), which is what absorption records —
+/// so it stays structured, and weaker than "shall not exceed".
+#[test]
+fn absorbed_may_not_exceed_stays_structured_and_weaker() {
+    let (shall_not, _) =
+        canonicalize_statement("The system shall not exceed 200 ms.", &Registry::empty());
+    let (may_not, lints) =
+        canonicalize_statement("The system may not exceed 200 ms.", &Registry::empty());
+    assert!(!may_not.unstructured, "{:?}", lints.len());
+    assert_eq!(shall_not.modality_str(), "SHALL");
+    assert_eq!(may_not.modality_str(), "MAY");
+    assert_ne!(canonical_json(&shall_not), canonical_json(&may_not));
+}

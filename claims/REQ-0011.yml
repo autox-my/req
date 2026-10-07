@@ -17,7 +17,7 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: 3
+  rules_v: 4
   subject_registry: 1
   form: |-
     {"action":"report a tier 2 provider repeated-identical-input answer flip at a rate of","conditions":[],"exception":null,"modality":"SHALL","operator":"LE","qualifier":"","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":"none","value":"0.02"}
