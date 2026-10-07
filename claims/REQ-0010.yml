@@ -17,10 +17,11 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: null
+  rules_v: 3
   subject_registry: 1
-  form: null
-address: null
+  form: |-
+    {"action":"show a false split rate of","conditions":[],"exception":null,"modality":"SHOULD","operator":"LE","qualifier":"on the parity corpus at v0","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":null,"value":"0.3"}
+address: b547c8698230c1c911d40d870ae8a27062d504e94cdf671aba03931b454d0960
 rationale:
   source: docs/canonical-hashing.md
   date: 2026-10-07

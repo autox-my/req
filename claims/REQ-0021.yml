@@ -16,10 +16,11 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: null
+  rules_v: 3
   subject_registry: 1
-  form: null
-address: null
+  form: |-
+    {"action":"rewrite a claim or merge","conditions":[],"exception":null,"modality":"SHALL-NOT","operator":"none","qualifier":"claims automatically","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":"2"}
+address: 4d1212f1e1471708dfaeb79c1cfe4e3470529510549e1f473fce1d95bb65f44b
 rationale:
   source: docs/adr/0004-model-proposes-human-disposes.md
   date: 2026-10-07

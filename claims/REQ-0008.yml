@@ -17,10 +17,11 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: null
+  rules_v: 3
   subject_registry: 1
-  form: null
-address: null
+  form: |-
+    {"action":"report a false merge rate of","conditions":[],"exception":null,"modality":"SHALL","operator":"EQ","qualifier":"on the parity and adversarial mutation corpora","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":null,"value":"0"}
+address: cca50244dc55d35b7d315acedf038d2189bade28a74b6b84c09275549c7da796
 rationale:
   source: docs/canonical-hashing.md
   date: 2026-10-07

@@ -37,8 +37,8 @@ state: it is always derived from `decisions.jsonl`, never copied into claim file
 | `applicability[]` | variant predicates (`applies_when`) | part of identity (ADR 0003); informal predicate strings in v0, formal syntax deferred |
 | `exception`, `temporal`, `quantifier` | reserved slots | `null` when unused |
 | `unstructured` | true → the structured slots are all null | the claim gets its raw-form canonical bytes + address per hashing spec §4, and opts out of structural merge-direction analysis |
-| `canonical` | `{rules_v, subject_registry, form}` | **null in v0 seed files** — filled by `req canon` (build step 3) |
-| `address` | `sha256("req.claim.v1\0" \|\| canonical_form_bytes)` | null until then; once set, `sha256(tag \|\| stored form) == address` must always hold (REQ-0017) |
+| `canonical` | `{rules_v, subject_registry, form}` | written **only** by `req canon --fill`; `form` is stored as a YAML literal block so the hashed bytes are the stored bytes |
+| `address` | `sha256("req.claim.v1\0" \|\| canonical_form_bytes)` | written by `req canon --fill`; `req canon --verify` enforces `sha256(tag \|\| stored form) == address` (REQ-0017) |
 | `rationale` | object: `source`, `date`, `rejected_alternatives[]`, `assumptions[]` | the losing side is preserved — never a string field |
 | `relations[]` | `{type, to}` outgoing only | incoming relations are always *derived* by traversal, never stored (REQ-0020); `relations: []` = a root claim |
 
@@ -76,14 +76,27 @@ claim file, before merge direction analysis is trusted.
 - Alias sets are disjoint per subject; `req` is deliberately excluded from
   `REQ_TOOL`'s aliases because it names the CLI binary in other contexts.
 
-## State of the v0 seed corpus
+## State of the seed corpus
 
-`claims/REQ-0001 … claims/REQ-0020` are authored **structured-first**: the author
-supplies the parse deliberately, `canonical.form` and `address` are `null`, and
-`req canon` fills them at build step 3. Until then the corpus is chompable for lint
-and review but not yet address-addressed — by design, so that no hash is invented
-before the rules that define it exist. `claims/` also seeds `bench/corpus/parity.yml`
-(E-008/E-009 come from this project's own genuine paraphrases).
+`claims/REQ-0001 … claims/REQ-0021` were authored **structured-first**: the author
+supplied the parse deliberately, and `canonical.form`/`address` stayed `null` until the
+rules that define them existed. They are now **filled under rules v3** by
+`req canon --fill`, and `req canon --verify` reports `21 verified, 0 candidates, 0
+mismatches`, so the corpus is address-addressed end to end.
+
+Two properties make the filled state trustworthy, and both are enforced rather than
+assumed:
+
+- **`--fill` refuses a divergent claim.** If the parse disagrees with the authored
+  slots, the claim is left unfilled with a reported flag: an address over a parse that
+  contradicts the claim would enshrine the contradiction. A refusal exits 3
+  (UNVERIFIABLE), never 0.
+- **`--verify` is in the gate**, so a rules bump without a re-fill exits 3 (every claim
+  becomes a re-canonicalization *candidate*) and a hand-edited digest exits 1
+  (mismatch). `sha256(tag ‖ stored bytes) == stored address` is checked, not promised.
+
+`claims/` also seeds `bench/corpus/parity.yml` (E-008/E-009 come from this project's own
+genuine paraphrases).
 
 ## Deliberately deferred
 

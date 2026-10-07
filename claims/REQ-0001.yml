@@ -16,10 +16,11 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: null
+  rules_v: 3
   subject_registry: 1
-  form: null
-address: null
+  form: |-
+    {"action":"treat a single claim as the unit of requirements authorship, review, and merge","conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
+address: b52658479d6e14223fa4ff40630d4d08ba254229a2f7c66ede2e1c5a8fc48e73
 rationale:
   source: docs/adr/0001-the-unit-is-a-claim.md
   date: 2026-10-07

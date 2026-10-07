@@ -97,15 +97,42 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
   extract to predicate slots; ``unless`` negates the guard; conditions get **sorted**
   for assembly. A claim that *gains* a condition is a different claim (a trap case).
 - **T1.9 Assembly + digest** — fixed schema
-  ``{modality, subject, attribute, operator, value{number,unit}, conditions[],
-  exception?, quantifier?, temporal?}``; JSON with sorted keys, no insignificant
-  whitespace, canonical number format → canonical form bytes →
+  ``{action, conditions, exception, modality, operator, qualifier, raw, subject,
+  temporal, unstructured, unit, value}``: every key always present (null when unset),
+  **valid JSON with sorted keys**, no insignificant whitespace, canonical number format
+  → canonical form bytes →
   ``address = sha256("req.claim.v1\0" || canonical_form_bytes)``.
+  - **`quantifier` is deliberately NOT in the form yet.** The parser does not derive
+    one, and an always-null field would advertise coverage the rules cannot deliver; it
+    stays authored-only and unverified (the diagnostic footer says so). The hazard today
+    is nil — a quantifier word remains in the action text, so two statements differing
+    there still differ — but if an extraction rule ever lands it **must** enter the form
+    in that same change, or claims differing only in quantifier would collide. That is a
+    rules bump and a re-canonicalization event.
+  - The bytes are **parsed by consumers** (porcelain, audit tooling, any
+    re-implementation), so validity is a contract, not a description: a test asserts the
+    stored form parses as JSON with exactly the documented keys, in sorted order.
 
 **Example that must collapse** — ``The system shall respond within 200 ms`` ≡
 ``The system shall respond no later than 200 ms`` → subject ``the system``, action
 ``respond``, operator LE, value 0.2 s, qualifier empty → same address. The inverse
 trap: LE vs LT — ``within`` vs ``in fewer than`` — never collapse.
+
+### 5.1 Writing and verifying the stored fields
+
+`req canon --fill` is the only writer of `canonical.form`/`address`, and it **refuses**
+a claim whose parse disagrees with its authored slots: an address over a parse that
+contradicts the claim would enshrine the contradiction in the audit artifact. A refusal
+is reported and exits 3 — never folded into success.
+
+`req canon --verify` is in the gate, and it checks three things per claim: the stored
+form equals what the current parse produces, the stored address recomputes from the
+**stored bytes**, and the rules version matches. Exit codes are the three states:
+**0** verified, **1** mismatch (a hand-edited digest, or a stale form), **3**
+candidate (unfilled, or filled under other rules). A candidate is what a rules bump
+produces by design — re-canonicalization candidates requiring re-ratification, never a
+silent rehash — so a rules bump without a re-fill stops at the gate rather than
+shipping a corpus whose addresses no longer mean what the rules say.
 
 **Example that must NOT collapse** — ``The system shall not exceed 2.5 A of
 standby current`` vs ``… of surge current``: the qualifier differs → different

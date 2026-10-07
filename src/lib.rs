@@ -7,4 +7,5 @@
 
 pub mod bench;
 pub mod canon;
+pub mod fill;
 pub mod model;

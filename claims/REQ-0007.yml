@@ -16,10 +16,11 @@ temporal: null
 quantifier: null
 unstructured: true
 canonical:
-  rules_v: null
+  rules_v: 3
   subject_registry: 1
-  form: null
-address: null
+  form: |-
+    {"action":"","conditions":[],"exception":null,"modality":"none","operator":null,"qualifier":"","raw":"authoring shall be friction-free and the decision boundary shall be deliberately high-friction, demanding role, meaning, and evidence there","subject":"","temporal":null,"unstructured":true,"unit":null,"value":null}
+address: 68151cc53ec8cb844695afdf20d41aeb70dd354503f21f1652f3b6e79fc3e454
 rationale:
   source: docs/adr/0006-friction-zones.md
   date: 2026-10-07

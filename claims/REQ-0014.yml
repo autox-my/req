@@ -15,10 +15,11 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: null
+  rules_v: 3
   subject_registry: 1
-  form: null
-address: null
+  form: |-
+    {"action":"produce","conditions":[],"exception":null,"modality":"SHALL","operator":"EQ","qualifier":"commit per ratified logical decision","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":"1"}
+address: 1b21783d8e2f021d4054a7e2f5f77ef6e6b7d06974a6a1ae889c1d54227218c4
 rationale:
   source: docs/design.md
   date: 2026-10-07

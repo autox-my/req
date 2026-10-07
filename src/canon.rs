@@ -27,10 +27,11 @@ use crate::model::Registry;
 
 /// Tier-1 normalization-rules version. 0 -> 1 added Markdown emphasis stripping
 /// (T1.2b); 1 -> 2 added prohibition via "never", multi-obligation detection,
-/// qualitative-predicate classification, and a precise comparator lint. Addresses
-/// computed under older rules are re-canonicalization candidates, never silently
-/// rewritten (hashing spec §5).
-pub const RULES_V: u32 = 2;
+/// qualitative-predicate classification, and a precise comparator lint; 2 -> 3 fixed
+/// the predicate span and made the canonical bytes valid JSON (the modality enum was
+/// interpolated unquoted). Addresses computed under older rules are
+/// re-canonicalization candidates, never silently rewritten (hashing spec §5).
+pub const RULES_V: u32 = 3;
 /// Versioned domain tag — a rules bump never silently re-hashes ratified history
 /// (hashing spec §5 freeze policy).
 pub const ADDRESS_TAG: &[u8] = b"req.claim.v1\0";
@@ -193,13 +194,16 @@ pub fn canonical_json(f: &CanonicalForm) -> String {
         .join(",");
     format!(
         concat!(
-            "{{\"action\":\"{}\",\"conditions\":[{}],\"exception\":{},\"modality\":{},",
+            "{{\"action\":\"{}\",\"conditions\":[{}],\"exception\":{},\"modality\":\"{}\",",
             "\"operator\":{},\"qualifier\":\"{}\",\"raw\":\"{}\",\"subject\":\"{}\",",
             "\"temporal\":{},\"unstructured\":{},\"unit\":{},\"value\":{}}}",
         ),
         json_escape(&f.action),
         cond_list,
         opt_str(&f.exception),
+        // Quoted by the format string around it, because these are JSON bytes (T1.9)
+        // and a consumer parses them: an unquoted enum made the canonical form invalid
+        // JSON, which is undetectable from the hash and from any diff.
         f.modality_str(),
         if f.modality.is_some() {
             format!("\"{}\"", f.operator_str())
@@ -1066,35 +1070,121 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
 /// Attribute-token derivation and corpus-predicate condition fields are
 /// deliberately not verified; the diagnostic reports them as unchecked so
 /// nothing silently passes.
+/// One claim's parity-invariant verdict: the parse, and whether each *authored*
+/// slot agrees with it. Shared by `req canon` (which reports the divergence) and
+/// `req canon --fill` (which refuses to derive for a divergent claim) — the two must
+/// never drift apart.
+pub struct ClaimVerdict {
+    pub form: CanonicalForm,
+    pub unstructured_ok: bool,
+    pub modality_ok: bool,
+    pub subject_ok: bool,
+    pub value_unit_ok: bool,
+    pub op_ok: bool,
+    pub v_parsed: String,
+    pub authored_v: String,
+    pub op_parsed: String,
+    pub op_checkable: bool,
+}
+
+impl ClaimVerdict {
+    pub fn flags(&self) -> usize {
+        [
+            self.unstructured_ok,
+            self.modality_ok,
+            self.subject_ok,
+            self.value_unit_ok,
+            self.op_ok,
+        ]
+        .iter()
+        .filter(|ok| !**ok)
+        .count()
+    }
+}
+
+/// The parity invariant, per claim: re-parse `statement` and compare the derived
+/// form against every authored slot that is actually checkable.
+pub fn evaluate_claim(claim: &crate::model::ClaimFile, registry: &Registry) -> ClaimVerdict {
+    let (form, _lints) = canonicalize_statement(&claim.statement, registry);
+
+    let unstructured_ok = form.unstructured == claim.unstructured;
+    let modality_ok = claim.unstructured || form.modality_str() == claim.modality;
+    // An authored-unstructured claim has no structured subject to compare; the
+    // unstructured tag is the field that carries that decision.
+    let subject_ok = claim.unstructured || form.subject == claim.subject;
+
+    // value: only really checkable when the *authored* value is numeric
+    let authored_v = claim.value.clone().unwrap_or_default();
+    let authored_is_num =
+        !authored_v.is_empty() && authored_v.chars().next().unwrap_or('x').is_ascii_digit();
+    let v_parsed = form
+        .value
+        .as_ref()
+        .map(canonical_decimal)
+        .unwrap_or_default();
+    let u_parsed = form.unit.clone().unwrap_or_else(|| "none".to_string());
+    let authored_u = claim.unit.clone().unwrap_or_else(|| "none".to_string());
+    let value_unit_ok = !authored_is_num || (v_parsed == authored_v && u_parsed == authored_u);
+
+    let authored_op = claim.operator.clone().unwrap_or_default();
+    let op_parsed = form.operator_str().to_string();
+    let op_checkable = authored_is_num;
+    let op_ok = !op_checkable || op_parsed == authored_op;
+
+    ClaimVerdict {
+        form,
+        unstructured_ok,
+        modality_ok,
+        subject_ok,
+        value_unit_ok,
+        op_ok,
+        v_parsed,
+        authored_v,
+        op_parsed,
+        op_checkable,
+    }
+}
+
+/// Claim files under `claims/`, sorted: one claim per file (claim-format).
+pub fn claim_files(root: &std::path::Path) -> Result<Vec<std::path::PathBuf>, String> {
+    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(root.join("claims"))
+        .map_err(|e| format!("claims dir: {e}"))?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|f| f.to_str())
+                .is_some_and(|f| f.starts_with("REQ-") && f.ends_with(".yml"))
+        })
+        .collect();
+    files.sort();
+    Ok(files)
+}
+
+/// The subject registry. A caller that cannot load it reports UNVERIFIABLE.
+pub fn load_registry(root: &std::path::Path) -> Result<Registry, String> {
+    Registry::load(root.join("aliases/subjects.yml").to_str().unwrap())
+        .map_err(|e| format!("registry load failed: {e}"))
+}
+
 pub fn run_claim_diagnostics() -> i32 {
     use crate::model::ClaimFile;
 
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let registry_path = root.join("aliases/subjects.yml");
-    let registry = match Registry::load(registry_path.to_str().unwrap()) {
+    let registry = match load_registry(&root) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("[UNVERIFIABLE] registry load failed: {e}");
+            eprintln!("[UNVERIFIABLE] {e}");
             return 3;
         }
     };
-    let claims_dir = root.join("claims");
-    let mut files: Vec<std::path::PathBuf> = match std::fs::read_dir(&claims_dir) {
-        Ok(rd) => rd
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| {
-                p.file_name()
-                    .and_then(|f| f.to_str())
-                    .is_some_and(|f| f.starts_with("REQ-") && f.ends_with(".yml"))
-            })
-            .collect(),
+    let files = match claim_files(&root) {
+        Ok(f) => f,
         Err(e) => {
-            eprintln!("[UNVERIFIABLE] claims dir: {e}");
+            eprintln!("[UNVERIFIABLE] {e}");
             return 3;
         }
     };
-    files.sort();
 
     let mut checked = 0usize;
     let mut flags_total = 0usize;
@@ -1113,63 +1203,26 @@ pub fn run_claim_diagnostics() -> i32 {
                 return 3;
             }
         };
-        let (form, _lints) = canonicalize_statement(&claim.statement, &registry);
+        let verdict = evaluate_claim(&claim, &registry);
         checked += 1;
-        let mut flags = 0usize;
-
-        let unstructured_ok = form.unstructured == claim.unstructured;
-        if !unstructured_ok {
-            flags += 1;
-        }
-        let modality_ok = claim.unstructured || form.modality_str() == claim.modality;
-        if !modality_ok {
-            flags += 1;
-        }
-        // An authored-unstructured claim has no structured subject to compare; the
-        // unstructured tag is the field that carries that decision.
-        let subject_ok = claim.unstructured || form.subject == claim.subject;
-        if !subject_ok {
-            flags += 1;
-        }
-        // value: only really checkable when the *authored* value is numeric
-        let authored_v = claim.value.clone().unwrap_or_default();
-        let authored_is_num =
-            !authored_v.is_empty() && authored_v.chars().next().unwrap_or('x').is_ascii_digit();
-        let v_parsed = form
-            .value
-            .as_ref()
-            .map(canonical_decimal)
-            .unwrap_or_default();
-        let u_parsed = form.unit.clone().unwrap_or_else(|| "none".to_string());
-        let authored_u = claim.unit.clone().unwrap_or_else(|| "none".to_string());
-        let value_unit_ok = if authored_is_num {
-            v_parsed == authored_v && u_parsed == authored_u
-        } else {
-            true
-        };
-        if !value_unit_ok {
-            flags += 1;
-        }
-        let authored_op = claim.operator.clone().unwrap_or_default();
-        let op_parsed = form.operator_str().to_string();
-        let op_checkable = authored_is_num;
-        let op_ok = !op_checkable || op_parsed == authored_op;
-        if !op_ok {
-            flags += 1;
-        }
-
-        flags_total += flags;
+        flags_total += verdict.flags();
         println!(
             "{:<9} {:<9} {:<9} {:<12} {:<10} {:<8}",
             claim.claim_id,
-            mark(unstructured_ok, form.unstructured.to_string()),
-            mark(modality_ok, form.modality_str().to_string()),
-            mark(subject_ok, form.subject.clone()),
-            mark(value_unit_ok, format!("{v_parsed}/{authored_v}")),
             mark(
-                op_ok,
-                if op_checkable {
-                    op_parsed
+                verdict.unstructured_ok,
+                verdict.form.unstructured.to_string()
+            ),
+            mark(verdict.modality_ok, verdict.form.modality_str().to_string()),
+            mark(verdict.subject_ok, verdict.form.subject.clone()),
+            mark(
+                verdict.value_unit_ok,
+                format!("{}/{}", verdict.v_parsed, verdict.authored_v)
+            ),
+            mark(
+                verdict.op_ok,
+                if verdict.op_checkable {
+                    verdict.op_parsed.clone()
                 } else {
                     "n/a".to_string()
                 }
@@ -1178,7 +1231,7 @@ pub fn run_claim_diagnostics() -> i32 {
     }
     let _ = &registry;
     println!(
-        "claims: {checked}; discrepancy flags: {flags_total} (v0 diagnostic: attribute lexicon, conditions, applicability, rationale unverified by design)"
+        "claims: {checked}; discrepancy flags: {flags_total} (v0 diagnostic: attribute lexicon, conditions, applicability, quantifier (not yet a canonical field), rationale unverified by design)"
     );
     0
 }

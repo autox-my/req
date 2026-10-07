@@ -1,0 +1,44 @@
+{
+  "corpus": "bench/corpus/parity.yml",
+  "corpus_sha256": "d03d3af016d7ae526c501ece30514662667b7950593bbcdb09ecf68ff61084e1",
+  "degraded": [],
+  "fmr": {
+    "collapses": 0,
+    "hard_gate": "PASS",
+    "hit_pairs": [],
+    "not_equivalent_total": 7,
+    "rate": 0.0,
+    "structurally_unverifiable_ids": [
+      "N-007"
+    ],
+    "structurally_unverifiable_pairs": 1
+  },
+  "fsr": {
+    "hit_pairs": [],
+    "rate": 0.0,
+    "splits": 0,
+    "structured_equivalent_total": 5
+  },
+  "lints": [
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-005",
+      "side": "a"
+    }
+  ],
+  "pairs_total": 15,
+  "rules_v": 3,
+  "schema": "req.bench.result/0",
+  "tier2": {
+    "candidates": 3,
+    "collapsed_at_tier1": 0,
+    "ids": [
+      "E-006",
+      "E-007",
+      "E-008"
+    ],
+    "note": "pairs needing the provider funnel; excluded from the FSR headline by design"
+  },
+  "verdict": "PASS"
+}

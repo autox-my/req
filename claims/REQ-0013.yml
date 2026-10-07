@@ -16,10 +16,11 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: null
+  rules_v: 3
   subject_registry: 1
-  form: null
-address: null
+  form: |-
+    {"action":"deliver a non engineer author edit as a proposal inside an explicit working set","conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
+address: 8f614c4ea78139b6e93b88fc9c36b8cfae8dac2df443d557c2cd26e2d939b032
 rationale:
   source: docs/design.md
   date: 2026-10-07
