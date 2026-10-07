@@ -75,6 +75,10 @@ run cargo run -q -- bench   # seed parity corpus: 0 PASS / 1 FAIL / 3 UNVERIFIAB
 # predicate-swap class, which caught a silent false merge during rules v2.
 run cargo run -q -- bench bench/corpus/external-v1.yml
 run cargo run -q -- bench bench/corpus/external-v2.yml
+# v3 widens the prose: the PROMISE NFR set (deterministic sample of 969 statements
+# across 47 project ids) plus StrictDoc and Doorstop, and adds the digit-grouping and
+# exact unit-scale equivalence classes. It caught the "may not" false merge (rules v4).
+run cargo run -q -- bench bench/corpus/external-v3.yml
 
 # OCR is a review tool, not a gate: report the pin so version drift is visible.
 say "ocr (review tool, not a gate)"

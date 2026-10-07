@@ -16,7 +16,7 @@ temporal: null
 quantifier: null
 unstructured: true
 canonical:
-  rules_v: 3
+  rules_v: 4
   subject_registry: 1
   form: |-
     {"action":"","conditions":[],"exception":null,"modality":"none","operator":null,"qualifier":"","raw":"authoring shall be friction-free and the decision boundary shall be deliberately high-friction, demanding role, meaning, and evidence there","subject":"","temporal":null,"unstructured":true,"unit":null,"value":null}

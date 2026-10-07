@@ -16,7 +16,7 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: 3
+  rules_v: 4
   subject_registry: 1
   form: |-
     {"action":"record each acceptance or rejection of a change as a signed decision carrying role, meaning, timestamp, and any dissent","conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}

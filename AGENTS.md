@@ -152,10 +152,11 @@ matter:
 - `aliases/subjects.yml` — subject registry. Alias sets must be disjoint; an
   unregistered surface stays literal (never silently collapsed).
 - `bench/corpus/parity.yml` — the seed E/N pairs and adversarial traps, labels written
-  from the spec. `bench/corpus/external-v1.yml` — other projects' real requirement
-  prose, labelled by construction, built by `tools/corpus/build_external.py` (sources
-  pinned by commit SHA). `bench/results/` — one record per corpus and rules version;
-  append, do not rewrite.
+  from the spec. `bench/corpus/external-v{1,2,3}.yml` — other projects' real
+  requirement prose, labelled by construction, built by
+  `tools/corpus/build_external.py` (sources pinned by commit SHA; v3 adds the PROMISE
+  NFR set, a deterministic sample of 969 statements across 47 project ids).
+  `bench/results/` — one record per corpus and rules version; append, do not rewrite.
 - `src/` — `lib.rs` (the library surface), `main.rs` (thin CLI over it), `model.rs`
   (claim/registry/corpus types), `canon.rs` (Tier-1 pipeline + diagnostics),
   `bench.rs` (the gate + its tests).

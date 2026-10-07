@@ -17,7 +17,7 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: 3
+  rules_v: 4
   subject_registry: 1
   form: |-
     {"action":"show a false split rate of","conditions":[],"exception":null,"modality":"SHOULD","operator":"LE","qualifier":"on the parity corpus at v0","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":null,"value":"0.3"}

@@ -138,6 +138,16 @@ A perfect tool is defined by the tensions it resolves, not the features it lists
    discrepancy flags — REQ-0007's unstructured classification is now derived rather
    than declared, and REQ-0004 was split into REQ-0004 + REQ-0021 because v2 flags
    multi-obligation statements (claim-format requires one obligation per claim).*
+   *Rules v3/v4, 2026-10-07: the derived fields are written (`req canon --fill`, 21
+   claims address-addressed) and enforced (`req canon --verify` in the gate). Reading
+   the bytes it wrote exposed an invalid-JSON canonical form and a schema field
+   (`quantifier`) that was never in identity. Then the external source set was widened —
+   the **PROMISE NFR** set (deterministic sample, 969 statements, 47 project ids) plus
+   StrictDoc and Doorstop — and the widened corpus (external-v3, 1124 pairs) found a
+   false merge within minutes of existing: `may not` was mapped to `SHALL-NOT`, which
+   T1.6 never sanctioned, so a `shall`→`may` mutation collapsed. Fixed at rules v4
+   (ambiguous negation scope is linted, never guessed): **FMR 0.0 over 625 mutations,
+   FSR 0.0, four corpora PASS**.*
 5. **Semantic proposals** — pluggable provider behind a stable interface; Tier-2 only.
 6. **Structural merge + conflict classification** (needs direction, hence the canonical
    layer).

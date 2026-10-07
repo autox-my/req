@@ -72,11 +72,16 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
 - **T1.6 Modality** — ``shall``/``must``/``is required to`` → ``SHALL``;
   ``shall not``/``must not`` → ``SHALL-NOT``; ``shall never``/``must never`` →
   ``SHALL-NOT`` (a prohibition, not an obligation to the verb); ``may`` → ``MAY``;
-  ``should`` → ``SHOULD``. The **earliest** match by position wins, and at the same
-  position the longest phrase wins: table order must never decide position, or a later
-  ``shall never`` shadows an earlier ``shall``. ``will`` is deontic only contextually
-  → never guessed → lint `ambiguous_modality`. Modality is never cross-ran
-  (``SHALL`` ≠ ``MAY``).
+  ``should`` → ``SHOULD``. ``may not``/``may never`` are deliberately **not**
+  resolved: the *scope* of the negation is ambiguous (``is not permitted to X`` vs
+  ``is permitted to not X``), so they lint `ambiguous_modality` and stay unstructured
+  (rules v4 — a ``shall``→``may`` mutation collapsed on the widened external corpus
+  before this). The absorbed form is unaffected: ``may not exceed 200`` records the
+  negation on the *comparison* → ``MAY`` with **LE**. The **earliest** match by
+  position wins, and at the same position the longest phrase wins: table order must
+  never decide position, or a later ``shall never`` shadows an earlier ``shall``.
+  ``will`` is deontic only contextually → never guessed → lint `ambiguous_modality`.
+  Modality is never cross-ran (``SHALL`` ≠ ``MAY``).
 - **T1.6b Obligation and predicate integrity** (rules v2) —
   - the **predicate span** — from the end of the modal phrase (or of the whole
     absorbed ``<modal> <negator> <stem>`` phrase) to the comparator, else to the value
@@ -169,18 +174,33 @@ mutation — an address that changes between runs would make every Baseline unau
    ``within``↔``fewer than``, an added condition, a swapped subject, ambiguous
    ``under``, a false-vocabulary pair) and this project's own dogfood claims. Labels
    were written from the spec, never from the tool.
-2. **External corpus v1** (`bench/corpus/external-v1.yml`, built by
+2. **External corpora v1–v3** (`bench/corpus/external-v{1,2,3}.yml`, built by
    `tools/corpus/build_external.py`) — real requirement prose written by *other*
-   projects: StrictDoc's own L1 requirements and Doorstop's own requirements, pinned by
-   commit SHA. Pairs are labelled **by construction** (the transformation applied),
-   never by the canonicalizer, so the labels are an independent oracle. Tier-1-scoped:
-   equivalence uses meaning-preserving normalizations only; paraphrase, voice and word
-   order are Tier-2 and out of scope here.
+   projects, pinned by commit SHA, extended only at the front (v1 and v2 stay, so their
+   recorded runs remain reproducible). Pairs are labelled **by construction** (the
+   transformation applied), never by the canonicalizer, so the labels are an
+   independent oracle. Tier-1-scoped: equivalence uses meaning-preserving
+   normalizations only (emphasis, modality synonym, case/punctuation, digit grouping,
+   exact power-of-ten unit scaling); paraphrase, voice and word order are Tier-2 and
+   out of scope here. Sources:
+   - **StrictDoc** — its own L1 requirements (67 statements).
+   - **Doorstop** — its own requirements (18), which is where T1.2b came from: Doorstop
+     writes ``**shall**``.
+   - **PROMISE NFR** (v3) — the public natural-language NFR set: 969 statements across
+     47 project ids, sampled **deterministically** (every 5th) because all of them ×
+     five transforms would make the corpus and its review diff unreviewable. 24% of
+     them carry numeric bounds, which is what the digit-grouping and unit-scale classes
+     exercise.
 3. **Natural duplicate run** — whole real documents; measures collapse of true
    duplicates vs near-duplicates. Not yet implemented.
-4. **Not yet sourced** — Sphinx-Needs' bundled examples are test fixtures without prose
-   (and its ``.. need::`` examples were not reachable in the restructured docs); the
-   public PROMISE NFR set is not imported yet.
+4. **Evaluated and excluded — Sphinx-Needs.** Its own documentation uses standard
+   Sphinx directives (``versionadded``, ``note``, ``automodule``) rather than its own
+   needs; its test roots contain no ``.. need::`` directives; and its demo project's
+   29 ``swreq`` needs carry a title plus attributes but **no statement body** (e.g.
+   ``.. swreq:: Lane Marking Detection Algorithm``). Those are titles, not requirement
+   statements, so they would have made the corpus look wider while adding nothing a
+   canonicalizer can parse. Recorded here as a negative result rather than silently
+   dropped.
 
 ### 6.2 Labeling
 
@@ -204,6 +224,20 @@ corpus or harness is never accidentally a pass (the same principle as ADR 0005).
 
 #### Recorded runs (append-only)
 
+- **Rules v3/v4** — derived fields written and enforced, then the corpus widened.
+  - **external-v3** (1124 pairs; PROMISE NFR prose + StrictDoc + Doorstop; adds
+    digit-grouping and unit-scale equivalence classes) — at rules v3 it **FAILED**:
+    FMR 2/625 (0.32%), both `shall`→`may` mutations that collapsed. The cause was a
+    code-vs-spec divergence: the modality table mapped ``may not`` → ``SHALL-NOT``,
+    which T1.6 never sanctioned, so a weakened obligation merged with a prohibition.
+    At rules v4 (ambiguous negation scope is linted, never guessed) — **FMR 0.0 over
+    625 mutations, FSR 0.0, 68 structurally unverifiable, 89 Tier-2 candidates**.
+    Two of the false merges came from prose nobody here wrote, in a project nobody
+    here has heard of, within minutes of the corpus existing. That is the whole point
+    of widening the sources.
+  - **`req canon --verify`** — 21 verified / 0 candidates / 0 mismatches (rules v4);
+    the corpus was re-filled once per rules bump, and the gate would have stopped the
+    merge otherwise.
 - **Rules v2** (parity, external-v1, external-v2) — all PASS. The v2 rule work was
   driven by the v1 findings: prohibition via "never", multi-obligation detection,
   qualitative-predicate classification, and a precise comparator lint.
