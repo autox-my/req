@@ -17,10 +17,11 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: null
+  rules_v: 3
   subject_registry: 1
-  form: null
-address: null
+  form: |-
+    {"action":"classify direction of change on the structural direction gold set with accuracy of","conditions":[],"exception":null,"modality":"SHALL","operator":"GE","qualifier":"","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":null,"value":"0.95"}
+address: 2d30905a747903788584c46115ad936ab929b6639447ef125d92cb681ff1c035
 rationale:
   source: docs/canonical-hashing.md
   date: 2026-10-07

@@ -65,6 +65,10 @@ fi
 
 run cargo test
 run cargo run -q -- canon   # exit 3 = UNVERIFIABLE (never a pass)
+# The stored addresses must match the current rules and recompute from the stored
+# bytes: a rules bump without a re-fill exits 3 (candidates), a hand-edited digest
+# exits 1 (mismatch). This is REQ-0017 enforced, not asserted.
+run cargo run -q -- canon --verify
 run cargo run -q -- bench   # seed parity corpus: 0 PASS / 1 FAIL / 3 UNVERIFIABLE
 # External corpora (other projects' real requirement prose, labelled by
 # construction). Same hard gate; see docs/canonical-hashing.md 6.3. v2 adds the

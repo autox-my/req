@@ -70,6 +70,12 @@ export OCR_NO_UPDATE=1
 - Claim diagnostics: `cargo run -q -- canon` — per-claim parity-invariant report
   (unstructured tag, modality, subject, value/unit, operator). Exit 3 when the
   registry or a claim file cannot be read.
+- Derived fields: `cargo run -q -- canon --fill` writes `canonical.form` + `address`,
+  and **refuses any claim whose parse disagrees with its authored slots** (exit 3) —
+  an address over a contradicted parse would enshrine the contradiction.
+  `cargo run -q -- canon --verify` checks the stored fields against a fresh parse:
+  exit **1** mismatch (a hand-edited digest), **3** candidate (unfilled, or filled
+  under other rules — re-fill before merging a rules bump). Both are in the gate.
 - Lint/format: `cargo fmt --all -- --check` and
   `cargo clippy --all-targets -- -D warnings` — both part of the gate. The
   components live in the *pinned* toolchain, not in `stable`, so the toolchain
@@ -137,7 +143,8 @@ after installing.
   exists but is **read-only** — never write there. The DSH workspace *name* is `req`.
 - Data flow: claim file → typed parse (`yaml_serde`) → Tier-1 canonical form →
   canonical bytes → `sha256("req.claim.v1\0" ‖ bytes)` = address. Only `req bench`
-  (results) and, later, `req canon --fill` (derived fields) write anything.
+  (results) and `req canon --fill` (derived fields) write anything — and `--fill`
+  writes only what the parity invariant confirms.
 
 ## Correctness rules
 

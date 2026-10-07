@@ -16,10 +16,11 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: null
+  rules_v: 3
   subject_registry: 1
-  form: null
-address: null
+  form: |-
+    {"action":"emit a lint finding for any construct its normalization rules cannot decide rather than guessing a resolution","conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
+address: 212c1f902daa2db5e1e9eacc3c02a9eaad1011d884cb68d8150a741a6f8ea4ad
 rationale:
   source: docs/canonical-hashing.md
   date: 2026-10-07
