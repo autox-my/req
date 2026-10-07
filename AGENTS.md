@@ -104,7 +104,7 @@ it on every invocation:
 
 ```bash
 ocr delegate preview --format json [--from main --to feature/<name>] [--rule review/rule.json]
-ocr delegate rule --format json <paths from the preview>
+ocr delegate rule --format json --rule review/rule.json <paths from the preview>
 ocr --version        # --format needs >= 1.9.0; we pin 1.12.12
 ```
 
@@ -113,6 +113,29 @@ that run; never parse text as JSON and never invent schema fields.
 This npm skips the package's `postinstall` under its `allowScripts` policy; the CLI
 binary comes from the platform optionalDependency — always verify `ocr --version`
 after installing.
+
+**The rule-file shape we own** (`review/rule.json`), verified against 1.12.12 — the
+vendor ships no schema, so it was established by probing the CLI, and two behaviours
+matter:
+
+```json
+{"rules": [{"path": "<gitignore-style glob>", "rule": "<the checklist text>"}]}
+```
+
+- A matched file's group becomes `source: "custom"` with exactly our text, and an
+  unmatched file falls back to `source: "system"`. Custom rules **replace** the
+  built-in rubric for matched paths — they do not merge — which is why our
+  `src/**/*.rs` entry ends by telling the reviewer to also apply the built-in
+  language checklist.
+- **Unknown keys are silently ignored** (Go drops them). A misspelled key is
+  therefore a no-op that still "loads", so a rule file must be *verified to take
+  effect* — check `source`/`rule` in the output, never just the exit code. The two
+  fields are `path` and `rule`; anything else is decoration.
+- The built-in `source: "system"` rule is **language-specific** (for Rust: typos,
+  ownership/lifetimes, error handling and panics, unsafe boundaries, concurrency,
+  async/cancellation, collections/perf, type and API design, macros, security) — not
+  a generic rubric. To read it: `ocr delegate rule --format json <path>` without
+  `--rule`.
 
 ## Where things live / how data flows
 
@@ -138,6 +161,9 @@ after installing.
   `bench.rs` (the gate + its tests).
 - `tools/ocr/` — the pinned review CLI (`package.json` + lockfile committed;
   `node_modules/` ignored).
+- `review/rule.json` — the review rules we own: one checklist per path class, passed
+  to every `ocr` invocation. Its shape and the two CLI behaviours worth knowing are
+  documented under **Review** above.
 - `.scratch/` — session scratch, gitignored; never a deliverable.
 - Path facts: the workspace directory is `/home/dsh/understand`; `/home/dsh/req`
   exists but is **read-only** — never write there. The DSH workspace *name* is `req`.
@@ -244,15 +270,14 @@ resolves the rules; **you** are the reviewer. Stay read-only while reviewing.
    — markdown, i.e. **all of `docs/`, `CONTEXT.md`, `AGENTS.md`, `claims/README.md`**
    — and `default_path` — lockfiles. Those files are reviewed by hand, always: here
    the docs are claims, so an unreviewed doc change is itself the finding.
-2. `ocr delegate rule --format json <paths>` → `{schema_version, groups[]}`, each
-   group `{group_id, source, pattern, files[], rule}`. The built-in rule is a
-   generic rubric (`source: system`: correctness, security, performance,
-   maintainability, test coverage), so it does **not** know req's invariants. Pass
-   `--rule <path>` with our own rule file so the checklist carries them (FMR gate
+2. `ocr delegate rule --format json --rule review/rule.json <paths>` →
+   `{schema_version, groups[]}`, each group
+   `{group_id, source, pattern, files[], rule}`. Our own rules live in
+   `review/rule.json` (per-path checklists carrying req's invariants: FMR gate
    untouched; no floats or unordered-map iteration in the address path; no
    hand-written `address`/`canonical.form`; docs contradicted by code; canonical
-   decimal values; no auto-merge). Verify the rule-file shape against the CLI on
-   first use — do not guess it.
+   decimal values; no auto-merge). The file is reviewed like any other artifact, and
+   its shape is documented above.
 3. Diffs come from git using the preview's mode/ref metadata: range →
    `git diff <merge_base>..<to> -- <path>`; commit → `git show <commit> -- <path>`;
    workspace → `git diff HEAD -- <path>`, and read untracked files directly.
@@ -269,8 +294,8 @@ resolves the rules; **you** are the reviewer. Stay read-only while reviewing.
    unfixed are listed there too.
 
 Review rules we own live in-repo and are passed with `--rule <path>`; the file is
-reviewed like any other artifact. Verify the CLI's expected rule shape on first use
-— do not guess it.
+reviewed like any other artifact — and its *effect* is verified in the output, not
+assumed from a zero exit code.
 
 ### Merge locally (no PR)
 
