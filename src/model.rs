@@ -108,12 +108,12 @@ impl Registry {
         for (subject_id, def) in &file.subjects {
             for alias in &def.aliases {
                 let key = alias.to_lowercase();
-                if let Some(existing) = alias_to_subject.get(&key) {
-                    if existing != subject_id {
-                        return Err(format!(
-                            "alias collision in {path}: {key:?} resolves to both {existing} and {subject_id}"
-                        ));
-                    }
+                if let Some(existing) = alias_to_subject.get(&key)
+                    && existing != subject_id
+                {
+                    return Err(format!(
+                        "alias collision in {path}: {key:?} resolves to both {existing} and {subject_id}"
+                    ));
                 }
                 alias_to_subject.insert(key, subject_id.clone());
             }
@@ -128,17 +128,18 @@ impl Registry {
     /// return as the literal normalized surface (hashing spec T1.7).
     pub fn resolve(&self, surface: &str) -> String {
         let key = surface.trim().to_lowercase();
-        self.alias_to_subject
-            .get(&key)
-            .cloned()
-            .unwrap_or_else(|| key)
+        self.alias_to_subject.get(&key).cloned().unwrap_or(key)
     }
 
     /// Longest registered alias that covers a *prefix* of `words[0..max_span]`.
     /// Returns (subject_id, words-consumed). This is the subject-boundary rule:
     /// e.g. ["the","req","tool","semantic","layer"] → ("REQ_TOOL", 3) — the
     /// remaining words belong to the action phrase, not the subject.
-    pub fn resolve_longest_prefix(&self, words: &[&str], max_span: usize) -> Option<(String, usize)> {
+    pub fn resolve_longest_prefix(
+        &self,
+        words: &[&str],
+        max_span: usize,
+    ) -> Option<(String, usize)> {
         for j in (1..=max_span).rev() {
             let phrase: String = words[..j].join(" ").to_lowercase();
             if let Some(id) = self.alias_to_subject.get(phrase.as_str()) {
@@ -176,7 +177,8 @@ pub struct Corpus {
 impl Corpus {
     pub fn load(path: &str) -> Result<Self, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("read {path}: {e}"))?;
-        let corpus: Corpus = yaml_serde::from_str(&text).map_err(|e| format!("parse {path}: {e}"))?;
+        let corpus: Corpus =
+            yaml_serde::from_str(&text).map_err(|e| format!("parse {path}: {e}"))?;
         Ok(corpus)
     }
 }
