@@ -92,7 +92,7 @@ fn unstructured_not_equivalent_pairs_are_counted_not_hidden() {
         ),
         &Registry::empty(),
     );
-    assert_eq!(ev.unverifiable_not_equivalent, 1);
+    assert_eq!(ev.unverifiable_pairs, vec!["U-001".to_string()]);
     assert!(ev.fmr_hits.is_empty());
     assert_eq!(ev.verdict, "PASS");
 }

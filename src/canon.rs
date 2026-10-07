@@ -25,10 +25,12 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::model::Registry;
 
-/// Tier-1 normalization-rules version. Bumped 0 -> 1 when Markdown emphasis
-/// stripping (T1.2b) was added: addresses computed under rules v0 are candidates
-/// for re-canonicalization, never silently rewritten (hashing spec §5).
-pub const RULES_V: u32 = 1;
+/// Tier-1 normalization-rules version. 0 -> 1 added Markdown emphasis stripping
+/// (T1.2b); 1 -> 2 added prohibition via "never", multi-obligation detection,
+/// qualitative-predicate classification, and a precise comparator lint. Addresses
+/// computed under older rules are re-canonicalization candidates, never silently
+/// rewritten (hashing spec §5).
+pub const RULES_V: u32 = 2;
 /// Versioned domain tag — a rules bump never silently re-hashes ratified history
 /// (hashing spec §5 freeze policy).
 pub const ADDRESS_TAG: &[u8] = b"req.claim.v1\0";
@@ -568,6 +570,13 @@ const MODALITY_PHRASES: &[(&str, Modality)] = &[
     ("shall not", Modality::ShallNot),
     ("must not", Modality::ShallNot),
     ("may not", Modality::ShallNot),
+    // "never" negates too: "shall never X" is a prohibition, not an obligation to
+    // X. Reading it as SHALL would put the wrong modality into the audit artifact.
+    // (Absorbed negation runs first, so "shall never exceed 200" still resolves as
+    // SHALL with comparator LE — the comparison's negation, not the modality's.)
+    ("shall never", Modality::ShallNot),
+    ("must never", Modality::ShallNot),
+    ("may never", Modality::ShallNot),
     ("shall", Modality::Shall),
     ("must", Modality::Shall),
     ("may", Modality::May),
@@ -586,10 +595,67 @@ const NEGATION_ABSORPTION_STEMS: &[(&str, Comp)] = &[
     ("fewer", Comp::Lt),
 ];
 
-const FILLER_WORDS: &[&str] = &[
-    "in", "of", "to", "the", "a", "be", "is", "are", "and", "or", "up", "for", "with", "that",
-    "its", "it", "on", "by", "at", "than", "no",
+/// Words that *could* be a comparator attempt when the T1.5 table has no phrase for
+/// them ("under 200 ms"). A curated list, not a catch-all: a name before a number
+/// ("IEC 61508") is not a comparator attempt, and linting it was noise on real
+/// external prose. Precision costs nothing: an unresolved comparator is never
+/// guessed, so the claim cannot collapse either way.
+const AMBIGUOUS_COMPARATOR_WORDS: &[&str] = &[
+    "under",
+    "over",
+    "about",
+    "around",
+    "approximately",
+    "approx",
+    "roughly",
+    "nearly",
+    "below",
+    "above",
+    "exceeding",
+    "near",
+    "circa",
+    "upward",
+    "downward",
 ];
+
+fn looks_like_comparator(word: &str) -> bool {
+    AMBIGUOUS_COMPARATOR_WORDS.contains(&word)
+}
+
+/// Predicates that cannot be canonicalized into an operator and a value: a
+/// qualitative word is not measurable. Curated and deliberately narrow, and the
+/// failure directions are asymmetric in our favour — a false hit costs a split
+/// (noise), a miss costs nothing worse than it costs today.
+const QUALITATIVE_WORDS: &[&str] = &[
+    "friction-free",
+    "seamless",
+    "intuitive",
+    "user-friendly",
+    "easy",
+    "robust",
+    "efficient",
+    "flexible",
+    "simple",
+    "smooth",
+    "quick",
+    "fast",
+    "elegant",
+    "powerful",
+    "modern",
+    "nice",
+    "clean",
+];
+
+fn qualitative_predicate(action: &str, qualifier: &str) -> Option<String> {
+    let text = format!("{action} {qualifier}").to_lowercase();
+    QUALITATIVE_WORDS
+        .iter()
+        .find(|w| {
+            text.split(|c: char| !c.is_alphanumeric() && c != '-')
+                .any(|t| t == **w)
+        })
+        .map(|w| w.to_string())
+}
 
 // ---------------------------------------------------------------------------
 // Guard clauses (T1.8)
@@ -664,19 +730,32 @@ fn word_span_start(words: &[&str], phrase_words: &[&str]) -> Option<usize> {
     None
 }
 
-fn is_modal_word(w: &str) -> bool {
-    ["not", "never"].contains(&w) || MODALITY_PHRASES.iter().any(|(p, _)| *p == w)
-}
-
 /// T1.6 modality over the *whole* statement's words; must run BEFORE the number
 /// scan so the value's digit cannot be confused with a name-digit in the
 /// subject. Returns (modality, modal-phrase start word, end word).
+///
+/// The **earliest** match by position wins; at the same start index the longest
+/// phrase wins ("shall never" over "shall"). Phrase-table order must not decide
+/// position: it made a later "shall never" shadow an earlier "shall", which hid the
+/// first obligation of a two-obligation statement.
 fn scan_modality(words: &[&str], lints: &mut Vec<Lint>) -> (Option<Modality>, usize, usize) {
+    let mut best: Option<(usize, usize, Modality)> = None; // (start, len, modality)
     for (phrase, m) in MODALITY_PHRASES {
         let pw: Vec<&str> = phrase.split_whitespace().collect();
         if let Some(start) = word_span_start(words, &pw) {
-            return (Some(*m), start, start + pw.len());
+            let better = match best {
+                None => true,
+                Some((best_start, best_len, _)) => {
+                    start < best_start || (start == best_start && pw.len() > best_len)
+                }
+            };
+            if better {
+                best = Some((start, pw.len(), *m));
+            }
         }
+    }
+    if let Some((start, len, modality)) = best {
+        return (Some(modality), start, start + len);
     }
     if word_span_start(words, &["will"]).is_some() {
         lints.push(Lint {
@@ -747,6 +826,9 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
     // comparative, so this ordered check runs before the table's own entries.
     let mut comparator: Option<Comp> = None;
     let mut comp_start_abs: Option<usize> = None;
+    // Where the absorbed phrase (`<modal> <negator> <stem>`) ends, so the predicate
+    // span starts after it rather than after the modal word alone.
+    let mut absorb_end: Option<usize> = None;
     'absorb: for (modal_word, modal_val) in [
         ("shall", Modality::Shall),
         ("must", Modality::Shall),
@@ -761,6 +843,7 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
                 {
                     comparator = Some(bare.invert());
                     comp_start_abs = Some(start + 1); // right after the modal
+                    absorb_end = Some(start + 3); // past the whole absorbed phrase
                     modality = Some(modal_val);
                     break 'absorb;
                 }
@@ -839,27 +922,51 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
         _ => Vec::new(),
     };
 
-    // untestable-comparator lint: an untabled non-filler word directly before
-    // the number when no phrase in the T1.5 table matched
+    // untestable-comparator lint: fire only for a word that could plausibly *be* a
+    // comparator (see AMBIGUOUS_COMPARATOR_WORDS).
     if value.is_some()
         && comparator.is_none()
         && let Some(last) = comp_region.last()
-        && !FILLER_WORDS.contains(last)
-        && !is_modal_word(last)
+        && looks_like_comparator(last)
     {
         lints.push(lint_untestable_comparator(last));
     }
 
-    // action: the span between the modal phrase's end and the comparator start
-    let action = match (comparator, comp_start_abs) {
-        (Some(_), Some(cs)) if cs > modal_end => words
-            .get(modal_end..cs.min(words.len()))
-            .unwrap_or(&[])
-            .join(" "),
-        (Some(_), None) => words.get(modal_end..).unwrap_or(&[]).join(" "),
-        _ => String::new(),
+    // action: the predicate span — from the end of the modal phrase (or of the whole
+    // absorbed `<modal> <negator> <stem>` phrase) to the comparator, else to the value
+    // token, else to the end of the statement.
+    //
+    // This span is *identity*. Dropping it when no comparator exists made two
+    // unbounded obligations with the same subject and modality collapse — 58 false
+    // merges on the external corpus's predicate-swap pairs, the one failure this
+    // design exists to prevent.
+    let action_start = absorb_end.unwrap_or(modal_end).max(modal_end);
+    let action_end = match comp_start_abs {
+        Some(cs) if cs > action_start => cs,
+        _ => num_idx.unwrap_or(words.len()),
     };
+    let action = words
+        .get(action_start..action_end.min(words.len()))
+        .unwrap_or(&[])
+        .join(" ");
     let operator = comparator;
+
+    // A second obligation in one statement is not one claim. claim-format's authoring
+    // rule says "shall … and shall …" is two claims, split before filing; hashing the
+    // first obligation and hiding the rest in the tail is exactly what split a
+    // meaning-preserving external pair (StrictDoc SDOC-SSS-49).
+    let tail_after_modal = &words[modal_end.min(words.len())..];
+    let second_obligation = MODALITY_PHRASES.iter().any(|(phrase, _)| {
+        let pw: Vec<&str> = phrase.split_whitespace().collect();
+        word_span_start(tail_after_modal, &pw).is_some()
+    });
+    if second_obligation {
+        lints.push(Lint {
+            code: "multiple_obligations".to_string(),
+            detail: "a second obligation follows; claim-format requires one obligation per claim"
+                .to_string(),
+        });
+    }
 
     // T1.7 subject, v1: the *longest registered alias* covering a prefix of the
     // pre-modal words wins; the leftover pre-modal words belong to the action
@@ -900,7 +1007,22 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
         None => String::new(),
     };
 
-    let Some((subject, _span)) = subject else {
+    // Testability: a qualitative predicate is not measurable, so it cannot be
+    // canonicalized into an operator and a value. It belongs in the unstructured
+    // fallback with a lint — this *derives* REQ-0007's authored `unstructured: true`
+    // rather than merely trusting it.
+    let untestable_qualifier = qualitative_predicate(&action, &qualifier);
+    if let Some(word) = &untestable_qualifier {
+        lints.push(Lint {
+            code: "untestable_qualifier".to_string(),
+            detail: format!(
+                "{word:?} is not measurable; state a bound or leave the claim unstructured"
+            ),
+        });
+    }
+    let unparseable = second_obligation || untestable_qualifier.is_some();
+
+    let Some((subject, _span)) = subject.filter(|_| !unparseable) else {
         // Unstructured fallback (§4): the raw normalized statement.
         return (
             CanonicalForm {
@@ -1003,7 +1125,9 @@ pub fn run_claim_diagnostics() -> i32 {
         if !modality_ok {
             flags += 1;
         }
-        let subject_ok = form.subject == claim.subject;
+        // An authored-unstructured claim has no structured subject to compare; the
+        // unstructured tag is the field that carries that decision.
+        let subject_ok = claim.unstructured || form.subject == claim.subject;
         if !subject_ok {
             flags += 1;
         }

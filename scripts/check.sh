@@ -66,9 +66,11 @@ fi
 run cargo test
 run cargo run -q -- canon   # exit 3 = UNVERIFIABLE (never a pass)
 run cargo run -q -- bench   # seed parity corpus: 0 PASS / 1 FAIL / 3 UNVERIFIABLE
-# External corpus (other projects' real requirement prose, labelled by
-# construction). Same hard gate; see docs/canonical-hashing.md 6.3.
+# External corpora (other projects' real requirement prose, labelled by
+# construction). Same hard gate; see docs/canonical-hashing.md 6.3. v2 adds the
+# predicate-swap class, which caught a silent false merge during rules v2.
 run cargo run -q -- bench bench/corpus/external-v1.yml
+run cargo run -q -- bench bench/corpus/external-v2.yml
 
 # OCR is a review tool, not a gate: report the pin so version drift is visible.
 say "ocr (review tool, not a gate)"

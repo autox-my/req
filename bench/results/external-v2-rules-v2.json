@@ -1,0 +1,489 @@
+{
+  "corpus": "bench/corpus/external-v2.yml",
+  "corpus_sha256": "49bc5ee74d0b4116b0eca64c0a73e9d2afba6de01ee898fdfddfa1e873d7831d",
+  "degraded": [],
+  "fmr": {
+    "collapses": 0,
+    "hard_gate": "PASS",
+    "hit_pairs": [],
+    "not_equivalent_total": 227,
+    "rate": 0.0,
+    "structurally_unverifiable_ids": [
+      "N-ST-SDOC-SSS-49-MW",
+      "N-ST-SDOC-SSS-49-PF",
+      "N-ST-SDOC-SSS-49-PS",
+      "N-ST-SDOC-SSS-72-MW",
+      "N-ST-SDOC-SSS-72-PF",
+      "N-ST-SDOC-SSS-72-PS",
+      "N-ST-SDOC-SSS-79-MW",
+      "N-ST-SDOC-SSS-79-PF",
+      "N-ST-SDOC-SSS-79-PS",
+      "N-ST-SDOC-SSS-80-MW",
+      "N-ST-SDOC-SSS-80-PF",
+      "N-ST-SDOC-SSS-80-PS",
+      "N-ST-SDOC-SSS-86-MW",
+      "N-ST-SDOC-SSS-86-PF",
+      "N-ST-SDOC-SSS-86-PS",
+      "N-ST-SDOC-SSS-77-MW",
+      "N-ST-SDOC-SSS-77-PF",
+      "N-ST-SDOC-SSS-77-PS"
+    ],
+    "structurally_unverifiable_pairs": 18
+  },
+  "fsr": {
+    "hit_pairs": [],
+    "rate": 0.0,
+    "splits": 0,
+    "structured_equivalent_total": 161
+  },
+  "lints": [
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-49-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-49-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-49-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-49-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-72-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-72-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-72-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-72-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-79-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-79-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-79-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-79-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-80-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"efficient\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-80-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-80-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"efficient\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-80-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-80-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"efficient\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-80-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-80-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"efficient\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-80-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-86-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-86-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-86-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-86-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-77-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-77-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-77-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-77-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"efficient\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"efficient\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"efficient\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"efficient\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"efficient\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"efficient\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PS",
+      "side": "b"
+    }
+  ],
+  "pairs_total": 405,
+  "rules_v": 2,
+  "schema": "req.bench.result/0",
+  "tier2": {
+    "candidates": 17,
+    "collapsed_at_tier1": 11,
+    "ids": [
+      "E-ST-SDOC-SSS-49-MS",
+      "E-ST-SDOC-SSS-49-CP",
+      "E-ST-SDOC-SSS-72-MS",
+      "E-ST-SDOC-SSS-72-CP",
+      "E-ST-SDOC-SSS-79-MS",
+      "E-ST-SDOC-SSS-79-CP",
+      "E-ST-SDOC-SSS-80-MS",
+      "E-ST-SDOC-SSS-80-CP",
+      "E-ST-SDOC-SSS-86-MS",
+      "E-ST-SDOC-SSS-86-CP",
+      "E-ST-SDOC-SSS-77-MS",
+      "E-ST-SDOC-SSS-77-CP",
+      "E-DO-REQ002-CP",
+      "E-DO-REQ006-CP",
+      "E-DO-REQ010-CP",
+      "E-DO-REQ018-CP",
+      "E-DO-REQ019-CP"
+    ],
+    "note": "pairs needing the provider funnel; excluded from the FSR headline by design"
+  },
+  "verdict": "PASS"
+}

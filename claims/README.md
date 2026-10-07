@@ -28,6 +28,7 @@ step 2 of [docs/design.md](../docs/design.md), executed with step 1 already on d
 | REQ-0018 | Numeric values are exact decimal strings | [canonical-hashing.md T1.3-4](../docs/canonical-hashing.md) |
 | REQ-0019 | Undecidable parses lint, never guess | [canonical-hashing.md](../docs/canonical-hashing.md) |
 | REQ-0020 | Relations stored once, on the outgoing side | [claim-format.md](../docs/claim-format.md) |
+| REQ-0021 | Never rewrite a claim or auto-merge (SHALL-NOT) | [ADR 0004](../docs/adr/0004-model-proposes-human-disposes.md) — split out of REQ-0004 when v2 flagged multi-obligation statements |
 
 ## Reading a file
 
@@ -38,14 +39,14 @@ then `canonical` and `address` are `null` on purpose — no hash is written befo
 rules that define it exist (claiming `address:` more than filling is exactly the
 "evidence by assertion" failure mode the tool exists to prevent).
 
-## The `req canon` runs (2026-10-07) — 18/20 fully verified after Tier-1 v1
+## The `req canon` runs (2026-10-07) — 21/21 fully verified after Tier-1 v2
 
 The v0 run verified 15/20 (14 discrepancy flags, every one itemized, nothing
 silently passed). Tier-1 v1 then added word-numbers ("exactly zero"), the
 possessive strip ("provider's" → "provider"), the subject alias-prefix boundary,
 comparator-anchored value search (a name-digit inside "tier 2 provider" no longer
-becomes the claim's value), and the percent scale (×10⁻² exact). Re-run: **18/20
-fully verified; 2 flags remain, both in REQ-0007.**
+becomes the claim's value), and the percent scale (×10⁻² exact). Re-run: 18/20
+fully verified; 2 flags remained, both in REQ-0007.
 
 - **REQ-0010's authored value `"0.30"` and REQ-0008's `"0.0"` were real seed
   bugs the diagnostic caught**: non-canonical decimal strings; fixed to `"0.3"`
@@ -53,19 +54,30 @@ fully verified; 2 flags remain, both in REQ-0007.**
 - **REQ-0011 / REQ-0017 / REQ-0018 / REQ-0020** — the statements did not lead
   with their actual subjects; re-worded to subject-led phrasing (semantics
   unchanged) so the parse resolves the registry subject directly.
-- **REQ-0007 stays flagged, by design**: the claim is authored `unstructured:
-  true` on purpose ("friction-free" is qualitative; no measurable bound exists),
-  and the testability-lint pass that would *derive* that classification instead
-  of trusting the author flag is v2 work — the flag is the honest state of an
-  intentional divergence, not a parse failure.
+- **Tier-1 v2 closes both remaining flags**, and neither by weakening the check:
+  - **REQ-0007's classification is now derived, not declared.** The
+    qualitative-predicate rule ("friction-free") puts the claim in the unstructured
+    fallback with an `untestable_qualifier` lint, so the authored
+    `unstructured: true` is *confirmed by the rules* rather than trusted.
+  - **REQ-0004 was a genuine authoring violation, found by the rules.** The v2
+    multi-obligation rule flags a statement carrying two obligations
+    ("…shall emit… and shall never rewrite…"). claim-format requires one obligation
+    per claim, so it was **split** into REQ-0004 (emit proposals) and REQ-0021
+    (never rewrite or auto-merge, SHALL-NOT) — re-worded into two claims, not
+    re-parsed to fit.
+  - The diagnostic also stopped comparing a subject for a claim the author declared
+    unstructured: that tag is the field carrying the decision.
 
 
 
 ## Notes you can see in the corpus
 
 - **REQ-0007 is intentionally `unstructured: true`** — "friction-free" and
-  "deliberately high-friction" are qualitative by nature; `req lint` will emit
-  `untestable_comparator` and that is correct, not a bug.
+  "deliberately high-friction" are qualitative by nature; the rules now *derive* that
+  classification and emit `untestable_qualifier`, which is correct, not a bug.
+- **REQ-0004 / REQ-0021 are one decision in two claims** — v2 flags a statement with
+  a second obligation, so the prohibition lives in its own claim (SHALL-NOT), as
+  claim-format requires.
 - **REQ-0010 uses `modality: SHOULD`** — soft targets are expressed with a modality,
   not with prose.
 - **REQ-0015 negates via `SHALL-NOT` + slots**, not with a double negative in prose.

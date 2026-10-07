@@ -128,6 +128,16 @@ A perfect tool is defined by the tensions it resolves, not the features it lists
    false positives on standard names ("IEC 61508"). Results:
    [bench/results/external-v1-rules-v1.json](../bench/results/external-v1-rules-v1.json),
    [bench/results/parity-rules-v1.json](../bench/results/parity-rules-v1.json).
+   *Rules v2, 2026-10-07: the v1 findings became rules — prohibition via "never",
+   multi-obligation detection, qualitative-predicate classification, a precise
+   comparator lint — and the extended corpus (external-v2, predicate-swap class)
+   immediately found a **critical** defect: an unbounded claim's predicate was not part
+   of its identity, so **58 of 227 mutations (25.6%) collapsed silently**. Fixed: FMR
+   0.0 over 227 mutations, FSR 0.0, all three corpora PASS. The seed corpus had missed
+   it because no pair differed by verb alone. Our own corpus is clean too: 21 claims, 0
+   discrepancy flags — REQ-0007's unstructured classification is now derived rather
+   than declared, and REQ-0004 was split into REQ-0004 + REQ-0021 because v2 flags
+   multi-obligation statements (claim-format requires one obligation per claim).*
 5. **Semantic proposals** — pluggable provider behind a stable interface; Tier-2 only.
 6. **Structural merge + conflict classification** (needs direction, hence the canonical
    layer).

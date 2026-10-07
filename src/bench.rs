@@ -68,8 +68,9 @@ pub struct Evaluation {
     pub not_equivalent_total: usize,
     /// `not_equivalent` pairs where a side fell to the unstructured fallback: no
     /// merge happened, so the FMR property holds — but the pair was not
-    /// structurally verified, and that is reported rather than assumed away.
-    pub unverifiable_not_equivalent: usize,
+    /// structurally verified. Named, not just counted: a coverage shortfall has to be
+    /// auditable pair by pair.
+    pub unverifiable_pairs: Vec<String>,
     pub rows: Vec<String>,
     pub verdict: &'static str,
 }
@@ -81,7 +82,7 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
     let mut tier2: Vec<(String, bool)> = Vec::new(); // (id, collapsed)
     let mut lints: Vec<serde_json::Value> = Vec::new();
     let mut structured_equivalent: usize = 0;
-    let mut unverifiable_not_equivalent: usize = 0;
+    let mut unverifiable_pairs: Vec<String> = Vec::new();
     let mut rows: Vec<String> = Vec::new();
 
     let push_lints = |pair_id: &str,
@@ -123,9 +124,9 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
         match kind {
             PairKind::Collapse => fmr_hits.push(pair.id.clone()),
             // Cannot merge (one side has no structured form), so the FMR property
-            // holds — but the pair was not structurally verified. Counted, never
+            // holds — but the pair was not structurally verified. Named, never
             // silently dropped.
-            PairKind::Unstructured => unverifiable_not_equivalent += 1,
+            PairKind::Unstructured => unverifiable_pairs.push(pair.id.clone()),
             PairKind::Split => {}
         }
         push_lints(&pair.id, "a", &la, &mut lints);
@@ -144,7 +145,7 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
         lints,
         structured_equivalent,
         not_equivalent_total: corpus.not_equivalent.len(),
-        unverifiable_not_equivalent,
+        unverifiable_pairs,
         rows,
     }
 }
@@ -215,7 +216,8 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
             "rate": fmr_rate,
             "hard_gate": if fmr_rate == 0.0 { "PASS" } else { "FAIL" },
             "hit_pairs": fmr_pairs,
-            "structurally_unverifiable_pairs": ev.unverifiable_not_equivalent,
+            "structurally_unverifiable_pairs": ev.unverifiable_pairs.len(),
+            "structurally_unverifiable_ids": ev.unverifiable_pairs,
         },
         "fsr": {
             "splits": fsr_n,
