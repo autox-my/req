@@ -1,7 +1,7 @@
 schema: req.claim/0
 claim_id: REQ-0018
 statement: >-
-  Structured claim fields holding numeric values shall be serialized as exact
+  The req tool shall require numeric claim fields to be serialized as exact
   decimal strings.
 modality: SHALL
 subject: REQ_TOOL

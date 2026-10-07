@@ -1,8 +1,8 @@
 schema: req.claim/0
 claim_id: REQ-0011
 statement: >-
-  A Tier 2 provider's proposal output shall flip across repeated identical
-  evaluation of the same input no more than 2 percent of the time.
+  The benchmark harness shall report a tier 2 provider's repeated-identical-input
+  answer flip at a rate of at most 2 percent.
 modality: SHALL
 subject: BENCH
 attribute: provider_answer_flip_rate

@@ -1,8 +1,8 @@
 schema: req.claim/0
 claim_id: REQ-0020
 statement: >-
-  Each relation shall be serialized exactly once, on the outgoing side of its
-  origin claim.
+  The req tool shall serialize each relation exactly once, on the outgoing side
+  of its origin claim.
 modality: SHALL
 subject: REQ_TOOL
 attribute: relation_storage

@@ -7,7 +7,7 @@ modality: SHALL
 subject: BENCH
 attribute: false_merge_rate
 operator: EQ
-value: "0.0"
+value: "0"
 unit: none
 conditions:
   - corpus_set == parity_and_adversarial

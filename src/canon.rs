@@ -284,8 +284,12 @@ fn strip_numeric_separators(s: &str) -> String {
     out
 }
 
-/// T1.1: lowercase, preserving all-caps/underscore tokens (REQ_TOOL, NODE_ID).
+/// T1.1: lowercase, preserving all-caps/underscore tokens (REQ_TOOL, NODE_ID);
+/// possessive suffixes are stripped grammatically ("tool's" → "tool") — they carry
+/// no meaning and their presence was a *subject-boundary* diagnosis bug (the v0
+/// subject scan read "the req tool's semantic layer" as the whole subject).
 fn normalize_word(word: &str) -> String {
+    let word = word.strip_suffix("'s").unwrap_or(word);
     let has_underscore = word.contains('_');
     let only_const_chars = word
         .chars()
@@ -308,6 +312,28 @@ fn parse_decimal(s: &str) -> Option<Decimal> {
         return Decimal::from_scientific(s).ok();
     }
     s.parse::<Decimal>().ok()
+}
+
+/// Small curated word-number table (T1.3 lexical form) — "exactly zero on the
+/// parity corpus" is a bounded claim, not prose. Conservative on purpose: only
+/// 0..=10, and only when the word is a *solo* token (a "one hundred" phrase is
+/// out of v0 scope and stays unresolved).
+fn word_number(word: &str) -> Option<Decimal> {
+    let n = match word {
+        "zero" => 0,
+        "one" => 1,
+        "two" => 2,
+        "three" => 3,
+        "four" => 4,
+        "five" => 5,
+        "six" => 6,
+        "seven" => 7,
+        "eight" => 8,
+        "nine" => 9,
+        "ten" => 10,
+        _ => return None,
+    };
+    Some(Decimal::new(n, 0))
 }
 
 /// Leading digit-run of a token; the trailing alpha, if any, is the *suffixed
@@ -389,8 +415,8 @@ fn units() -> BTreeMap<&'static str, UnitDef> {
     // temperature (canonical "k") — °C→K uses +273.15 in resolve_value_unit
     put(&["k", "kelvin", "kelvins"], Some("k"), 0);
     put(&["c", "celsius"], Some("k"), 0);
-    // ratio (canonical "none") — value ÷ 100, exact
-    put(&["%", "percent", "per cent", "pct"], None, 0);
+    // ratio (canonical "none") — percent is ×10⁻² exact (÷100)
+    put(&["%", "percent", "per cent", "pct"], None, -2);
     // self-canonical (NOT decimally convertible in Tier-1 — e.g. km/h is ×5/18)
     for u in [
         "km/h", "m/s", "mph", "min", "mins", "minute", "minutes", "hour", "hours",
@@ -424,22 +450,27 @@ fn resolve_value_unit(
     num: &str,
     unit_token: Option<&str>,
     lints: &mut Vec<Lint>,
-) -> (Option<Decimal>, Option<String>) {
+) -> (Option<Decimal>, Option<String>, usize) {
+    // The third return is the count of *unit tokens consumed* after the digit:
+    // 1 for a known unit word or a digit-suffixed unit, 0 for a word that is not a
+    // unit at all — that word stays in the qualifier, which is an identity field
+    // ("...of at most 0.3 on the parity corpus" keeps "on the parity corpus")
+    // and two different qualifier phrases never collapse.
     let Some(d) = parse_decimal(num) else {
         lints.push(Lint {
             code: "untestable_quantity".to_string(),
             detail: format!("number {num:?} is not exactly representable"),
         });
-        return (None, None);
+        return (None, None, 0);
     };
     let Some(tok) = unit_token else {
-        return (Some(d), None);
+        return (Some(d), None, 0);
     };
     let unit_word: String = tok
         .trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != '%')
         .to_lowercase();
     if unit_word.is_empty() {
-        return (Some(d), None);
+        return (Some(d), None, 0);
     }
     let table = units();
     if let Some(def) = table.get(unit_word.as_str()) {
@@ -449,16 +480,35 @@ fn resolve_value_unit(
         } else {
             scaled
         };
-        (Some(value), Some(def.canonical.unwrap_or("none").to_string()))
+        (Some(value), Some(def.canonical.unwrap_or("none").to_string()), 1)
     } else {
-        // Unknown unit → never guessed (T1.4): kept verbatim so two different
-        // unknown units can never collapse; the value stays unconverted.
-        lints.push(Lint {
-            code: "untestable_quantity".to_string(),
-            detail: format!("unit {unit_word:?} is not in the T1.4 table; kept verbatim"),
-        });
-        (Some(d), Some(unit_word))
+        // Unknown *unit-shaped* tokens (SI-ish symbols, slash forms) keep
+        // verbatim, never guessed (T1.4). Prose words after the number are NOT
+        // units — they move into the qualifier instead of becoming junk units.
+        let unit_shaped = unit_word.contains('/')
+            || unit_word.contains('%')
+            || (unit_word.len() <= 4 && !is_prose_word(&unit_word));
+        if unit_shaped {
+            lints.push(Lint {
+                code: "untestable_quantity".to_string(),
+                detail: format!("unit {unit_word:?} is not in the T1.4 table; kept verbatim"),
+            });
+            (Some(d), Some(unit_word), 1)
+        } else {
+            (Some(d), None, 0)
+        }
     }
+}
+
+/// Prose words after a number ("on", "each", "records"…) that are plainly not
+/// units. Units are the curated table's job; this keeps unknown short words
+/// from becoming junk units.
+fn is_prose_word(w: &str) -> bool {
+    matches!(
+        w,
+        "on" | "in" | "of" | "at" | "the" | "a" | "an" | "each" | "per" | "for"
+            | "to" | "with" | "and" | "over" | "under" | "about" | "across"
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -597,6 +647,56 @@ fn is_modal_word(w: &str) -> bool {
     ["not", "never"].contains(&w) || MODALITY_PHRASES.iter().any(|(p, _)| *p == w)
 }
 
+/// T1.6 modality over the *whole* statement's words; must run BEFORE the number
+/// scan so the value's digit cannot be confused with a name-digit in the
+/// subject. Returns (modality, modal-phrase start word, end word).
+fn scan_modality(words: &[&str], lints: &mut Vec<Lint>) -> (Option<Modality>, usize, usize) {
+    for (phrase, m) in MODALITY_PHRASES {
+        let pw: Vec<&str> = phrase.split_whitespace().collect();
+        if let Some(start) = word_span_start(words, &pw) {
+            return (Some(*m), start, start + pw.len());
+        }
+    }
+    if word_span_start(words, &["will"]).is_some() {
+        lints.push(Lint {
+            code: "ambiguous_modality".to_string(),
+            detail: "'will' has no deontic reading we can resolve; claim stays unstructured".to_string(),
+        });
+    }
+    (None, 0, 0)
+}
+
+/// True when the pre-modal span looks like a *value-led fragment*: a digit token
+/// immediately followed by a known unit word ("12 kN shall be applied…"). That is
+/// the subject-fail case (a value occupying the subject slot, e.g. a passive).
+/// Digit-bearing *names* ("a tier 2 provider's proposal output…") return false —
+/// the digit is part of a name, not a value.
+fn value_led_subject(subj: &[&str]) -> bool {
+    let table = units();
+    for (i, w) in subj.iter().enumerate() {
+        // number and unit in one token: "12kn", "200ms"
+        if let Some((_, Some(suffix))) = leading_numeric_part(w) {
+            let unit_word: String = suffix
+                .trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase();
+            if table.contains_key(unit_word.as_str()) {
+                return true;
+            }
+        }
+        if let Some((_, None)) = leading_numeric_part(w) {
+            if let Some(next) = subj.get(i + 1) {
+                let next_l = next
+                    .trim_matches(|c: char| !c.is_alphanumeric() && c != '/')
+                    .to_lowercase();
+                if table.contains_key(next_l.as_str()) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 // ---------------------------------------------------------------------------
 // The pipeline
 // ---------------------------------------------------------------------------
@@ -617,68 +717,169 @@ pub fn canonicalize_statement(
     let (body, conditions) = extract_conditions(&norm, &mut lints);
     let words: Vec<&str> = body.split_whitespace().collect();
 
-    // T1.3/T1.4: first numeric token (+ unit), exact
-    let mut num_idx: Option<usize> = None;
-    let mut numeric_str = String::new();
+    // ORDER MATTERS (fix: "a tier 2 provider's ... 2 percent" took the name-digit
+    // as the value): the modal phrase is resolved FIRST over all body words; the
+    // numeric value is then searched only in the post-modal region.
+    let (mut modality, mut modal_start, mut modal_end) = scan_modality(&words, &mut lints);
+
+    // Absorbed negation: `<modal> not <comparative stem>` — the modal stays
+    // non-negated and the comparison's own negation is absorbed into the
+    // comparator; the negated-modal phrases in the table are for claims with no
+    // comparative, so this ordered check runs before the table's own entries.
+    let mut comparator: Option<Comp> = None;
+    let mut comp_start_abs: Option<usize> = None;
+    'absorb: for (modal_word, modal_val) in [
+        ("shall", Modality::Shall),
+        ("must", Modality::Shall),
+        ("may", Modality::May),
+        ("should", Modality::Should),
+    ] {
+        for negator in ["not", "never"] {
+            for (stem, bare) in NEGATION_ABSORPTION_STEMS {
+                let pw: Vec<&str> = vec![modal_word, negator, stem];
+                if let Some(start) = word_span_start(&words, &pw) {
+                    if start == modal_start {
+                        comparator = Some(bare.invert());
+                        comp_start_abs = Some(start + 1); // right after the modal
+                        modality = Some(modal_val);
+                        break 'absorb;
+                    }
+                }
+            }
+        }
+    }
+
+    // ORDER: comparator first (it anchors the value), then the value, then the
+    // action. The absorbed-negation case (a comparative directly after the modal)
+    // has already set comparator+anchor above; the plain table runs next.
+    let post_modal: Vec<&str> = words[modal_end.min(words.len())..].to_vec();
+
+    let mut comp_len: usize = 0;
+    if comparator.is_none() {
+        let mut best: Option<(usize, usize, Comp)> = None; // (phrase words, local start, comp)
+        for (phrase, cmp) in COMPARATOR_PHRASES {
+            let pw: Vec<&str> = phrase.split_whitespace().collect();
+            if let Some(local_start) = word_span_start(&post_modal, &pw) {
+                if best.map_or(true, |(wc, _, _)| pw.len() > wc) {
+                    best = Some((pw.len(), local_start, *cmp));
+                }
+            }
+        }
+        if let Some((pw_len, local_start, cmp)) = best {
+            comparator = Some(cmp);
+            comp_start_abs = Some(modal_end + local_start);
+            comp_len = pw_len;
+        }
+    }
+
+    // T1.3/T1.4: the first numeric token AFTER the comparator's phrase — digit-run,
+    // word-number ("zero"), or a digit-suffixed unit ("200ms") — resolved exactly.
+    // Without the anchor, the scan falls back to the region's first number, which
+    // is exactly where a name-digit used to be taken ("tier 2 provider").
+    let scan_from = match comp_start_abs {
+        Some(abs) if abs >= modal_end => abs - modal_end + comp_len,
+        Some(_) => comp_len,
+        None => 0,
+    };
+    let mut num_local: Option<usize> = None;
+    let mut numeric: Option<(String, Option<Decimal>)> = None;
     let mut unit_suffix: Option<String> = None;
-    for (i, tok) in words.iter().enumerate() {
+    for (i, tok) in post_modal.iter().enumerate().skip(scan_from) {
         if let Some((num, suffix)) = leading_numeric_part(tok) {
-            num_idx = Some(i);
-            numeric_str = num;
+            num_local = Some(i);
+            numeric = Some((num, None));
             unit_suffix = suffix;
             break;
         }
+        if let Some(d) = word_number(tok) {
+            num_local = Some(i);
+            numeric = Some((String::new(), Some(d)));
+            break;
+        }
     }
-    let (value, unit) = match num_idx {
+    let num_idx = num_local.map(|i| i + modal_end);
+    let (value, unit, _unit_consumed) = match num_local {
         Some(i) => {
             let tok = unit_suffix
                 .clone()
-                .or_else(|| words.get(i + 1).map(|w| w.to_string()));
-            resolve_value_unit(&numeric_str, tok.as_deref(), &mut lints)
+                .or_else(|| post_modal.get(i + 1).map(|w| w.to_string()));
+            match &numeric {
+                Some((_digits, Some(word_val))) => (Some(*word_val), None, 0),
+                Some((digits, None)) => resolve_value_unit(digits, tok.as_deref(), &mut lints),
+                None => (None, None, 0),
+            }
         }
-        None => (None, None),
+        None => (None, None, 0),
     };
 
-    // T1.5 comparator over the pre-numeric words (the T1.5 table's span stops
-    // before the number token); T1.6 modality over the same span.
-    let pre_words: Vec<&str> = num_idx.map_or_else(|| words.clone(), |i| words[..i].to_vec());
-    let (modality, operator, modal_start, modal_end, action) =
-        resolve_modality_comparator(&pre_words, value.is_some(), &mut lints);
+    // T1.5 comparator (plain table) over the region between the modal phrase and
+    // the value token — longest word-sequence wins.
+    let comp_region: Vec<&str> = match num_idx {
+        Some(n) if n > modal_end => words[modal_end..n].to_vec(),
+        None => words[modal_end..].to_vec(),
+        _ => Vec::new(),
+    };
 
     // untestable-comparator lint: an untabled non-filler word directly before
     // the number when no phrase in the T1.5 table matched
-    if value.is_some() && operator.is_none() {
-        if let Some(last) = pre_words.last() {
+    if value.is_some() && comparator.is_none() {
+        if let Some(last) = comp_region.last() {
             if !FILLER_WORDS.contains(last) && !is_modal_word(last) {
                 lints.push(lint_untestable_comparator(last));
             }
         }
     }
 
-    // T1.7 subject = pre-modality words; unregistered surfaces resolve literally
-    let subject: Option<String> = match modality {
+    // action: the span between the modal phrase's end and the comparator start
+    let action = match (comparator, comp_start_abs) {
+        (Some(_), Some(cs)) if cs > modal_end => {
+            words.get(modal_end..cs.min(words.len())).unwrap_or(&[]).join(" ")
+        }
+        (Some(_), None) => words.get(modal_end..).unwrap_or(&[]).join(" "),
+        _ => String::new(),
+    };
+    let operator = comparator;
+
+    // T1.7 subject, v1: the *longest registered alias* covering a prefix of the
+    // pre-modal words wins; the leftover pre-modal words belong to the action
+    // phrase, not the subject ("the req tool's semantic layer" → REQ_TOOL +
+    // action-prefix "semantic layer"). Digit-rejection is narrowed to its real
+    // case: a value-led fragment (digit followed by a known unit, e.g. fatal for
+    // "12 kN shall be applied...") — while digit-bearing *names* ("a tier 2
+    // provider's…") now parse as subjects. No registered-hit span and no unit
+    // rejection ever silently widens what counts as the same subject.
+    let subject: Option<(String, usize)> = match modality {
         Some(_) => {
-            let subj: Vec<&str> = pre_words[..modal_start.min(pre_words.len())].to_vec();
-            let has_digit = subj.iter().any(|w| w.chars().any(|c| c.is_ascii_digit()));
-            if subj.is_empty() || has_digit {
+            let subj: Vec<&str> = words[..modal_start.min(words.len())].to_vec();
+            if subj.is_empty() || value_led_subject(&subj) {
                 None
             } else {
-                Some(registry.resolve(&subj.join(" ")))
+                let max_span = subj.len().min(8);
+                Some(
+                    registry
+                        .resolve_longest_prefix(&subj, max_span)
+                        .unwrap_or_else(|| (registry.resolve(&subj.join(" ")), subj.len())),
+                )
             }
         }
         None => None,
     };
 
-    // qualifier: the post-value phrase — an identity field, never dropped.
+    // qualifier: the post-value phrase — an identity field, never dropped. The
+    // tail starts after the digit token plus whatever unit token was consumed.
     let qualifier = match num_idx {
         Some(i) => {
-            let tail_start = if unit_suffix.is_some() { i + 1 } else { i + 2 };
+            let tail_start = if unit_suffix.is_some() {
+                i + 1
+            } else {
+                i + 1 + _unit_consumed
+            };
             words.get(tail_start..).unwrap_or(&[]).join(" ")
         }
         None => String::new(),
     };
 
-    let Some(subject) = subject else {
+    let Some((subject, _span)) = subject else {
         // Unstructured fallback (§4): the raw normalized statement.
         return (
             CanonicalForm {
@@ -709,97 +910,6 @@ pub fn canonicalize_statement(
         },
         lints,
     )
-}
-
-fn resolve_modality_comparator(
-    pre_words: &[&str],
-    has_value: bool,
-    lints: &mut Vec<Lint>,
-) -> (Option<Modality>, Option<Comp>, usize, usize, String) {
-    let mut comparator: Option<Comp> = None;
-    let mut comp_start: Option<usize> = None;
-    let mut modality: Option<Modality> = None;
-    let mut modal_start: usize = pre_words.len();
-    let mut modal_end: usize = 0;
-    let mut absorbed = false;
-
-    // 1: absorbed negation — `<modal> not <comparative stem>`
-    'absorb: for (modal_word, modal_val) in [
-        ("shall", Modality::Shall),
-        ("must", Modality::Shall),
-        ("may", Modality::May),
-        ("should", Modality::Should),
-    ] {
-        for negator in ["not", "never"] {
-            for (stem, bare) in NEGATION_ABSORPTION_STEMS {
-                let pw: Vec<&str> = vec![modal_word, negator, stem];
-                if let Some(start) = word_span_start(pre_words, &pw) {
-                    comparator = Some(bare.invert());
-                    comp_start = Some(start + 1); // point after the modal
-                    modality = Some(modal_val);
-                    modal_start = start;
-                    modal_end = start + 1; // the modal phrase is one word here
-                    absorbed = true;
-                    break 'absorb;
-                }
-            }
-        }
-    }
-
-    // 2: plain comparator table — longest word-sequence wins
-    if comparator.is_none() && has_value {
-        let mut best: Option<(usize, usize, Comp)> = None;
-        for (phrase, cmp) in COMPARATOR_PHRASES {
-            let pw: Vec<&str> = phrase.split_whitespace().collect();
-            if let Some(start) = word_span_start(pre_words, &pw) {
-                if best.map_or(true, |(wc, _, _)| pw.len() > wc) {
-                    best = Some((pw.len(), start, *cmp));
-                }
-            }
-        }
-        if let Some((_, start, cmp)) = best {
-            comparator = Some(cmp);
-            comp_start = Some(start);
-        }
-    }
-
-    // 3: modality scan (only when NOT absorbed)
-    if !absorbed {
-        for (phrase, m) in MODALITY_PHRASES {
-            let pw: Vec<&str> = phrase.split_whitespace().collect();
-            if let Some(start) = word_span_start(pre_words, &pw) {
-                // a `shall not <comparative>` already absorbed — the plain table
-                // handles those too when absorption missed
-                modality = Some(*m);
-                modal_start = start;
-                modal_end = start + pw.len();
-                break;
-            }
-        }
-        if modality.is_none() && word_span_start(pre_words, &["will"]).is_some() {
-            lints.push(Lint {
-                code: "ambiguous_modality".to_string(),
-                detail: "'will' has no deontic reading we can resolve; claim stays unstructured".to_string(),
-            });
-        }
-    }
-
-    // 4: the action = the span between the modal-phrase's end and the comparator's
-    // start (empty when the comparator was absorbed into the modal slot).
-    let action = match (modality, comp_start) {
-        (Some(_), Some(cs)) => {
-            if modal_end <= cs {
-                pre_words.get(modal_end..cs).unwrap_or(&[]).join(" ")
-            } else {
-                // the comparator's span begins before the modal ends: absorbed
-                String::new()
-            }
-        }
-        (Some(_), None) => pre_words.get(modal_end..).unwrap_or(&[]).join(" "),
-        _ => String::new(),
-    };
-
-    (modality, comparator, modal_start, modal_end, action)
 }
 
 // ---------------------------------------------------------------------------

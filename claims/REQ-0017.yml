@@ -1,9 +1,9 @@
 schema: req.claim/0
 claim_id: REQ-0017
 statement: >-
-  Each claim file shall store its canonical form bytes such that recomputing
-  sha256 of the versioned tag concatenated with those bytes reproduces the stored
-  address at all times.
+  The req tool shall store each claim file's canonical form bytes such that
+  recomputing the versioned-tag digest over them reproduces the stored address at
+  all times.
 modality: SHALL
 subject: REQ_TOOL
 attribute: canonical_cache

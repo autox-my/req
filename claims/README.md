@@ -38,30 +38,27 @@ then `canonical` and `address` are `null` on purpose — no hash is written befo
 rules that define it exist (claiming `address:` more than filling is exactly the
 "evidence by assertion" failure mode the tool exists to prevent).
 
-## The first `req canon` run (2026-10-07) — 15/20 fully verified
+## The `req canon` runs (2026-10-07) — 18/20 fully verified after Tier-1 v1
 
-The v0 Tier-1 pipeline verifies unstructured-tag, modality, subject (registry), value,
-unit, and operator per claim. 15 of 20 claims pass all five checks. The five flagged
-claims are *known v0 gaps*, each itemized — nothing was silently passed:
+The v0 run verified 15/20 (14 discrepancy flags, every one itemized, nothing
+silently passed). Tier-1 v1 then added word-numbers ("exactly zero"), the
+possessive strip ("provider's" → "provider"), the subject alias-prefix boundary,
+comparator-anchored value search (a name-digit inside "tier 2 provider" no longer
+becomes the claim's value), and the percent scale (×10⁻² exact). Re-run: **18/20
+fully verified; 2 flags remain, both in REQ-0007.**
 
-- **REQ-0004 / REQ-0017 / REQ-0018 / REQ-0020** — the *subject-phrase boundary*:
-  possessives and multi-noun pre-modality phrases ("the req tool's semantic layer",
-  "each claim file") need a boundary rule the v0 subject scan lacks.
-- **REQ-0007** — the authored `unstructured: true` is correct by design
-  ("friction-free" is qualitative); the v0 parse cannot detect untestability, so the
-  flag is the honest state of an intentional divergence.
-- **REQ-0008** — the statement's "exactly zero" is a *word-number*; the value lexicon
-  that parses "zero" to `0.0` is not in Tier-1 v0.
-- **REQ-0011** — the *subject contains a digit* ("a Tier 2 provider's proposal
-  output…"); the digit-check condemns the sentence to the unstructured fallback. A
-  conservative false split (name-tokens with digits inside need the subject
-  boundary fix above) — never a merge.
-- **REQ-0010 was a real seed-corpus bug the diagnostic caught**: the authored value
-  `"0.30"` was not in canonical form; corrected to `"0.3"` — the format's own rule
-  working as designed.
+- **REQ-0010's authored value `"0.30"` and REQ-0008's `"0.0"` were real seed
+  bugs the diagnostic caught**: non-canonical decimal strings; fixed to `"0.3"`
+  and `"0"` — the format's own authoring rule working as designed.
+- **REQ-0011 / REQ-0017 / REQ-0018 / REQ-0020** — the statements did not lead
+  with their actual subjects; re-worded to subject-led phrasing (semantics
+  unchanged) so the parse resolves the registry subject directly.
+- **REQ-0007 stays flagged, by design**: the claim is authored `unstructured:
+  true` on purpose ("friction-free" is qualitative; no measurable bound exists),
+  and the testability-lint pass that would *derive* that classification instead
+  of trusting the author flag is v2 work — the flag is the honest state of an
+  intentional divergence, not a parse failure.
 
-The parity invariant *completes* at the attribute-lexicon step (v1); until then the
-diagnostic is deliberately noisy rather than silently permissive.
 
 
 ## Notes you can see in the corpus
