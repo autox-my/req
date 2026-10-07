@@ -30,9 +30,11 @@ use crate::model::Registry;
 /// qualitative-predicate classification, and a precise comparator lint; 2 -> 3 fixed
 /// the predicate span and made the canonical bytes valid JSON; 3 -> 4 stopped
 /// resolving "may not"/"may never" (ambiguous negation scope — a real false merge on
-/// the widened external corpus). Addresses computed under older rules are
-/// re-canonicalization candidates, never silently rewritten (hashing spec §5).
-pub const RULES_V: u32 = 4;
+/// the widened external corpus); 4 -> 5 put authored applicability into identity
+/// (ADR 0003 said it belonged there; the form had no field for it at all). Addresses
+/// computed under older rules are re-canonicalization candidates, never silently
+/// rewritten (hashing spec §5).
+pub const RULES_V: u32 = 5;
 /// Versioned domain tag — a rules bump never silently re-hashes ratified history
 /// (hashing spec §5 freeze policy).
 pub const ADDRESS_TAG: &[u8] = b"req.claim.v1\0";
@@ -122,6 +124,12 @@ pub struct CanonicalForm {
     pub qualifier: String,
     /// Sorted guard clauses (T1.8).
     pub conditions: BTreeSet<String>,
+    /// Authored variant selectors (ADR 0003). **An input, not a derivation**: the
+    /// statement does not carry formal selector syntax yet, so the canonical layer
+    /// takes these from the claim and they are part of the address. Two claims that
+    /// differ only in applicability are different claims — which the form could not
+    /// say before rules v5.
+    pub applicability: BTreeSet<String>,
     pub exception: Option<String>,
     pub temporal: Option<String>,
 }
@@ -193,13 +201,21 @@ pub fn canonical_json(f: &CanonicalForm) -> String {
         .map(|c| format!("\"{}\"", json_escape(c)))
         .collect::<Vec<_>>()
         .join(",");
+    let app_list = f
+        .applicability
+        .iter()
+        .map(|a| format!("\"{}\"", json_escape(a)))
+        .collect::<Vec<_>>()
+        .join(",");
     format!(
         concat!(
-            "{{\"action\":\"{}\",\"conditions\":[{}],\"exception\":{},\"modality\":\"{}\",",
+            "{{\"action\":\"{}\",\"applicability\":[{}],\"conditions\":[{}],\"exception\":{},",
+            "\"modality\":\"{}\",",
             "\"operator\":{},\"qualifier\":\"{}\",\"raw\":\"{}\",\"subject\":\"{}\",",
             "\"temporal\":{},\"unstructured\":{},\"unit\":{},\"value\":{}}}",
         ),
         json_escape(&f.action),
+        app_list,
         cond_list,
         opt_str(&f.exception),
         // Quoted by the format string around it, because these are JSON bytes (T1.9)
@@ -651,17 +667,34 @@ const QUALITATIVE_WORDS: &[&str] = &[
     "modern",
     "nice",
     "clean",
+    // Inflections of the list above: a qualitative claim does not become measurable by
+    // adding "-ly".
+    "easily",
+    "quickly",
+    "simply",
+    "smoothly",
+    "robustly",
+    "efficiently",
+    "flexibly",
+    "seamlessly",
+    "intuitively",
+    "cleanly",
 ];
 
 fn qualitative_predicate(action: &str, qualifier: &str) -> Option<String> {
     let text = format!("{action} {qualifier}").to_lowercase();
-    QUALITATIVE_WORDS
-        .iter()
-        .find(|w| {
-            text.split(|c: char| !c.is_alphanumeric() && c != '-')
-                .any(|t| t == **w)
-        })
-        .map(|w| w.to_string())
+    for token in text.split(|c: char| !c.is_alphanumeric() && c != '-') {
+        // Hyphenated compounds are one token ("easy-to-use") and the qualitative word is
+        // the head, so check the token and its prefix before the first hyphen. A false
+        // hit costs a split (noise); a miss costs nothing worse than today.
+        let head = token.split('-').next().unwrap_or(token);
+        for candidate in [token, head] {
+            if QUALITATIVE_WORDS.contains(&candidate) {
+                return Some(candidate.to_string());
+            }
+        }
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -1075,6 +1108,9 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
             unit,
             qualifier,
             conditions,
+            // The parser derives no selector: applicability is an *input* the claim
+            // supplies, injected by `evaluate_claim` before the form is hashed.
+            applicability: BTreeSet::new(),
             exception: None,
             temporal: None,
         },
@@ -1104,6 +1140,14 @@ pub struct ClaimVerdict {
     pub subject_ok: bool,
     pub value_unit_ok: bool,
     pub op_ok: bool,
+    /// Parsed conditions vs authored conditions: a claim that gains one is a different
+    /// claim (T1.8), so disagreement here is a divergence and not a detail.
+    pub conditions_ok: bool,
+    pub conditions_detail: String,
+    /// Authored slots the canonical layer cannot represent (quantifier, exception,
+    /// temporal). A gap in the *rules*, reported and refused — never silently ignored.
+    pub slots_ok: bool,
+    pub slots_detail: String,
     pub v_parsed: String,
     pub authored_v: String,
     pub op_parsed: String,
@@ -1118,6 +1162,8 @@ impl ClaimVerdict {
             self.subject_ok,
             self.value_unit_ok,
             self.op_ok,
+            self.conditions_ok,
+            self.slots_ok,
         ]
         .iter()
         .filter(|ok| !**ok)
@@ -1128,7 +1174,12 @@ impl ClaimVerdict {
 /// The parity invariant, per claim: re-parse `statement` and compare the derived
 /// form against every authored slot that is actually checkable.
 pub fn evaluate_claim(claim: &crate::model::ClaimFile, registry: &Registry) -> ClaimVerdict {
-    let (form, _lints) = canonicalize_statement(&claim.statement, registry);
+    let (mut form, _lints) = canonicalize_statement(&claim.statement, registry);
+    // Authored selectors are an *input* to the canonical form (ADR 0003), sorted for
+    // determinism. They are not derived from the statement — the formal selector syntax
+    // is deferred — so they are set here, and the parity invariant below compares only
+    // what the parser produces.
+    form.applicability = claim.applicability.iter().cloned().collect();
 
     let unstructured_ok = form.unstructured == claim.unstructured;
     let modality_ok = claim.unstructured || form.modality_str() == claim.modality;
@@ -1154,6 +1205,46 @@ pub fn evaluate_claim(claim: &crate::model::ClaimFile, registry: &Registry) -> C
     let op_checkable = authored_is_num;
     let op_ok = !op_checkable || op_parsed == authored_op;
 
+    // Conditions ARE parsed (T1.8), so they are comparable — and a claim that gains one
+    // is a different claim, which makes an authored list that disagrees with the parse a
+    // divergence rather than a detail. Before this, authored conditions were silently
+    // unverified.
+    let authored_conditions: BTreeSet<String> = claim.conditions.iter().cloned().collect();
+    let conditions_ok = authored_conditions == form.conditions;
+    let conditions_detail = if conditions_ok {
+        String::new()
+    } else {
+        format!(
+            "conditions parsed [{}] vs authored [{}]",
+            form.conditions
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("; "),
+            authored_conditions
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    };
+
+    // Slots the canonical layer cannot represent. Authoring one is not a mistake in the
+    // claim — it is a gap in the rules — so it is reported and `--fill` refuses, rather
+    // than writing an address that silently ignores what the author wrote.
+    let mut unrepresented: Vec<&str> = Vec::new();
+    if claim.quantifier.is_some() {
+        unrepresented.push("quantifier");
+    }
+    if claim.exception.is_some() {
+        unrepresented.push("exception");
+    }
+    if claim.temporal.is_some() {
+        unrepresented.push("temporal");
+    }
+    let slots_ok = unrepresented.is_empty();
+    let slots_detail = unrepresented.join(",");
+
     ClaimVerdict {
         form,
         unstructured_ok,
@@ -1161,6 +1252,10 @@ pub fn evaluate_claim(claim: &crate::model::ClaimFile, registry: &Registry) -> C
         subject_ok,
         value_unit_ok,
         op_ok,
+        conditions_ok,
+        conditions_detail,
+        slots_ok,
+        slots_detail,
         v_parsed,
         authored_v,
         op_parsed,
@@ -1230,7 +1325,7 @@ pub fn run_claim_diagnostics() -> i32 {
         checked += 1;
         flags_total += verdict.flags();
         println!(
-            "{:<9} {:<9} {:<9} {:<12} {:<10} {:<8}",
+            "{:<9} {:<9} {:<9} {:<12} {:<10} {:<8} {:<9}",
             claim.claim_id,
             mark(
                 verdict.unstructured_ok,
@@ -1250,11 +1345,19 @@ pub fn run_claim_diagnostics() -> i32 {
                     "n/a".to_string()
                 }
             ),
+            mark(
+                verdict.conditions_ok && verdict.slots_ok,
+                if !verdict.slots_ok {
+                    format!("unrepresentable: {}", verdict.slots_detail)
+                } else {
+                    verdict.conditions_detail.clone()
+                }
+            ),
         );
     }
     let _ = &registry;
     println!(
-        "claims: {checked}; discrepancy flags: {flags_total} (v0 diagnostic: attribute lexicon, conditions, applicability, quantifier (not yet a canonical field), rationale unverified by design)"
+        "claims: {checked}; discrepancy flags: {flags_total} (v0 diagnostic: attribute lexicon, rationale wording, and applicability predicate syntax unverified by design; authoring quantifier/exception/temporal is refused, never ignored)"
     );
     0
 }

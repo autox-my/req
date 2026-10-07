@@ -85,6 +85,11 @@ export OCR_NO_UPDATE=1
 - Single local gate: `scripts/check.sh` — runs every check whose tooling exists,
   prints `SKIP` (never `PASS`) for missing tooling, and fails on the first
   non-zero status. Green before every commit and merge.
+- Review-rule coverage: `python3 tools/review/check_rules.py` (part of `check.sh` when
+  `ocr` is present) — asserts every `review/rule.json` entry still matches a tracked
+  file. The CLI **silently** falls back to the built-in rubric for a glob that matches
+  nothing, so a renamed directory would drop a checklist while every exit code stayed
+  zero; the script checks the effect (`source: custom`) instead of the exit status.
 - Docs-only changes: the same gate, with its skips stated in the commit message.
 
 ### Review — OCR in delegation mode (no LLM, no API key)
@@ -157,6 +162,10 @@ matter:
   `tools/corpus/build_external.py` (sources pinned by commit SHA; v3 adds the PROMISE
   NFR set, a deterministic sample of 969 statements across 47 project ids).
   `bench/results/` — one record per corpus and rules version; append, do not rewrite.
+  These corpora are **generated data**: a corpus of this size is reviewed through its
+  generator (`tools/corpus/`) and its label scheme, not line by line — the generator,
+  the source pins and the sampling rule are the reviewable surface, and the review
+  preview lists the corpus itself as a single item for that reason.
 - `src/` — `lib.rs` (the library surface), `main.rs` (thin CLI over it), `model.rs`
   (claim/registry/corpus types), `canon.rs` (Tier-1 pipeline + diagnostics),
   `bench.rs` (the gate + its tests).

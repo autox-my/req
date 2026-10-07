@@ -67,6 +67,15 @@ fully verified; 2 flags remained, both in REQ-0007.
     re-parsed to fit.
   - The diagnostic also stopped comparing a subject for a claim the author declared
     unstructured: that tag is the field carrying the decision.
+- **Rules v5 compared the slots nobody had compared.** `req canon` now checks authored
+  `conditions` against the parse, hashes `applicability` (ADR 0003 says it is identity),
+  and refuses `quantifier`/`exception`/`temporal` instead of ignoring them. It immediately
+  found six claims whose authored slots disagreed with their statements:
+  **REQ-0008 / 0009 / 0010 / 0011 / 0018 had their variant selector in `conditions`** —
+  the format wants a *parsed guard* there, so the selectors moved to `applicability`,
+  where ADR 0003 puts them; and **REQ-0012's statement guard was unauthored** ("when the
+  deployment is configured offline"), so it was written into `conditions`. All 21 claims
+  re-filled under rules v5: **0 discrepancy flags, `--verify` 21/21**.
 
 
 

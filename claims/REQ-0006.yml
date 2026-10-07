@@ -16,11 +16,11 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: 4
+  rules_v: 5
   subject_registry: 1
   form: |-
-    {"action":"permit splitting a claim into derived claims without constraint","conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: c8563a2ff070ebfdc978d4071810e339923c2dd977d8eb41858e0144e87ab7bd
+    {"action":"permit splitting a claim into derived claims without constraint","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
+address: 94d043e0d3c600fe82f03ceaf4dffdd2cf89bb03f55fc32ecffba38f598d7f5a
 rationale:
   source: docs/adr/0004-model-proposes-human-disposes.md
   date: 2026-10-07

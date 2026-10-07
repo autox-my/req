@@ -9,19 +9,19 @@ attribute: provider_answer_flip_rate
 operator: LE
 value: "0.02"
 unit: none
-conditions:
+conditions: []
+applicability:
   - runs >= 20
-applicability: []
 exception: null
 temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: 4
+  rules_v: 5
   subject_registry: 1
   form: |-
-    {"action":"report a tier 2 provider repeated-identical-input answer flip at a rate of","conditions":[],"exception":null,"modality":"SHALL","operator":"LE","qualifier":"","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":"none","value":"0.02"}
-address: 016f152405bbb7c2d4701e1c7f1c4728dcc8a9dd34c10c2ec333f4dfa86c5eed
+    {"action":"report a tier 2 provider repeated-identical-input answer flip at a rate of","applicability":["runs >= 20"],"conditions":[],"exception":null,"modality":"SHALL","operator":"LE","qualifier":"","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":"none","value":"0.02"}
+address: 29c770f569b3ea2e8462da7668e75a2a2ccab29e4ec675d3495ccd0da6d998b8
 rationale:
   source: docs/canonical-hashing.md
   date: 2026-10-07

@@ -16,11 +16,11 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: 4
+  rules_v: 5
   subject_registry: 1
   form: |-
-    {"action":"operate a continuous two-way synchronization bridge between a web database and the requirement files","conditions":[],"exception":null,"modality":"SHALL-NOT","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: e0ff1f23cbb138669c9c561535e1627d0e350ffdf70b7283038997bebb16fcd1
+    {"action":"operate a continuous two-way synchronization bridge between a web database and the requirement files","applicability":[],"conditions":[],"exception":null,"modality":"SHALL-NOT","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
+address: 4a15b28c8eba8717efbc27310119ca1968a43c3bd04e1363795838fc8363a319
 rationale:
   source: docs/design.md
   date: 2026-10-07

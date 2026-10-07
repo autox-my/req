@@ -15,11 +15,11 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: 4
+  rules_v: 5
   subject_registry: 1
   form: |-
-    {"action":"produce","conditions":[],"exception":null,"modality":"SHALL","operator":"EQ","qualifier":"commit per ratified logical decision","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":"1"}
-address: 1b21783d8e2f021d4054a7e2f5f77ef6e6b7d06974a6a1ae889c1d54227218c4
+    {"action":"produce","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"EQ","qualifier":"commit per ratified logical decision","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":"1"}
+address: 4e99cbc538f719368ee8fcb6a3f273e5c05ee60968cb0b97517215156bf65281
 rationale:
   source: docs/design.md
   date: 2026-10-07

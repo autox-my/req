@@ -15,11 +15,11 @@ temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: 4
+  rules_v: 5
   subject_registry: 1
   form: |-
-    {"action":"require human ratification before any","conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"claims are merged","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":"2"}
-address: a4b12b87eb995c342834b89f327da396def12790c288a4ffe95d3537fa356332
+    {"action":"require human ratification before any","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"claims are merged","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":"2"}
+address: 6bbc0295880a0f773542804c0cfc5c702f368f8fbf2b7670327fda247f2a75dd
 rationale:
   source: docs/adr/0004-model-proposes-human-disposes.md
   date: 2026-10-07

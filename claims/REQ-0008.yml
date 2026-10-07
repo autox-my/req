@@ -9,19 +9,19 @@ attribute: false_merge_rate
 operator: EQ
 value: "0"
 unit: none
-conditions:
+conditions: []
+applicability:
   - corpus_set == parity_and_adversarial
-applicability: []
 exception: null
 temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: 4
+  rules_v: 5
   subject_registry: 1
   form: |-
-    {"action":"report a false merge rate of","conditions":[],"exception":null,"modality":"SHALL","operator":"EQ","qualifier":"on the parity and adversarial mutation corpora","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":null,"value":"0"}
-address: cca50244dc55d35b7d315acedf038d2189bade28a74b6b84c09275549c7da796
+    {"action":"report a false merge rate of","applicability":["corpus_set == parity_and_adversarial"],"conditions":[],"exception":null,"modality":"SHALL","operator":"EQ","qualifier":"on the parity and adversarial mutation corpora","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":null,"value":"0"}
+address: 29decbdac12baf3df364bd398a86507db5de701671bb910322cae32440fd09c9
 rationale:
   source: docs/canonical-hashing.md
   date: 2026-10-07
