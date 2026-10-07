@@ -1,0 +1,8 @@
+{
+  "name": "req-tools-ocr",
+  "private": true,
+  "description": "Pinned OpenCodeReview CLI for req's delegation-mode review loop. Delegation mode uses no LLM: OCR only performs deterministic file selection and rule resolution.",
+  "dependencies": {
+    "@alibaba-group/open-code-review": "1.12.12"
+  }
+}

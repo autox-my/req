@@ -1,0 +1,287 @@
+# AGENTS.md — req
+
+req: the semantic, git-native requirements engine. A **claim** is the unit of work;
+one claim per file in git; identity is a content address over *canonical meaning*;
+specs, traceability matrices and audit packets are compiled views over a signed
+baseline.
+
+Sources of truth, in order: `docs/design.md` (design of record) → `docs/adr/`
+(decisions; supersession is recorded, never silent) → `docs/canonical-hashing.md`
+(Tier-1 rules, freeze policy, benchmark protocol) → `docs/claim-format.md` (the file
+contract) → `CONTEXT.md` (glossary **only** — no implementation detail).
+
+The bet, stated so it can fail: deterministic Tier-1 canonicalization yields **zero
+false merges** on the parity + adversarial-trap corpora. It is *measured*
+(`req bench`), never asserted.
+
+## Agent rules
+
+- You are an autonomous workflow assistant. Execute instructions step-by-step
+  through the SDLC below; keep state across multi-stage work.
+- Break reasoning into explicit steps before writing code. Error handling and edge
+  cases are part of "done". Maintain existing architecture styles.
+- If unsure about the next move, ask one targeted clarification question instead of
+  guessing.
+- **Vocabulary comes from `CONTEXT.md`.** Use Claim, Requirement, View, Variant,
+  Decision, Baseline as defined there — this project exists because those words were
+  used interchangeably. Add a missing term to `CONTEXT.md` in the same commit that
+  introduces it.
+- **Never hand-write an `address` or a `canonical.form`.** Both are derived; only
+  `req canon --fill` may write them. A hand-written digest is a critical finding.
+- **Never weaken the asymmetric cost.** A false merge silently deletes a
+  requirement — always a failure. A false split is noise. Never auto-merge;
+  ratification is a human act.
+- **Pins are provenance, not stragglers.** `rust-toolchain.toml`, `Cargo.lock`, and
+  `tools/ocr/package-lock.json` are the pins. Verify a version at *pin time*; do not
+  bump opportunistically. Any rules/toolchain/crate/CLI bump is a Tier-1 rules bump:
+  bump `RULES_V`, regenerate goldens deliberately, record re-canonicalization
+  candidates (hashing spec §5).
+- **Never change the git identity** and never pass `-c user.name=` / `user.email=`
+  to impersonate an author. Commits are authored by the human; provenance feeds the
+  decision record (ADR 0005).
+- **Do not overclaim.** A seed-corpus pass is not the external-corpora
+  falsification. Always report which corpus produced which number.
+- **Nothing leaves the machine.** The core crate has no network dependency and
+  providers are a process boundary; air-gapped operation must work with zero
+  network (REQ-0012).
+
+## Commands
+
+This sandbox denies writes to `$HOME`, so both toolchains keep their state in-repo.
+Every command below assumes these exports (or `scripts/check.sh`, which sets them):
+
+```bash
+TC="$HOME/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin"
+export PATH="$TC:$PWD/tools/ocr/node_modules/.bin:$PATH"
+export CARGO_HOME="$PWD/.cargo-home"
+export OCR_NO_UPDATE=1
+```
+
+- Test suite: `cargo test` — check `EXIT=$?` on the *cargo* command.
+  **Never pipe a check through `tail`/`grep`**: the pipeline's status is not the
+  command's, and `EXIT=$?` after a pipe reports the wrong program.
+- The gate that matters: `cargo run -q -- bench` — FMR = 0 hard gate. Exit codes:
+  **0 = PASS, 1 = FAIL, 3 = UNVERIFIABLE**. Writes
+  `bench/results/<rules>-<label>.json`.
+- Claim diagnostics: `cargo run -q -- canon` — per-claim parity-invariant report
+  (unstructured tag, modality, subject, value/unit, operator). Exit 3 when the
+  registry or a claim file cannot be read.
+- Lint/format: **not installed** (`minimal` rustup profile). Once installed
+  (`rustup component add rustfmt clippy` — needs network and a `$HOME` write),
+  `cargo fmt --all -- --check` and `cargo clippy --all-targets -- -D warnings` are
+  part of the gate. Until then the gate prints `SKIP`, and the commit message must
+  say so: **a skipped check is never a pass.**
+- Single local gate: `scripts/check.sh` — runs every check whose tooling exists,
+  prints `SKIP` (never `PASS`) for missing tooling, and fails on the first
+  non-zero status. Green before every commit and merge.
+- Docs-only changes: the same gate, with its skips stated in the commit message.
+
+### Review — OCR in delegation mode (no LLM, no API key)
+
+`ocr` is installed **locally and pinned** (a global install would land in
+`/usr`, which is root-owned and read-only here, and would not be lockfile-pinned):
+
+```bash
+# from the repo root, to (re)install the pinned CLI
+npm --prefix tools/ocr install --no-fund --no-audit --cache "$PWD/.npm-cache"
+ocr --version        # must print open-code-review v1.12.12
+```
+
+Delegation mode uses **no LLM**: OCR performs deterministic file selection and rule
+resolution; the agent performs the review. Pin the rules to a file we own and pass
+it on every invocation:
+
+```bash
+ocr delegate preview --format json [--from main --to feature/<name>] [--rule review/rule.json]
+ocr delegate rule --format json <paths from the preview>
+ocr --version        # --format needs >= 1.9.0; we pin 1.12.12
+```
+
+If `--format` fails with `unknown flag: --format`, use text output for the rest of
+that run; never parse text as JSON and never invent schema fields.
+This npm skips the package's `postinstall` under its `allowScripts` policy; the CLI
+binary comes from the platform optionalDependency — always verify `ocr --version`
+after installing.
+
+## Where things live / how data flows
+
+- `CONTEXT.md` — glossary only; no implementation detail.
+- `docs/design.md` — design of record: the six tensions, the layers, the build
+  order and its gates.
+- `docs/adr/` — numbered decisions; a superseded ADR keeps its text and gains a
+  status line (ADR 0008 → 0009 is the precedent).
+- `docs/canonical-hashing.md` — Tier-1 rules, the two tiers, freeze policy,
+  benchmark protocol.
+- `docs/claim-format.md` — one claim per file; the parity invariant; authoring rules.
+- `claims/REQ-*.yml` + `claims/README.md` — the dogfood corpus: req's own
+  requirements, in req's own format.
+- `aliases/subjects.yml` — subject registry. Alias sets must be disjoint; an
+  unregistered surface stays literal (never silently collapsed).
+- `bench/corpus/parity.yml` — E/N pairs and adversarial traps, labels written from
+  the spec. `bench/results/` — one record per rules version; append, do not rewrite.
+- `src/` — `main.rs` (CLI), `model.rs` (claim/registry/corpus types), `canon.rs`
+  (Tier-1 pipeline + diagnostics), `bench.rs` (the gate + its tests).
+- `tools/ocr/` — the pinned review CLI (`package.json` + lockfile committed;
+  `node_modules/` ignored).
+- `.scratch/` — session scratch, gitignored; never a deliverable.
+- Path facts: the workspace directory is `/home/dsh/understand`; `/home/dsh/req`
+  exists but is **read-only** — never write there. The DSH workspace *name* is `req`.
+- Data flow: claim file → typed parse (`yaml_serde`) → Tier-1 canonical form →
+  canonical bytes → `sha256("req.claim.v1\0" ‖ bytes)` = address. Only `req bench`
+  (results) and, later, `req canon --fill` (derived fields) write anything.
+
+## Correctness rules
+
+- **FMR = 0 on the corpus is a hard gate.** FAIL or UNVERIFIABLE blocks. Never relax
+  the gate to make a change land.
+- **Tier-1 determinism**: no `f32`/`f64` math, no `HashMap` iteration where an
+  address is computed (sort keys or use `BTreeMap`), no locale-dependent formatting,
+  no model I/O.
+- **Three-state outcomes**: PASS / FAIL / UNVERIFIABLE. An unreadable corpus, a
+  degraded registry, or a skipped check is reported as such — never folded into
+  PASS. `degraded` entries are part of the record.
+- **The parity invariant**: a claim's structured slots are an *authored parse* of
+  `statement`; `req canon` re-parses and reports divergence per field. Never "fix" a
+  claim by silently editing the parse — re-word the statement or leave the flag.
+- **Claims are data**: one claim per file; `value` is a canonical exact decimal
+  string (`"0.3"`, never `"0.30"`, never a float); a rationale is an object with
+  source, date, rejected alternatives, assumptions.
+- **Docs are claims too**: when `docs/` asserts a rule the code contradicts, that is
+  a defect — fix one of them in the same commit that exposed it.
+- **Test expectations are independent**: the corpus's E/N labels come from the spec,
+  not from the canonicalizer's output. Never regenerate labels from the
+  implementation.
+- **No secrets; stage by name** (`git add <paths>`). Bulk staging is refused by the
+  environment guard, and the reason is real.
+- External reference material is read-only and is never quoted verbatim into our docs.
+
+## Project discipline (do not renegotiate silently)
+
+- The **six tensions** (`docs/design.md` §2) and **ADRs 0001–0009** are settled.
+  Changing one requires a superseding ADR, not an edit in passing.
+- Unit is a **claim**, not a document (0001). Git is transport/serialization, not
+  identity or merge (0002). Variants are **selectors**, not branches (0003). The
+  model **proposes**; a human disposes (0004). Identity collapses only on
+  meaning-preserving rules (0007). Authority is a signed **Decision**, not a commit
+  hash (0005). Friction at the decision boundary, none in authoring (0006). Core is
+  Rust; porcelain is TypeScript, later (0009).
+- **Git-native storage is table stakes, not the moat** — never sell it as one. The
+  differentiators are semantic content-addressing and variability selectors.
+- Never claim the bet is validated on seed evidence; the external corpora run is the
+  headline measurement.
+
+---
+
+## SDLC workflow (local — git worktree)
+
+Enforcement is agent discipline: there is no remote, no PR, no server-side gate yet
+(see **Phases**).
+
+### Start a feature
+
+```bash
+# From repo root; worktrees/ is gitignored and lives inside the workspace
+git worktree add worktrees/<name> -b feature/<name>
+# Work entirely inside worktrees/<name>/ — the environment's worktree guard
+# (EDH001) refuses writes outside the session's checkout, and it is right.
+```
+
+### Implement — TDD is mandatory for code
+
+Use the session **`edh-tdd`** skill for the loop (seams-first, red before green, one
+vertical slice, mocks only at boundaries, refactoring after green). It is the
+mattpocock TDD skill (MIT) adapted with EDH-specific seam machinery — take its loop,
+not its registry/`ctx.*`/gate sections, which do not apply here. req's seams are
+`canonicalize_statement`, the registry resolvers, the bench classification, and the
+CLI exit codes.
+
+1. Agree the seam before writing the test.
+2. Write the failing test first; then only enough code to pass it.
+3. Tests verify behaviour through public interfaces and must survive refactors.
+   Expected values come from an independent oracle (the corpus labels, a
+   hand-computed decimal) — never recomputed the way the code computes them.
+4. **Rules-change protocol**: if a Tier-1 rule changes, addresses move. Bump
+   `RULES_V`, regenerate the golden addresses deliberately, record
+   re-canonicalization candidates, and say so in the commit message.
+5. **Mutation-check the load-bearing rule.** For each trap class, delete the rule
+   that handles it and confirm the corresponding corpus test fails: LE-vs-LT
+   (N-002), modality (N-001), unit factors (E-002/E-005), condition extraction
+   (N-004), subject boundary (N-006), ambiguous comparator (N-005). A trap whose
+   rule can be removed without a failing test was never testing the rule.
+
+Commit conventions: `feat:` `fix:` `refactor:` `test:` `docs:` `chore:` (scope
+optional, e.g. `feat(canon):`). Gate green before every commit; state skips and
+`UNVERIFIABLE` outcomes in the message. Pre-convention history (`req v0`,
+`req tier-1 v1`) stands; do not rewrite it.
+
+### Self-review before merge (a loop, not a pass)
+
+Default mechanism: OCR **delegation mode** — it selects the reviewable files and
+resolves the rules; **you** are the reviewer. Stay read-only while reviewing.
+
+1. `ocr delegate preview --format json` → `mode`, `repository`, `total_files`,
+   `reviewable_count`, `excluded_count`, `reviewable_files[]`
+   (`path`, `status`, `insertions`, `deletions`), `excluded_files[]` (same fields
+   plus `exclude_reason`). Every `reviewable_files` entry becomes a checklist item
+   keyed by `(path, status)`.
+   **Exclusion is not coverage.** Observed `exclude_reason` values: `unsupported_ext`
+   — markdown, i.e. **all of `docs/`, `CONTEXT.md`, `AGENTS.md`, `claims/README.md`**
+   — and `default_path` — lockfiles. Those files are reviewed by hand, always: here
+   the docs are claims, so an unreviewed doc change is itself the finding.
+2. `ocr delegate rule --format json <paths>` → `{schema_version, groups[]}`, each
+   group `{group_id, source, pattern, files[], rule}`. The built-in rule is a
+   generic rubric (`source: system`: correctness, security, performance,
+   maintainability, test coverage), so it does **not** know req's invariants. Pass
+   `--rule <path>` with our own rule file so the checklist carries them (FMR gate
+   untouched; no floats or unordered-map iteration in the address path; no
+   hand-written `address`/`canonical.form`; docs contradicted by code; canonical
+   decimal values; no auto-merge). Verify the rule-file shape against the CLI on
+   first use — do not guess it.
+3. Diffs come from git using the preview's mode/ref metadata: range →
+   `git diff <merge_base>..<to> -- <path>`; commit → `git show <commit> -- <path>`;
+   workspace → `git diff HEAD -- <path>`, and read untracked files directly.
+4. Review each file against its rule group and **Correctness rules** above, in
+   bounded batches for large changes. Do not stop at the first high-severity find.
+5. **Coverage is mandatory**: every previewed file ends `reviewed` or `skipped` with
+   a concrete reason; report `total_files`, `reviewed_files`, `skipped_files`,
+   `coverage_rate`. An empty preview (or an unavailable `ocr`) means review the whole
+   diff by hand — **never** a pass.
+6. Findings use the OCR schema: `path`, `content`, `start_line`, `end_line`,
+   `category`, `severity` (critical/high/medium/low). Fix every critical/high in the
+   worktree, commit, and re-run from step 1 until the blocking count is 0. A false
+   positive is stated in the merge commit with reasoning; `medium`/`low` left
+   unfixed are listed there too.
+
+Review rules we own live in-repo and are passed with `--rule <path>`; the file is
+reviewed like any other artifact. Verify the CLI's expected rule shape on first use
+— do not guess it.
+
+### Merge locally (no PR)
+
+```bash
+cd worktrees/<name>
+git checkout main
+git merge --no-ff feature/<name> -m "merge: <what and why>; seams tested; findings left unfixed"
+git worktree remove worktrees/<name>
+git branch -d feature/<name>
+```
+
+The merge commit carries what a PR description would: what changed, the seams
+tested, the gate's outcome (including any `UNVERIFIABLE`/`SKIP`), and findings
+deliberately left unfixed.
+
+---
+
+## Phases
+
+**Phase 1 (now — no remote).** Local gate (`scripts/check.sh`), worktree per
+feature, local `--no-ff` merge. OCR delegation mode is the self-review mechanism.
+
+**Phase 2 (when the Forgejo remote lands, on maturity).** The same gate invoked by
+`.forgejo/workflows/` — one implementation, two invocations; never a second copy of
+the check logic in workflow YAML. The flow becomes PR-based (`edh-sdlc`: issue →
+worktree → checks → commit → PR → CI → diagnosis). Branch-protection contexts must
+be exactly what the workflows produce (`<workflow> / <job> (<event>)`) and are
+verified with `forge_repo_setup` before anyone relies on a required check: a
+required context that nothing reports hangs every PR, and a required name with its
+event suffix stripped never reports at all.

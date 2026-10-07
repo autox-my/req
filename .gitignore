@@ -9,4 +9,11 @@ Cargo.lock.bak
 *.swp
 .idea/
 .vscode/
+
+# Tool state — kept in-repo because $HOME is read-only in this sandbox
 .cargo-home/
+.npm-cache/
+tools/ocr/node_modules/
+
+# Feature worktrees (inside the workspace; see AGENTS.md)
+worktrees/
