@@ -33,9 +33,9 @@ state: it is always derived from `decisions.jsonl`, never copied into claim file
 | `modality` | SHALL / SHALL-NOT / MAY / SHOULD | mapping table = hashing spec T1.6; `UNSTRUCTURED` when unparseable (see below) |
 | `subject` | registry id | must resolve in `aliases/subjects.yml` |
 | `attribute` / `operator` / `value` / `unit` | the bounded obligation | operator per T1.5 {LT, LE, EQ, GE, GT, NE}; `unit: none` for non-SI quantities |
-| `conditions[]` | guard clauses parsed from the statement (when/if/unless/during) | part of identity; sorted at T1.8 |
-| `applicability[]` | variant predicates (`applies_when`) | part of identity (ADR 0003); informal predicate strings in v0, formal syntax deferred |
-| `exception`, `temporal`, `quantifier` | reserved slots | `null` when unused |
+| `conditions[]` | guard clauses **parsed from the statement** (when/if/unless/during) | part of identity; sorted at T1.8. `req canon` compares it with the parse, so a scope predicate written here but absent from the statement is a *flag*, not a nuance — a variant belongs in `applicability` |
+| `applicability[]` | variant predicates (`applies_when`) — the **selector slot** | part of identity (ADR 0003); since rules v5 an *input* to the canonical form, because the statement carries no formal selector syntax: the sorted authored list is hashed |
+| `exception`, `temporal`, `quantifier` | reserved slots: no derivation, no field | `null` when unused; authoring one is **refused** by `req canon --fill` rather than silently dropped from identity |
 | `unstructured` | true → the structured slots are all null | the claim gets its raw-form canonical bytes + address per hashing spec §4, and opts out of structural merge-direction analysis |
 | `canonical` | `{rules_v, subject_registry, form}` | written **only** by `req canon --fill`; `form` is stored as a YAML literal block so the hashed bytes are the stored bytes |
 | `address` | `sha256("req.claim.v1\0" \|\| canonical_form_bytes)` | written by `req canon --fill`; `req canon --verify` enforces `sha256(tag \|\| stored form) == address` (REQ-0017) |

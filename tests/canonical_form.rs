@@ -36,10 +36,12 @@ fn canonical_bytes_carry_the_documented_schema_keys_sorted() {
     for json in cases() {
         let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         let obj = v.as_object().expect("a JSON object");
-        // `quantifier` is deliberately absent: the parser does not derive one yet, and
-        // the spec says so (canonical-hashing.md T1.9). Everything else must be here.
+        // `quantifier` is deliberately absent: the parser does not derive one, and
+        // authoring one is refused rather than ignored (see tests/gate.rs). Everything
+        // else the schema names must be here.
         let expected = [
             "action",
+            "applicability",
             "conditions",
             "exception",
             "modality",

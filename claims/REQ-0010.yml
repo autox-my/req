@@ -9,19 +9,19 @@ attribute: false_split_rate
 operator: LE
 value: "0.3"
 unit: none
-conditions:
+conditions: []
+applicability:
   - corpus_set == parity
-applicability: []
 exception: null
 temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: 4
+  rules_v: 5
   subject_registry: 1
   form: |-
-    {"action":"show a false split rate of","conditions":[],"exception":null,"modality":"SHOULD","operator":"LE","qualifier":"on the parity corpus at v0","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":null,"value":"0.3"}
-address: b547c8698230c1c911d40d870ae8a27062d504e94cdf671aba03931b454d0960
+    {"action":"show a false split rate of","applicability":["corpus_set == parity"],"conditions":[],"exception":null,"modality":"SHOULD","operator":"LE","qualifier":"on the parity corpus at v0","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":null,"value":"0.3"}
+address: e4f9b487832690c76b49562f9b865571e1f22bd2e0b0b4413ba4f0dc86ddaaf2
 rationale:
   source: docs/canonical-hashing.md
   date: 2026-10-07

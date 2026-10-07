@@ -9,19 +9,19 @@ attribute: numeric_value_encoding
 operator: EQ
 value: exact_decimal_strings
 unit: none
-conditions:
+conditions: []
+applicability:
   - field == value
-applicability: []
 exception: null
 temporal: null
 quantifier: null
 unstructured: false
 canonical:
-  rules_v: 4
+  rules_v: 5
   subject_registry: 1
   form: |-
-    {"action":"require numeric claim fields to be serialized as exact decimal strings","conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: 5d36e7b34985f31fd6f3eb052515c4895316bce8cb7e676eb9dbcfadd53fbd2a
+    {"action":"require numeric claim fields to be serialized as exact decimal strings","applicability":["field == value"],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
+address: 5e95be2d018feee258010c1bdfd049a842b058dd526c377f168dff16ca7c829a
 rationale:
   source: docs/canonical-hashing.md
   date: 2026-10-07

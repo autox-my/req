@@ -102,18 +102,20 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
   extract to predicate slots; ``unless`` negates the guard; conditions get **sorted**
   for assembly. A claim that *gains* a condition is a different claim (a trap case).
 - **T1.9 Assembly + digest** — fixed schema
-  ``{action, conditions, exception, modality, operator, qualifier, raw, subject,
-  temporal, unstructured, unit, value}``: every key always present (null when unset),
-  **valid JSON with sorted keys**, no insignificant whitespace, canonical number format
-  → canonical form bytes →
+  ``{action, applicability, conditions, exception, modality, operator, qualifier, raw,
+  subject, temporal, unstructured, unit, value}``: every key always present (null when
+  unset), **valid JSON with sorted keys**, no insignificant whitespace, canonical number
+  format → canonical form bytes →
   ``address = sha256("req.claim.v1\0" || canonical_form_bytes)``.
-  - **`quantifier` is deliberately NOT in the form yet.** The parser does not derive
-    one, and an always-null field would advertise coverage the rules cannot deliver; it
-    stays authored-only and unverified (the diagnostic footer says so). The hazard today
-    is nil — a quantifier word remains in the action text, so two statements differing
-    there still differ — but if an extraction rule ever lands it **must** enter the form
-    in that same change, or claims differing only in quantifier would collide. That is a
-    rules bump and a re-canonicalization event.
+  - **`applicability` is an input, not a derivation.** The statement carries no formal
+    selector syntax yet (ADR 0003 defers it), so the form takes the sorted authored list.
+    Rules v5 — before that the form had **no applicability field at all**, which meant two
+    claims differing only in their selector hashed to the same address.
+  - **A slot the rules cannot carry is refused, never ignored.** Authoring `quantifier`,
+    `exception` or `temporal` (no derivation *and* no field) is reported by `req canon`
+    and makes `req canon --fill` refuse that claim: the honest answer to "the rules cannot
+    represent this" is to say so, not to hash a form that drops what the author wrote. If
+    a derivation ever lands, the field must arrive in the same change — a rules bump.
   - The bytes are **parsed by consumers** (porcelain, audit tooling, any
     re-implementation), so validity is a contract, not a description: a test asserts the
     stored form parses as JSON with exactly the documented keys, in sorted order.
@@ -224,6 +226,14 @@ corpus or harness is never accidentally a pass (the same principle as ADR 0005).
 
 #### Recorded runs (append-only)
 
+- **Rules v5** — the authored-slot gaps closed (same class as the predicate-span bug):
+  `applicability` entered identity, authored `conditions` are compared with the parse,
+  and `quantifier`/`exception`/`temporal` are refused when authored. The new checks found
+  **six authoring divergences in our own corpus**: five claims had put their *variant
+  selector* in `conditions` (where the format wants a parsed guard), and REQ-0012's
+  statement guard was unauthored. The selectors moved to `applicability`; the guard was
+  written. All 21 claims re-filled under rules v5 — `req canon` 0 discrepancy flags,
+  `--verify` 21 verified / 0 candidates / 0 mismatches, four corpora PASS.
 - **Rules v3/v4** — derived fields written and enforced, then the corpus widened.
   - **external-v3** (1124 pairs; PROMISE NFR prose + StrictDoc + Doorstop; adds
     digit-grouping and unit-scale equivalence classes) — at rules v3 it **FAILED**:

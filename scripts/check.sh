@@ -87,6 +87,18 @@ if command -v ocr >/dev/null 2>&1; then
   pin="$(grep -o '"@alibaba-group/open-code-review": *"[^"]*"' \
     "$CACHE_ROOT/tools/ocr/package.json" 2>/dev/null | cut -d'"' -f4)"
   printf 'pinned: %s\n' "${pin:-unknown}"
+  # The rule file is load-bearing for review, and this CLI ignores unknown keys and
+  # silently falls back for a glob that matches nothing — so its *effect* is checked,
+  # never its exit status.
+  if [ -f "$PWD/review/rule.json" ] && command -v python3 >/dev/null 2>&1; then
+    # $PWD, not $CACHE_ROOT: this is repo content, and a worktree's copy is the one
+    # under test. $CACHE_ROOT is for tool *state* (cargo home, node_modules) — a script
+    # resolved there does not exist until the branch is merged, which the gate caught
+    # the first time it ran.
+    run python3 "$PWD/tools/review/check_rules.py"
+  else
+    skip "python3 or review/rule.json missing: cannot verify rule globs"
+  fi
 else
   skip "ocr not installed: npm --prefix tools/ocr install --cache .npm-cache"
 fi

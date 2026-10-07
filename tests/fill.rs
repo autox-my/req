@@ -86,6 +86,14 @@ fn fill_is_idempotent() {
     let once = fill_text(SAMPLE, &json, &address, 2, 1).expect("anchors are present");
     let twice = fill_text(&once, &json, &address, 2, 1).expect("anchors are present");
     assert_eq!(once, twice, "a second fill must not duplicate the block");
+
+    // A multi-line body must be replaced, not appended to: the drop rule keys on
+    // indentation, and the canonical JSON being single-line today is not a guarantee.
+    let pretty = "{\n  \"action\": \"respond\",\n  \"unstructured\": false\n}";
+    let once = fill_text(SAMPLE, pretty, &address, 2, 1).expect("anchors are present");
+    let twice = fill_text(&once, pretty, &address, 2, 1).expect("anchors are present");
+    assert_eq!(once, twice, "a multi-line block body must not accumulate");
+    assert_eq!(once.matches("\"action\"").count(), 1);
 }
 
 #[test]
