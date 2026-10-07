@@ -1,8 +1,8 @@
 //! req — the semantic, git-native requirements engine.
 //!
-//! Subcommands (v0 scaffold of design.md build step 3):
-//!   req bench   — run the FMR gate over bench/corpus/parity.yml (the falsification step)
-//!   req canon   — parse diagnostics over claims/REQ-*.yml (parity-invariant surface, v0)
+//! Subcommands:
+//!   req bench [corpus.yml]  — run the FMR gate (default: bench/corpus/parity.yml)
+//!   req canon               — parse diagnostics over claims/REQ-*.yml
 //!
 //! The Tier-1 canonicalizer (src/canon.rs) is deterministic and offline: no model I/O,
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
@@ -11,15 +11,18 @@ use req::{bench, canon};
 use std::process::exit;
 
 fn main() {
-    let cmd = std::env::args().nth(1).unwrap_or_else(|| {
-        eprintln!("usage: req bench | req canon");
+    let mut args = std::env::args();
+    let cmd = args.nth(1).unwrap_or_else(|| {
+        eprintln!("usage: req bench [corpus.yml] | req canon");
         exit(2);
     });
     let code = match cmd.as_str() {
-        "bench" => bench::run(),
+        "bench" => bench::run(args.next().as_deref()),
         "canon" => canon::run_claim_diagnostics(),
         other => {
-            eprintln!("unrecognized subcommand: {other}\nusage: req bench | req canon");
+            eprintln!(
+                "unrecognized subcommand: {other}\nusage: req bench [corpus.yml] | req canon"
+            );
             2
         }
     };

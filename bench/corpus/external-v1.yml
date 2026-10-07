@@ -1,0 +1,1695 @@
+schema: req.bench.corpus/0
+version: 1
+rules: "External corpus v1: real requirement prose from other projects' repositories, pinned by commit — strictdoc@abf7be7daa2a25721a56980b5be15845336ea0b8, doorstop@f267ef67cb80b0eb0dcdf0597fe61f623e851e15. Pairs are labelled by construction (the transformation applied), not by the canonicalizer, so the labels are an independent oracle. Scope is Tier-1 only: equivalence uses meaning-preserving Tier-1 normalizations; paraphrase/voice/word-order are Tier-2 and out of scope. Modality transforms replace the FIRST occurrence, so multi-clause statements also exercise whether the tail beyond the first obligation is decomposed — see the findings recorded in docs/canonical-hashing.md 6.3."
+equivalent:
+  - id: E-ST-SDOC-SSS-3-MS
+    a: "The Requirements Tool shall provide the CRUD operations for document management: - Create document - Read document - Update document - Delete document."
+    b: "The Requirements Tool must provide the CRUD operations for document management: - Create document - Read document - Update document - Delete document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-3"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-3-CP
+    a: "The Requirements Tool shall provide the CRUD operations for document management: - Create document - Read document - Update document - Delete document."
+    b: "the  Requirements Tool shall provide the CRUD operations for document management: - Create document - Read document - Update document - Delete document"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-3"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-91-MS
+    a: "The Requirements Tool shall provide browsing of the documentation tree."
+    b: "The Requirements Tool must provide browsing of the documentation tree."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-91"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-91-CP
+    a: "The Requirements Tool shall provide browsing of the documentation tree."
+    b: "the  Requirements Tool shall provide browsing of the documentation tree"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-91"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-51-MS
+    a: "The Requirements Tool shall allow management of documents with nested sections/chapters structure."
+    b: "The Requirements Tool must allow management of documents with nested sections/chapters structure."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-51"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-51-CP
+    a: "The Requirements Tool shall allow management of documents with nested sections/chapters structure."
+    b: "the  Requirements Tool shall allow management of documents with nested sections/chapters structure"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-51"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-52-MS
+    a: "The Requirements Tool shall allow composing documents from other documents or fragments. NOTE: If a Requirements Tool implements stores documents in a file system, the composition can be arranged at a file level when a parent document file includes the child fragment files and produces a composite document."
+    b: "The Requirements Tool must allow composing documents from other documents or fragments. NOTE: If a Requirements Tool implements stores documents in a file system, the composition can be arranged at a file level when a parent document file includes the child fragment files and produces a composite document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-52"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-52-CP
+    a: "The Requirements Tool shall allow composing documents from other documents or fragments. NOTE: If a Requirements Tool implements stores documents in a file system, the composition can be arranged at a file level when a parent document file includes the child fragment files and produces a composite document."
+    b: "the  Requirements Tool shall allow composing documents from other documents or fragments. NOTE: If a Requirements Tool implements stores documents in a file system, the composition can be arranged at a file level when a parent document file includes the child fragment files and produces a composite document"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-52"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-53-MS
+    a: "The Requirements Tool shall support management of document meta information."
+    b: "The Requirements Tool must support management of document meta information."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-53"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-53-CP
+    a: "The Requirements Tool shall support management of document meta information."
+    b: "the  Requirements Tool shall support management of document meta information"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-53"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-75-MS
+    a: "The Requirements Tool shall provide capabilities for document versioning."
+    b: "The Requirements Tool must provide capabilities for document versioning."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-75"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-75-CP
+    a: "The Requirements Tool shall provide capabilities for document versioning."
+    b: "the  Requirements Tool shall provide capabilities for document versioning"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-75"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-63-MS
+    a: "The Requirements Tool shall provide \"rich text\" formatting capabilities which includes but not limited to: - Headings - Lists - Tables - UML diagrams - etc."
+    b: "The Requirements Tool must provide \"rich text\" formatting capabilities which includes but not limited to: - Headings - Lists - Tables - UML diagrams - etc."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-63"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-63-CP
+    a: "The Requirements Tool shall provide \"rich text\" formatting capabilities which includes but not limited to: - Headings - Lists - Tables - UML diagrams - etc."
+    b: "the  Requirements Tool shall provide \"rich text\" formatting capabilities which includes but not limited to: - Headings - Lists - Tables - UML diagrams - etc"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-63"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-95-MS
+    a: "The Requirements Tool shall provide functionality to search content in the documentation tree."
+    b: "The Requirements Tool must provide functionality to search content in the documentation tree."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-95"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-95-CP
+    a: "The Requirements Tool shall provide functionality to search content in the documentation tree."
+    b: "the  Requirements Tool shall provide functionality to search content in the documentation tree"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-95"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-4-MS
+    a: "The Requirements Tool shall enable the main requirements management operations: - Create a requirement - Read / view / browse a requirement - Update / edit a requirement - Delete a requirement."
+    b: "The Requirements Tool must enable the main requirements management operations: - Create a requirement - Read / view / browse a requirement - Update / edit a requirement - Delete a requirement."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-4"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-4-CP
+    a: "The Requirements Tool shall enable the main requirements management operations: - Create a requirement - Read / view / browse a requirement - Update / edit a requirement - Delete a requirement."
+    b: "the  Requirements Tool shall enable the main requirements management operations: - Create a requirement - Read / view / browse a requirement - Update / edit a requirement - Delete a requirement"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-4"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-61-MS
+    a: "The Requirements Tool shall support at least the following requirement field set: - UID - STATUS - TITLE - STATEMENT - RATIONALE - COMMENT - RELATIONS (connections with other requirements)."
+    b: "The Requirements Tool must support at least the following requirement field set: - UID - STATUS - TITLE - STATEMENT - RATIONALE - COMMENT - RELATIONS (connections with other requirements)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-61"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-61-CP
+    a: "The Requirements Tool shall support at least the following requirement field set: - UID - STATUS - TITLE - STATEMENT - RATIONALE - COMMENT - RELATIONS (connections with other requirements)."
+    b: "the  Requirements Tool shall support at least the following requirement field set: - UID - STATUS - TITLE - STATEMENT - RATIONALE - COMMENT - RELATIONS (connections with other requirements)"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-61"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-62-MS
+    a: "The requirements tool shall support configuring a requirement item with an arbitrary set of fields. NOTE: Examples of typical fields include: UID, Title, Statement, Rationale, Comment. Other fields that are used very often are: Status, Tags, Criticality level, Priority, etc."
+    b: "The requirements tool must support configuring a requirement item with an arbitrary set of fields. NOTE: Examples of typical fields include: UID, Title, Statement, Rationale, Comment. Other fields that are used very often are: Status, Tags, Criticality level, Priority, etc."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-62"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-62-CP
+    a: "The requirements tool shall support configuring a requirement item with an arbitrary set of fields. NOTE: Examples of typical fields include: UID, Title, Statement, Rationale, Comment. Other fields that are used very often are: Status, Tags, Criticality level, Priority, etc."
+    b: "the  requirements tool shall support configuring a requirement item with an arbitrary set of fields. NOTE: Examples of typical fields include: UID, Title, Statement, Rationale, Comment. Other fields that are used very often are: Status, Tags, Criticality level, Priority, etc"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-62"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-64-MS
+    a: "The Requirements Tool shall support structuring requirements in documents."
+    b: "The Requirements Tool must support structuring requirements in documents."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-64"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-64-CP
+    a: "The Requirements Tool shall support structuring requirements in documents."
+    b: "the  Requirements Tool shall support structuring requirements in documents"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-64"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-5-MS
+    a: "The Requirements Tool shall allow moving nodes (sections, requirements) within the containing document."
+    b: "The Requirements Tool must allow moving nodes (sections, requirements) within the containing document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-5"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-5-CP
+    a: "The Requirements Tool shall allow moving nodes (sections, requirements) within the containing document."
+    b: "the  Requirements Tool shall allow moving nodes (sections, requirements) within the containing document"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-5"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-70-MS
+    a: "The Requirements Tool shall allow moving nodes (sections, requirements) between documents."
+    b: "The Requirements Tool must allow moving nodes (sections, requirements) between documents."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-70"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-70-CP
+    a: "The Requirements Tool shall allow moving nodes (sections, requirements) between documents."
+    b: "the  Requirements Tool shall allow moving nodes (sections, requirements) between documents"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-70"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-6-MS
+    a: "The Requirements Tool shall provide controls for automatic generation of requirements UIDs."
+    b: "The Requirements Tool must provide controls for automatic generation of requirements UIDs."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-6"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-6-CP
+    a: "The Requirements Tool shall provide controls for automatic generation of requirements UIDs."
+    b: "the  Requirements Tool shall provide controls for automatic generation of requirements UIDs"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-6"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-7-MS
+    a: "The Requirements Tool shall allow bi-directional linking of requirements nodes together using Parent or Child relations."
+    b: "The Requirements Tool must allow bi-directional linking of requirements nodes together using Parent or Child relations."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-7"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-7-CP
+    a: "The Requirements Tool shall allow bi-directional linking of requirements nodes together using Parent or Child relations."
+    b: "the  Requirements Tool shall allow bi-directional linking of requirements nodes together using Parent or Child relations"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-7"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-8-MS
+    a: "The Requirements Tool shall support the link roles. Example of roles for a child-to-parent link: \"verifies\", \"implements\", \"satisfies\", etc."
+    b: "The Requirements Tool must support the link roles. Example of roles for a child-to-parent link: \"verifies\", \"implements\", \"satisfies\", etc."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-8"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-8-CP
+    a: "The Requirements Tool shall support the link roles. Example of roles for a child-to-parent link: \"verifies\", \"implements\", \"satisfies\", etc."
+    b: "the  Requirements Tool shall support the link roles. Example of roles for a child-to-parent link: \"verifies\", \"implements\", \"satisfies\", etc"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-8"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-71-MS
+    a: "The Requirements Tool shall support the Reverse Parent relationship."
+    b: "The Requirements Tool must support the Reverse Parent relationship."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-71"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-71-CP
+    a: "The Requirements Tool shall support the Reverse Parent relationship."
+    b: "the  Requirements Tool shall support the Reverse Parent relationship"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-71"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-89-MS
+    a: "The Requirements Tool shall provide means for unique identification of every requirement."
+    b: "The Requirements Tool must provide means for unique identification of every requirement."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-89"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-89-CP
+    a: "The Requirements Tool shall provide means for unique identification of every requirement."
+    b: "the  Requirements Tool shall provide means for unique identification of every requirement"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-89"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-47-MS
+    a: "The Requirements Tool shall provide a validation mechanism that ensures the integrity of requirements and connections between them. NOTE: Examples of integrity checks: - Requirements have correct fields. - Requirements do not form cycles. - Requirements only link to other requirements as specified in a project configuration."
+    b: "The Requirements Tool must provide a validation mechanism that ensures the integrity of requirements and connections between them. NOTE: Examples of integrity checks: - Requirements have correct fields. - Requirements do not form cycles. - Requirements only link to other requirements as specified in a project configuration."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-47"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-47-CP
+    a: "The Requirements Tool shall provide a validation mechanism that ensures the integrity of requirements and connections between them. NOTE: Examples of integrity checks: - Requirements have correct fields. - Requirements do not form cycles. - Requirements only link to other requirements as specified in a project configuration."
+    b: "the  Requirements Tool shall provide a validation mechanism that ensures the integrity of requirements and connections between them. NOTE: Examples of integrity checks: - Requirements have correct fields. - Requirements do not form cycles. - Requirements only link to other requirements as specified in a project configuration"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-47"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-57-MS
+    a: "The Requirements Tool shall provide capabilities for validating requirements according to the EARS syntax."
+    b: "The Requirements Tool must provide capabilities for validating requirements according to the EARS syntax."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-57"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-57-CP
+    a: "The Requirements Tool shall provide capabilities for validating requirements according to the EARS syntax."
+    b: "the  Requirements Tool shall provide capabilities for validating requirements according to the EARS syntax"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-57"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-73-MS
+    a: "The Requirements Tool shall provide an Excel-like user interface for viewing and editing requirements. NOTE: This interface does not have to be the only or a default interface."
+    b: "The Requirements Tool must provide an Excel-like user interface for viewing and editing requirements. NOTE: This interface does not have to be the only or a default interface."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-73"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-73-CP
+    a: "The Requirements Tool shall provide an Excel-like user interface for viewing and editing requirements. NOTE: This interface does not have to be the only or a default interface."
+    b: "the  Requirements Tool shall provide an Excel-like user interface for viewing and editing requirements. NOTE: This interface does not have to be the only or a default interface"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-73"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-56-MS
+    a: "The Requirements Tool shall provide a \"1000-feet view\" kind of requirements visualization."
+    b: "The Requirements Tool must provide a \"1000-feet view\" kind of requirements visualization."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-56"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-56-CP
+    a: "The Requirements Tool shall provide a \"1000-feet view\" kind of requirements visualization."
+    b: "the  Requirements Tool shall provide a \"1000-feet view\" kind of requirements visualization"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-56"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-28-MS
+    a: "The Requirements Tool shall support generation of traceability matrices."
+    b: "The Requirements Tool must support generation of traceability matrices."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-28"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-28-CP
+    a: "The Requirements Tool shall support generation of traceability matrices."
+    b: "the  Requirements Tool shall support generation of traceability matrices"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-28"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-48-MS
+    a: "The Requirements Tool shall allow generating a Compliance Matrix document."
+    b: "The Requirements Tool must allow generating a Compliance Matrix document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-48"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-48-CP
+    a: "The Requirements Tool shall allow generating a Compliance Matrix document."
+    b: "the  Requirements Tool shall allow generating a Compliance Matrix document"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-48"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-29-MS
+    a: "The Requirements Tool shall provide means for getting information about the requirements coverage of a given project. NOTE: The requirements coverage can be presented in a tabular form or visualized with a set of graphs."
+    b: "The Requirements Tool must provide means for getting information about the requirements coverage of a given project. NOTE: The requirements coverage can be presented in a tabular form or visualized with a set of graphs."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-29"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-29-CP
+    a: "The Requirements Tool shall provide means for getting information about the requirements coverage of a given project. NOTE: The requirements coverage can be presented in a tabular form or visualized with a set of graphs."
+    b: "the  Requirements Tool shall provide means for getting information about the requirements coverage of a given project. NOTE: The requirements coverage can be presented in a tabular form or visualized with a set of graphs"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-29"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-49-MS
+    a: "The Requirements Tool shall allow generating a Progress Report document. NOTE: A progress report document shall include at least the following Key Performance Indicators. Project-level KPIs: - Total number of requirements - Total number of requirements without parent (excluding top-level and derived) - Total number of TBD/TBC - Total number of requirements without rationale - Tags breakdown Document-level KPIs: the same but per document."
+    b: "The Requirements Tool must allow generating a Progress Report document. NOTE: A progress report document shall include at least the following Key Performance Indicators. Project-level KPIs: - Total number of requirements - Total number of requirements without parent (excluding top-level and derived) - Total number of TBD/TBC - Total number of requirements without rationale - Tags breakdown Document-level KPIs: the same but per document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-49"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-49-CP
+    a: "The Requirements Tool shall allow generating a Progress Report document. NOTE: A progress report document shall include at least the following Key Performance Indicators. Project-level KPIs: - Total number of requirements - Total number of requirements without parent (excluding top-level and derived) - Total number of TBD/TBC - Total number of requirements without rationale - Tags breakdown Document-level KPIs: the same but per document."
+    b: "the  Requirements Tool shall allow generating a Progress Report document. NOTE: A progress report document shall include at least the following Key Performance Indicators. Project-level KPIs: - Total number of requirements - Total number of requirements without parent (excluding top-level and derived) - Total number of TBD/TBC - Total number of requirements without rationale - Tags breakdown Document-level KPIs: the same but per document"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-49"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-74-MS
+    a: "The Requirements Tool shall provide capabilities for change management: - Visualizing changes between project tree versions. - Visualizing changes between document versions. - Visualizing the impact that a changed requirement has on a project tree."
+    b: "The Requirements Tool must provide capabilities for change management: - Visualizing changes between project tree versions. - Visualizing changes between document versions. - Visualizing the impact that a changed requirement has on a project tree."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-74"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-74-CP
+    a: "The Requirements Tool shall provide capabilities for change management: - Visualizing changes between project tree versions. - Visualizing changes between document versions. - Visualizing the impact that a changed requirement has on a project tree."
+    b: "the  Requirements Tool shall provide capabilities for change management: - Visualizing changes between project tree versions. - Visualizing changes between document versions. - Visualizing the impact that a changed requirement has on a project tree"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-74"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-72-MS
+    a: "The Requirements Tool shall support bi-directional tracing between requirements content and implementation source code with only minimal changes needed in the source code. NOTE: The Requirements Tool does not necessarily have to implement the complete tracing process. It may delegate parts of the traceability task to other tools, e.g., Doxygen, Lobster, etc."
+    b: "The Requirements Tool must support bi-directional tracing between requirements content and implementation source code with only minimal changes needed in the source code. NOTE: The Requirements Tool does not necessarily have to implement the complete tracing process. It may delegate parts of the traceability task to other tools, e.g., Doxygen, Lobster, etc."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-72"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-72-CP
+    a: "The Requirements Tool shall support bi-directional tracing between requirements content and implementation source code with only minimal changes needed in the source code. NOTE: The Requirements Tool does not necessarily have to implement the complete tracing process. It may delegate parts of the traceability task to other tools, e.g., Doxygen, Lobster, etc."
+    b: "the  Requirements Tool shall support bi-directional tracing between requirements content and implementation source code with only minimal changes needed in the source code. NOTE: The Requirements Tool does not necessarily have to implement the complete tracing process. It may delegate parts of the traceability task to other tools, e.g., Doxygen, Lobster, etc"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-72"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-96-MS
+    a: "The Requirements Tool shall support exporting documentation content to PDF, both individual documents and complete documentation trees."
+    b: "The Requirements Tool must support exporting documentation content to PDF, both individual documents and complete documentation trees."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-96"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-96-CP
+    a: "The Requirements Tool shall support exporting documentation content to PDF, both individual documents and complete documentation trees."
+    b: "the  Requirements Tool shall support exporting documentation content to PDF, both individual documents and complete documentation trees"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-96"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-58-MS
+    a: "The Requirements Tool shall support exporting/importing requirements content from/to ReqIF format."
+    b: "The Requirements Tool must support exporting/importing requirements content from/to ReqIF format."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-58"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-58-CP
+    a: "The Requirements Tool shall support exporting/importing requirements content from/to ReqIF format."
+    b: "the  Requirements Tool shall support exporting/importing requirements content from/to ReqIF format"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-58"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-59-MS
+    a: "The Requirements Tool shall support exporting/importing requirements content from/to CSV."
+    b: "The Requirements Tool must support exporting/importing requirements content from/to CSV."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-59"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-59-CP
+    a: "The Requirements Tool shall support exporting/importing requirements content from/to CSV."
+    b: "the  Requirements Tool shall support exporting/importing requirements content from/to CSV"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-59"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-60-MS
+    a: "The Requirements Tool shall support exporting/importing requirements content from/to Excel."
+    b: "The Requirements Tool must support exporting/importing requirements content from/to Excel."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-60"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-60-CP
+    a: "The Requirements Tool shall support exporting/importing requirements content from/to Excel."
+    b: "the  Requirements Tool shall support exporting/importing requirements content from/to Excel"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-60"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-92-MS
+    a: "The Requirements Tool shall provide a solution for configuring the project-level options. NOTE: Examples of project-level options: - Project title. - Global settings for the Requirements Tool itself."
+    b: "The Requirements Tool must provide a solution for configuring the project-level options. NOTE: Examples of project-level options: - Project title. - Global settings for the Requirements Tool itself."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-92"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-92-CP
+    a: "The Requirements Tool shall provide a solution for configuring the project-level options. NOTE: Examples of project-level options: - Project title. - Global settings for the Requirements Tool itself."
+    b: "the  Requirements Tool shall provide a solution for configuring the project-level options. NOTE: Examples of project-level options: - Project title. - Global settings for the Requirements Tool itself"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-92"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-93-MS
+    a: "The Requirements Tool shall provide a solution for configuring the document-level options. NOTE: Examples of document-level options: - Document title - Requirement prefix. - Other options local to the content and the presentation of a given document."
+    b: "The Requirements Tool must provide a solution for configuring the document-level options. NOTE: Examples of document-level options: - Document title - Requirement prefix. - Other options local to the content and the presentation of a given document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-93"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-93-CP
+    a: "The Requirements Tool shall provide a solution for configuring the document-level options. NOTE: Examples of document-level options: - Document title - Requirement prefix. - Other options local to the content and the presentation of a given document."
+    b: "the  Requirements Tool shall provide a solution for configuring the document-level options. NOTE: Examples of document-level options: - Document title - Requirement prefix. - Other options local to the content and the presentation of a given document"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-93"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-13-MS
+    a: "The Requirements Tool shall support requirement trees with at least 10000 requirements."
+    b: "The Requirements Tool must support requirement trees with at least 10000 requirements."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-13"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-13-CP
+    a: "The Requirements Tool shall support requirement trees with at least 10000 requirements."
+    b: "the  Requirements Tool shall support requirement trees with at least 10000 requirements"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-13"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-14-MS
+    a: "The Requirements Tool shall be able to handle documentation packages of at least 100 documents without significant performance degradation."
+    b: "The Requirements Tool must be able to handle documentation packages of at least 100 documents without significant performance degradation."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-14"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-14-CP
+    a: "The Requirements Tool shall be able to handle documentation packages of at least 100 documents without significant performance degradation."
+    b: "the  Requirements Tool shall be able to handle documentation packages of at least 100 documents without significant performance degradation"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-14"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-94-MS
+    a: "The Requirements Tool shall ensure the integrity of stored documentation and requirements data throughout its lifecycle."
+    b: "The Requirements Tool must ensure the integrity of stored documentation and requirements data throughout its lifecycle."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-94"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-94-CP
+    a: "The Requirements Tool shall ensure the integrity of stored documentation and requirements data throughout its lifecycle."
+    b: "the  Requirements Tool shall ensure the integrity of stored documentation and requirements data throughout its lifecycle"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-94"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-79-MS
+    a: "The Requirements Tool shall be accessible to a broad spectrum of users. NOTE: Factors to consider: - The cost of a tool. - The easy of installation. - The availability of a graphical user interface. - The availability of a programmatic access to the functions of a tool. - The interoperability of the tool with other tools."
+    b: "The Requirements Tool must be accessible to a broad spectrum of users. NOTE: Factors to consider: - The cost of a tool. - The easy of installation. - The availability of a graphical user interface. - The availability of a programmatic access to the functions of a tool. - The interoperability of the tool with other tools."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-79"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-79-CP
+    a: "The Requirements Tool shall be accessible to a broad spectrum of users. NOTE: Factors to consider: - The cost of a tool. - The easy of installation. - The availability of a graphical user interface. - The availability of a programmatic access to the functions of a tool. - The interoperability of the tool with other tools."
+    b: "the  Requirements Tool shall be accessible to a broad spectrum of users. NOTE: Factors to consider: - The cost of a tool. - The easy of installation. - The availability of a graphical user interface. - The availability of a programmatic access to the functions of a tool. - The interoperability of the tool with other tools"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-79"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-97-MS
+    a: "The Requirements Tool shall provide identifying information, including title, release version, and project website links."
+    b: "The Requirements Tool must provide identifying information, including title, release version, and project website links."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-97"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-97-CP
+    a: "The Requirements Tool shall provide identifying information, including title, release version, and project website links."
+    b: "the  Requirements Tool shall provide identifying information, including title, release version, and project website links"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-97"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-80-MS
+    a: "The Requirements Tool shall provide a smooth user experience. NOTE: Documentation and requirements management are composite activities that consist of several types of repetitive tasks. A requirements tool user experience should assist in automating these tasks as far as possible and make the overall workflow efficient and precise."
+    b: "The Requirements Tool must provide a smooth user experience. NOTE: Documentation and requirements management are composite activities that consist of several types of repetitive tasks. A requirements tool user experience should assist in automating these tasks as far as possible and make the overall workflow efficient and precise."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-80"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-80-CP
+    a: "The Requirements Tool shall provide a smooth user experience. NOTE: Documentation and requirements management are composite activities that consist of several types of repetitive tasks. A requirements tool user experience should assist in automating these tasks as far as possible and make the overall workflow efficient and precise."
+    b: "the  Requirements Tool shall provide a smooth user experience. NOTE: Documentation and requirements management are composite activities that consist of several types of repetitive tasks. A requirements tool user experience should assist in automating these tasks as far as possible and make the overall workflow efficient and precise"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-80"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-81-MS
+    a: "The Requirements Tool shall be capable of supporting a large number of users."
+    b: "The Requirements Tool must be capable of supporting a large number of users."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-81"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-81-CP
+    a: "The Requirements Tool shall be capable of supporting a large number of users."
+    b: "the  Requirements Tool shall be capable of supporting a large number of users"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-81"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-82-MS
+    a: "The Requirements Tool shall be usable on the normal personal computers, e.g., do not require a special cloud deployment."
+    b: "The Requirements Tool must be usable on the normal personal computers, e.g., do not require a special cloud deployment."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-82"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-82-CP
+    a: "The Requirements Tool shall be usable on the normal personal computers, e.g., do not require a special cloud deployment."
+    b: "the  Requirements Tool shall be usable on the normal personal computers, e.g., do not require a special cloud deployment"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-82"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-83-MS
+    a: "The Requirements Tool shall be deployable to the network of computers, e.g., provide a server instance."
+    b: "The Requirements Tool must be deployable to the network of computers, e.g., provide a server instance."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-83"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-83-CP
+    a: "The Requirements Tool shall be deployable to the network of computers, e.g., provide a server instance."
+    b: "the  Requirements Tool shall be deployable to the network of computers, e.g., provide a server instance"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-83"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-84-MS
+    a: "The Requirements Tool shall store documentation and requirements data in a database."
+    b: "The Requirements Tool must store documentation and requirements data in a database."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-84"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-84-CP
+    a: "The Requirements Tool shall store documentation and requirements data in a database."
+    b: "the  Requirements Tool shall store documentation and requirements data in a database"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-84"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-85-MS
+    a: "The Requirements Tool shall provide a Web API interface."
+    b: "The Requirements Tool must provide a Web API interface."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-85"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-85-CP
+    a: "The Requirements Tool shall provide a Web API interface."
+    b: "the  Requirements Tool shall provide a Web API interface"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-85"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-86-MS
+    a: "The Requirements Tool shall provide a Software Development Kit (SDK) that allows customization of the Requirements Tool functions. NOTE: An SDK provides access to the API of the Requirements Tool. Examples of functions that may be used by the users of the tool: - Custom import/export functions to/from various requirements/documentation formats. - Implement custom visualization functions. - Implement integration with other tools."
+    b: "The Requirements Tool must provide a Software Development Kit (SDK) that allows customization of the Requirements Tool functions. NOTE: An SDK provides access to the API of the Requirements Tool. Examples of functions that may be used by the users of the tool: - Custom import/export functions to/from various requirements/documentation formats. - Implement custom visualization functions. - Implement integration with other tools."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-86"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-86-CP
+    a: "The Requirements Tool shall provide a Software Development Kit (SDK) that allows customization of the Requirements Tool functions. NOTE: An SDK provides access to the API of the Requirements Tool. Examples of functions that may be used by the users of the tool: - Custom import/export functions to/from various requirements/documentation formats. - Implement custom visualization functions. - Implement integration with other tools."
+    b: "the  Requirements Tool shall provide a Software Development Kit (SDK) that allows customization of the Requirements Tool functions. NOTE: An SDK provides access to the API of the Requirements Tool. Examples of functions that may be used by the users of the tool: - Custom import/export functions to/from various requirements/documentation formats. - Implement custom visualization functions. - Implement integration with other tools"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-86"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-87-MS
+    a: "The Requirements Tool shall provide programmatic access to requirements data."
+    b: "The Requirements Tool must provide programmatic access to requirements data."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-87"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-87-CP
+    a: "The Requirements Tool shall provide programmatic access to requirements data."
+    b: "the  Requirements Tool shall provide programmatic access to requirements data"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-87"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-30-MS
+    a: "The Requirements Tool shall support generation of documentation to static HTML."
+    b: "The Requirements Tool must support generation of documentation to static HTML."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-30"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-30-CP
+    a: "The Requirements Tool shall support generation of documentation to static HTML."
+    b: "the  Requirements Tool shall support generation of documentation to static HTML"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-30"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-31-MS
+    a: "The Requirements Tool shall provide a graphical user interface."
+    b: "The Requirements Tool must provide a graphical user interface."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-31"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-31-CP
+    a: "The Requirements Tool shall provide a graphical user interface."
+    b: "the  Requirements Tool shall provide a graphical user interface"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-31"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-32-MS
+    a: "The Requirements Tool shall provide a command line interface (CLI)."
+    b: "The Requirements Tool must provide a command line interface (CLI)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-32"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-32-CP
+    a: "The Requirements Tool shall provide a command line interface (CLI)."
+    b: "the  Requirements Tool shall provide a command line interface (CLI)"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-32"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-68-MS
+    a: "The Requirements Tool shall provide an API interface."
+    b: "The Requirements Tool must provide an API interface."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-68"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-68-CP
+    a: "The Requirements Tool shall provide an API interface."
+    b: "the  Requirements Tool shall provide an API interface"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-68"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-33-MS
+    a: "The Requirements Tool shall support the software version control systems (e.g., Git)."
+    b: "The Requirements Tool must support the software version control systems (e.g., Git)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-33"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-33-CP
+    a: "The Requirements Tool shall support the software version control systems (e.g., Git)."
+    b: "the  Requirements Tool shall support the software version control systems (e.g., Git)"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-33"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-67-MS
+    a: "The Requirements Tool shall support at least the following operating systems: - Linux - Windows - macOS."
+    b: "The Requirements Tool must support at least the following operating systems: - Linux - Windows - macOS."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-67"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-67-CP
+    a: "The Requirements Tool shall support at least the following operating systems: - Linux - Windows - macOS."
+    b: "the  Requirements Tool shall support at least the following operating systems: - Linux - Windows - macOS"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-67"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-69-MS
+    a: "The Requirements Tool shall be implemented using the popular programming languages. NOTE: Examples of the most popular programming languages: - Java - C++ - Python - JavaScript"
+    b: "The Requirements Tool must be implemented using the popular programming languages. NOTE: Examples of the most popular programming languages: - Java - C++ - Python - JavaScript"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-69"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-69-CP
+    a: "The Requirements Tool shall be implemented using the popular programming languages. NOTE: Examples of the most popular programming languages: - Java - C++ - Python - JavaScript"
+    b: "the  Requirements Tool shall be implemented using the popular programming languages. NOTE: Examples of the most popular programming languages: - Java - C++ - Python - JavaScript"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-69"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-90-MS
+    a: "The Requirements Tool shall be designed for long-term maintenance. NOTE: Long-term maintenance aspects to consider: - Careful selection of the technologies used, e.g., avoid building on too many unrelated technologies at the same time. - Take into account the existing experience of the development team. Consider the availability of qualified developers in the future. - Take into account maintainability by the development team as well as the users, e.g., IT/DevOps department."
+    b: "The Requirements Tool must be designed for long-term maintenance. NOTE: Long-term maintenance aspects to consider: - Careful selection of the technologies used, e.g., avoid building on too many unrelated technologies at the same time. - Take into account the existing experience of the development team. Consider the availability of qualified developers in the future. - Take into account maintainability by the development team as well as the users, e.g., IT/DevOps department."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-90"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-90-CP
+    a: "The Requirements Tool shall be designed for long-term maintenance. NOTE: Long-term maintenance aspects to consider: - Careful selection of the technologies used, e.g., avoid building on too many unrelated technologies at the same time. - Take into account the existing experience of the development team. Consider the availability of qualified developers in the future. - Take into account maintainability by the development team as well as the users, e.g., IT/DevOps department."
+    b: "the  Requirements Tool shall be designed for long-term maintenance. NOTE: Long-term maintenance aspects to consider: - Careful selection of the technologies used, e.g., avoid building on too many unrelated technologies at the same time. - Take into account the existing experience of the development team. Consider the availability of qualified developers in the future. - Take into account maintainability by the development team as well as the users, e.g., IT/DevOps department"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-90"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-88-MS
+    a: "The Requirements Tool shall allow storage of documentation and requirements content using text files."
+    b: "The Requirements Tool must allow storage of documentation and requirements content using text files."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-88"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-88-CP
+    a: "The Requirements Tool shall allow storage of documentation and requirements content using text files."
+    b: "the  Requirements Tool shall allow storage of documentation and requirements content using text files"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-88"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-55-MS
+    a: "The Requirements Tool shall provide a strict syntax for its text language."
+    b: "The Requirements Tool must provide a strict syntax for its text language."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-55"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-55-CP
+    a: "The Requirements Tool shall provide a strict syntax for its text language."
+    b: "the  Requirements Tool shall provide a strict syntax for its text language"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-55"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-54-MS
+    a: "The Requirement Tool's text language shall be machine-readable."
+    b: "The Requirement Tool's text language must be machine-readable."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-54"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-54-CP
+    a: "The Requirement Tool's text language shall be machine-readable."
+    b: "the  Requirement Tool's text language shall be machine-readable"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-54"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-34-MS
+    a: "The Requirement Tool shall allow reading requirements files from multiple folders or repositories. NOTE: The folders/repositories can be arbitrarily nested."
+    b: "The Requirement Tool must allow reading requirements files from multiple folders or repositories. NOTE: The folders/repositories can be arbitrarily nested."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-34"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-34-CP
+    a: "The Requirement Tool shall allow reading requirements files from multiple folders or repositories. NOTE: The folders/repositories can be arbitrarily nested."
+    b: "the  Requirement Tool shall allow reading requirements files from multiple folders or repositories. NOTE: The folders/repositories can be arbitrarily nested"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-34"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-76-MS
+    a: "The Requirements Tool's development process shall include the Requirements Tool's own requirements engineering."
+    b: "The Requirements Tool's development process must include the Requirements Tool's own requirements engineering."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-76"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-76-CP
+    a: "The Requirements Tool's development process shall include the Requirements Tool's own requirements engineering."
+    b: "the  Requirements Tool's development process shall include the Requirements Tool's own requirements engineering"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-76"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-50-MS
+    a: "The Requirements Tool's requirements shall be developed and stored using the Requirements Tool itself."
+    b: "The Requirements Tool's requirements must be developed and stored using the Requirements Tool itself."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-50"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-50-CP
+    a: "The Requirements Tool's requirements shall be developed and stored using the Requirements Tool itself."
+    b: "the  Requirements Tool's requirements shall be developed and stored using the Requirements Tool itself"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-50"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-77-MS
+    a: "The Requirements Tool's development process shall ensure: - A testability of the tool. - The highest possible coverage of the tool's code by test. - Usage of modern testing methods to ensure adequate coverage of the tool's functions (e.g., command-line interface, web interface, smallest units of code, etc.)."
+    b: "The Requirements Tool's development process must ensure: - A testability of the tool. - The highest possible coverage of the tool's code by test. - Usage of modern testing methods to ensure adequate coverage of the tool's functions (e.g., command-line interface, web interface, smallest units of code, etc.)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-77"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-77-CP
+    a: "The Requirements Tool's development process shall ensure: - A testability of the tool. - The highest possible coverage of the tool's code by test. - Usage of modern testing methods to ensure adequate coverage of the tool's functions (e.g., command-line interface, web interface, smallest units of code, etc.)."
+    b: "the  Requirements Tool's development process shall ensure: - A testability of the tool. - The highest possible coverage of the tool's code by test. - Usage of modern testing methods to ensure adequate coverage of the tool's functions (e.g., command-line interface, web interface, smallest units of code, etc.)"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-77"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-78-MS
+    a: "The Requirements Tool's development process shall ensure that the tool can be qualified for the use in critical product developments as required by the rigorous technical standards (e.g., EN IEC 61508)."
+    b: "The Requirements Tool's development process must ensure that the tool can be qualified for the use in critical product developments as required by the rigorous technical standards (e.g., EN IEC 61508)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-78"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-78-CP
+    a: "The Requirements Tool's development process shall ensure that the tool can be qualified for the use in critical product developments as required by the rigorous technical standards (e.g., EN IEC 61508)."
+    b: "the  Requirements Tool's development process shall ensure that the tool can be qualified for the use in critical product developments as required by the rigorous technical standards (e.g., EN IEC 61508)"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-78"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-38-MS
+    a: "The Requirements Tool's source code shall be publicly available, e.g., hosted on a code hosting platform such as GitHub or GitLab."
+    b: "The Requirements Tool's source code must be publicly available, e.g., hosted on a code hosting platform such as GitHub or GitLab."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-38"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-38-CP
+    a: "The Requirements Tool's source code shall be publicly available, e.g., hosted on a code hosting platform such as GitHub or GitLab."
+    b: "the  Requirements Tool's source code shall be publicly available, e.g., hosted on a code hosting platform such as GitHub or GitLab"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-38"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-39-MS
+    a: "The Requirement Tool's source code shall be based on open source software components."
+    b: "The Requirement Tool's source code must be based on open source software components."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-39"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-39-CP
+    a: "The Requirement Tool's source code shall be based on open source software components."
+    b: "the  Requirement Tool's source code shall be based on open source software components"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-39"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-ST-SDOC-SSS-40-MS
+    a: "The Requirements Tool shall be licensed under a permissive license, ensuring no/minimal constraints on the utilization and dissemination of the project. NOTE: Example of a permissive license: MIT, Apache 2."
+    b: "The Requirements Tool must be licensed under a permissive license, ensuring no/minimal constraints on the utilization and dissemination of the project. NOTE: Example of a permissive license: MIT, Apache 2."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-40"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-ST-SDOC-SSS-40-CP
+    a: "The Requirements Tool shall be licensed under a permissive license, ensuring no/minimal constraints on the utilization and dissemination of the project. NOTE: Example of a permissive license: MIT, Apache 2."
+    b: "the  Requirements Tool shall be licensed under a permissive license, ensuring no/minimal constraints on the utilization and dissemination of the project. NOTE: Example of a permissive license: MIT, Apache 2"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-40"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ001-EM
+    a: "Doorstop **shall** support the storage of external requirements assets."
+    b: "Doorstop shall support the storage of external requirements assets."
+    source: "doorstop@f267ef67cb80 REQ001"
+    note: "emphasis-strip (T1.2b)"
+  - id: E-DO-REQ001-MS
+    a: "Doorstop **shall** support the storage of external requirements assets."
+    b: "Doorstop **must** support the storage of external requirements assets."
+    source: "doorstop@f267ef67cb80 REQ001"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-DO-REQ001-CP
+    a: "Doorstop **shall** support the storage of external requirements assets."
+    b: "doorstop  **shall** support the storage of external requirements assets"
+    source: "doorstop@f267ef67cb80 REQ001"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ002-CP
+    a: "Composition Features"
+    b: "composition  Features"
+    source: "doorstop@f267ef67cb80 REQ002"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ003-EM
+    a: "Doorstop **shall** provide unique and permanent identifiers to linkable sections of text."
+    b: "Doorstop shall provide unique and permanent identifiers to linkable sections of text."
+    source: "doorstop@f267ef67cb80 REQ003"
+    note: "emphasis-strip (T1.2b)"
+  - id: E-DO-REQ003-MS
+    a: "Doorstop **shall** provide unique and permanent identifiers to linkable sections of text."
+    b: "Doorstop **must** provide unique and permanent identifiers to linkable sections of text."
+    source: "doorstop@f267ef67cb80 REQ003"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-DO-REQ003-CP
+    a: "Doorstop **shall** provide unique and permanent identifiers to linkable sections of text."
+    b: "doorstop  **shall** provide unique and permanent identifiers to linkable sections of text"
+    source: "doorstop@f267ef67cb80 REQ003"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ004-EM
+    a: "Doorstop **shall** support formatting within linkable text."
+    b: "Doorstop shall support formatting within linkable text."
+    source: "doorstop@f267ef67cb80 REQ004"
+    note: "emphasis-strip (T1.2b)"
+  - id: E-DO-REQ004-MS
+    a: "Doorstop **shall** support formatting within linkable text."
+    b: "Doorstop **must** support formatting within linkable text."
+    source: "doorstop@f267ef67cb80 REQ004"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-DO-REQ004-CP
+    a: "Doorstop **shall** support formatting within linkable text."
+    b: "doorstop  **shall** support formatting within linkable text"
+    source: "doorstop@f267ef67cb80 REQ004"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ006-CP
+    a: "Presentation Features"
+    b: "presentation  Features"
+    source: "doorstop@f267ef67cb80 REQ006"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ007-EM
+    a: "Doorstop **shall** provide a way to view requirements as a document."
+    b: "Doorstop shall provide a way to view requirements as a document."
+    source: "doorstop@f267ef67cb80 REQ007"
+    note: "emphasis-strip (T1.2b)"
+  - id: E-DO-REQ007-MS
+    a: "Doorstop **shall** provide a way to view requirements as a document."
+    b: "Doorstop **must** provide a way to view requirements as a document."
+    source: "doorstop@f267ef67cb80 REQ007"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-DO-REQ007-CP
+    a: "Doorstop **shall** provide a way to view requirements as a document."
+    b: "doorstop  **shall** provide a way to view requirements as a document"
+    source: "doorstop@f267ef67cb80 REQ007"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ008-EM
+    a: "Doorstop **shall** provide a way to view document items interactively."
+    b: "Doorstop shall provide a way to view document items interactively."
+    source: "doorstop@f267ef67cb80 REQ008"
+    note: "emphasis-strip (T1.2b)"
+  - id: E-DO-REQ008-MS
+    a: "Doorstop **shall** provide a way to view document items interactively."
+    b: "Doorstop **must** provide a way to view document items interactively."
+    source: "doorstop@f267ef67cb80 REQ008"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-DO-REQ008-CP
+    a: "Doorstop **shall** provide a way to view document items interactively."
+    b: "doorstop  **shall** provide a way to view document items interactively"
+    source: "doorstop@f267ef67cb80 REQ008"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ009-EM
+    a: "Doorstop **shall** provide the capability to baseline versions of requirements."
+    b: "Doorstop shall provide the capability to baseline versions of requirements."
+    source: "doorstop@f267ef67cb80 REQ009"
+    note: "emphasis-strip (T1.2b)"
+  - id: E-DO-REQ009-MS
+    a: "Doorstop **shall** provide the capability to baseline versions of requirements."
+    b: "Doorstop **must** provide the capability to baseline versions of requirements."
+    source: "doorstop@f267ef67cb80 REQ009"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-DO-REQ009-CP
+    a: "Doorstop **shall** provide the capability to baseline versions of requirements."
+    b: "doorstop  **shall** provide the capability to baseline versions of requirements"
+    source: "doorstop@f267ef67cb80 REQ009"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ010-CP
+    a: "Administration Features"
+    b: "administration  Features"
+    source: "doorstop@f267ef67cb80 REQ010"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ011-EM
+    a: "Doorstop **shall** store requirements in a permanent and secure manner."
+    b: "Doorstop shall store requirements in a permanent and secure manner."
+    source: "doorstop@f267ef67cb80 REQ011"
+    note: "emphasis-strip (T1.2b)"
+  - id: E-DO-REQ011-MS
+    a: "Doorstop **shall** store requirements in a permanent and secure manner."
+    b: "Doorstop **must** store requirements in a permanent and secure manner."
+    source: "doorstop@f267ef67cb80 REQ011"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-DO-REQ011-CP
+    a: "Doorstop **shall** store requirements in a permanent and secure manner."
+    b: "doorstop  **shall** store requirements in a permanent and secure manner"
+    source: "doorstop@f267ef67cb80 REQ011"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ012-EM
+    a: "Doorstop **shall** handle change management of the requirements."
+    b: "Doorstop shall handle change management of the requirements."
+    source: "doorstop@f267ef67cb80 REQ012"
+    note: "emphasis-strip (T1.2b)"
+  - id: E-DO-REQ012-MS
+    a: "Doorstop **shall** handle change management of the requirements."
+    b: "Doorstop **must** handle change management of the requirements."
+    source: "doorstop@f267ef67cb80 REQ012"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-DO-REQ012-CP
+    a: "Doorstop **shall** handle change management of the requirements."
+    b: "doorstop  **shall** handle change management of the requirements"
+    source: "doorstop@f267ef67cb80 REQ012"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ013-EM
+    a: "Doorstop **shall** associate requirements changes to existing developer identification."
+    b: "Doorstop shall associate requirements changes to existing developer identification."
+    source: "doorstop@f267ef67cb80 REQ013"
+    note: "emphasis-strip (T1.2b)"
+  - id: E-DO-REQ013-MS
+    a: "Doorstop **shall** associate requirements changes to existing developer identification."
+    b: "Doorstop **must** associate requirements changes to existing developer identification."
+    source: "doorstop@f267ef67cb80 REQ013"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-DO-REQ013-CP
+    a: "Doorstop **shall** associate requirements changes to existing developer identification."
+    b: "doorstop  **shall** associate requirements changes to existing developer identification"
+    source: "doorstop@f267ef67cb80 REQ013"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ014-EM
+    a: "Doorstop **shall** be scalable to support thousands of requirements."
+    b: "Doorstop shall be scalable to support thousands of requirements."
+    source: "doorstop@f267ef67cb80 REQ014"
+    note: "emphasis-strip (T1.2b)"
+  - id: E-DO-REQ014-MS
+    a: "Doorstop **shall** be scalable to support thousands of requirements."
+    b: "Doorstop **must** be scalable to support thousands of requirements."
+    source: "doorstop@f267ef67cb80 REQ014"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-DO-REQ014-CP
+    a: "Doorstop **shall** be scalable to support thousands of requirements."
+    b: "doorstop  **shall** be scalable to support thousands of requirements"
+    source: "doorstop@f267ef67cb80 REQ014"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ015-EM
+    a: "Doorstop **shall** provide a lightweight installation method."
+    b: "Doorstop shall provide a lightweight installation method."
+    source: "doorstop@f267ef67cb80 REQ015"
+    note: "emphasis-strip (T1.2b)"
+  - id: E-DO-REQ015-MS
+    a: "Doorstop **shall** provide a lightweight installation method."
+    b: "Doorstop **must** provide a lightweight installation method."
+    source: "doorstop@f267ef67cb80 REQ015"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-DO-REQ015-CP
+    a: "Doorstop **shall** provide a lightweight installation method."
+    b: "doorstop  **shall** provide a lightweight installation method"
+    source: "doorstop@f267ef67cb80 REQ015"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ016-EM
+    a: "Doorstop **shall** be able to import content from other requirments management tools."
+    b: "Doorstop shall be able to import content from other requirments management tools."
+    source: "doorstop@f267ef67cb80 REQ016"
+    note: "emphasis-strip (T1.2b)"
+  - id: E-DO-REQ016-MS
+    a: "Doorstop **shall** be able to import content from other requirments management tools."
+    b: "Doorstop **must** be able to import content from other requirments management tools."
+    source: "doorstop@f267ef67cb80 REQ016"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-DO-REQ016-CP
+    a: "Doorstop **shall** be able to import content from other requirments management tools."
+    b: "doorstop  **shall** be able to import content from other requirments management tools"
+    source: "doorstop@f267ef67cb80 REQ016"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ017-EM
+    a: "Doorstop **shall** be able to export content to interact with common text/document tools."
+    b: "Doorstop shall be able to export content to interact with common text/document tools."
+    source: "doorstop@f267ef67cb80 REQ017"
+    note: "emphasis-strip (T1.2b)"
+  - id: E-DO-REQ017-MS
+    a: "Doorstop **shall** be able to export content to interact with common text/document tools."
+    b: "Doorstop **must** be able to export content to interact with common text/document tools."
+    source: "doorstop@f267ef67cb80 REQ017"
+    note: "modality-synonym shall->must (T1.6)"
+  - id: E-DO-REQ017-CP
+    a: "Doorstop **shall** be able to export content to interact with common text/document tools."
+    b: "doorstop  **shall** be able to export content to interact with common text/document tools"
+    source: "doorstop@f267ef67cb80 REQ017"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ018-CP
+    a: "Overview"
+    b: "overview"
+    source: "doorstop@f267ef67cb80 REQ018"
+    note: "case/whitespace/period (T1.1-T1.2)"
+  - id: E-DO-REQ019-CP
+    a: "Doorstop is a requirements management tool that leverages version control to store and manage a project's documentation traced from specification through implementation. ![Doorstop Logo](assets/logo-black-white.png \"Doorstop Logo\")"
+    b: "doorstop  is a requirements management tool that leverages version control to store and manage a project's documentation traced from specification through implementation. ![Doorstop Logo](assets/logo-black-white.png \"Doorstop Logo\")"
+    source: "doorstop@f267ef67cb80 REQ019"
+    note: "case/whitespace/period (T1.1-T1.2)"
+not_equivalent:
+  - id: N-ST-SDOC-SSS-3-MW
+    a: "The Requirements Tool shall provide the CRUD operations for document management: - Create document - Read document - Update document - Delete document."
+    b: "The Requirements Tool may provide the CRUD operations for document management: - Create document - Read document - Update document - Delete document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-3"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-3-PF
+    a: "The Requirements Tool shall provide the CRUD operations for document management: - Create document - Read document - Update document - Delete document."
+    b: "The Requirements Tool shall not provide the CRUD operations for document management: - Create document - Read document - Update document - Delete document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-3"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-91-MW
+    a: "The Requirements Tool shall provide browsing of the documentation tree."
+    b: "The Requirements Tool may provide browsing of the documentation tree."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-91"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-91-PF
+    a: "The Requirements Tool shall provide browsing of the documentation tree."
+    b: "The Requirements Tool shall not provide browsing of the documentation tree."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-91"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-51-MW
+    a: "The Requirements Tool shall allow management of documents with nested sections/chapters structure."
+    b: "The Requirements Tool may allow management of documents with nested sections/chapters structure."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-51"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-51-PF
+    a: "The Requirements Tool shall allow management of documents with nested sections/chapters structure."
+    b: "The Requirements Tool shall not allow management of documents with nested sections/chapters structure."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-51"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-52-MW
+    a: "The Requirements Tool shall allow composing documents from other documents or fragments. NOTE: If a Requirements Tool implements stores documents in a file system, the composition can be arranged at a file level when a parent document file includes the child fragment files and produces a composite document."
+    b: "The Requirements Tool may allow composing documents from other documents or fragments. NOTE: If a Requirements Tool implements stores documents in a file system, the composition can be arranged at a file level when a parent document file includes the child fragment files and produces a composite document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-52"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-52-PF
+    a: "The Requirements Tool shall allow composing documents from other documents or fragments. NOTE: If a Requirements Tool implements stores documents in a file system, the composition can be arranged at a file level when a parent document file includes the child fragment files and produces a composite document."
+    b: "The Requirements Tool shall not allow composing documents from other documents or fragments. NOTE: If a Requirements Tool implements stores documents in a file system, the composition can be arranged at a file level when a parent document file includes the child fragment files and produces a composite document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-52"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-53-MW
+    a: "The Requirements Tool shall support management of document meta information."
+    b: "The Requirements Tool may support management of document meta information."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-53"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-53-PF
+    a: "The Requirements Tool shall support management of document meta information."
+    b: "The Requirements Tool shall not support management of document meta information."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-53"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-75-MW
+    a: "The Requirements Tool shall provide capabilities for document versioning."
+    b: "The Requirements Tool may provide capabilities for document versioning."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-75"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-75-PF
+    a: "The Requirements Tool shall provide capabilities for document versioning."
+    b: "The Requirements Tool shall not provide capabilities for document versioning."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-75"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-63-MW
+    a: "The Requirements Tool shall provide \"rich text\" formatting capabilities which includes but not limited to: - Headings - Lists - Tables - UML diagrams - etc."
+    b: "The Requirements Tool may provide \"rich text\" formatting capabilities which includes but not limited to: - Headings - Lists - Tables - UML diagrams - etc."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-63"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-63-PF
+    a: "The Requirements Tool shall provide \"rich text\" formatting capabilities which includes but not limited to: - Headings - Lists - Tables - UML diagrams - etc."
+    b: "The Requirements Tool shall not provide \"rich text\" formatting capabilities which includes but not limited to: - Headings - Lists - Tables - UML diagrams - etc."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-63"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-95-MW
+    a: "The Requirements Tool shall provide functionality to search content in the documentation tree."
+    b: "The Requirements Tool may provide functionality to search content in the documentation tree."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-95"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-95-PF
+    a: "The Requirements Tool shall provide functionality to search content in the documentation tree."
+    b: "The Requirements Tool shall not provide functionality to search content in the documentation tree."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-95"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-4-MW
+    a: "The Requirements Tool shall enable the main requirements management operations: - Create a requirement - Read / view / browse a requirement - Update / edit a requirement - Delete a requirement."
+    b: "The Requirements Tool may enable the main requirements management operations: - Create a requirement - Read / view / browse a requirement - Update / edit a requirement - Delete a requirement."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-4"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-4-PF
+    a: "The Requirements Tool shall enable the main requirements management operations: - Create a requirement - Read / view / browse a requirement - Update / edit a requirement - Delete a requirement."
+    b: "The Requirements Tool shall not enable the main requirements management operations: - Create a requirement - Read / view / browse a requirement - Update / edit a requirement - Delete a requirement."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-4"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-61-MW
+    a: "The Requirements Tool shall support at least the following requirement field set: - UID - STATUS - TITLE - STATEMENT - RATIONALE - COMMENT - RELATIONS (connections with other requirements)."
+    b: "The Requirements Tool may support at least the following requirement field set: - UID - STATUS - TITLE - STATEMENT - RATIONALE - COMMENT - RELATIONS (connections with other requirements)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-61"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-61-PF
+    a: "The Requirements Tool shall support at least the following requirement field set: - UID - STATUS - TITLE - STATEMENT - RATIONALE - COMMENT - RELATIONS (connections with other requirements)."
+    b: "The Requirements Tool shall not support at least the following requirement field set: - UID - STATUS - TITLE - STATEMENT - RATIONALE - COMMENT - RELATIONS (connections with other requirements)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-61"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-62-MW
+    a: "The requirements tool shall support configuring a requirement item with an arbitrary set of fields. NOTE: Examples of typical fields include: UID, Title, Statement, Rationale, Comment. Other fields that are used very often are: Status, Tags, Criticality level, Priority, etc."
+    b: "The requirements tool may support configuring a requirement item with an arbitrary set of fields. NOTE: Examples of typical fields include: UID, Title, Statement, Rationale, Comment. Other fields that are used very often are: Status, Tags, Criticality level, Priority, etc."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-62"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-62-PF
+    a: "The requirements tool shall support configuring a requirement item with an arbitrary set of fields. NOTE: Examples of typical fields include: UID, Title, Statement, Rationale, Comment. Other fields that are used very often are: Status, Tags, Criticality level, Priority, etc."
+    b: "The requirements tool shall not support configuring a requirement item with an arbitrary set of fields. NOTE: Examples of typical fields include: UID, Title, Statement, Rationale, Comment. Other fields that are used very often are: Status, Tags, Criticality level, Priority, etc."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-62"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-64-MW
+    a: "The Requirements Tool shall support structuring requirements in documents."
+    b: "The Requirements Tool may support structuring requirements in documents."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-64"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-64-PF
+    a: "The Requirements Tool shall support structuring requirements in documents."
+    b: "The Requirements Tool shall not support structuring requirements in documents."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-64"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-5-MW
+    a: "The Requirements Tool shall allow moving nodes (sections, requirements) within the containing document."
+    b: "The Requirements Tool may allow moving nodes (sections, requirements) within the containing document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-5"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-5-PF
+    a: "The Requirements Tool shall allow moving nodes (sections, requirements) within the containing document."
+    b: "The Requirements Tool shall not allow moving nodes (sections, requirements) within the containing document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-5"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-70-MW
+    a: "The Requirements Tool shall allow moving nodes (sections, requirements) between documents."
+    b: "The Requirements Tool may allow moving nodes (sections, requirements) between documents."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-70"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-70-PF
+    a: "The Requirements Tool shall allow moving nodes (sections, requirements) between documents."
+    b: "The Requirements Tool shall not allow moving nodes (sections, requirements) between documents."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-70"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-6-MW
+    a: "The Requirements Tool shall provide controls for automatic generation of requirements UIDs."
+    b: "The Requirements Tool may provide controls for automatic generation of requirements UIDs."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-6"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-6-PF
+    a: "The Requirements Tool shall provide controls for automatic generation of requirements UIDs."
+    b: "The Requirements Tool shall not provide controls for automatic generation of requirements UIDs."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-6"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-7-MW
+    a: "The Requirements Tool shall allow bi-directional linking of requirements nodes together using Parent or Child relations."
+    b: "The Requirements Tool may allow bi-directional linking of requirements nodes together using Parent or Child relations."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-7"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-7-PF
+    a: "The Requirements Tool shall allow bi-directional linking of requirements nodes together using Parent or Child relations."
+    b: "The Requirements Tool shall not allow bi-directional linking of requirements nodes together using Parent or Child relations."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-7"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-8-MW
+    a: "The Requirements Tool shall support the link roles. Example of roles for a child-to-parent link: \"verifies\", \"implements\", \"satisfies\", etc."
+    b: "The Requirements Tool may support the link roles. Example of roles for a child-to-parent link: \"verifies\", \"implements\", \"satisfies\", etc."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-8"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-8-PF
+    a: "The Requirements Tool shall support the link roles. Example of roles for a child-to-parent link: \"verifies\", \"implements\", \"satisfies\", etc."
+    b: "The Requirements Tool shall not support the link roles. Example of roles for a child-to-parent link: \"verifies\", \"implements\", \"satisfies\", etc."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-8"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-71-MW
+    a: "The Requirements Tool shall support the Reverse Parent relationship."
+    b: "The Requirements Tool may support the Reverse Parent relationship."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-71"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-71-PF
+    a: "The Requirements Tool shall support the Reverse Parent relationship."
+    b: "The Requirements Tool shall not support the Reverse Parent relationship."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-71"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-89-MW
+    a: "The Requirements Tool shall provide means for unique identification of every requirement."
+    b: "The Requirements Tool may provide means for unique identification of every requirement."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-89"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-89-PF
+    a: "The Requirements Tool shall provide means for unique identification of every requirement."
+    b: "The Requirements Tool shall not provide means for unique identification of every requirement."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-89"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-47-MW
+    a: "The Requirements Tool shall provide a validation mechanism that ensures the integrity of requirements and connections between them. NOTE: Examples of integrity checks: - Requirements have correct fields. - Requirements do not form cycles. - Requirements only link to other requirements as specified in a project configuration."
+    b: "The Requirements Tool may provide a validation mechanism that ensures the integrity of requirements and connections between them. NOTE: Examples of integrity checks: - Requirements have correct fields. - Requirements do not form cycles. - Requirements only link to other requirements as specified in a project configuration."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-47"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-47-PF
+    a: "The Requirements Tool shall provide a validation mechanism that ensures the integrity of requirements and connections between them. NOTE: Examples of integrity checks: - Requirements have correct fields. - Requirements do not form cycles. - Requirements only link to other requirements as specified in a project configuration."
+    b: "The Requirements Tool shall not provide a validation mechanism that ensures the integrity of requirements and connections between them. NOTE: Examples of integrity checks: - Requirements have correct fields. - Requirements do not form cycles. - Requirements only link to other requirements as specified in a project configuration."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-47"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-57-MW
+    a: "The Requirements Tool shall provide capabilities for validating requirements according to the EARS syntax."
+    b: "The Requirements Tool may provide capabilities for validating requirements according to the EARS syntax."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-57"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-57-PF
+    a: "The Requirements Tool shall provide capabilities for validating requirements according to the EARS syntax."
+    b: "The Requirements Tool shall not provide capabilities for validating requirements according to the EARS syntax."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-57"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-73-MW
+    a: "The Requirements Tool shall provide an Excel-like user interface for viewing and editing requirements. NOTE: This interface does not have to be the only or a default interface."
+    b: "The Requirements Tool may provide an Excel-like user interface for viewing and editing requirements. NOTE: This interface does not have to be the only or a default interface."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-73"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-73-PF
+    a: "The Requirements Tool shall provide an Excel-like user interface for viewing and editing requirements. NOTE: This interface does not have to be the only or a default interface."
+    b: "The Requirements Tool shall not provide an Excel-like user interface for viewing and editing requirements. NOTE: This interface does not have to be the only or a default interface."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-73"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-56-MW
+    a: "The Requirements Tool shall provide a \"1000-feet view\" kind of requirements visualization."
+    b: "The Requirements Tool may provide a \"1000-feet view\" kind of requirements visualization."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-56"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-56-PF
+    a: "The Requirements Tool shall provide a \"1000-feet view\" kind of requirements visualization."
+    b: "The Requirements Tool shall not provide a \"1000-feet view\" kind of requirements visualization."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-56"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-28-MW
+    a: "The Requirements Tool shall support generation of traceability matrices."
+    b: "The Requirements Tool may support generation of traceability matrices."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-28"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-28-PF
+    a: "The Requirements Tool shall support generation of traceability matrices."
+    b: "The Requirements Tool shall not support generation of traceability matrices."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-28"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-48-MW
+    a: "The Requirements Tool shall allow generating a Compliance Matrix document."
+    b: "The Requirements Tool may allow generating a Compliance Matrix document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-48"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-48-PF
+    a: "The Requirements Tool shall allow generating a Compliance Matrix document."
+    b: "The Requirements Tool shall not allow generating a Compliance Matrix document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-48"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-29-MW
+    a: "The Requirements Tool shall provide means for getting information about the requirements coverage of a given project. NOTE: The requirements coverage can be presented in a tabular form or visualized with a set of graphs."
+    b: "The Requirements Tool may provide means for getting information about the requirements coverage of a given project. NOTE: The requirements coverage can be presented in a tabular form or visualized with a set of graphs."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-29"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-29-PF
+    a: "The Requirements Tool shall provide means for getting information about the requirements coverage of a given project. NOTE: The requirements coverage can be presented in a tabular form or visualized with a set of graphs."
+    b: "The Requirements Tool shall not provide means for getting information about the requirements coverage of a given project. NOTE: The requirements coverage can be presented in a tabular form or visualized with a set of graphs."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-29"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-49-MW
+    a: "The Requirements Tool shall allow generating a Progress Report document. NOTE: A progress report document shall include at least the following Key Performance Indicators. Project-level KPIs: - Total number of requirements - Total number of requirements without parent (excluding top-level and derived) - Total number of TBD/TBC - Total number of requirements without rationale - Tags breakdown Document-level KPIs: the same but per document."
+    b: "The Requirements Tool may allow generating a Progress Report document. NOTE: A progress report document shall include at least the following Key Performance Indicators. Project-level KPIs: - Total number of requirements - Total number of requirements without parent (excluding top-level and derived) - Total number of TBD/TBC - Total number of requirements without rationale - Tags breakdown Document-level KPIs: the same but per document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-49"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-49-PF
+    a: "The Requirements Tool shall allow generating a Progress Report document. NOTE: A progress report document shall include at least the following Key Performance Indicators. Project-level KPIs: - Total number of requirements - Total number of requirements without parent (excluding top-level and derived) - Total number of TBD/TBC - Total number of requirements without rationale - Tags breakdown Document-level KPIs: the same but per document."
+    b: "The Requirements Tool shall not allow generating a Progress Report document. NOTE: A progress report document shall include at least the following Key Performance Indicators. Project-level KPIs: - Total number of requirements - Total number of requirements without parent (excluding top-level and derived) - Total number of TBD/TBC - Total number of requirements without rationale - Tags breakdown Document-level KPIs: the same but per document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-49"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-74-MW
+    a: "The Requirements Tool shall provide capabilities for change management: - Visualizing changes between project tree versions. - Visualizing changes between document versions. - Visualizing the impact that a changed requirement has on a project tree."
+    b: "The Requirements Tool may provide capabilities for change management: - Visualizing changes between project tree versions. - Visualizing changes between document versions. - Visualizing the impact that a changed requirement has on a project tree."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-74"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-74-PF
+    a: "The Requirements Tool shall provide capabilities for change management: - Visualizing changes between project tree versions. - Visualizing changes between document versions. - Visualizing the impact that a changed requirement has on a project tree."
+    b: "The Requirements Tool shall not provide capabilities for change management: - Visualizing changes between project tree versions. - Visualizing changes between document versions. - Visualizing the impact that a changed requirement has on a project tree."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-74"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-72-MW
+    a: "The Requirements Tool shall support bi-directional tracing between requirements content and implementation source code with only minimal changes needed in the source code. NOTE: The Requirements Tool does not necessarily have to implement the complete tracing process. It may delegate parts of the traceability task to other tools, e.g., Doxygen, Lobster, etc."
+    b: "The Requirements Tool may support bi-directional tracing between requirements content and implementation source code with only minimal changes needed in the source code. NOTE: The Requirements Tool does not necessarily have to implement the complete tracing process. It may delegate parts of the traceability task to other tools, e.g., Doxygen, Lobster, etc."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-72"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-72-PF
+    a: "The Requirements Tool shall support bi-directional tracing between requirements content and implementation source code with only minimal changes needed in the source code. NOTE: The Requirements Tool does not necessarily have to implement the complete tracing process. It may delegate parts of the traceability task to other tools, e.g., Doxygen, Lobster, etc."
+    b: "The Requirements Tool shall not support bi-directional tracing between requirements content and implementation source code with only minimal changes needed in the source code. NOTE: The Requirements Tool does not necessarily have to implement the complete tracing process. It may delegate parts of the traceability task to other tools, e.g., Doxygen, Lobster, etc."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-72"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-96-MW
+    a: "The Requirements Tool shall support exporting documentation content to PDF, both individual documents and complete documentation trees."
+    b: "The Requirements Tool may support exporting documentation content to PDF, both individual documents and complete documentation trees."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-96"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-96-PF
+    a: "The Requirements Tool shall support exporting documentation content to PDF, both individual documents and complete documentation trees."
+    b: "The Requirements Tool shall not support exporting documentation content to PDF, both individual documents and complete documentation trees."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-96"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-58-MW
+    a: "The Requirements Tool shall support exporting/importing requirements content from/to ReqIF format."
+    b: "The Requirements Tool may support exporting/importing requirements content from/to ReqIF format."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-58"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-58-PF
+    a: "The Requirements Tool shall support exporting/importing requirements content from/to ReqIF format."
+    b: "The Requirements Tool shall not support exporting/importing requirements content from/to ReqIF format."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-58"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-59-MW
+    a: "The Requirements Tool shall support exporting/importing requirements content from/to CSV."
+    b: "The Requirements Tool may support exporting/importing requirements content from/to CSV."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-59"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-59-PF
+    a: "The Requirements Tool shall support exporting/importing requirements content from/to CSV."
+    b: "The Requirements Tool shall not support exporting/importing requirements content from/to CSV."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-59"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-60-MW
+    a: "The Requirements Tool shall support exporting/importing requirements content from/to Excel."
+    b: "The Requirements Tool may support exporting/importing requirements content from/to Excel."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-60"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-60-PF
+    a: "The Requirements Tool shall support exporting/importing requirements content from/to Excel."
+    b: "The Requirements Tool shall not support exporting/importing requirements content from/to Excel."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-60"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-92-MW
+    a: "The Requirements Tool shall provide a solution for configuring the project-level options. NOTE: Examples of project-level options: - Project title. - Global settings for the Requirements Tool itself."
+    b: "The Requirements Tool may provide a solution for configuring the project-level options. NOTE: Examples of project-level options: - Project title. - Global settings for the Requirements Tool itself."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-92"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-92-PF
+    a: "The Requirements Tool shall provide a solution for configuring the project-level options. NOTE: Examples of project-level options: - Project title. - Global settings for the Requirements Tool itself."
+    b: "The Requirements Tool shall not provide a solution for configuring the project-level options. NOTE: Examples of project-level options: - Project title. - Global settings for the Requirements Tool itself."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-92"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-93-MW
+    a: "The Requirements Tool shall provide a solution for configuring the document-level options. NOTE: Examples of document-level options: - Document title - Requirement prefix. - Other options local to the content and the presentation of a given document."
+    b: "The Requirements Tool may provide a solution for configuring the document-level options. NOTE: Examples of document-level options: - Document title - Requirement prefix. - Other options local to the content and the presentation of a given document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-93"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-93-PF
+    a: "The Requirements Tool shall provide a solution for configuring the document-level options. NOTE: Examples of document-level options: - Document title - Requirement prefix. - Other options local to the content and the presentation of a given document."
+    b: "The Requirements Tool shall not provide a solution for configuring the document-level options. NOTE: Examples of document-level options: - Document title - Requirement prefix. - Other options local to the content and the presentation of a given document."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-93"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-13-MW
+    a: "The Requirements Tool shall support requirement trees with at least 10000 requirements."
+    b: "The Requirements Tool may support requirement trees with at least 10000 requirements."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-13"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-13-PF
+    a: "The Requirements Tool shall support requirement trees with at least 10000 requirements."
+    b: "The Requirements Tool shall not support requirement trees with at least 10000 requirements."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-13"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-14-MW
+    a: "The Requirements Tool shall be able to handle documentation packages of at least 100 documents without significant performance degradation."
+    b: "The Requirements Tool may be able to handle documentation packages of at least 100 documents without significant performance degradation."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-14"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-14-PF
+    a: "The Requirements Tool shall be able to handle documentation packages of at least 100 documents without significant performance degradation."
+    b: "The Requirements Tool shall not be able to handle documentation packages of at least 100 documents without significant performance degradation."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-14"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-94-MW
+    a: "The Requirements Tool shall ensure the integrity of stored documentation and requirements data throughout its lifecycle."
+    b: "The Requirements Tool may ensure the integrity of stored documentation and requirements data throughout its lifecycle."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-94"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-94-PF
+    a: "The Requirements Tool shall ensure the integrity of stored documentation and requirements data throughout its lifecycle."
+    b: "The Requirements Tool shall not ensure the integrity of stored documentation and requirements data throughout its lifecycle."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-94"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-79-MW
+    a: "The Requirements Tool shall be accessible to a broad spectrum of users. NOTE: Factors to consider: - The cost of a tool. - The easy of installation. - The availability of a graphical user interface. - The availability of a programmatic access to the functions of a tool. - The interoperability of the tool with other tools."
+    b: "The Requirements Tool may be accessible to a broad spectrum of users. NOTE: Factors to consider: - The cost of a tool. - The easy of installation. - The availability of a graphical user interface. - The availability of a programmatic access to the functions of a tool. - The interoperability of the tool with other tools."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-79"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-79-PF
+    a: "The Requirements Tool shall be accessible to a broad spectrum of users. NOTE: Factors to consider: - The cost of a tool. - The easy of installation. - The availability of a graphical user interface. - The availability of a programmatic access to the functions of a tool. - The interoperability of the tool with other tools."
+    b: "The Requirements Tool shall not be accessible to a broad spectrum of users. NOTE: Factors to consider: - The cost of a tool. - The easy of installation. - The availability of a graphical user interface. - The availability of a programmatic access to the functions of a tool. - The interoperability of the tool with other tools."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-79"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-97-MW
+    a: "The Requirements Tool shall provide identifying information, including title, release version, and project website links."
+    b: "The Requirements Tool may provide identifying information, including title, release version, and project website links."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-97"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-97-PF
+    a: "The Requirements Tool shall provide identifying information, including title, release version, and project website links."
+    b: "The Requirements Tool shall not provide identifying information, including title, release version, and project website links."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-97"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-80-MW
+    a: "The Requirements Tool shall provide a smooth user experience. NOTE: Documentation and requirements management are composite activities that consist of several types of repetitive tasks. A requirements tool user experience should assist in automating these tasks as far as possible and make the overall workflow efficient and precise."
+    b: "The Requirements Tool may provide a smooth user experience. NOTE: Documentation and requirements management are composite activities that consist of several types of repetitive tasks. A requirements tool user experience should assist in automating these tasks as far as possible and make the overall workflow efficient and precise."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-80"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-80-PF
+    a: "The Requirements Tool shall provide a smooth user experience. NOTE: Documentation and requirements management are composite activities that consist of several types of repetitive tasks. A requirements tool user experience should assist in automating these tasks as far as possible and make the overall workflow efficient and precise."
+    b: "The Requirements Tool shall not provide a smooth user experience. NOTE: Documentation and requirements management are composite activities that consist of several types of repetitive tasks. A requirements tool user experience should assist in automating these tasks as far as possible and make the overall workflow efficient and precise."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-80"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-81-MW
+    a: "The Requirements Tool shall be capable of supporting a large number of users."
+    b: "The Requirements Tool may be capable of supporting a large number of users."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-81"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-81-PF
+    a: "The Requirements Tool shall be capable of supporting a large number of users."
+    b: "The Requirements Tool shall not be capable of supporting a large number of users."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-81"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-82-MW
+    a: "The Requirements Tool shall be usable on the normal personal computers, e.g., do not require a special cloud deployment."
+    b: "The Requirements Tool may be usable on the normal personal computers, e.g., do not require a special cloud deployment."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-82"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-82-PF
+    a: "The Requirements Tool shall be usable on the normal personal computers, e.g., do not require a special cloud deployment."
+    b: "The Requirements Tool shall not be usable on the normal personal computers, e.g., do not require a special cloud deployment."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-82"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-83-MW
+    a: "The Requirements Tool shall be deployable to the network of computers, e.g., provide a server instance."
+    b: "The Requirements Tool may be deployable to the network of computers, e.g., provide a server instance."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-83"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-83-PF
+    a: "The Requirements Tool shall be deployable to the network of computers, e.g., provide a server instance."
+    b: "The Requirements Tool shall not be deployable to the network of computers, e.g., provide a server instance."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-83"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-84-MW
+    a: "The Requirements Tool shall store documentation and requirements data in a database."
+    b: "The Requirements Tool may store documentation and requirements data in a database."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-84"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-84-PF
+    a: "The Requirements Tool shall store documentation and requirements data in a database."
+    b: "The Requirements Tool shall not store documentation and requirements data in a database."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-84"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-85-MW
+    a: "The Requirements Tool shall provide a Web API interface."
+    b: "The Requirements Tool may provide a Web API interface."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-85"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-85-PF
+    a: "The Requirements Tool shall provide a Web API interface."
+    b: "The Requirements Tool shall not provide a Web API interface."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-85"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-86-MW
+    a: "The Requirements Tool shall provide a Software Development Kit (SDK) that allows customization of the Requirements Tool functions. NOTE: An SDK provides access to the API of the Requirements Tool. Examples of functions that may be used by the users of the tool: - Custom import/export functions to/from various requirements/documentation formats. - Implement custom visualization functions. - Implement integration with other tools."
+    b: "The Requirements Tool may provide a Software Development Kit (SDK) that allows customization of the Requirements Tool functions. NOTE: An SDK provides access to the API of the Requirements Tool. Examples of functions that may be used by the users of the tool: - Custom import/export functions to/from various requirements/documentation formats. - Implement custom visualization functions. - Implement integration with other tools."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-86"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-86-PF
+    a: "The Requirements Tool shall provide a Software Development Kit (SDK) that allows customization of the Requirements Tool functions. NOTE: An SDK provides access to the API of the Requirements Tool. Examples of functions that may be used by the users of the tool: - Custom import/export functions to/from various requirements/documentation formats. - Implement custom visualization functions. - Implement integration with other tools."
+    b: "The Requirements Tool shall not provide a Software Development Kit (SDK) that allows customization of the Requirements Tool functions. NOTE: An SDK provides access to the API of the Requirements Tool. Examples of functions that may be used by the users of the tool: - Custom import/export functions to/from various requirements/documentation formats. - Implement custom visualization functions. - Implement integration with other tools."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-86"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-87-MW
+    a: "The Requirements Tool shall provide programmatic access to requirements data."
+    b: "The Requirements Tool may provide programmatic access to requirements data."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-87"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-87-PF
+    a: "The Requirements Tool shall provide programmatic access to requirements data."
+    b: "The Requirements Tool shall not provide programmatic access to requirements data."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-87"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-30-MW
+    a: "The Requirements Tool shall support generation of documentation to static HTML."
+    b: "The Requirements Tool may support generation of documentation to static HTML."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-30"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-30-PF
+    a: "The Requirements Tool shall support generation of documentation to static HTML."
+    b: "The Requirements Tool shall not support generation of documentation to static HTML."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-30"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-31-MW
+    a: "The Requirements Tool shall provide a graphical user interface."
+    b: "The Requirements Tool may provide a graphical user interface."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-31"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-31-PF
+    a: "The Requirements Tool shall provide a graphical user interface."
+    b: "The Requirements Tool shall not provide a graphical user interface."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-31"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-32-MW
+    a: "The Requirements Tool shall provide a command line interface (CLI)."
+    b: "The Requirements Tool may provide a command line interface (CLI)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-32"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-32-PF
+    a: "The Requirements Tool shall provide a command line interface (CLI)."
+    b: "The Requirements Tool shall not provide a command line interface (CLI)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-32"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-68-MW
+    a: "The Requirements Tool shall provide an API interface."
+    b: "The Requirements Tool may provide an API interface."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-68"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-68-PF
+    a: "The Requirements Tool shall provide an API interface."
+    b: "The Requirements Tool shall not provide an API interface."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-68"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-33-MW
+    a: "The Requirements Tool shall support the software version control systems (e.g., Git)."
+    b: "The Requirements Tool may support the software version control systems (e.g., Git)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-33"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-33-PF
+    a: "The Requirements Tool shall support the software version control systems (e.g., Git)."
+    b: "The Requirements Tool shall not support the software version control systems (e.g., Git)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-33"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-67-MW
+    a: "The Requirements Tool shall support at least the following operating systems: - Linux - Windows - macOS."
+    b: "The Requirements Tool may support at least the following operating systems: - Linux - Windows - macOS."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-67"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-67-PF
+    a: "The Requirements Tool shall support at least the following operating systems: - Linux - Windows - macOS."
+    b: "The Requirements Tool shall not support at least the following operating systems: - Linux - Windows - macOS."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-67"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-69-MW
+    a: "The Requirements Tool shall be implemented using the popular programming languages. NOTE: Examples of the most popular programming languages: - Java - C++ - Python - JavaScript"
+    b: "The Requirements Tool may be implemented using the popular programming languages. NOTE: Examples of the most popular programming languages: - Java - C++ - Python - JavaScript"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-69"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-69-PF
+    a: "The Requirements Tool shall be implemented using the popular programming languages. NOTE: Examples of the most popular programming languages: - Java - C++ - Python - JavaScript"
+    b: "The Requirements Tool shall not be implemented using the popular programming languages. NOTE: Examples of the most popular programming languages: - Java - C++ - Python - JavaScript"
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-69"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-90-MW
+    a: "The Requirements Tool shall be designed for long-term maintenance. NOTE: Long-term maintenance aspects to consider: - Careful selection of the technologies used, e.g., avoid building on too many unrelated technologies at the same time. - Take into account the existing experience of the development team. Consider the availability of qualified developers in the future. - Take into account maintainability by the development team as well as the users, e.g., IT/DevOps department."
+    b: "The Requirements Tool may be designed for long-term maintenance. NOTE: Long-term maintenance aspects to consider: - Careful selection of the technologies used, e.g., avoid building on too many unrelated technologies at the same time. - Take into account the existing experience of the development team. Consider the availability of qualified developers in the future. - Take into account maintainability by the development team as well as the users, e.g., IT/DevOps department."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-90"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-90-PF
+    a: "The Requirements Tool shall be designed for long-term maintenance. NOTE: Long-term maintenance aspects to consider: - Careful selection of the technologies used, e.g., avoid building on too many unrelated technologies at the same time. - Take into account the existing experience of the development team. Consider the availability of qualified developers in the future. - Take into account maintainability by the development team as well as the users, e.g., IT/DevOps department."
+    b: "The Requirements Tool shall not be designed for long-term maintenance. NOTE: Long-term maintenance aspects to consider: - Careful selection of the technologies used, e.g., avoid building on too many unrelated technologies at the same time. - Take into account the existing experience of the development team. Consider the availability of qualified developers in the future. - Take into account maintainability by the development team as well as the users, e.g., IT/DevOps department."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-90"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-88-MW
+    a: "The Requirements Tool shall allow storage of documentation and requirements content using text files."
+    b: "The Requirements Tool may allow storage of documentation and requirements content using text files."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-88"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-88-PF
+    a: "The Requirements Tool shall allow storage of documentation and requirements content using text files."
+    b: "The Requirements Tool shall not allow storage of documentation and requirements content using text files."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-88"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-55-MW
+    a: "The Requirements Tool shall provide a strict syntax for its text language."
+    b: "The Requirements Tool may provide a strict syntax for its text language."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-55"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-55-PF
+    a: "The Requirements Tool shall provide a strict syntax for its text language."
+    b: "The Requirements Tool shall not provide a strict syntax for its text language."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-55"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-54-MW
+    a: "The Requirement Tool's text language shall be machine-readable."
+    b: "The Requirement Tool's text language may be machine-readable."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-54"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-54-PF
+    a: "The Requirement Tool's text language shall be machine-readable."
+    b: "The Requirement Tool's text language shall not be machine-readable."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-54"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-34-MW
+    a: "The Requirement Tool shall allow reading requirements files from multiple folders or repositories. NOTE: The folders/repositories can be arbitrarily nested."
+    b: "The Requirement Tool may allow reading requirements files from multiple folders or repositories. NOTE: The folders/repositories can be arbitrarily nested."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-34"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-34-PF
+    a: "The Requirement Tool shall allow reading requirements files from multiple folders or repositories. NOTE: The folders/repositories can be arbitrarily nested."
+    b: "The Requirement Tool shall not allow reading requirements files from multiple folders or repositories. NOTE: The folders/repositories can be arbitrarily nested."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-34"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-76-MW
+    a: "The Requirements Tool's development process shall include the Requirements Tool's own requirements engineering."
+    b: "The Requirements Tool's development process may include the Requirements Tool's own requirements engineering."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-76"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-76-PF
+    a: "The Requirements Tool's development process shall include the Requirements Tool's own requirements engineering."
+    b: "The Requirements Tool's development process shall not include the Requirements Tool's own requirements engineering."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-76"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-50-MW
+    a: "The Requirements Tool's requirements shall be developed and stored using the Requirements Tool itself."
+    b: "The Requirements Tool's requirements may be developed and stored using the Requirements Tool itself."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-50"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-50-PF
+    a: "The Requirements Tool's requirements shall be developed and stored using the Requirements Tool itself."
+    b: "The Requirements Tool's requirements shall not be developed and stored using the Requirements Tool itself."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-50"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-77-MW
+    a: "The Requirements Tool's development process shall ensure: - A testability of the tool. - The highest possible coverage of the tool's code by test. - Usage of modern testing methods to ensure adequate coverage of the tool's functions (e.g., command-line interface, web interface, smallest units of code, etc.)."
+    b: "The Requirements Tool's development process may ensure: - A testability of the tool. - The highest possible coverage of the tool's code by test. - Usage of modern testing methods to ensure adequate coverage of the tool's functions (e.g., command-line interface, web interface, smallest units of code, etc.)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-77"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-77-PF
+    a: "The Requirements Tool's development process shall ensure: - A testability of the tool. - The highest possible coverage of the tool's code by test. - Usage of modern testing methods to ensure adequate coverage of the tool's functions (e.g., command-line interface, web interface, smallest units of code, etc.)."
+    b: "The Requirements Tool's development process shall not ensure: - A testability of the tool. - The highest possible coverage of the tool's code by test. - Usage of modern testing methods to ensure adequate coverage of the tool's functions (e.g., command-line interface, web interface, smallest units of code, etc.)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-77"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-78-MW
+    a: "The Requirements Tool's development process shall ensure that the tool can be qualified for the use in critical product developments as required by the rigorous technical standards (e.g., EN IEC 61508)."
+    b: "The Requirements Tool's development process may ensure that the tool can be qualified for the use in critical product developments as required by the rigorous technical standards (e.g., EN IEC 61508)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-78"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-78-PF
+    a: "The Requirements Tool's development process shall ensure that the tool can be qualified for the use in critical product developments as required by the rigorous technical standards (e.g., EN IEC 61508)."
+    b: "The Requirements Tool's development process shall not ensure that the tool can be qualified for the use in critical product developments as required by the rigorous technical standards (e.g., EN IEC 61508)."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-78"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-38-MW
+    a: "The Requirements Tool's source code shall be publicly available, e.g., hosted on a code hosting platform such as GitHub or GitLab."
+    b: "The Requirements Tool's source code may be publicly available, e.g., hosted on a code hosting platform such as GitHub or GitLab."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-38"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-38-PF
+    a: "The Requirements Tool's source code shall be publicly available, e.g., hosted on a code hosting platform such as GitHub or GitLab."
+    b: "The Requirements Tool's source code shall not be publicly available, e.g., hosted on a code hosting platform such as GitHub or GitLab."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-38"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-39-MW
+    a: "The Requirement Tool's source code shall be based on open source software components."
+    b: "The Requirement Tool's source code may be based on open source software components."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-39"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-39-PF
+    a: "The Requirement Tool's source code shall be based on open source software components."
+    b: "The Requirement Tool's source code shall not be based on open source software components."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-39"
+    note: "polarity-flip shall->shall not"
+  - id: N-ST-SDOC-SSS-40-MW
+    a: "The Requirements Tool shall be licensed under a permissive license, ensuring no/minimal constraints on the utilization and dissemination of the project. NOTE: Example of a permissive license: MIT, Apache 2."
+    b: "The Requirements Tool may be licensed under a permissive license, ensuring no/minimal constraints on the utilization and dissemination of the project. NOTE: Example of a permissive license: MIT, Apache 2."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-40"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-ST-SDOC-SSS-40-PF
+    a: "The Requirements Tool shall be licensed under a permissive license, ensuring no/minimal constraints on the utilization and dissemination of the project. NOTE: Example of a permissive license: MIT, Apache 2."
+    b: "The Requirements Tool shall not be licensed under a permissive license, ensuring no/minimal constraints on the utilization and dissemination of the project. NOTE: Example of a permissive license: MIT, Apache 2."
+    source: "strictdoc@abf7be7daa2a SDOC-SSS-40"
+    note: "polarity-flip shall->shall not"
+  - id: N-DO-REQ001-MW
+    a: "Doorstop **shall** support the storage of external requirements assets."
+    b: "Doorstop **may** support the storage of external requirements assets."
+    source: "doorstop@f267ef67cb80 REQ001"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-DO-REQ001-PF
+    a: "Doorstop **shall** support the storage of external requirements assets."
+    b: "Doorstop **shall not** support the storage of external requirements assets."
+    source: "doorstop@f267ef67cb80 REQ001"
+    note: "polarity-flip shall->shall not"
+  - id: N-DO-REQ003-MW
+    a: "Doorstop **shall** provide unique and permanent identifiers to linkable sections of text."
+    b: "Doorstop **may** provide unique and permanent identifiers to linkable sections of text."
+    source: "doorstop@f267ef67cb80 REQ003"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-DO-REQ003-PF
+    a: "Doorstop **shall** provide unique and permanent identifiers to linkable sections of text."
+    b: "Doorstop **shall not** provide unique and permanent identifiers to linkable sections of text."
+    source: "doorstop@f267ef67cb80 REQ003"
+    note: "polarity-flip shall->shall not"
+  - id: N-DO-REQ004-MW
+    a: "Doorstop **shall** support formatting within linkable text."
+    b: "Doorstop **may** support formatting within linkable text."
+    source: "doorstop@f267ef67cb80 REQ004"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-DO-REQ004-PF
+    a: "Doorstop **shall** support formatting within linkable text."
+    b: "Doorstop **shall not** support formatting within linkable text."
+    source: "doorstop@f267ef67cb80 REQ004"
+    note: "polarity-flip shall->shall not"
+  - id: N-DO-REQ007-MW
+    a: "Doorstop **shall** provide a way to view requirements as a document."
+    b: "Doorstop **may** provide a way to view requirements as a document."
+    source: "doorstop@f267ef67cb80 REQ007"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-DO-REQ007-PF
+    a: "Doorstop **shall** provide a way to view requirements as a document."
+    b: "Doorstop **shall not** provide a way to view requirements as a document."
+    source: "doorstop@f267ef67cb80 REQ007"
+    note: "polarity-flip shall->shall not"
+  - id: N-DO-REQ008-MW
+    a: "Doorstop **shall** provide a way to view document items interactively."
+    b: "Doorstop **may** provide a way to view document items interactively."
+    source: "doorstop@f267ef67cb80 REQ008"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-DO-REQ008-PF
+    a: "Doorstop **shall** provide a way to view document items interactively."
+    b: "Doorstop **shall not** provide a way to view document items interactively."
+    source: "doorstop@f267ef67cb80 REQ008"
+    note: "polarity-flip shall->shall not"
+  - id: N-DO-REQ009-MW
+    a: "Doorstop **shall** provide the capability to baseline versions of requirements."
+    b: "Doorstop **may** provide the capability to baseline versions of requirements."
+    source: "doorstop@f267ef67cb80 REQ009"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-DO-REQ009-PF
+    a: "Doorstop **shall** provide the capability to baseline versions of requirements."
+    b: "Doorstop **shall not** provide the capability to baseline versions of requirements."
+    source: "doorstop@f267ef67cb80 REQ009"
+    note: "polarity-flip shall->shall not"
+  - id: N-DO-REQ011-MW
+    a: "Doorstop **shall** store requirements in a permanent and secure manner."
+    b: "Doorstop **may** store requirements in a permanent and secure manner."
+    source: "doorstop@f267ef67cb80 REQ011"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-DO-REQ011-PF
+    a: "Doorstop **shall** store requirements in a permanent and secure manner."
+    b: "Doorstop **shall not** store requirements in a permanent and secure manner."
+    source: "doorstop@f267ef67cb80 REQ011"
+    note: "polarity-flip shall->shall not"
+  - id: N-DO-REQ012-MW
+    a: "Doorstop **shall** handle change management of the requirements."
+    b: "Doorstop **may** handle change management of the requirements."
+    source: "doorstop@f267ef67cb80 REQ012"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-DO-REQ012-PF
+    a: "Doorstop **shall** handle change management of the requirements."
+    b: "Doorstop **shall not** handle change management of the requirements."
+    source: "doorstop@f267ef67cb80 REQ012"
+    note: "polarity-flip shall->shall not"
+  - id: N-DO-REQ013-MW
+    a: "Doorstop **shall** associate requirements changes to existing developer identification."
+    b: "Doorstop **may** associate requirements changes to existing developer identification."
+    source: "doorstop@f267ef67cb80 REQ013"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-DO-REQ013-PF
+    a: "Doorstop **shall** associate requirements changes to existing developer identification."
+    b: "Doorstop **shall not** associate requirements changes to existing developer identification."
+    source: "doorstop@f267ef67cb80 REQ013"
+    note: "polarity-flip shall->shall not"
+  - id: N-DO-REQ014-MW
+    a: "Doorstop **shall** be scalable to support thousands of requirements."
+    b: "Doorstop **may** be scalable to support thousands of requirements."
+    source: "doorstop@f267ef67cb80 REQ014"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-DO-REQ014-PF
+    a: "Doorstop **shall** be scalable to support thousands of requirements."
+    b: "Doorstop **shall not** be scalable to support thousands of requirements."
+    source: "doorstop@f267ef67cb80 REQ014"
+    note: "polarity-flip shall->shall not"
+  - id: N-DO-REQ015-MW
+    a: "Doorstop **shall** provide a lightweight installation method."
+    b: "Doorstop **may** provide a lightweight installation method."
+    source: "doorstop@f267ef67cb80 REQ015"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-DO-REQ015-PF
+    a: "Doorstop **shall** provide a lightweight installation method."
+    b: "Doorstop **shall not** provide a lightweight installation method."
+    source: "doorstop@f267ef67cb80 REQ015"
+    note: "polarity-flip shall->shall not"
+  - id: N-DO-REQ016-MW
+    a: "Doorstop **shall** be able to import content from other requirments management tools."
+    b: "Doorstop **may** be able to import content from other requirments management tools."
+    source: "doorstop@f267ef67cb80 REQ016"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-DO-REQ016-PF
+    a: "Doorstop **shall** be able to import content from other requirments management tools."
+    b: "Doorstop **shall not** be able to import content from other requirments management tools."
+    source: "doorstop@f267ef67cb80 REQ016"
+    note: "polarity-flip shall->shall not"
+  - id: N-DO-REQ017-MW
+    a: "Doorstop **shall** be able to export content to interact with common text/document tools."
+    b: "Doorstop **may** be able to export content to interact with common text/document tools."
+    source: "doorstop@f267ef67cb80 REQ017"
+    note: "modality-weakening shall->may (T1.6)"
+  - id: N-DO-REQ017-PF
+    a: "Doorstop **shall** be able to export content to interact with common text/document tools."
+    b: "Doorstop **shall not** be able to export content to interact with common text/document tools."
+    source: "doorstop@f267ef67cb80 REQ017"
+    note: "polarity-flip shall->shall not"

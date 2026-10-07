@@ -25,7 +25,10 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::model::Registry;
 
-pub const RULES_V: u32 = 0;
+/// Tier-1 normalization-rules version. Bumped 0 -> 1 when Markdown emphasis
+/// stripping (T1.2b) was added: addresses computed under rules v0 are candidates
+/// for re-canonicalization, never silently rewritten (hashing spec §5).
+pub const RULES_V: u32 = 1;
 /// Versioned domain tag — a rules bump never silently re-hashes ratified history
 /// (hashing spec §5 freeze policy).
 pub const ADDRESS_TAG: &[u8] = b"req.claim.v1\0";
@@ -250,6 +253,12 @@ pub fn normalize_text(text: &str) -> String {
         .replace(['\u{201C}', '\u{201D}'], "\"")
         .replace(['\u{2018}', '\u{2019}'], "'")
         .replace(['\u{2013}', '\u{2014}'], "-");
+    // T1.2b: Markdown emphasis delimiters are typographic, not semantic — real
+    // sources wrap the modal ("Doorstop **shall** support the storage of …"), and
+    // without this the modality is missed and the claim falls to the unstructured
+    // fallback. Only delimiter pairs are stripped: a lone `*` may be a wildcard,
+    // and `_` is meaningful inside identifiers (T1.1).
+    let joined = joined.replace("**", "").replace('`', "");
     // T1.2: digit-grouping separators inside numeric runs (1,000→1000; 1_000→1000).
     let joined = strip_numeric_separators(&joined);
     let joined = joined.trim();
