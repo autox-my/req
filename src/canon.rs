@@ -20,7 +20,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use rust_decimal::Decimal;
-use rust_decimal::prelude::*;
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 
@@ -248,12 +247,9 @@ pub fn normalize_text(text: &str) -> String {
     // T1.0: NFC + smart-quote/dash unification.
     let nfc: String = text.nfc().collect();
     let joined = nfc
-        .replace('\u{201C}', "\"")
-        .replace('\u{201D}', "\"")
-        .replace('\u{2018}', "'")
-        .replace('\u{2019}', "'")
-        .replace('\u{2013}', "-")
-        .replace('\u{2014}', "-");
+        .replace(['\u{201C}', '\u{201D}'], "\"")
+        .replace(['\u{2018}', '\u{2019}'], "'")
+        .replace(['\u{2013}', '\u{2014}'], "-");
     // T1.2: digit-grouping separators inside numeric runs (1,000→1000; 1_000→1000).
     let joined = strip_numeric_separators(&joined);
     let joined = joined.trim();
@@ -357,7 +353,11 @@ fn leading_numeric_part(token: &str) -> Option<(String, Option<String>)> {
     let suffix = token[num.len()..].to_string();
     Some((
         num,
-        if suffix.is_empty() { None } else { Some(suffix) },
+        if suffix.is_empty() {
+            None
+        } else {
+            Some(suffix)
+        },
     ))
 }
 
@@ -384,7 +384,8 @@ fn units() -> BTreeMap<&'static str, UnitDef> {
     put(&["s", "sec", "secs", "second", "seconds"], Some("s"), 0);
     put(
         &["ms", "msec", "msecs", "millisecond", "milliseconds"],
-        Some("s"), -3,
+        Some("s"),
+        -3,
     );
     put(&["us", "microsecond", "microseconds"], Some("s"), -6);
     put(&["ns", "nanosecond", "nanoseconds"], Some("s"), -9);
@@ -419,9 +420,9 @@ fn units() -> BTreeMap<&'static str, UnitDef> {
     put(&["%", "percent", "per cent", "pct"], None, -2);
     // self-canonical (NOT decimally convertible in Tier-1 — e.g. km/h is ×5/18)
     for u in [
-        "km/h", "m/s", "mph", "min", "mins", "minute", "minutes", "hour", "hours",
-        "day", "days", "db", "dbs", "rpm", "bar", "psi", "kpa", "mpa", "kcal",
-        "byte", "bytes", "kib", "mib", "gib", "row", "rows", "record", "records",
+        "km/h", "m/s", "mph", "min", "mins", "minute", "minutes", "hour", "hours", "day", "days",
+        "db", "dbs", "rpm", "bar", "psi", "kpa", "mpa", "kcal", "byte", "bytes", "kib", "mib",
+        "gib", "row", "rows", "record", "records",
     ] {
         m.insert(
             u,
@@ -480,7 +481,11 @@ fn resolve_value_unit(
         } else {
             scaled
         };
-        (Some(value), Some(def.canonical.unwrap_or("none").to_string()), 1)
+        (
+            Some(value),
+            Some(def.canonical.unwrap_or("none").to_string()),
+            1,
+        )
     } else {
         // Unknown *unit-shaped* tokens (SI-ish symbols, slash forms) keep
         // verbatim, never guessed (T1.4). Prose words after the number are NOT
@@ -506,8 +511,22 @@ fn resolve_value_unit(
 fn is_prose_word(w: &str) -> bool {
     matches!(
         w,
-        "on" | "in" | "of" | "at" | "the" | "a" | "an" | "each" | "per" | "for"
-            | "to" | "with" | "and" | "over" | "under" | "about" | "across"
+        "on" | "in"
+            | "of"
+            | "at"
+            | "the"
+            | "a"
+            | "an"
+            | "each"
+            | "per"
+            | "for"
+            | "to"
+            | "with"
+            | "and"
+            | "over"
+            | "under"
+            | "about"
+            | "across"
     )
 }
 
@@ -559,8 +578,8 @@ const NEGATION_ABSORPTION_STEMS: &[(&str, Comp)] = &[
 ];
 
 const FILLER_WORDS: &[&str] = &[
-    "in", "of", "to", "the", "a", "be", "is", "are", "and", "or", "up", "for", "with",
-    "that", "its", "it", "on", "by", "at", "than", "no",
+    "in", "of", "to", "the", "a", "be", "is", "are", "and", "or", "up", "for", "with", "that",
+    "its", "it", "on", "by", "at", "than", "no",
 ];
 
 // ---------------------------------------------------------------------------
@@ -579,10 +598,11 @@ fn is_word_boundary(text: &str, pos: usize, len: usize) -> bool {
 fn find_last_guard(text: &str) -> Option<(usize, usize)> {
     let mut best: Option<(usize, usize)> = None;
     for g in GUARD_WORDS {
-        if let Some(p) = text.rfind(g) {
-            if is_word_boundary(text, p, g.len()) && best.map_or(true, |(bp, _)| p > bp) {
-                best = Some((p, g.len()));
-            }
+        if let Some(p) = text.rfind(g)
+            && is_word_boundary(text, p, g.len())
+            && best.is_none_or(|(bp, _)| p > bp)
+        {
+            best = Some((p, g.len()));
         }
     }
     best
@@ -591,10 +611,7 @@ fn find_last_guard(text: &str) -> Option<(usize, usize)> {
 fn extract_conditions(body: &str, lints: &mut Vec<Lint>) -> (String, BTreeSet<String>) {
     let mut remainder = body.to_string();
     let mut conditions: BTreeSet<String> = BTreeSet::new();
-    loop {
-        let Some((pos, word_len)) = find_last_guard(&remainder) else {
-            break;
-        };
+    while let Some((pos, word_len)) = find_last_guard(&remainder) {
         let head = remainder[..pos].trim().to_string();
         let guard_text = remainder[pos..].to_string();
         let after_guard = guard_text[word_len..].trim().to_string();
@@ -638,11 +655,6 @@ fn word_span_start(words: &[&str], phrase_words: &[&str]) -> Option<usize> {
     None
 }
 
-fn phrase_in_words(words: &[&str], phrase: &str) -> bool {
-    let pw: Vec<&str> = phrase.split_whitespace().collect();
-    word_span_start(words, &pw).is_some()
-}
-
 fn is_modal_word(w: &str) -> bool {
     ["not", "never"].contains(&w) || MODALITY_PHRASES.iter().any(|(p, _)| *p == w)
 }
@@ -660,7 +672,8 @@ fn scan_modality(words: &[&str], lints: &mut Vec<Lint>) -> (Option<Modality>, us
     if word_span_start(words, &["will"]).is_some() {
         lints.push(Lint {
             code: "ambiguous_modality".to_string(),
-            detail: "'will' has no deontic reading we can resolve; claim stays unstructured".to_string(),
+            detail: "'will' has no deontic reading we can resolve; claim stays unstructured"
+                .to_string(),
         });
     }
     (None, 0, 0)
@@ -683,14 +696,14 @@ fn value_led_subject(subj: &[&str]) -> bool {
                 return true;
             }
         }
-        if let Some((_, None)) = leading_numeric_part(w) {
-            if let Some(next) = subj.get(i + 1) {
-                let next_l = next
-                    .trim_matches(|c: char| !c.is_alphanumeric() && c != '/')
-                    .to_lowercase();
-                if table.contains_key(next_l.as_str()) {
-                    return true;
-                }
+        if let Some((_, None)) = leading_numeric_part(w)
+            && let Some(next) = subj.get(i + 1)
+        {
+            let next_l = next
+                .trim_matches(|c: char| !c.is_alphanumeric() && c != '/')
+                .to_lowercase();
+            if table.contains_key(next_l.as_str()) {
+                return true;
             }
         }
     }
@@ -706,10 +719,7 @@ fn value_led_subject(subj: &[&str]) -> bool {
 /// never errors: an unparseable statement gets its own raw canonical bytes (so it
 /// can never merge with a structured claim, and two different unparseable
 /// statements differ from each other).
-pub fn canonicalize_statement(
-    text: &str,
-    registry: &Registry,
-) -> (CanonicalForm, Vec<Lint>) {
+pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm, Vec<Lint>) {
     let mut lints = Vec::new();
     let norm = normalize_text(text);
 
@@ -720,7 +730,7 @@ pub fn canonicalize_statement(
     // ORDER MATTERS (fix: "a tier 2 provider's ... 2 percent" took the name-digit
     // as the value): the modal phrase is resolved FIRST over all body words; the
     // numeric value is then searched only in the post-modal region.
-    let (mut modality, mut modal_start, mut modal_end) = scan_modality(&words, &mut lints);
+    let (mut modality, modal_start, modal_end) = scan_modality(&words, &mut lints);
 
     // Absorbed negation: `<modal> not <comparative stem>` — the modal stays
     // non-negated and the comparison's own negation is absorbed into the
@@ -737,13 +747,13 @@ pub fn canonicalize_statement(
         for negator in ["not", "never"] {
             for (stem, bare) in NEGATION_ABSORPTION_STEMS {
                 let pw: Vec<&str> = vec![modal_word, negator, stem];
-                if let Some(start) = word_span_start(&words, &pw) {
-                    if start == modal_start {
-                        comparator = Some(bare.invert());
-                        comp_start_abs = Some(start + 1); // right after the modal
-                        modality = Some(modal_val);
-                        break 'absorb;
-                    }
+                if let Some(start) = word_span_start(&words, &pw)
+                    && start == modal_start
+                {
+                    comparator = Some(bare.invert());
+                    comp_start_abs = Some(start + 1); // right after the modal
+                    modality = Some(modal_val);
+                    break 'absorb;
                 }
             }
         }
@@ -759,10 +769,10 @@ pub fn canonicalize_statement(
         let mut best: Option<(usize, usize, Comp)> = None; // (phrase words, local start, comp)
         for (phrase, cmp) in COMPARATOR_PHRASES {
             let pw: Vec<&str> = phrase.split_whitespace().collect();
-            if let Some(local_start) = word_span_start(&post_modal, &pw) {
-                if best.map_or(true, |(wc, _, _)| pw.len() > wc) {
-                    best = Some((pw.len(), local_start, *cmp));
-                }
+            if let Some(local_start) = word_span_start(&post_modal, &pw)
+                && best.is_none_or(|(wc, _, _)| pw.len() > wc)
+            {
+                best = Some((pw.len(), local_start, *cmp));
             }
         }
         if let Some((pw_len, local_start, cmp)) = best {
@@ -822,19 +832,21 @@ pub fn canonicalize_statement(
 
     // untestable-comparator lint: an untabled non-filler word directly before
     // the number when no phrase in the T1.5 table matched
-    if value.is_some() && comparator.is_none() {
-        if let Some(last) = comp_region.last() {
-            if !FILLER_WORDS.contains(last) && !is_modal_word(last) {
-                lints.push(lint_untestable_comparator(last));
-            }
-        }
+    if value.is_some()
+        && comparator.is_none()
+        && let Some(last) = comp_region.last()
+        && !FILLER_WORDS.contains(last)
+        && !is_modal_word(last)
+    {
+        lints.push(lint_untestable_comparator(last));
     }
 
     // action: the span between the modal phrase's end and the comparator start
     let action = match (comparator, comp_start_abs) {
-        (Some(_), Some(cs)) if cs > modal_end => {
-            words.get(modal_end..cs.min(words.len())).unwrap_or(&[]).join(" ")
-        }
+        (Some(_), Some(cs)) if cs > modal_end => words
+            .get(modal_end..cs.min(words.len()))
+            .unwrap_or(&[])
+            .join(" "),
         (Some(_), None) => words.get(modal_end..).unwrap_or(&[]).join(" "),
         _ => String::new(),
     };
@@ -943,7 +955,7 @@ pub fn run_claim_diagnostics() -> i32 {
             .filter(|p| {
                 p.file_name()
                     .and_then(|f| f.to_str())
-                    .map_or(false, |f| f.starts_with("REQ-") && f.ends_with(".yml"))
+                    .is_some_and(|f| f.starts_with("REQ-") && f.ends_with(".yml"))
             })
             .collect(),
         Err(e) => {
@@ -988,12 +1000,8 @@ pub fn run_claim_diagnostics() -> i32 {
         }
         // value: only really checkable when the *authored* value is numeric
         let authored_v = claim.value.clone().unwrap_or_default();
-        let authored_is_num = !authored_v.is_empty()
-            && authored_v
-                .chars()
-                .next()
-                .unwrap_or('x')
-                .is_ascii_digit();
+        let authored_is_num =
+            !authored_v.is_empty() && authored_v.chars().next().unwrap_or('x').is_ascii_digit();
         let v_parsed = form
             .value
             .as_ref()
@@ -1025,7 +1033,14 @@ pub fn run_claim_diagnostics() -> i32 {
             mark(modality_ok, form.modality_str().to_string()),
             mark(subject_ok, form.subject.clone()),
             mark(value_unit_ok, format!("{v_parsed}/{authored_v}")),
-            mark(op_ok, if op_checkable { op_parsed } else { "n/a".to_string() }),
+            mark(
+                op_ok,
+                if op_checkable {
+                    op_parsed
+                } else {
+                    "n/a".to_string()
+                }
+            ),
         );
     }
     let _ = &registry;

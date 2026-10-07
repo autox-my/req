@@ -7,10 +7,7 @@
 //! The Tier-1 canonicalizer (src/canon.rs) is deterministic and offline: no model I/O,
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
-mod bench;
-mod canon;
-mod model;
-
+use req::{bench, canon};
 use std::process::exit;
 
 fn main() {

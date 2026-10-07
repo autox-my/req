@@ -10,7 +10,7 @@
 
 use serde_json::json;
 
-use crate::canon::{address_hex, canonical_json, canonicalize_statement, CanonicalForm, RULES_V};
+use crate::canon::{CanonicalForm, RULES_V, canonical_json, canonicalize_statement};
 use crate::model::{Corpus, Registry};
 
 const CORPUS_REL: &str = "bench/corpus/parity.yml";
@@ -69,14 +69,13 @@ pub fn run() -> i32 {
     // A registry failure is a *recorded degradation*, not a folded pass: the
     // pairs' subjects never depend on it, so the gate stays honest — but the
     // report carries the gap so it cannot be silently skipped.
-    let (registry, degraded) =
-        match Registry::load(root.join(REGISTRY_REL).to_str().unwrap()) {
-            Ok(r) => (r, Vec::<String>::new()),
-            Err(e) => (
-                Registry::empty(),
-                vec![format!("registry_load_failed: {e}")],
-            ),
-        };
+    let (registry, degraded) = match Registry::load(root.join(REGISTRY_REL).to_str().unwrap()) {
+        Ok(r) => (r, Vec::<String>::new()),
+        Err(e) => (
+            Registry::empty(),
+            vec![format!("registry_load_failed: {e}")],
+        ),
+    };
 
     let mut fmr_hits: Vec<String> = Vec::new();
     let mut fsr_hits: Vec<String> = Vec::new();
@@ -85,7 +84,10 @@ pub fn run() -> i32 {
     let mut structured_equivalent: usize = 0;
     let mut row_lines: Vec<String> = Vec::new();
 
-    let push_lints = |pair_id: &str, side: &str, ls: &Vec<crate::canon::Lint>, out: &mut Vec<serde_json::Value>| {
+    let push_lints = |pair_id: &str,
+                      side: &str,
+                      ls: &Vec<crate::canon::Lint>,
+                      out: &mut Vec<serde_json::Value>| {
         for l in ls {
             out.push(json!({"pair": pair_id, "side": side, "code": l.code, "detail": l.detail}));
         }
@@ -189,10 +191,15 @@ pub fn run() -> i32 {
     let pretty = serde_json::to_string_pretty(&report).unwrap_or_default();
     println!("{pretty}");
 
-    let results_dir = root.join("bench/results");
-    let _ = std::fs::create_dir_all(&results_dir);
-    if let Err(e) = std::fs::write(results_dir.join("rules-v0-seed-first-run.json"), &pretty) {
-        eprintln!("[warn] could not write results file: {e}");
+    let out_path = root.join(RESULTS_FILE);
+    if let Some(parent) = out_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Err(e) = std::fs::write(&out_path, &pretty) {
+        eprintln!(
+            "[warn] could not write results file {}: {e}",
+            out_path.display()
+        );
     }
 
     match verdict {

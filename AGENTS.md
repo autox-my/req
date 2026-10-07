@@ -51,7 +51,10 @@ This sandbox denies writes to `$HOME`, so both toolchains keep their state in-re
 Every command below assumes these exports (or `scripts/check.sh`, which sets them):
 
 ```bash
-TC="$HOME/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin"
+# Toolchain pinned by rust-toolchain.toml; rustfmt/clippy live in that toolchain,
+# not in `stable`. scripts/check.sh resolves the directory — by hand:
+CHANNEL="$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)"
+TC="$HOME/.rustup/toolchains/${CHANNEL}-x86_64-unknown-linux-gnu/bin"
 export PATH="$TC:$PWD/tools/ocr/node_modules/.bin:$PATH"
 export CARGO_HOME="$PWD/.cargo-home"
 export OCR_NO_UPDATE=1
@@ -66,11 +69,12 @@ export OCR_NO_UPDATE=1
 - Claim diagnostics: `cargo run -q -- canon` — per-claim parity-invariant report
   (unstructured tag, modality, subject, value/unit, operator). Exit 3 when the
   registry or a claim file cannot be read.
-- Lint/format: **not installed** (`minimal` rustup profile). Once installed
-  (`rustup component add rustfmt clippy` — needs network and a `$HOME` write),
-  `cargo fmt --all -- --check` and `cargo clippy --all-targets -- -D warnings` are
-  part of the gate. Until then the gate prints `SKIP`, and the commit message must
-  say so: **a skipped check is never a pass.**
+- Lint/format: `cargo fmt --all -- --check` and
+  `cargo clippy --all-targets -- -D warnings` — both part of the gate. The
+  components live in the *pinned* toolchain, not in `stable`, so the toolchain
+  directory is resolved rather than hardcoded. If a component is ever missing the
+  check prints `SKIP`, and the commit message must say so: **a skipped check is
+  never a pass.**
 - Single local gate: `scripts/check.sh` — runs every check whose tooling exists,
   prints `SKIP` (never `PASS`) for missing tooling, and fails on the first
   non-zero status. Green before every commit and merge.
@@ -119,8 +123,9 @@ after installing.
   unregistered surface stays literal (never silently collapsed).
 - `bench/corpus/parity.yml` — E/N pairs and adversarial traps, labels written from
   the spec. `bench/results/` — one record per rules version; append, do not rewrite.
-- `src/` — `main.rs` (CLI), `model.rs` (claim/registry/corpus types), `canon.rs`
-  (Tier-1 pipeline + diagnostics), `bench.rs` (the gate + its tests).
+- `src/` — `lib.rs` (the library surface), `main.rs` (thin CLI over it), `model.rs`
+  (claim/registry/corpus types), `canon.rs` (Tier-1 pipeline + diagnostics),
+  `bench.rs` (the gate + its tests).
 - `tools/ocr/` — the pinned review CLI (`package.json` + lockfile committed;
   `node_modules/` ignored).
 - `.scratch/` — session scratch, gitignored; never a deliverable.
@@ -258,9 +263,10 @@ reviewed like any other artifact. Verify the CLI's expected rule shape on first 
 
 ### Merge locally (no PR)
 
+From the **main checkout** — a worktree cannot `git checkout main`, because `main`
+is already checked out there:
+
 ```bash
-cd worktrees/<name>
-git checkout main
 git merge --no-ff feature/<name> -m "merge: <what and why>; seams tested; findings left unfixed"
 git worktree remove worktrees/<name>
 git branch -d feature/<name>

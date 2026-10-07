@@ -16,7 +16,21 @@ cd "$(dirname "$0")/.." || exit 2
 COMMON_DIR="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
 CACHE_ROOT="$(dirname "${COMMON_DIR:-$PWD/.git}")"
 
-TC="$HOME/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin"
+# Toolchain: rust-toolchain.toml pins the channel, and the components the gate
+# needs (rustfmt, clippy) live in that toolchain — not in `stable`. Resolve the
+# directory instead of hardcoding one; fail loudly if there is no cargo at all.
+CHANNEL="$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml 2>/dev/null)"
+TC=""
+for d in "$HOME/.rustup/toolchains/${CHANNEL}-"*/bin "$HOME/.rustup/toolchains/"*/bin; do
+  if [ -x "$d/cargo" ]; then
+    TC="$d"
+    break
+  fi
+done
+if [ -z "$TC" ]; then
+  printf 'FAIL  no rust toolchain with cargo under $HOME/.rustup/toolchains\n'
+  exit 2
+fi
 export PATH="$TC:$CACHE_ROOT/tools/ocr/node_modules/.bin:$PATH"
 export CARGO_HOME="$CACHE_ROOT/.cargo-home"
 export OCR_NO_UPDATE=1
@@ -35,7 +49,8 @@ run()  {
   return 0
 }
 
-# rustfmt and clippy are NOT part of the minimal rustup profile.
+# Both components live in the pinned toolchain (resolved above); SKIP only if one
+# is genuinely missing, and never count a SKIP as a pass.
 if command -v rustfmt >/dev/null 2>&1; then
   run cargo fmt --all -- --check
 else
