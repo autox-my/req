@@ -1,8 +1,7 @@
 schema: req.claim/0
 claim_id: REQ-0004
 statement: >-
-  The req tool's semantic layer shall emit proposals for reviewer ratification and
-  shall never rewrite a claim or merge two claims automatically.
+  The req tool's semantic layer shall emit proposals for reviewer ratification.
 modality: SHALL
 subject: REQ_TOOL
 attribute: semantic_layer_output

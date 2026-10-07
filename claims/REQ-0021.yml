@@ -1,0 +1,33 @@
+schema: req.claim/0
+claim_id: REQ-0021
+statement: >-
+  The req tool's semantic layer shall never rewrite a claim or merge two claims
+  automatically.
+modality: SHALL-NOT
+subject: REQ_TOOL
+attribute: semantic_layer_write
+operator: EQ
+value: absent
+unit: none
+conditions: []
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/adr/0004-model-proposes-human-disposes.md
+  date: 2026-10-07
+  rejected_alternatives:
+    - LLM driven merge with deterministic fallback
+  assumptions:
+    - split out of REQ-0004 when Tier-1 v2 began flagging multi-obligation
+      statements; claim-format requires one obligation per claim
+relations:
+  - type: derives-from
+    to: REQ-0004

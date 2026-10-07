@@ -114,11 +114,23 @@ def t_polarity_flip(s: str):
     return re.sub(r"\bshall\b", "shall not", s, count=1, flags=re.I)
 
 
+def t_predicate_swap(s: str):
+    """Same subject, same modality, different predicate — the class the parity corpus
+    missed and the canonicalizer once merged silently (an unbounded claim's predicate
+    was not part of its identity)."""
+    m = re.search(r"\b(shall|must)\b\s+(\w+)", s, re.I)
+    if not m or m.group(2).lower() in ("not", "never"):
+        return None
+    repl = "log" if m.group(2).lower() == "delete" else "delete"
+    return s[: m.start(2)] + repl + s[m.end(2):]
+
+
 EQUIV = [("EM", "emphasis-strip (T1.2b)", t_emphasis),
          ("MS", "modality-synonym shall->must (T1.6)", t_modality_synonym),
          ("CP", "case/whitespace/period (T1.1-T1.2)", t_case_punct)]
 NOTEQUIV = [("MW", "modality-weakening shall->may (T1.6)", t_modality_weakening),
-            ("PF", "polarity-flip shall->shall not", t_polarity_flip)]
+            ("PF", "polarity-flip shall->shall not", t_polarity_flip),
+            ("PS", "predicate-swap (same subject+modality, different verb)", t_predicate_swap)]
 
 
 def yaml_scalar(s: str) -> str:
@@ -152,9 +164,9 @@ def main() -> int:
 
     out = []
     out.append("schema: req.bench.corpus/0")
-    out.append("version: 1")
+    out.append("version: 2")
     out.append("rules: " + yaml_scalar(
-        "External corpus v1: real requirement prose from other projects' repositories, "
+        "External corpus: real requirement prose from other projects' repositories, "
         f"pinned by commit — strictdoc@{sd_sha}, doorstop@{ds_sha}. Pairs are labelled by "
         "construction (the transformation applied), not by the canonicalizer, so the labels "
         "are an independent oracle. Scope is Tier-1 only: equivalence uses meaning-preserving "

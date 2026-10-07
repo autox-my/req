@@ -55,15 +55,40 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
   - ``less than`` → **LT**  ← *the classic trap: LE and LT are different claims*
   - ``at least`` / ``no less than`` → **GE** − ``greater than`` / ``exceeds`` → **GT**
   - bare ``is`` between bound and value → **EQ**. Ambiguous comparators ("fast",
-    "as soon as possible") → never guessed → lint `untestable_comparator`.
+    "as soon as possible") → never guessed → lint `untestable_comparator`. The lint
+    fires only for a word that could plausibly *be* a comparator (a curated list): a
+    standard's name before a number ("IEC 61508") is not one, and linting it produced
+    16 false positives on real external prose. Precision costs nothing here — an
+    unresolved comparator is never guessed anyway, so the claim cannot collapse either
+    way; only the lint's credibility was at stake.
+  - a **qualitative predicate** ("friction-free", "seamless") cannot be canonicalized
+    into an operator and a value → lint `untestable_qualifier`, unstructured. This
+    *derives* what claim authors previously had to declare by hand (REQ-0007's
+    authored `unstructured: true` is now produced by the rules).
   - The phrase *after* the value+unit — e.g. "of standby current" — is an identity
     field (``qualifier``); dropping it is how a standby-current claim silently
     becomes a surge-current claim. This is a false-merge hazard caught in
     implementation, not visible in prose.
 - **T1.6 Modality** — ``shall``/``must``/``is required to`` → ``SHALL``;
-  ``shall not``/``must not`` → ``SHALL-NOT``; ``may`` → ``MAY``; ``should`` →
-  ``SHOULD``. ``will`` is deontic only contextually → never guessed → lint
-  `ambiguous_modality`. Modality is never cross-ran (``SHALL`` ≠ ``MAY``).
+  ``shall not``/``must not`` → ``SHALL-NOT``; ``shall never``/``must never`` →
+  ``SHALL-NOT`` (a prohibition, not an obligation to the verb); ``may`` → ``MAY``;
+  ``should`` → ``SHOULD``. The **earliest** match by position wins, and at the same
+  position the longest phrase wins: table order must never decide position, or a later
+  ``shall never`` shadows an earlier ``shall``. ``will`` is deontic only contextually
+  → never guessed → lint `ambiguous_modality`. Modality is never cross-ran
+  (``SHALL`` ≠ ``MAY``).
+- **T1.6b Obligation and predicate integrity** (rules v2) —
+  - the **predicate span** — from the end of the modal phrase (or of the whole
+    absorbed ``<modal> <negator> <stem>`` phrase) to the comparator, else to the value
+    token, else to the end of the statement — is part of identity. Emitting it only
+    when a comparator existed made two unbounded obligations with the same subject and
+    modality collapse: **58 false merges** on the external corpus's predicate-swap
+    class, the single failure this design exists to prevent. It was invisible in the
+    seed parity corpus, whose pairs never differed by verb alone.
+  - a **second obligation** in one statement is not one claim (claim-format: "shall …
+    and shall …" is two claims, split before filing) → lint `multiple_obligations`,
+    unstructured. This is the finding the external corpus produced, and it immediately
+    caught one of our own seed claims (REQ-0004, since split).
 - **T1.7 Subject registry** — project-scoped YAML mapping surface forms → canonical
   subject id (``the system``/``the device``/``the product`` → ``SYSTEM``). The registry
   is a reviewed, versioned artifact; unregistered synonyms are **not** collapsed
@@ -149,6 +174,24 @@ third. Labels are versioned YAML in the repository.
 
 The harness reports **PASS / FAIL / UNVERIFIABLE** as three distinct outcomes — a broken
 corpus or harness is never accidentally a pass (the same principle as ADR 0005).
+
+#### Recorded runs (append-only)
+
+- **Rules v2** (parity, external-v1, external-v2) — all PASS. The v2 rule work was
+  driven by the v1 findings: prohibition via "never", multi-obligation detection,
+  qualitative-predicate classification, and a precise comparator lint.
+  - **external-v2** (405 pairs; adds the predicate-swap class) — **FMR 0.0 over 227
+    meaning-changing mutations**, FSR 0.0, 18 structurally unverifiable.
+    *Before the predicate-span fix, this same corpus reported **58 false merges**
+    (25.6%)* — a silent-merge bug the seed parity corpus and external-v1 both missed
+    because neither varied the verb alone. The corpus was extended, the bug appeared,
+    the bug was fixed, and the number went to zero. That is the falsification loop
+    working as designed.
+  - **external-v1** — FMR 0.0, FSR 0.0 with rules v2 (was FSR 0.58% at rules v1: the
+    multi-clause pair is now correctly an out-of-scope statement carrying a
+    `multiple_obligations` lint, not a silent split).
+  - **parity** — FMR 0.0, FSR 0.0; 1 structurally unverifiable pair (`N-007`, whose
+    both sides are unstructured by construction — reported, not hidden).
 
 #### Recorded runs (append-only)
 
