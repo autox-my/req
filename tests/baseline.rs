@@ -286,3 +286,31 @@ fn drift_names_changed_missing_and_added_separately() {
     assert_eq!(drift.added, vec!["REQ-D".to_string()]);
     assert!(!drift.is_clean());
 }
+
+/// The manifest defines the variant, so verifying with no context must resolve to the selection
+/// the Baseline records. Verifying under an empty context is what produced the phantom
+/// `REQ-0012: in the Baseline but no longer applies` on the first signed Baseline.
+#[test]
+fn an_empty_context_resolves_to_the_selection_the_baseline_records() {
+    let (_, manifest) = signed_manifest();
+    let resolved = req::baseline::resolve_selection(&Context::new(), &manifest).expect("resolves");
+    assert_eq!(resolved, manifest.selection);
+    assert!(!resolved.is_empty(), "the fixture records a selection");
+    // Passing exactly the recorded selection is accepted (a no-op, not a contradiction).
+    let explicit =
+        req::baseline::resolve_selection(&manifest.selection, &manifest).expect("accepted");
+    assert_eq!(explicit, manifest.selection);
+}
+
+/// A contradiction is the caller's mistake, so it is reported as one — naming both selections —
+/// instead of being computed as drift in the claims.
+#[test]
+fn a_contradicting_context_is_a_usage_error_not_a_finding() {
+    let (_, manifest) = signed_manifest();
+    let mut other = Context::new();
+    other.insert("deployment_mode".to_string(), "networked".to_string());
+    let error = req::baseline::resolve_selection(&other, &manifest).expect_err("contradiction");
+    assert!(error.contains("records selection"), "{error}");
+    assert!(error.contains("air_gapped"), "{error}");
+    assert!(error.contains("networked"), "{error}");
+}

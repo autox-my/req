@@ -267,13 +267,6 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
 
-    let rows = match crate::view::load_rows(&context) {
-        Ok(rows) => rows,
-        Err(e) => {
-            eprintln!("[UNVERIFIABLE] {e}");
-            return 3;
-        }
-    };
     let manifest = match &baseline_path {
         None => None,
         Some(path) => match std::fs::read_to_string(path) {
@@ -291,8 +284,27 @@ pub fn run(args: &[String]) -> i32 {
         },
     };
 
+    // The Baseline defines the variant being audited; see `baseline::resolve_selection`.
+    let effective = match &manifest {
+        None => context.clone(),
+        Some(manifest) => match baseline::resolve_selection(&context, manifest) {
+            Ok(selection) => selection,
+            Err(message) => {
+                eprintln!("{message}");
+                return 2;
+            }
+        },
+    };
+    let rows = match crate::view::load_rows(&effective) {
+        Ok(rows) => rows,
+        Err(e) => {
+            eprintln!("[UNVERIFIABLE] {e}");
+            return 3;
+        }
+    };
+
     let coverage = manifest.as_ref().map(|manifest| coverage(&rows, manifest));
-    print!("{}", packet(&rows, &context, manifest.as_ref()));
+    print!("{}", packet(&rows, &effective, manifest.as_ref()));
     let (failed, open) = findings(&rows, manifest.as_ref(), coverage.as_ref());
     let code = if !failed.is_empty() {
         1

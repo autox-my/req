@@ -442,15 +442,14 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let rows = match crate::view::load_rows(&context) {
-        Ok(rows) => rows,
-        Err(e) => {
-            eprintln!("[UNVERIFIABLE] {e}");
-            return 3;
-        }
-    };
-
     let Some(path) = verify_path else {
+        let rows = match crate::view::load_rows(&context) {
+            Ok(rows) => rows,
+            Err(e) => {
+                eprintln!("[UNVERIFIABLE] {e}");
+                return 3;
+            }
+        };
         let manifest = manifest(&rows, crate::canon::RULES_V, &context);
         print!("{}", canonical_bytes(&manifest));
         return 0;
@@ -465,6 +464,20 @@ pub fn run(args: &[String]) -> i32 {
     };
     let manifest = match from_json(&text) {
         Ok(manifest) => manifest,
+        Err(e) => {
+            eprintln!("[UNVERIFIABLE] {e}");
+            return 3;
+        }
+    };
+    let effective = match resolve_selection(&context, &manifest) {
+        Ok(selection) => selection,
+        Err(message) => {
+            eprintln!("{message}");
+            return 2;
+        }
+    };
+    let rows = match crate::view::load_rows(&effective) {
+        Ok(rows) => rows,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
             return 3;
@@ -511,6 +524,37 @@ pub fn run(args: &[String]) -> i32 {
         println!("  - {reason}");
     }
     outcome.exit_code()
+}
+
+/// The selection a Baseline is verified (and audited) under: **the one the manifest records**.
+///
+/// The manifest defines the variant, so a caller's context is not an input to that question.
+/// An explicit context that contradicts the record is a **usage error**, not a finding: a
+/// mismatch re-derived under the wrong variant surfaces as drift in the claims, which reads as a
+/// defect in the requirements rather than a mistake in the invocation. (It did exactly that
+/// during the first signing: an intact Baseline reported `REQ-0012: in the Baseline but no longer
+/// applies` because verification had been given an empty context.)
+pub fn resolve_selection(explicit: &Context, manifest: &Manifest) -> Result<Context, String> {
+    if explicit.is_empty() || *explicit == manifest.selection {
+        return Ok(manifest.selection.clone());
+    }
+    let show = |context: &Context| {
+        if context.is_empty() {
+            "(none)".to_string()
+        } else {
+            context
+                .iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+    };
+    Err(format!(
+        "this Baseline records selection [{}] but [{}] was passed: verify it without a context \
+         (the manifest defines the variant), or pass exactly the recorded one",
+        show(&manifest.selection),
+        show(explicit)
+    ))
 }
 
 /// Today's date in UTC as `YYYY-MM-DD`, by integer arithmetic — no date library, no locale,
