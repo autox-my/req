@@ -167,3 +167,18 @@ fn coverage_survives_the_manifest_round_trip() {
     assert_eq!(coverage(&rows, &reparsed), coverage(&rows, &manifest));
     assert_eq!(coverage(&rows, &reparsed).signed.len(), 2);
 }
+
+/// The audit takes its selection from the Baseline too: a Baseline defines the variant, so
+/// auditing it under an empty context would report the variant's own claims as "no longer
+/// applies" — a mistake in the invocation dressed up as a defect in the requirements.
+#[test]
+fn audit_takes_its_selection_from_the_baseline() {
+    let rows = vec![row("REQ-A", "aaa", Applies::Yes, "docs/adr/0001.md")];
+    let manifest = baseline_for(&rows);
+    let resolved = req::baseline::resolve_selection(&Context::new(), &manifest).expect("resolves");
+    assert_eq!(resolved, manifest.selection);
+    // Under the Baseline's own selection the coverage is complete; the claim is not "missing".
+    let coverage = coverage(&rows, &manifest);
+    assert!(coverage.missing.is_empty(), "{coverage:?}");
+    assert_eq!(coverage.signed.len(), 1);
+}
