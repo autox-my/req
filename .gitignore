@@ -21,3 +21,5 @@ __pycache__/
 
 # Feature worktrees (inside the workspace; see AGENTS.md)
 worktrees/
+.models/
+.tools/
