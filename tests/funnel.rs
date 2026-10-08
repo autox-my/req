@@ -393,14 +393,21 @@ fn the_command_provider_speaks_the_documented_protocol() {
         "{verdict:?}"
     );
     assert_eq!(provider.id(), format!("cmd:{command}"));
-    assert!(
-        req::funnel::provider_request("T2-E-001", "a", "b").starts_with(
-            "ID: T2-E-001
-A: a
-B: b
-CHOOSE:"
-        )
-    );
+    // Assert the parts, not the whole string: the contract gains fields, and a `starts_with` over
+    // the entire format made this test fail on a rewording rather than on a broken contract.
+    let request = req::funnel::provider_request("T2-E-001", "a", "b", "module|system");
+    for part in [
+        "ID: T2-E-001",
+        "A: a",
+        "B: b",
+        "DIFF: module|system",
+        "CHOOSE:",
+    ] {
+        assert!(
+            request.contains(part),
+            "the contract must carry {part}: {request}"
+        );
+    }
 }
 
 /// `unrelated` contains `related`. Reading the substring first would turn every abstention into a
@@ -618,4 +625,25 @@ fn a_pass_requires_a_measured_flip_rate_and_no_false_merge() {
     assert_eq!(req::funnel::gold_verdict(2, 0, 0, 68).0, 1);
     // And a measured flip rate above 2% fails a run that is otherwise perfect.
     assert_eq!(req::funnel::gold_verdict(0, 0, 3, 68).0, 1);
+}
+
+/// The diff is the change under test, so it must name exactly the terms that differ — sorted,
+/// deduplicated, argument-order independent, and empty when nothing differs.
+#[test]
+fn the_diff_names_exactly_what_differs() {
+    assert_eq!(
+        req::funnel::differing_terms(
+            "The system shall log each command.",
+            "The module shall log each command."
+        ),
+        "module|system"
+    );
+    assert_eq!(
+        req::funnel::differing_terms("The vendor shall log.", "The vendor shall log."),
+        ""
+    );
+    assert_eq!(
+        req::funnel::differing_terms("The system shall log.", "The module shall store."),
+        req::funnel::differing_terms("The module shall store.", "The system shall log.")
+    );
 }
