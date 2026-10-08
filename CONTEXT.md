@@ -59,7 +59,8 @@ inspection.
 _Avoid_: proof, attachment
 
 **Baseline**:
-A signed snapshot of the whole claim graph.
+The claim addresses a human has ratified for **one variant**, with the rules version and
+the selection they were ratified under. A projection over the graph, not the graph itself.
 _Avoid_: version, release, snapshot
 
 **Conflict**:
