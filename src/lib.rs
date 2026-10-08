@@ -5,6 +5,7 @@
 //! public API is the surface the future porcelain and any re-implementation read
 //! from, and dead-code analysis then means what it says about private items only.
 
+pub mod audit;
 pub mod baseline;
 pub mod bench;
 pub mod canon;
