@@ -9,11 +9,13 @@
 //!   req select k=v [...]    — which claims apply in this variant? (tri-state)
 //!   req render k=v [...]    — the spec view for that selection
 //!   req trace k=v [...]     — the traceability view, with derived incoming edges
+//!   req impact <claim-id>   — what depends on that claim, transitively
+//!   req gate k=v [...]      — may this selection ship? (policies over applying claims)
 //!
 //! The Tier-1 canonicalizer (src/canon.rs) is deterministic and offline: no model I/O,
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
-use req::{bench, canon, compare, fill, select, view};
+use req::{bench, canon, compare, fill, gate, impact, select, view};
 use std::process::exit;
 
 fn main() {
@@ -27,6 +29,8 @@ fn main() {
         "select" => select::run(&args.collect::<Vec<String>>()),
         "render" => view::run_render(&args.collect::<Vec<String>>()),
         "trace" => view::run_trace(&args.collect::<Vec<String>>()),
+        "impact" => impact::run(&args.collect::<Vec<String>>()),
+        "gate" => gate::run(&args.collect::<Vec<String>>()),
         "compare" => match (args.next(), args.next()) {
             (Some(a), Some(b)) => compare::run(&a, &b),
             _ => {

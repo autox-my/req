@@ -192,7 +192,7 @@ pub fn run_fill() -> i32 {
 }
 
 /// The state of a claim file's *stored* derived fields.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoredState {
     /// The stored bytes are what the current parse produces, and the stored address
     /// recomputes from them (REQ-0017).

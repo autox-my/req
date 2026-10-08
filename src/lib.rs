@@ -9,6 +9,8 @@ pub mod bench;
 pub mod canon;
 pub mod compare;
 pub mod fill;
+pub mod gate;
+pub mod impact;
 pub mod model;
 pub mod select;
 pub mod view;

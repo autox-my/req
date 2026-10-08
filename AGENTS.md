@@ -118,6 +118,18 @@ export OCR_NO_UPDATE=1
   selection is **named** — to an excluded claim (legitimate, reported) or to an undecided
   one (a gap needing a decision). A relation pointing at a claim that is not in the corpus
   is `UNVERIFIABLE`, never ignored.
+- Impact and release gate: `cargo run -q -- impact <claim-id> [key=value ...]` walks the
+  relations **backwards** (derived, REQ-0020) and reports every dependent nearest-first
+  with its selection state; `cargo run -q -- gate [key=value ...]` runs four policies over
+  the **applying** claims only — `addresses_current`, `relations_resolve`,
+  `dependencies_decided`, `rationale_present`. `gate` exits **0** all passed, **1** a
+  defect, **3** something that cannot be confirmed (an unfilled claim, a relation that does
+  not resolve, a dependency left undecided), **2** usage; a **Fail outranks** an
+  Unverifiable, because "we found a problem" is stronger than "we could not tell". Both
+  keep the tri-state honest: a claim the variant **excludes** is not the variant's problem,
+  and an **undecided** one is never treated as absent. An `impact` answer that a broken
+  relation could have made incomplete says so (exit 3) instead of quietly shortening the
+  list.
 - Docs-only changes: the same gate, with its skips stated in the commit message.
 
 ### Review — OCR in delegation mode (no LLM, no API key)
@@ -196,8 +208,10 @@ matter:
   preview lists the corpus itself as a single item for that reason.
 - `src/` — `lib.rs` (the library surface), `main.rs` (thin CLI over it), `model.rs`
   (claim/registry/corpus types), `canon.rs` (Tier-1 pipeline + diagnostics),
-  `bench.rs` (the gate + its tests), `select.rs` (tri-state variant selection),
-  `compare.rs` (change direction), `fill.rs` (derived fields).
+  `bench.rs` (the benchmark gate + its tests), `select.rs` (tri-state variant
+  selection), `compare.rs` (change direction), `view.rs` (render/trace + the shared
+  row), `impact.rs` (reverse traversal), `gate.rs` (release policies), `fill.rs`
+  (derived fields).
 - `tools/ocr/` — the pinned review CLI (`package.json` + lockfile committed;
   `node_modules/` ignored).
 - `review/rule.json` — the review rules we own: one checklist per path class, passed

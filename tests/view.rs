@@ -11,22 +11,10 @@
 //!     parent of an applicable claim is worse than no trace at all.
 
 use req::select::{Applies, Context};
-use req::view::{Row, render, trace};
+mod common;
 
-fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
-    Row {
-        claim_id: id.to_string(),
-        statement: format!("{id} shall log each command."),
-        modality: "SHALL".to_string(),
-        address: format!("{id:0<64}").replace(id, &format!("{id:0>12}")),
-        applies,
-        selectors: vec![],
-        relations: rels
-            .iter()
-            .map(|(k, t)| (k.to_string(), t.to_string()))
-            .collect(),
-    }
-}
+use common::row;
+use req::view::{render, trace};
 
 fn ctx() -> Context {
     Context::new()
