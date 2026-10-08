@@ -55,6 +55,8 @@ def load_capture(path, gold):
     gap; text matching works because both sides are the statements verbatim, but it is fragile and
     the fix is to put the id in the provider contract."""
     by_pair = {}
+    matched_by_id = [0]
+    matched_by_text = [0]
     disagreements = 0
     total_rows = 0
     for line in pathlib.Path(path).read_text().splitlines():
@@ -64,9 +66,18 @@ def load_capture(path, gold):
             continue
         total_rows += 1
         key = (row.get("a"), row.get("b"))
-        for pid, pair in gold.items():
-            if (pair["a"], pair["b"]) != key:
-                continue
+        pid = row.get("id") if row.get("id") in gold else None
+        if pid is not None:
+            matched_by_id[0] += 1
+        else:
+            # Older captures predate the id in the contract; fall back to the text they do carry, and
+            # say in the record how many rows needed it.
+            for candidate, pair in gold.items():
+                if (pair["a"], pair["b"]) == key:
+                    pid = candidate
+                    matched_by_text[0] += 1
+                    break
+        if pid is not None:
             answer = row.get("answer", {})
             if pid in by_pair:
                 if (by_pair[pid]["choice"], by_pair[pid]["confidence"]) != (
@@ -78,10 +89,9 @@ def load_capture(path, gold):
                 by_pair[pid] = {
                     "choice": answer.get("choice"),
                     "confidence": int(answer.get("confidence", 0)),
-                    "label": pair["label"],
+                    "label": gold[pid]["label"],
                 }
-            break
-    return by_pair, total_rows, disagreements
+    return by_pair, total_rows, disagreements, matched_by_id[0], matched_by_text[0]
 
 
 def half(pid):
@@ -126,7 +136,7 @@ def main():
     args = parser.parse_args()
 
     gold = load_gold(args.gold)
-    rows, total_rows, disagreements = load_capture(args.capture, gold)
+    rows, total_rows, disagreements, by_id, by_text = load_capture(args.capture, gold)
     if not rows:
         print("no gold pair matched the capture: the capture is empty, or it is from another corpus")
         return 3
@@ -140,6 +150,7 @@ def main():
     print(f"provider: {args.provider}")
     print(f"capture:  {args.capture}  ({total_rows} rows, {len(rows)} distinct gold pairs)")
     print(f"labels:   {labels}")
+    print(f"paired:   {by_id} by id, {by_text} by statement text")
     if disagreements:
         print(f"NOTE: {disagreements} pair(s) answered differently across rows — the capture holds "
               f"more than one pass, so this is a stability signal, not a duplicate")
@@ -167,9 +178,7 @@ def main():
     if not args.no_record:
         stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
         slug = re.sub(r"[^a-z0-9]+", "-", args.provider.lower()).strip("-")[:40]
-        path = pathlib.Path("bench/results") / f"tier2-v1-{slug}-{stamp}.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({
+        record = {
             "kind": "tier2-provider-evaluation",
             "provider": args.provider,
             "corpus": args.gold,
@@ -186,15 +195,31 @@ def main():
             "held_out_at_chosen_floor": held_result,
             "in_sample_at_chosen_floor": in_sample,
             "held_out_curve": curve(held),
+            "matched_by_pair_id": by_id,
+            "matched_by_statement_text": by_text,
             "caveats": [
                 "both halves come from the same generator and templates: a held-out sample of the "
                 "same distribution, not an independent one",
                 "confidence is the model's self-report; the serving documentation states the "
                 "probabilities are not calibrated for this data",
-                "capture rows carry no pair id, so rows are matched to labels by statement text",
             ],
-        }, indent=2) + "\n")
-        print(f"\nrecorded: {path}")
+        }
+        # Named by the *result*, not by the clock: two runs that agree produce the same path and the
+        # second refuses to rewrite it, while two runs that disagree can never collide. A timestamp
+        # in the name made "append-only" a promise the code could not keep — two runs in the same
+        # second overwrote each other.
+        key = json.dumps({k: record[k] for k in (
+            "provider", "corpus", "pairs", "floor_chosen_on_tune", "held_out_at_chosen_floor",
+        )}, sort_keys=True)
+        digest = hashlib.sha256(key.encode()).hexdigest()[:8]
+        path = pathlib.Path("bench/results") / f"tier2-v1-{slug}-{digest}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            print(f"\nrecord already exists for this result: {path} — not rewritten")
+        else:
+            record["evaluated_at"] = stamp
+            path.write_text(json.dumps(record, indent=2) + "\n")
+            print(f"\nrecorded: {path}")
 
     return 0 if held_result["fp"] == 0 else 1
 

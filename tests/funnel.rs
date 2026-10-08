@@ -393,7 +393,14 @@ fn the_command_provider_speaks_the_documented_protocol() {
         "{verdict:?}"
     );
     assert_eq!(provider.id(), format!("cmd:{command}"));
-    assert!(req::funnel::provider_request("a", "b").starts_with("A: a\nB: b\nCHOOSE:"));
+    assert!(
+        req::funnel::provider_request("T2-E-001", "a", "b").starts_with(
+            "ID: T2-E-001
+A: a
+B: b
+CHOOSE:"
+        )
+    );
 }
 
 /// `unrelated` contains `related`. Reading the substring first would turn every abstention into a
