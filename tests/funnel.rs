@@ -413,3 +413,78 @@ fn the_answer_parser_prefers_unrelated_over_its_own_substring() {
         Adjudication::Unverifiable { .. }
     ));
 }
+
+/// The provider contract widened rather than changed: a JSON object carries the confidence, and
+/// the bare word still works — so every existing stub keeps answering and the threshold sweep has
+/// a number to threshold on.
+#[test]
+fn a_provider_may_answer_with_json_and_the_confidence_survives() {
+    assert_eq!(
+        req::funnel::parse_adjudication(r#"{"choice": "equivalent", "confidence": 87}"#),
+        Adjudication::Equivalent { confidence: 87 }
+    );
+    assert_eq!(
+        req::funnel::parse_adjudication(r#"{"choice":"related","confidence":12}"#),
+        Adjudication::Related { confidence: 12 }
+    );
+    // An option we did not define is not a guess: it is unverifiable.
+    assert!(matches!(
+        req::funnel::parse_adjudication(r#"{"choice":"maybe"}"#),
+        Adjudication::Unverifiable { .. }
+    ));
+    // A missing confidence is "not stated" (0), which the type documents.
+    assert_eq!(
+        req::funnel::parse_adjudication(r#"{"choice":"unrelated"}"#),
+        Adjudication::Unrelated { confidence: 0 }
+    );
+    // ...and the old forms are untouched.
+    assert_eq!(
+        req::funnel::parse_adjudication("related 40"),
+        Adjudication::Related { confidence: 40 }
+    );
+    assert_eq!(
+        req::funnel::parse_adjudication("UNRELATED"),
+        Adjudication::Unrelated { confidence: 0 }
+    );
+    // Malformed JSON falls back to the word scan rather than failing the pair.
+    assert_eq!(
+        req::funnel::parse_adjudication(r#"{"choice": broken, unrelated"#),
+        Adjudication::Unrelated { confidence: 0 }
+    );
+}
+
+/// A count is not actionable; the ids are. Each named false positive must really be a pair the gold
+/// set labels non-equivalent — otherwise the list would send the next fix after the wrong pairs.
+#[test]
+fn the_score_names_the_pairs_it_got_wrong() {
+    struct AlwaysEquivalent;
+    impl Provider for AlwaysEquivalent {
+        fn id(&self) -> String {
+            "always-equivalent".to_string()
+        }
+        fn adjudicate(&self, _a: &Candidate<'_>, _b: &Candidate<'_>) -> Adjudication {
+            Adjudication::Equivalent { confidence: 100 }
+        }
+    }
+    let corpus = tier2_gold();
+    let score = req::funnel::score_gold(&corpus, &AlwaysEquivalent, MIN_SHARED_TERMS);
+    assert_eq!(score.false_positive_ids.len(), score.false_positives);
+    assert!(!score.false_positive_ids.is_empty());
+    for id in &score.false_positive_ids {
+        let pair = corpus
+            .pairs
+            .iter()
+            .find(|pair| pair.id == *id)
+            .expect("a named pair exists");
+        assert_ne!(
+            pair.label,
+            req::funnel::Tier2Label::Equivalent,
+            "{id} is labelled equivalent, so it cannot be a false merge"
+        );
+    }
+    assert!(score.false_negative_ids.is_empty());
+    // An abstaining provider gets no error ids either: no answer is not a wrong answer.
+    let abstained = req::funnel::score_gold(&corpus, &NoProvider, MIN_SHARED_TERMS);
+    assert!(abstained.false_positive_ids.is_empty());
+    assert!(abstained.false_negative_ids.is_empty());
+}

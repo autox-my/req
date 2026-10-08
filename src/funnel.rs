@@ -425,6 +425,14 @@ pub fn run(args: &[String]) -> i32 {
                 .map(|r| format!("{r}%"))
                 .unwrap_or_else(|| "n/a".to_string())
         );
+        for (label, ids) in [
+            ("FALSE MERGE (called equivalent)", &score.false_positive_ids),
+            ("MISSED equivalent", &score.false_negative_ids),
+        ] {
+            if !ids.is_empty() {
+                println!("  {label}: {}", ids.join(", "));
+            }
+        }
         println!(
             "  REQ-0011 flip rate: {flipped}/{measured} pair(s) changed across {repeats} run(s) = {flip_percent}% (at most 2% required)"
         );
@@ -536,6 +544,33 @@ pub fn provider_request(a: &str, b: &str) -> String {
 /// confidence; absent, confidence is 0, meaning **not stated** (not "no confidence", which is a
 /// number the provider never gave).
 pub fn parse_adjudication(stdout: &str) -> Adjudication {
+    // A provider may answer with the documented object (a choice plus a confidence in integer
+    // percent) or with the bare word. JSON is tried first, because the confidence lives there and a
+    // threshold sweep needs it; a JSON-looking answer that does not parse still falls through to the
+    // word scan, so a partial answer beats none.
+    let trimmed = stdout.trim();
+    if trimmed.starts_with('{')
+        && let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed)
+    {
+        let choice = value
+            .get("choice")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_lowercase();
+        let confidence = value
+            .get("confidence")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
+            .min(100) as u8;
+        return match choice.as_str() {
+            "equivalent" => Adjudication::Equivalent { confidence },
+            "related" => Adjudication::Related { confidence },
+            "unrelated" => Adjudication::Unrelated { confidence },
+            other => Adjudication::Unverifiable {
+                reason: format!("the provider chose an unknown option: {other:?}"),
+            },
+        };
+    }
     let lowered = stdout.to_lowercase();
     let (label, at, word) = if let Some(at) = lowered.find("unrelated") {
         (AdjudicationKind::Unrelated, at, "unrelated")
@@ -632,6 +667,11 @@ pub struct GoldScore {
     pub not_proposed: usize,
     /// Pairs the provider was actually asked about.
     pub scored: usize,
+    /// The pairs behind `false_positives` and `false_negatives`, by id. The count says how bad it
+    /// is; the ids say what to fix, and the criteria are written against the transformations those
+    /// ids name.
+    pub false_positive_ids: Vec<String>,
+    pub false_negative_ids: Vec<String>,
 }
 
 impl GoldScore {
@@ -681,8 +721,14 @@ pub fn score_gold(corpus: &Tier2Corpus, provider: &dyn Provider, min_shared: usi
             Some(Tier2Label::Equivalent) if pair.label == Tier2Label::Equivalent => {
                 score.true_positives += 1
             }
-            Some(Tier2Label::Equivalent) => score.false_positives += 1,
-            Some(_) if pair.label == Tier2Label::Equivalent => score.false_negatives += 1,
+            Some(Tier2Label::Equivalent) => {
+                score.false_positives += 1;
+                score.false_positive_ids.push(pair.id.clone());
+            }
+            Some(_) if pair.label == Tier2Label::Equivalent => {
+                score.false_negatives += 1;
+                score.false_negative_ids.push(pair.id.clone());
+            }
             Some(_) => score.true_negatives += 1,
         }
     }

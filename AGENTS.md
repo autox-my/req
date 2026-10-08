@@ -148,11 +148,18 @@ export OCR_NO_UPDATE=1
   `--provider-cmd <cmd>` (run through `sh -c`, so a pipeline is allowed) makes it measurable: req
   writes `A: <statement>`, `B: <statement>`, `CHOOSE: equivalent|related|unrelated` to the command's
   stdin and reads the chosen label from stdout, so a model-server wrapper only has to read two lines
-  and print one word. It then reports precision and recall over the equivalents as integer percents,
+  and print one word — or a JSON object carrying `choice` and a `confidence` in integer
+  percent, which is what a confidence sweep thresholds on. It then reports precision and recall over the equivalents as integer percents,
   the true/false positives and negatives, the unverifiable and not-proposed counts, and the
   **REQ-0011 flip rate** across `--repeats N` identical runs (default 1). A **false merge** — calling
   a non-equivalent pair equivalent — or a flip rate above **2%** is FAIL. The provider's command is
   recorded verbatim as its id, which is its provenance.
+  The gold-set score also **names the offending pairs** — false merges and missed equivalents —
+  because a count says how bad it is and the ids say what to fix. `tools/req-d1.sh` additionally
+  appends every answer (the pair, the choice, the confidence and the full probability
+  distribution) to a capture file (`.scratch/req-d1-capture.jsonl`, `REQ_D1_CAPTURE` to override),
+  so a threshold can be swept **offline** rather than paying an inference run per threshold; a
+  missing capture file is a measurement problem, reported as such, never mistaken for a result.
 - Baselines: `cargo run -q -- baseline [key=value ...]` prints the **canonical manifest** — the
   rules version, the selection, and every applying claim's address — which is the exact byte
   string a human signs; `cargo run -q -- baseline --verify <file> [--signature <file>]
