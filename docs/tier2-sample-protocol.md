@@ -150,6 +150,11 @@ provider's error and a labeller's doubt are different phenomena and should not b
 4. **Keep `undecided`.** It went unused here. A pair nobody can decide is data, and the vocabulary
    must keep admitting it.
 
-The thirty pairs and both fillings stand as the pilot's record: the worksheet is committed, the ceiling
-is recorded under `bench/results/`, and the fillings remain session scratch because they are two
-people's working notes rather than repository content.
+The thirty pairs and both fillings stand as the pilot's record, and **all of it is committed**: the
+worksheet (`bench/corpus/tier2-pilot-v0.yml`), the two fillings (`...-fill-alice.yml`,
+`...-fill-bob.yml` — pseudonymous labellers, with the confidence each stated and the note each wrote),
+and the ceiling under `bench/results/`. Committing the fillings is deliberate: a ceiling whose labels
+cannot be inspected is an assertion, and with them in the repository anyone can recompute the number
+and read the eight disagreements against the labels that produced them. A labeller's identity is the
+one thing not recorded, because the ceiling needs two distinct judgements and not the people behind
+them.
