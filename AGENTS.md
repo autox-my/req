@@ -298,6 +298,12 @@ matter:
   both rather than the flattering direction, prints both curves, and writes a JSON record under `bench/results/` named by the **result** rather than by the clock, so two runs that agree produce the same path (the second refuses to rewrite it) and two that disagree cannot collide; the capture records the pair id, so rows pair to labels by identity. A floor picked and
   scored on the same pairs is fitted, not measured, and the record states that both halves still come
   from one generator and that confidence is the model's own uncalibrated report.
+  `bench/corpus/tier2-pilot-v0.yml` is the Tier-2 **human-labelled** sample in progress: thirty
+  candidate pairs drawn from pinned real prose, crossing requirement ids, stratified by lexical
+  overlap, with **empty labels** — the worksheet is the reviewable surface, and
+  `docs/tier2-sample-protocol.md` is the protocol that makes a label on it interpretable, including
+  the ceiling that must be measured (two labellers' agreement) before any model is judged against
+  one hundred percent.
   These corpora are **generated data**: a corpus of this size is reviewed through its
   generator (`tools/corpus/`) and its label scheme, not line by line — the generator,
   the source pins and the sampling rule are the reviewable surface, and the review
