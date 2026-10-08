@@ -407,9 +407,7 @@ pub fn run(args: &[String]) -> i32 {
         println!("  provider: {}", provider.id());
         println!(
             "  proposed {} pair(s); unverifiable {}; not proposed {}",
-            score.scored + score.unverifiable,
-            score.unverifiable,
-            score.not_proposed
+            score.scored, score.unverifiable, score.not_proposed
         );
         println!(
             "  equivalent: tp {} fp {} fn {} — precision {} recall {}",
@@ -640,7 +638,20 @@ impl Provider for CommandProvider {
             };
         }
         match child.wait_with_output() {
-            Ok(output) => parse_adjudication(&String::from_utf8_lossy(&output.stdout)),
+            Ok(output) if output.status.success() => {
+                parse_adjudication(&String::from_utf8_lossy(&output.stdout))
+            }
+            // A provider that fails must say so. Reporting `unverifiable` with no reason is how a
+            // crash hides: a wrapper without its executable bit exited 126 for all 68 pairs and the
+            // harness blamed the model for it — a silent, single-word failure that read as the
+            // model declining to answer.
+            Ok(output) => Adjudication::Unverifiable {
+                reason: format!(
+                    "the provider command exited {} — {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ),
+            },
             Err(e) => Adjudication::Unverifiable {
                 reason: format!("the provider command failed: {e}"),
             },
