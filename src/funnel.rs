@@ -633,9 +633,25 @@ impl Provider for CommandProvider {
             })
             .unwrap_or(false);
         if !wrote {
-            return Adjudication::Unverifiable {
-                reason: "the provider command closed its input".to_string(),
+            // The same rule as a non-zero exit: never report a failure without the provider's own
+            // words. Whether this path or the exit-status path fires is a *race* — a command that
+            // exits before reading its input can lose either — so the reason must not depend on
+            // which one won, and the test for it must not either.
+            let detail = match child.wait_with_output() {
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                    if stderr.is_empty() {
+                        format!(
+                            "the provider command closed its input and exited {}",
+                            output.status
+                        )
+                    } else {
+                        format!("the provider command closed its input: {stderr}")
+                    }
+                }
+                Err(e) => format!("the provider command closed its input: {e}"),
             };
+            return Adjudication::Unverifiable { reason: detail };
         }
         match child.wait_with_output() {
             Ok(output) if output.status.success() => {

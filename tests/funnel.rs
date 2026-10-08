@@ -513,7 +513,14 @@ fn a_provider_that_crashes_reports_why_instead_of_going_quiet() {
                 reason.contains("boom"),
                 "the provider's own words must survive: {reason}"
             );
-            assert!(reason.contains("exited"), "{reason}");
+            // Which of the two failure paths fires is a *race* — a command that exits before
+            // reading its input can produce either — so what is pinned is the invariant, not the
+            // path: the provider's own words survive into the reason, and the reason says how it
+            // failed. The outcome (Unverifiable) is what a caller reads; the reason is for a human.
+            assert!(
+                reason.contains("closed its input") || reason.contains("exited"),
+                "the reason must describe how it failed: {reason}"
+            );
         }
         other => panic!("a crashed provider is unverifiable, not {other:?}"),
     }
