@@ -590,3 +590,25 @@ fn a_single_run_is_not_a_stability_measurement() {
         "a run that cannot compare must not ask the provider twice"
     );
 }
+
+/// A PASS is a claim of three things at once, and this pins the rule that they must all hold —
+/// including the one that is easy to fake: stability has to be *measured*.
+#[test]
+fn a_pass_requires_a_measured_flip_rate_and_no_false_merge() {
+    let (code, sentence) = req::funnel::gold_verdict(0, 0, 0, 68);
+    assert_eq!(code, 0, "{sentence}");
+    assert!(sentence.starts_with("PASS"), "{sentence}");
+
+    // The same perfect score with stability unmeasured is not a pass: REQ-0011 is not satisfied by
+    // a number nobody took.
+    let (code, sentence) = req::funnel::gold_verdict(0, 0, 0, 0);
+    assert_eq!(code, 3, "{sentence}");
+    assert!(sentence.contains("not measured"), "{sentence}");
+
+    // A false merge fails even when the flip rate is unmeasured — a defect outranks an open question.
+    assert_eq!(req::funnel::gold_verdict(0, 1, 0, 0).0, 1);
+    // An equivalent pair blocking can never reach fails too.
+    assert_eq!(req::funnel::gold_verdict(2, 0, 0, 68).0, 1);
+    // And a measured flip rate above 2% fails a run that is otherwise perfect.
+    assert_eq!(req::funnel::gold_verdict(0, 0, 3, 68).0, 1);
+}
