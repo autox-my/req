@@ -10,3 +10,4 @@ pub mod canon;
 pub mod compare;
 pub mod fill;
 pub mod model;
+pub mod select;
