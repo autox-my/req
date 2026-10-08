@@ -92,3 +92,64 @@ this sample is the first thing that could be measured against something not buil
 labels**. It is the reviewable surface: its header records the pool, the pairing rule, the
 stratification and the sampling stride, so a reader can reproduce the draw rather than trust it.
 The ADR that fixes the protocol and the ceiling comes after the pilot reports them.
+
+## Amendment 1: what the pilot found
+
+Two labellers filled all thirty pairs, independently. Both fillings validated clean. What they
+produced:
+
+```
+agreed 22   disagreed 8   undecided 0        ceiling 73%
+tier A (high overlap) 6 agreed / 4 disagreed
+tier B (3 shared)     7 agreed / 3 disagreed
+tier C (2 shared)     9 agreed / 1 disagreed
+```
+
+Four findings, and the first changes what the ceiling means.
+
+**1. Neither labeller wrote `equivalent` — not once, in sixty judgements — and all eight
+disagreements are `related` versus `unrelated`.** The sample therefore contains no true duplicates,
+and two consequences point in opposite directions.
+
+For the question the gate asks — are these the same requirement? — the two labellers agreed on all
+thirty pairs. Three labels collapse to two for that question, and the ceiling on it is unanimity, not
+73%. This corroborates the provider verdict rather than complicating it: every pair d1 called
+equivalent, both humans independently called not-equivalent, so those false merges are unambiguous
+errors rather than boundary calls. The 73% is disagreement about *which kind* of difference a pair
+has — a distinction the record should carry and the gate does not use.
+
+For measuring a provider's precision **on equivalents**, the sample is useless: zero positives in
+thirty pairs. The mechanism is structural, not luck. Pairing across differing requirement ids
+correctly excludes the source corpus's own transform pairs, but what remains is, by construction,
+different requirements that happen to share vocabulary. In real prose the base rate of two distinct
+requirement ids stating the same requirement is near zero, so **mining cannot produce a positive
+sample**. The first version of this protocol assumed it could.
+
+**2. The draw clustered by project.** Every tier-A pair is a StrictDoc "Requirements Tool" statement,
+because the sort key `(repo, a, b)` followed by a stride walks alphabetically within one repository.
+Stratifying by lexical overlap worked; stratifying by source was never in the rule.
+
+**3. Confidence does not travel.** One labeller's median confidence was 100, minimum 90, while
+disagreeing with the other on four of the ten hardest pairs. The other's median was 86. A stated
+confidence of 100 is a statement about the labeller, not about the pair, and the field is recorded for
+the record's sake rather than as evidence.
+
+**4. The related/unrelated boundary is where human ambiguity lives.** It is not the boundary the
+provider was failing on: d1 called those pairs equivalent, which both humans reject outright. A
+provider's error and a labeller's doubt are different phenomena and should not be reported as one.
+
+## Rules from here
+
+1. **Equivalents are sourced deliberately, never mined.** A positive sample needs pairs *known* to
+   restate one requirement: the same requirement reworded across releases, restated in a second
+   document of the same project, or written as a paraphrase by a person. Each pair records which
+   route produced it, so any precision figure can say where its positives came from.
+2. **Stratify by repository as well as by lexical overlap.** No tier may be one project.
+3. **Report the ceiling twice** — once over the three-way labels, once over the binary question the
+   gate asks. A provider is judged against the second.
+4. **Keep `undecided`.** It went unused here. A pair nobody can decide is data, and the vocabulary
+   must keep admitting it.
+
+The thirty pairs and both fillings stand as the pilot's record: the worksheet is committed, the ceiling
+is recorded under `bench/results/`, and the fillings remain session scratch because they are two
+people's working notes rather than repository content.
