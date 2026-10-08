@@ -9,6 +9,7 @@ pub mod bench;
 pub mod canon;
 pub mod compare;
 pub mod fill;
+pub mod funnel;
 pub mod gate;
 pub mod impact;
 pub mod model;

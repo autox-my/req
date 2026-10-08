@@ -130,6 +130,18 @@ export OCR_NO_UPDATE=1
   and an **undecided** one is never treated as absent. An `impact` answer that a broken
   relation could have made incomplete says so (exit 3) instead of quietly shortening the
   list.
+- Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [key=value ...]` — the funnel's
+  deterministic half. It skips pairs Tier-1 already resolved (equal address), **blocks** the
+  rest on shared content terms (default 2), and hands only those to a provider. Exit **0**
+  every candidate adjudicated, **3** anything unadjudicated, **2** usage. The default provider
+  is the **offline** one and it answers `Unverifiable` — never "unrelated", because no local
+  model exists here and REQ-0012 forbids requiring a network call, so Tier-2 *metrics*
+  (flip-rate stability, precision/recall) are UNVERIFIABLE in this environment rather than
+  reported as zero. Blocking is a cost control, so its failure is asymmetric like everything
+  else: a pair sharing too few terms is **never proposed**, which is a duplicate silently
+  dropped — `blocking_misses` measures that against the corpus labels and a test pins it at
+  zero. Every proposal records the provider's id verbatim (ADR 0004: the model proposes, a
+  human disposes).
 - Docs-only changes: the same gate, with its skips stated in the commit message.
 
 ### Review — OCR in delegation mode (no LLM, no API key)
@@ -210,8 +222,8 @@ matter:
   (claim/registry/corpus types), `canon.rs` (Tier-1 pipeline + diagnostics),
   `bench.rs` (the benchmark gate + its tests), `select.rs` (tri-state variant
   selection), `compare.rs` (change direction), `view.rs` (render/trace + the shared
-  row), `impact.rs` (reverse traversal), `gate.rs` (release policies), `fill.rs`
-  (derived fields).
+  row), `impact.rs` (reverse traversal), `gate.rs` (release policies),
+  `funnel.rs` (Tier-2 blocking + the provider seam), `fill.rs` (derived fields).
 - `tools/ocr/` — the pinned review CLI (`package.json` + lockfile committed;
   `node_modules/` ignored).
 - `review/rule.json` — the review rules we own: one checklist per path class, passed
