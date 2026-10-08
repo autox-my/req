@@ -247,10 +247,36 @@ pub fn run(args: &[String]) -> i32 {
     let mut context = Context::new();
     let mut min_shared = MIN_SHARED_TERMS;
     let mut gold_path: Option<String> = None;
+    let mut provider_cmd: Option<String> = None;
+    let mut repeats = 1usize;
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
         index += 1;
+        if arg == "--provider-cmd" {
+            let Some(value) = args.get(index) else {
+                eprintln!("--provider-cmd needs a command");
+                return 2;
+            };
+            index += 1;
+            provider_cmd = Some(value.clone());
+            continue;
+        }
+        if arg == "--repeats" {
+            let Some(value) = args.get(index) else {
+                eprintln!("--repeats needs a count");
+                return 2;
+            };
+            index += 1;
+            match value.parse::<usize>() {
+                Ok(n) if n > 0 => repeats = n,
+                _ => {
+                    eprintln!("--repeats must be a positive integer");
+                    return 2;
+                }
+            }
+            continue;
+        }
         if arg == "--gold" {
             let Some(value) = args.get(index) else {
                 eprintln!("--gold needs a file");
@@ -361,12 +387,55 @@ pub fn run(args: &[String]) -> i32 {
         for miss in &misses {
             println!("  - MISS {miss}");
         }
-        println!(
-            "  provider metrics (precision, recall, flag rate): UNVERIFIABLE — no provider configured"
-        );
+        println!("  provider metrics: UNVERIFIABLE unless --provider-cmd is given (see below)");
     }
-    if gold_misses > 0 {
-        println!("\nverdict: FAIL — an equivalent pair in the gold set is unreachable by blocking");
+    let mut false_merges = 0usize;
+    let mut flip_percent = 0u32;
+    if let (Some(path), Some(command)) = (&gold_path, &provider_cmd) {
+        let corpus = match Tier2Corpus::load(path) {
+            Ok(corpus) => corpus,
+            Err(e) => {
+                eprintln!("[UNVERIFIABLE] {e}");
+                return 3;
+            }
+        };
+        let provider = CommandProvider::new(command.clone());
+        let score = score_gold(&corpus, &provider, min_shared);
+        let (flipped, measured) = flip_count(&corpus, &provider, min_shared, repeats);
+        flip_percent = ((flipped * 100).checked_div(measured)).unwrap_or(0) as u32;
+        false_merges = score.false_positives;
+        println!("  provider: {}", provider.id());
+        println!(
+            "  proposed {} pair(s); unverifiable {}; not proposed {}",
+            score.scored + score.unverifiable,
+            score.unverifiable,
+            score.not_proposed
+        );
+        println!(
+            "  equivalent: tp {} fp {} fn {} — precision {} recall {}",
+            score.true_positives,
+            score.false_positives,
+            score.false_negatives,
+            score
+                .precision()
+                .map(|p| format!("{p}%"))
+                .unwrap_or_else(|| "n/a".to_string()),
+            score
+                .recall()
+                .map(|r| format!("{r}%"))
+                .unwrap_or_else(|| "n/a".to_string())
+        );
+        println!(
+            "  REQ-0011 flip rate: {flipped}/{measured} pair(s) changed across {repeats} run(s) = {flip_percent}% (at most 2% required)"
+        );
+        if score.false_positives > 0 {
+            println!("  - FALSE MERGE: the provider called a non-equivalent pair equivalent");
+        }
+    }
+    if gold_misses > 0 || false_merges > 0 || flip_percent > 2 {
+        println!(
+            "\nverdict: FAIL — unreachable equivalents {gold_misses}, false merges {false_merges}, flip rate {flip_percent}%"
+        );
         return 1;
     }
     println!(
@@ -436,4 +505,222 @@ pub fn tier2_blocking_misses(corpus: &Tier2Corpus, min_shared: usize) -> Vec<Str
             )
         })
         .collect()
+}
+
+// ---------------------------------------------------------------------------------------------
+// Measuring a provider against the gold set.
+
+/// A provider that is an **external command**: req writes the pair and the choice set to its stdin
+/// and reads the chosen label from its stdout. Nothing about the model is baked in — swapping
+/// `llama-server` for `GLiNER2.5-Decide` is one argument — and the core still links no ML and
+/// opens no socket. `sh -c` is used, so the command may be a pipeline.
+pub struct CommandProvider {
+    command: String,
+}
+
+impl CommandProvider {
+    pub fn new(command: String) -> Self {
+        Self { command }
+    }
+}
+
+/// The request a command provider receives. Documented because it is a contract: a model server
+/// wrapper only has to read two lines and print one word.
+pub fn provider_request(a: &str, b: &str) -> String {
+    format!("A: {a}\nB: {b}\nCHOOSE: equivalent|related|unrelated\n")
+}
+
+/// Read a label out of a provider's answer. `unrelated` is checked before `related` because the
+/// former contains the latter — the classic substring trap, and one that would silently turn every
+/// `unrelated` into `related`. A trailing percentage, if the provider states one, becomes the
+/// confidence; absent, confidence is 0, meaning **not stated** (not "no confidence", which is a
+/// number the provider never gave).
+pub fn parse_adjudication(stdout: &str) -> Adjudication {
+    let lowered = stdout.to_lowercase();
+    let (label, at, word) = if let Some(at) = lowered.find("unrelated") {
+        (AdjudicationKind::Unrelated, at, "unrelated")
+    } else if let Some(at) = lowered.find("related") {
+        (AdjudicationKind::Related, at, "related")
+    } else if let Some(at) = lowered.find("equivalent") {
+        (AdjudicationKind::Equivalent, at, "equivalent")
+    } else {
+        return Adjudication::Unverifiable {
+            reason: format!("no label in the provider's answer: {}", stdout.trim()),
+        };
+    };
+    let tail = &lowered[at + word.len()..];
+    let stated = tail
+        .split(|c: char| !c.is_ascii_digit())
+        .find(|token| !token.is_empty())
+        .and_then(|token| token.parse::<u8>().ok())
+        .filter(|value| *value <= 100)
+        .unwrap_or(0);
+    match label {
+        AdjudicationKind::Equivalent => Adjudication::Equivalent { confidence: stated },
+        AdjudicationKind::Related => Adjudication::Related { confidence: stated },
+        AdjudicationKind::Unrelated => Adjudication::Unrelated { confidence: stated },
+    }
+}
+
+enum AdjudicationKind {
+    Equivalent,
+    Related,
+    Unrelated,
+}
+
+impl Provider for CommandProvider {
+    fn id(&self) -> String {
+        format!("cmd:{}", self.command)
+    }
+
+    fn adjudicate(&self, a: &Candidate<'_>, b: &Candidate<'_>) -> Adjudication {
+        use std::io::Write;
+        let mut child = match std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&self.command)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(e) => {
+                return Adjudication::Unverifiable {
+                    reason: format!("cannot run the provider command: {e}"),
+                };
+            }
+        };
+        let wrote = child
+            .stdin
+            .as_mut()
+            .map(|stdin| {
+                stdin
+                    .write_all(provider_request(a.statement, b.statement).as_bytes())
+                    .is_ok()
+            })
+            .unwrap_or(false);
+        if !wrote {
+            return Adjudication::Unverifiable {
+                reason: "the provider command closed its input".to_string(),
+            };
+        }
+        match child.wait_with_output() {
+            Ok(output) => parse_adjudication(&String::from_utf8_lossy(&output.stdout)),
+            Err(e) => Adjudication::Unverifiable {
+                reason: format!("the provider command failed: {e}"),
+            },
+        }
+    }
+}
+
+/// How a provider did on the gold set. Counts, not rates: a rate over 36 pairs invites more
+/// confidence than 36 pairs can carry, and the caller can divide.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct GoldScore {
+    /// Labelled equivalent, and the provider said equivalent.
+    pub true_positives: usize,
+    /// Labelled anything else, and the provider said equivalent — **the false merge**, the one
+    /// error whose cost is asymmetric.
+    pub false_positives: usize,
+    /// Labelled equivalent, and the provider said related or unrelated — a missed duplicate.
+    pub false_negatives: usize,
+    /// Labelled anything else, and the provider agreed it was not equivalent.
+    pub true_negatives: usize,
+    /// The provider declined to answer.
+    pub unverifiable: usize,
+    /// Sharing too few terms for blocking, so the provider never saw it.
+    pub not_proposed: usize,
+    /// Pairs the provider was actually asked about.
+    pub scored: usize,
+}
+
+impl GoldScore {
+    /// Integer percent, floor. No floats anywhere near a reported number, for the same reason the
+    /// address path forbids them: two runs must print the same digits.
+    pub fn precision(&self) -> Option<u32> {
+        let denominator = self.true_positives + self.false_positives;
+        (denominator > 0).then(|| (self.true_positives * 100 / denominator) as u32)
+    }
+
+    pub fn recall(&self) -> Option<u32> {
+        let denominator = self.true_positives + self.false_negatives;
+        (denominator > 0).then(|| (self.true_positives * 100 / denominator) as u32)
+    }
+}
+
+fn predicted(adjudication: &Adjudication) -> Option<Tier2Label> {
+    match adjudication {
+        Adjudication::Equivalent { .. } => Some(Tier2Label::Equivalent),
+        Adjudication::Related { .. } => Some(Tier2Label::Related),
+        Adjudication::Unrelated { .. } => Some(Tier2Label::Unrelated),
+        Adjudication::Unverifiable { .. } => None,
+    }
+}
+
+/// Score a provider over the pairs blocking would propose, and count the rest as not proposed.
+pub fn score_gold(corpus: &Tier2Corpus, provider: &dyn Provider, min_shared: usize) -> GoldScore {
+    let mut score = GoldScore::default();
+    for pair in &corpus.pairs {
+        if shared_terms(&pair.a, &pair.b) < min_shared {
+            score.not_proposed += 1;
+            continue;
+        }
+        let verdict = provider.adjudicate(
+            &Candidate {
+                claim_id: &pair.id,
+                statement: &pair.a,
+            },
+            &Candidate {
+                claim_id: &pair.id,
+                statement: &pair.b,
+            },
+        );
+        score.scored += 1;
+        match predicted(&verdict) {
+            None => score.unverifiable += 1,
+            Some(Tier2Label::Equivalent) if pair.label == Tier2Label::Equivalent => {
+                score.true_positives += 1
+            }
+            Some(Tier2Label::Equivalent) => score.false_positives += 1,
+            Some(_) if pair.label == Tier2Label::Equivalent => score.false_negatives += 1,
+            Some(_) => score.true_negatives += 1,
+        }
+    }
+    score
+}
+
+/// REQ-0011: how many pairs change their answer across repeated identical runs. The count is
+/// measured, never assumed from architecture — a single-forward-pass classifier should be stable,
+/// but "should be" is not a measurement, and llama.cpp's own thread and batching effects are a
+/// reason to check rather than trust.
+pub fn flip_count(
+    corpus: &Tier2Corpus,
+    provider: &dyn Provider,
+    min_shared: usize,
+    repeats: usize,
+) -> (usize, usize) {
+    let mut flipped = 0;
+    let mut measured = 0;
+    for pair in &corpus.pairs {
+        if shared_terms(&pair.a, &pair.b) < min_shared {
+            continue;
+        }
+        measured += 1;
+        let candidate_a = Candidate {
+            claim_id: &pair.id,
+            statement: &pair.a,
+        };
+        let candidate_b = Candidate {
+            claim_id: &pair.id,
+            statement: &pair.b,
+        };
+        let first = provider.adjudicate(&candidate_a, &candidate_b);
+        for _ in 1..repeats {
+            if provider.adjudicate(&candidate_a, &candidate_b) != first {
+                flipped += 1;
+                break;
+            }
+        }
+    }
+    (flipped, measured)
 }
