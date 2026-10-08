@@ -106,6 +106,18 @@ export OCR_NO_UPDATE=1
   **2** usage. The grammar is deliberately tiny (`key == value`, `key >= number`); anything
   else is `UNKNOWN` with its text shown. Selection changes no address: a variant is a
   projection over one model.
+- Views: `cargo run -q -- render [key=value ...]` and `cargo run -q -- trace
+  [key=value ...]` — the spec view and the traceability matrix for a selection (design
+  step 9). Both are **projections**: they read claims, never write one. `render` shows
+  applies / undecided / outside-the-selection with each claim's address, modality,
+  statement, selector and outgoing relations; `trace` prints the edges, the **derived**
+  incoming edges (REQ-0020 stores each relation once, on the outgoing side), and its
+  findings. Exit **0** settled, **3** anything an undecided claim or a missing claim
+  leaves open, **2** usage. Two rules carry over and must not be relaxed: an undecided
+  claim is **shown in its own section** (never dropped), and every edge that leaves the
+  selection is **named** — to an excluded claim (legitimate, reported) or to an undecided
+  one (a gap needing a decision). A relation pointing at a claim that is not in the corpus
+  is `UNVERIFIABLE`, never ignored.
 - Docs-only changes: the same gate, with its skips stated in the commit message.
 
 ### Review — OCR in delegation mode (no LLM, no API key)
