@@ -307,7 +307,7 @@ fn a_provider_that_calls_everything_equivalent_earns_false_merges() {
         .filter(|p| p.label == req::funnel::Tier2Label::Equivalent)
         .filter(|p| shared_terms(&p.a, &p.b) >= MIN_SHARED_TERMS)
         .count();
-    let score = req::funnel::score_gold(&corpus, &AlwaysEquivalent, MIN_SHARED_TERMS);
+    let score = req::funnel::score_gold(&corpus, &AlwaysEquivalent, MIN_SHARED_TERMS, 0);
     assert_eq!(score.true_positives, proposed_equivalents);
     assert_eq!(score.false_negatives, 0, "it never says anything else");
     assert!(score.false_positives > 0, "it must be caught: {score:?}");
@@ -322,7 +322,7 @@ fn a_provider_that_calls_everything_equivalent_earns_false_merges() {
 #[test]
 fn an_abstaining_provider_is_unverifiable_not_wrong() {
     let corpus = tier2_gold();
-    let score = req::funnel::score_gold(&corpus, &NoProvider, MIN_SHARED_TERMS);
+    let score = req::funnel::score_gold(&corpus, &NoProvider, MIN_SHARED_TERMS, 0);
     assert_eq!(score.true_positives, 0);
     assert_eq!(score.false_positives, 0);
     assert_eq!(score.false_negatives, 0);
@@ -467,7 +467,7 @@ fn the_score_names_the_pairs_it_got_wrong() {
         }
     }
     let corpus = tier2_gold();
-    let score = req::funnel::score_gold(&corpus, &AlwaysEquivalent, MIN_SHARED_TERMS);
+    let score = req::funnel::score_gold(&corpus, &AlwaysEquivalent, MIN_SHARED_TERMS, 0);
     assert_eq!(score.false_positive_ids.len(), score.false_positives);
     assert!(!score.false_positive_ids.is_empty());
     for id in &score.false_positive_ids {
@@ -484,7 +484,7 @@ fn the_score_names_the_pairs_it_got_wrong() {
     }
     assert!(score.false_negative_ids.is_empty());
     // An abstaining provider gets no error ids either: no answer is not a wrong answer.
-    let abstained = req::funnel::score_gold(&corpus, &NoProvider, MIN_SHARED_TERMS);
+    let abstained = req::funnel::score_gold(&corpus, &NoProvider, MIN_SHARED_TERMS, 0);
     assert!(abstained.false_positive_ids.is_empty());
     assert!(abstained.false_negative_ids.is_empty());
 }
@@ -524,4 +524,69 @@ fn a_provider_that_crashes_reports_why_instead_of_going_quiet() {
         }
         other => panic!("a crashed provider is unverifiable, not {other:?}"),
     }
+}
+
+/// The floor is the measured remedy: the model splits equivalent/related 0.478 to 0.4385, so below
+/// a threshold its answer is a coin flip. A declined `equivalent` becomes `related` — the
+/// asymmetric direction, a missed duplicate rather than a silent merge — and it is counted.
+#[test]
+fn a_confidence_floor_declines_a_coin_flip_instead_of_merging_on_it() {
+    struct Fixed(u8);
+    impl Provider for Fixed {
+        fn id(&self) -> String {
+            format!("fixed-{}", self.0)
+        }
+        fn adjudicate(&self, _a: &Candidate<'_>, _b: &Candidate<'_>) -> Adjudication {
+            Adjudication::Equivalent { confidence: self.0 }
+        }
+    }
+    let corpus = tier2_gold();
+    let unfloored = req::funnel::score_gold(&corpus, &Fixed(50), MIN_SHARED_TERMS, 0);
+    let floored = req::funnel::score_gold(&corpus, &Fixed(50), MIN_SHARED_TERMS, 80);
+    assert!(unfloored.false_positives > 0);
+    assert_eq!(
+        floored.false_positives, 0,
+        "a declined merge is not a merge"
+    );
+    assert_eq!(
+        floored.below_floor, unfloored.scored,
+        "every answer was declined"
+    );
+    assert_eq!(floored.true_positives, 0);
+    assert!(
+        floored.false_negatives > 0,
+        "the cost of the floor is missed duplicates, which is the affordable direction"
+    );
+    // A provider above the floor is untouched by it.
+    let confident = req::funnel::score_gold(&corpus, &Fixed(95), MIN_SHARED_TERMS, 80);
+    assert_eq!(confident.false_positives, unfloored.false_positives);
+    assert_eq!(confident.below_floor, 0);
+}
+
+/// One run cannot measure stability, and asking twice for a comparison that will not happen both
+/// inflates the cost and invents a `0%` that reads like a result.
+#[test]
+fn a_single_run_is_not_a_stability_measurement() {
+    use std::cell::Cell;
+    struct Counting(Cell<usize>);
+    impl Provider for Counting {
+        fn id(&self) -> String {
+            "counting".to_string()
+        }
+        fn adjudicate(&self, _a: &Candidate<'_>, _b: &Candidate<'_>) -> Adjudication {
+            self.0.set(self.0.get() + 1);
+            Adjudication::Unverifiable {
+                reason: "counting only".to_string(),
+            }
+        }
+    }
+    let corpus = tier2_gold();
+    let provider = Counting(Cell::new(0));
+    let (flipped, measured) = req::funnel::flip_count(&corpus, &provider, MIN_SHARED_TERMS, 1);
+    assert_eq!((flipped, measured), (0, 0), "nothing was compared");
+    assert_eq!(
+        provider.0.get(),
+        0,
+        "a run that cannot compare must not ask the provider twice"
+    );
 }
