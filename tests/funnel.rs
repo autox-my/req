@@ -217,3 +217,71 @@ fn trailing_punctuation_does_not_change_a_term() {
     assert_eq!(with_stop, without, "{with_stop:?} vs {without:?}");
     assert!(content_terms("Respond within 0.15 seconds.").contains("0.15"));
 }
+
+fn tier2_gold() -> req::funnel::Tier2Corpus {
+    req::funnel::Tier2Corpus::load(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/bench/corpus/tier2-v1.yml"
+    ))
+    .expect("the gold set loads")
+}
+
+/// The gold set is the measuring instrument for every Tier-2 claim. It must keep all three labels,
+/// stay large enough to mean something, and hold no degenerate pair — a corpus of identical or
+/// mislabelled pairs would silently make a provider look better than it is.
+#[test]
+fn the_gold_set_holds_three_labels_and_no_degenerate_pairs() {
+    let corpus = tier2_gold();
+    assert!(
+        corpus.pairs.len() >= 70,
+        "grow the gold set, never shrink it: {} pairs",
+        corpus.pairs.len()
+    );
+    for label in [
+        req::funnel::Tier2Label::Equivalent,
+        req::funnel::Tier2Label::Related,
+        req::funnel::Tier2Label::Unrelated,
+    ] {
+        assert!(
+            corpus.pairs.iter().any(|pair| pair.label == label),
+            "no {label:?} pairs"
+        );
+    }
+    for pair in &corpus.pairs {
+        assert_ne!(pair.a, pair.b, "{}: identical sides", pair.id);
+        assert!(
+            !pair.transform.is_empty(),
+            "{}: unrecorded transform",
+            pair.id
+        );
+        assert!(
+            !pair.a.trim().is_empty() && !pair.b.trim().is_empty(),
+            "{}: empty side",
+            pair.id
+        );
+    }
+}
+
+/// **The property the gold set exists to measure.** Every pair it labels equivalent must be
+/// reachable by blocking, or the funnel can never propose it and the provider never sees it.
+#[test]
+fn the_gold_set_is_fully_reachable_by_blocking() {
+    let misses = req::funnel::tier2_blocking_misses(&tier2_gold(), MIN_SHARED_TERMS);
+    assert!(misses.is_empty(), "unreachable equivalents: {misses:?}");
+}
+
+/// A miss must only ever be an equivalent: related and unrelated pairs are not duplicates, so an
+/// unreachable negative is allowed and must not be reported as a recall failure.
+#[test]
+fn only_equivalents_are_ever_reported_as_misses() {
+    let corpus = tier2_gold();
+    for miss in req::funnel::tier2_blocking_misses(&corpus, MIN_SHARED_TERMS) {
+        let id = miss.split(':').next().unwrap_or_default();
+        let pair = corpus
+            .pairs
+            .iter()
+            .find(|pair| pair.id == id)
+            .expect("a miss names a known pair");
+        assert_eq!(pair.label, req::funnel::Tier2Label::Equivalent, "{miss}");
+    }
+}

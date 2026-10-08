@@ -130,7 +130,7 @@ export OCR_NO_UPDATE=1
   and an **undecided** one is never treated as absent. An `impact` answer that a broken
   relation could have made incomplete says so (exit 3) instead of quietly shortening the
   list.
-- Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [key=value ...]` — the funnel's
+- Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--gold <file>] [key=value ...]` — the funnel's
   deterministic half. It skips pairs Tier-1 already resolved (equal address), **blocks** the
   rest on shared content terms (default 2), and hands only those to a provider. Exit **0**
   every candidate adjudicated, **3** anything unadjudicated, **2** usage. The default provider
@@ -142,6 +142,9 @@ export OCR_NO_UPDATE=1
   dropped — `blocking_misses` measures that against the corpus labels and a test pins it at
   zero. Every proposal records the provider's id verbatim (ADR 0004: the model proposes, a
   human disposes).
+  With `--gold <file>` it also reports the gold set: label counts, blocking **recall** over the
+  equivalents (a reachable-pair miss is FAIL), and the provider metrics — precision, recall and the
+  REQ-0011 flip rate — as UNVERIFIABLE until a provider exists to measure.
 - Baselines: `cargo run -q -- baseline [key=value ...]` prints the **canonical manifest** — the
   rules version, the selection, and every applying claim's address — which is the exact byte
   string a human signs; `cargo run -q -- baseline --verify <file> [--signature <file>]
@@ -243,6 +246,12 @@ matter:
   requirement prose, labelled by construction, built by
   `tools/corpus/build_external.py` (sources pinned by commit SHA; v3 adds the PROMISE
   NFR set, a deterministic sample of 969 statements across 47 project ids).
+  `bench/corpus/tier2-v1.yml` — the Tier-2 **evaluation** corpus (design step 5): three labels
+  (equivalent / related / unrelated) built by `tools/corpus/build_tier2.py`, every pair recording
+  the transformation that produced it, so labels are by construction and the generator is the
+  reviewable surface. Equivalence transforms are the ones the Tier-1 rules already sanction;
+  `related` pairs are reachable hard negatives that measure a provider's precision, and `unrelated`
+  ones are foreign-domain pairs blocking should never propose.
   `bench/results/` — one record per corpus and rules version; append, do not rewrite.
   These corpora are **generated data**: a corpus of this size is reviewed through its
   generator (`tools/corpus/`) and its label scheme, not line by line — the generator,
