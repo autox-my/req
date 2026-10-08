@@ -90,6 +90,15 @@ export OCR_NO_UPDATE=1
   file. The CLI **silently** falls back to the built-in rubric for a glob that matches
   nothing, so a renamed directory would drop a checklist while every exit code stayed
   zero; the script checks the effect (`source: custom`) instead of the exit status.
+- Direction: `cargo run -q -- compare <a.yml> <b.yml>` — classifies the change
+  (`modality_weakening`, `numeric_tightening`, `polarity_flip`, `scope_divergence`, …),
+  exit **3** when a side has no structured form to compare. A classification is for a
+  human to ratify, never an approval. The **direction gold set** (`req bench
+  bench/corpus/direction-v1.yml`) scores these: the hard gate is **dangerous
+  confusions = 0** (a loosening reported as no change, or as the opposite direction —
+  the direction analogue of a false merge), while accuracy is reported against a 0.95
+  soft target. A misspelled `direction:` label fails the gate rather than switching the
+  check off.
 - Docs-only changes: the same gate, with its skips stated in the commit message.
 
 ### Review — OCR in delegation mode (no LLM, no API key)

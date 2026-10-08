@@ -71,8 +71,74 @@ pub struct Evaluation {
     /// structurally verified. Named, not just counted: a coverage shortfall has to be
     /// auditable pair by pair.
     pub unverifiable_pairs: Vec<String>,
+    /// Direction gold set: how many labelled pairs were classified, and how many were
+    /// read correctly. Accuracy is *reported*; the hard gate is `dangerous`.
+    pub direction_checked: usize,
+    pub direction_correct: usize,
+    /// The dangerous confusions, named with what was expected and what was reported: a
+    /// loosening read as no change, or as the opposite direction. The direction analogue
+    /// of a false merge.
+    pub dangerous: Vec<String>,
+    /// Labelled pairs with an unparseable side: coverage, never counted as correct.
+    pub direction_unclassifiable: Vec<String>,
+    /// Wrong but harmless reads, named: a wrong answer that did not mislead anyone about
+    /// whether an obligation moved still has to be auditable.
+    pub direction_mismatches: Vec<String>,
+    /// Labels no `Direction` answers to. A misspelled label would otherwise switch the
+    /// whole check off while every number looked fine.
+    pub direction_label_errors: Vec<String>,
     pub rows: Vec<String>,
     pub verdict: &'static str,
+}
+
+/// The direction tally, carried through both pair loops as one value.
+#[derive(Default)]
+struct DirectionTally {
+    checked: usize,
+    correct: usize,
+    dangerous: Vec<String>,
+    mismatches: Vec<String>,
+    unclassifiable: Vec<String>,
+    label_errors: Vec<String>,
+}
+
+/// Score one pair's expected direction, when the corpus carries a label.
+fn record_direction(
+    pair: &crate::model::Pair,
+    a: &CanonicalForm,
+    b: &CanonicalForm,
+    tally: &mut DirectionTally,
+) {
+    let Some(label) = pair.direction.as_deref() else {
+        return;
+    };
+    let Some(expected) = crate::compare::Direction::parse(label) else {
+        tally
+            .label_errors
+            .push(format!("{}: unknown direction label {label:?}", pair.id));
+        return;
+    };
+    let reported = crate::compare::compare(a, b);
+    if reported == crate::compare::Direction::Unclassifiable {
+        tally.unclassifiable.push(pair.id.clone());
+        return;
+    }
+    tally.checked += 1;
+    if reported == expected {
+        tally.correct += 1;
+        return;
+    }
+    let named = format!(
+        "{}: expected {}, reported {}",
+        pair.id,
+        expected.as_str(),
+        reported.as_str()
+    );
+    if crate::compare::Direction::is_dangerous_confusion(expected, reported) {
+        tally.dangerous.push(named);
+    } else {
+        tally.mismatches.push(named);
+    }
 }
 
 /// Evaluate one corpus: pure, no files touched, nothing printed.
@@ -83,6 +149,7 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
     let mut lints: Vec<serde_json::Value> = Vec::new();
     let mut structured_equivalent: usize = 0;
     let mut unverifiable_pairs: Vec<String> = Vec::new();
+    let mut tally = DirectionTally::default();
     let mut rows: Vec<String> = Vec::new();
 
     let push_lints = |pair_id: &str,
@@ -110,6 +177,7 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
         }
         push_lints(&pair.id, "a", &la, &mut lints);
         push_lints(&pair.id, "b", &lb, &mut lints);
+        record_direction(pair, &fa, &fb, &mut tally);
         rows.push(format!(
             "{:<8} {:<15} collapsed={:<5} structured={}",
             pair.id, "equivalent", collapsed, structured
@@ -131,6 +199,7 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
         }
         push_lints(&pair.id, "a", &la, &mut lints);
         push_lints(&pair.id, "b", &lb, &mut lints);
+        record_direction(pair, &fa, &fb, &mut tally);
         rows.push(format!(
             "{:<8} {:<15} collapsed={}",
             pair.id, "not_equivalent", collapsed
@@ -138,7 +207,14 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
     }
 
     Evaluation {
-        verdict: if fmr_hits.is_empty() { "PASS" } else { "FAIL" },
+        verdict: if fmr_hits.is_empty()
+            && tally.dangerous.is_empty()
+            && tally.label_errors.is_empty()
+        {
+            "PASS"
+        } else {
+            "FAIL"
+        },
         fmr_hits,
         fsr_hits,
         tier2,
@@ -146,6 +222,12 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
         structured_equivalent,
         not_equivalent_total: corpus.not_equivalent.len(),
         unverifiable_pairs,
+        direction_checked: tally.checked,
+        direction_correct: tally.correct,
+        dangerous: tally.dangerous,
+        direction_unclassifiable: tally.unclassifiable,
+        direction_mismatches: tally.mismatches,
+        direction_label_errors: tally.label_errors,
         rows,
     }
 }
@@ -191,6 +273,11 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     } else {
         ev.fsr_hits.len() as f64 / ev.structured_equivalent as f64
     };
+    let direction_accuracy = if ev.direction_checked == 0 {
+        0.0
+    } else {
+        ev.direction_correct as f64 / ev.direction_checked as f64
+    };
     let corpus_sha =
         crate::canon::sha256_hex_raw(&std::fs::read(path.to_str().unwrap()).unwrap_or_default());
     let pair_total = corpus.equivalent.len() + corpus.not_equivalent.len();
@@ -204,6 +291,15 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     let fmr_pairs = ev.fmr_hits;
     let fsr_n = ev.fsr_hits.len();
     let fsr_pairs = ev.fsr_hits;
+    let dangerous = ev.dangerous;
+    let direction_unclassifiable = ev.direction_unclassifiable;
+    let direction_mismatches = ev.direction_mismatches;
+    let direction_label_errors = ev.direction_label_errors;
+    let direction_gate = if dangerous.is_empty() && direction_label_errors.is_empty() {
+        "PASS"
+    } else {
+        "FAIL"
+    };
     let report = json!({
         "schema": "req.bench.result/0",
         "rules_v": RULES_V,
@@ -224,6 +320,18 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
             "structured_equivalent_total": ev.structured_equivalent,
             "rate": fsr_rate,
             "hit_pairs": fsr_pairs,
+        },
+        "direction": {
+            "checked": ev.direction_checked,
+            "correct": ev.direction_correct,
+            "accuracy": direction_accuracy,
+            "soft_target": 0.95,
+            "hard_gate": direction_gate,
+            "dangerous_confusions": dangerous,
+            "mismatches": direction_mismatches,
+            "unclassifiable": direction_unclassifiable,
+            "unknown_labels": direction_label_errors,
+            "note": "a loosening reported as no change, or as the opposite direction, is the dangerous confusion — the direction analogue of a false merge. Accuracy is reported rather than gated: a harmless misread costs nothing, while a dangerous one costs a ratified loosening."
         },
         "tier2": {
             "candidates": ev.tier2.len(),

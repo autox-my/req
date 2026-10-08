@@ -56,6 +56,25 @@ impl Direction {
         }
     }
 
+    /// Parse a corpus label. `None` for anything unrecognised, so the caller can fail
+    /// loudly: a misspelled label must not silently disable a check.
+    pub fn parse(label: &str) -> Option<Direction> {
+        [
+            Direction::Identical,
+            Direction::ModalityWeakening,
+            Direction::ModalityStrengthening,
+            Direction::PolarityFlip,
+            Direction::NumericLoosening,
+            Direction::NumericTightening,
+            Direction::ScopeNarrowing,
+            Direction::ScopeWidening,
+            Direction::ScopeDivergence,
+            Direction::Unrelated,
+        ]
+        .into_iter()
+        .find(|d| d.as_str() == label)
+    }
+
     /// True when the change permits strictly more than before.
     pub fn is_loosening(&self) -> bool {
         matches!(
@@ -162,11 +181,17 @@ fn numeric_direction(a: &CanonicalForm, b: &CanonicalForm) -> Direction {
     use Direction::*;
 
     let (Some(op_a), Some(op_b)) = (a.operator, b.operator) else {
-        // A bound appeared or disappeared: a different requirement, not a direction.
+        // A comparator appeared or disappeared: a different requirement, not a direction.
         return ScopeDivergence;
     };
-    let (Some(v_a), Some(v_b)) = (a.value, b.value) else {
-        return ScopeDivergence;
+    // Values are optional, and bailing out on a missing one was a real defect: "within a
+    // single window" vs "in fewer than a single window" carries no number, yet LE→LT is a
+    // tightening. The direction gold set found it (7 pairs read as ScopeDivergence).
+    let values = match (a.value, b.value) {
+        (Some(v_a), Some(v_b)) => Some((v_a, v_b)),
+        (None, None) => None,
+        // A bound that appears or disappears is a different requirement.
+        _ => return ScopeDivergence,
     };
     // An exact value is not a bound: changing it changes what is required.
     if op_a == Comp::Eq || op_b == Comp::Eq {
@@ -183,10 +208,13 @@ fn numeric_direction(a: &CanonicalForm, b: &CanonicalForm) -> Direction {
     }
 
     let lower = matches!(op_a, Comp::Ge | Comp::Gt);
-    let value_tightens = match v_b.cmp(&v_a) {
-        Ordering::Equal => None,
-        Ordering::Greater => Some(lower),
-        Ordering::Less => Some(!lower),
+    let value_tightens = match values {
+        None => None,
+        Some((v_a, v_b)) => match v_b.cmp(&v_a) {
+            Ordering::Equal => None,
+            Ordering::Greater => Some(lower),
+            Ordering::Less => Some(!lower),
+        },
     };
     // LT ⊂ LE and GT ⊂ GE, so moving to the strict comparator tightens.
     let op_tightens = match (op_a, op_b) {
@@ -212,6 +240,61 @@ fn numeric_direction(a: &CanonicalForm, b: &CanonicalForm) -> Direction {
 
 fn prohibition(m: Option<Modality>) -> bool {
     matches!(m, Some(Modality::ShallNot))
+}
+
+/// `req compare <a.yml> <b.yml>` — what kind of change is this?
+///
+/// Exit codes: **0** classified, **3** UNVERIFIABLE (a claim that will not load, or a
+/// pair with nothing structurally to compare). A classification is not an approval: the
+/// answer is for a human to ratify.
+pub fn run(path_a: &str, path_b: &str) -> i32 {
+    let registry =
+        match crate::canon::load_registry(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("[UNVERIFIABLE] {e}");
+                return 3;
+            }
+        };
+    let (a, b) = match (load_claim(path_a), load_claim(path_b)) {
+        (Ok(a), Ok(b)) => (a, b),
+        (Err(e), _) | (_, Err(e)) => {
+            eprintln!("[UNVERIFIABLE] {e}");
+            return 3;
+        }
+    };
+    let (va, vb) = (
+        crate::canon::evaluate_claim(&a, &registry),
+        crate::canon::evaluate_claim(&b, &registry),
+    );
+    let direction = compare(&va.form, &vb.form);
+    println!("{} -> {}: {}", a.claim_id, b.claim_id, direction.as_str());
+    if direction.is_loosening() {
+        println!("  this change permits strictly more than before");
+    }
+    if direction == Direction::Unclassifiable {
+        println!("  one side has no structured form, so there is nothing to compare");
+        return 3;
+    }
+    if va.flags() > 0 || vb.flags() > 0 {
+        println!(
+            "  note: a claim's authored slots disagree with its parse ({} / {} flags) — \
+             run `req canon` before trusting the classification",
+            va.flags(),
+            vb.flags()
+        );
+    }
+    let (addr_a, addr_b) = (
+        crate::canon::address_hex(&crate::canon::canonical_json(&va.form)),
+        crate::canon::address_hex(&crate::canon::canonical_json(&vb.form)),
+    );
+    println!("  {} -> {}", &addr_a[..12], &addr_b[..12]);
+    0
+}
+
+fn load_claim(path: &str) -> Result<crate::model::ClaimFile, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("read {path}: {e}"))?;
+    yaml_serde::from_str(&text).map_err(|e| format!("parse {path}: {e}"))
 }
 
 fn rank(m: Option<Modality>) -> Option<u8> {

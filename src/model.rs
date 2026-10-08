@@ -162,6 +162,12 @@ pub struct Pair {
     pub source: String,
     #[serde(default)]
     pub note: Option<String>,
+    /// Expected change direction, for a corpus that is a **direction gold set**: the
+    /// label names the mutation that produced `b`, so it is an independent oracle for
+    /// `req compare` in exactly the way `not_equivalent` is for identity. A misspelled
+    /// label fails the gate rather than disabling the check.
+    #[serde(default)]
+    pub direction: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -5,11 +5,12 @@
 //!   req canon               — parse diagnostics over claims/REQ-*.yml
 //!   req canon --fill        — write the derived `canonical.form` + `address`
 //!   req canon --verify      — check the stored derived fields against the parse
+//!   req compare A.yml B.yml — what kind of change is this between two claims?
 //!
 //! The Tier-1 canonicalizer (src/canon.rs) is deterministic and offline: no model I/O,
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
-use req::{bench, canon, fill};
+use req::{bench, canon, compare, fill};
 use std::process::exit;
 
 fn main() {
@@ -20,6 +21,13 @@ fn main() {
     });
     let code = match cmd.as_str() {
         "bench" => bench::run(args.next().as_deref()),
+        "compare" => match (args.next(), args.next()) {
+            (Some(a), Some(b)) => compare::run(&a, &b),
+            _ => {
+                eprintln!("usage: req compare <a.yml> <b.yml>");
+                2
+            }
+        },
         "canon" => match args.next().as_deref() {
             // Only the derived fields are ever written, and only for claims whose
             // parse agrees with their authored slots.

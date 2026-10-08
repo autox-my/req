@@ -193,9 +193,14 @@ mutation — an address that changes between runs would make every Baseline unau
      five transforms would make the corpus and its review diff unreviewable. 24% of
      them carry numeric bounds, which is what the digit-grouping and unit-scale classes
      exercise.
-3. **Natural duplicate run** — whole real documents; measures collapse of true
+3. **Direction gold set** (`bench/corpus/direction-v1.yml`, built by
+   `tools/corpus/build_direction.py`) — the same three sources, each statement carried
+   through one mutation per direction class, and the `direction:` label **is** the
+   mutation. It answers "what kind of change is this?", and it is labelled by
+   construction for the same reason the identity corpora are.
+4. **Natural duplicate run** — whole real documents; measures collapse of true
    duplicates vs near-duplicates. Not yet implemented.
-4. **Evaluated and excluded — Sphinx-Needs.** Its own documentation uses standard
+5. **Evaluated and excluded — Sphinx-Needs.** Its own documentation uses standard
    Sphinx directives (``versionadded``, ``note``, ``automodule``) rather than its own
    needs; its test roots contain no ``.. need::`` directives; and its demo project's
    29 ``swreq`` needs carry a title plus attributes but **no statement body** (e.g.
@@ -217,15 +222,36 @@ third. Labels are versioned YAML in the repository.
 | Structural coverage (Not-equivalent) | pairs where *both* sides parsed to a structured form | reported per corpus; a pair that cannot be structurally checked is **never** counted as verified |
 | FSR (false-split rate) | split / all Equivalent pairs | reported; v0 soft target ≤ 0.30 |
 | Trap-class FMR | per adversarial class (LE/LT, modality, unit, condition, subject) | = 0.0 per class |
-| Direction accuracy | classification on a direction gold set | ≥ 0.95 on structural cases |
+| Direction accuracy | correct / classified labelled pairs on the direction gold set | reported; soft target ≥ 0.95 |
+| Dangerous direction confusion | a safety-relevant change reported as *no change*, or as the **opposite** direction | **= 0 — hard gate** (see below) |
 | Tier-2 stability | provider output flip rate over ≥ 20 identical runs | ≤ 2% or the provider is not review-trustworthy |
 | Tier-2 precision/recall | proposals vs labels | reported, never auto-applied |
+
+**Why direction gates on the dangerous confusion, not on accuracy.** The earlier
+definition made "≥ 0.95 on structural cases" the gate, which prices every misread the
+same. It does not cost the same. Reading a tightening as a widening is wrong but nothing
+was silently relaxed; reading a **loosening** as *no change* is how a weakened
+requirement gets ratified — the direction analogue of a false merge. So the hard gate is
+**dangerous confusions = 0**, and accuracy is reported against a 0.95 soft target,
+exactly as FMR is hard and FSR is soft.
 
 The harness reports **PASS / FAIL / UNVERIFIABLE** as three distinct outcomes — a broken
 corpus or harness is never accidentally a pass (the same principle as ADR 0005).
 
 #### Recorded runs (append-only)
 
+- **Direction gold set, rules v5** — 1159 pairs (279 cosmetic + 880 mutations) from the
+  three real sources: **accuracy 0.9962 over 1050 classified pairs, zero dangerous
+  confusions**, FMR 0.0, FSR 0.0, 109 unclassifiable (coverage). Four mismatches remain,
+  all `numeric_* → scope_divergence`, on two PROMISE statements whose scaled number is not
+  the value slot — a **parser-coverage fact**, named in the report rather than smoothed
+  over. The first run also found a real classifier defect: an operator-only move carrying
+  no value ("within a single window" → "in fewer than a single window") was reported as
+  divergence instead of a tightening, because the classifier bailed out whenever a value
+  was absent. Fixed; the seven pairs it affected now classify correctly. Two of the
+  generator's own labels were wrong too, and the gold set caught them: flipping the
+  polarity of a statement that was already a prohibition (a doubled negation) and
+  swapping a unit that was not the bound's.
 - **Rules v5** — the authored-slot gaps closed (same class as the predicate-span bug):
   `applicability` entered identity, authored `conditions` are compared with the parse,
   and `quantifier`/`exception`/`temporal` are refused when authored. The new checks found
