@@ -15,6 +15,7 @@ fn pair(id: &str, a: &str, b: &str) -> Pair {
         b: b.to_string(),
         source: "tests/gate.rs".to_string(),
         note: None,
+        direction: None,
     }
 }
 

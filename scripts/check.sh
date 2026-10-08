@@ -79,6 +79,10 @@ run cargo run -q -- bench bench/corpus/external-v2.yml
 # across 47 project ids) plus StrictDoc and Doorstop, and adds the digit-grouping and
 # exact unit-scale equivalence classes. It caught the "may not" false merge (rules v4).
 run cargo run -q -- bench bench/corpus/external-v3.yml
+# The direction gold set: same hard FMR gate plus the direction gate — a loosening
+# reported as no change (or as the opposite direction) is a dangerous confusion and
+# fails, exactly as a false merge does. See docs/canonical-hashing.md 6.3.
+run cargo run -q -- bench bench/corpus/direction-v1.yml
 
 # OCR is a review tool, not a gate: report the pin so version drift is visible.
 say "ocr (review tool, not a gate)"

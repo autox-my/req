@@ -2,6 +2,18 @@
   "corpus": "bench/corpus/external-v1.yml",
   "corpus_sha256": "a0623e669ffabe4937a85f93bb1eb63664012d6616264fae3adf99cefa836919",
   "degraded": [],
+  "direction": {
+    "accuracy": 0.0,
+    "checked": 0,
+    "correct": 0,
+    "dangerous_confusions": [],
+    "hard_gate": "PASS",
+    "mismatches": [],
+    "note": "a loosening reported as no change, or as the opposite direction, is the dangerous confusion — the direction analogue of a false merge. Accuracy is reported rather than gated: a harmless misread costs nothing, while a dangerous one costs a ratified loosening.",
+    "soft_target": 0.95,
+    "unclassifiable": [],
+    "unknown_labels": []
+  },
   "fmr": {
     "collapses": 0,
     "hard_gate": "PASS",
