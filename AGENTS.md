@@ -292,6 +292,11 @@ matter:
   `related` pairs are reachable hard negatives that measure a provider's precision, and `unrelated`
   ones are foreign-domain pairs blocking should never propose.
   `bench/results/` — one record per corpus and rules version; append, do not rewrite.
+  `tools/tier2/evaluate.py` scores a **captured** provider run without re-running the model: it
+  chooses the confidence floor on one half of the gold set (`sha256(pair id) % 2`) and reports it on
+  the other, prints both curves, and appends a JSON record under `bench/results/`. A floor picked and
+  scored on the same pairs is fitted, not measured, and the record states that both halves still come
+  from one generator and that confidence is the model's own uncalibrated report.
   These corpora are **generated data**: a corpus of this size is reviewed through its
   generator (`tools/corpus/`) and its label scheme, not line by line — the generator,
   the source pins and the sampling rule are the reviewable surface, and the review
