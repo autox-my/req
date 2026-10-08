@@ -488,3 +488,33 @@ fn the_score_names_the_pairs_it_got_wrong() {
     assert!(abstained.false_positive_ids.is_empty());
     assert!(abstained.false_negative_ids.is_empty());
 }
+
+/// A provider that crashes must be reported with its own words. This exact case cost a full run: the
+/// wrapper lacked its executable bit, exited 126 for every pair, and the harness reported 68
+/// `unverifiable` — blaming the model for a shell refusing to run a file.
+#[test]
+fn a_provider_that_crashes_reports_why_instead_of_going_quiet() {
+    let provider = req::funnel::CommandProvider::new(
+        "echo 'boom: cannot reach the model' >&2; exit 3".to_string(),
+    );
+    let verdict = provider.adjudicate(
+        &Candidate {
+            claim_id: "T2-E-001",
+            statement: "one",
+        },
+        &Candidate {
+            claim_id: "T2-E-001",
+            statement: "two",
+        },
+    );
+    match verdict {
+        Adjudication::Unverifiable { reason } => {
+            assert!(
+                reason.contains("boom"),
+                "the provider's own words must survive: {reason}"
+            );
+            assert!(reason.contains("exited"), "{reason}");
+        }
+        other => panic!("a crashed provider is unverifiable, not {other:?}"),
+    }
+}
