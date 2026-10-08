@@ -142,6 +142,20 @@ export OCR_NO_UPDATE=1
   dropped — `blocking_misses` measures that against the corpus labels and a test pins it at
   zero. Every proposal records the provider's id verbatim (ADR 0004: the model proposes, a
   human disposes).
+- Baselines: `cargo run -q -- baseline [key=value ...]` prints the **canonical manifest** — the
+  rules version, the selection, and every applying claim's address — which is the exact byte
+  string a human signs; `cargo run -q -- baseline --verify <file> [--signature <file>]
+  [--key <id>] [--now <date>]` verifies one. Exit **0** verified (or emitted), **1** FAIL, **3**
+  UNVERIFIABLE, **2** usage. Verification re-derives every address, so a claim edited after
+  signing is **FAIL** — the same class as a hand-edited digest; and it consults the committed
+  trust anchor at `baselines/trust.yml` (ADR 0010): a **revoked** key is FAIL, an **expired**
+  one is UNVERIFIABLE (a Baseline is historical and no trusted signing time exists, so the
+  question is unanswerable rather than answered badly), an unknown key or a missing signature
+  is UNVERIFIABLE — a manifest is **not yet a Baseline** until a human signs it. The signature
+  check is a **process boundary** to a pinned verifier, so the core links no cryptography and
+  still no network; with no verifier installed the outcome is UNVERIFIABLE, never a pass.
+  **The signing act is the human's**: req emits and verifies, and a key this tool could reach
+  would prove nothing.
 - Docs-only changes: the same gate, with its skips stated in the commit message.
 
 ### Review — OCR in delegation mode (no LLM, no API key)
@@ -223,6 +237,7 @@ matter:
   `bench.rs` (the benchmark gate + its tests), `select.rs` (tri-state variant
   selection), `compare.rs` (change direction), `view.rs` (render/trace + the shared
   row), `impact.rs` (reverse traversal), `gate.rs` (release policies),
+  `baseline.rs` (Baseline manifest, drift, trust and verification),
   `funnel.rs` (Tier-2 blocking + the provider seam), `fill.rs` (derived fields).
 - `tools/ocr/` — the pinned review CLI (`package.json` + lockfile committed;
   `node_modules/` ignored).
