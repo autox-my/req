@@ -53,16 +53,39 @@ def raw(repo: str, sha: str, path: str) -> str:
     return get(f"https://raw.githubusercontent.com/{repo}/{sha}/{path}")
 
 
-def strictdoc_statements() -> tuple[str, list[tuple[str, str]]]:
-    sha = sha_of(*STRICTDOC[:2])
-    text = raw(STRICTDOC[0], sha, STRICTDOC[2])
+def parse_strictdoc(text: str) -> list[tuple[str, str]]:
+    """pure: the file text in, (uid, statement) out — so any revision can be parsed with the same
+    rules. Extracted rather than re-implemented for the Tier-2 sample builder: two parsers would
+    drift, and the drift would be invisible in a corpus whose statements look plausible."""
     out = []
     for block in text.split("[REQUIREMENT]")[1:]:
         uid = re.search(r"UID: (\S+)", block)
         stmt = re.search(r"STATEMENT: >>>\n(.*?)\n<<<", block, re.S)
         if uid and stmt:
             out.append((uid.group(1), " ".join(stmt.group(1).split())))
-    return sha, out
+    return out
+
+
+def strictdoc_statements() -> tuple[str, list[tuple[str, str]]]:
+    sha = sha_of(*STRICTDOC[:2])
+    return sha, parse_strictdoc(raw(STRICTDOC[0], sha, STRICTDOC[2]))
+
+
+def parse_doorstop(lines: list[str]) -> list[str]:
+    out = []
+    for i, line in enumerate(lines):
+            if line.strip() == "text: |":
+                body = []
+                for x in lines[i + 1:]:
+                    if x.startswith("  ") or not x.strip():
+                        body.append(x[2:] if x.startswith("  ") else "")
+                    else:
+                        break
+                text = " ".join(y.strip() for y in body if y.strip())
+                if text:
+                    out.append(text)
+                break
+    return out
 
 
 def doorstop_statements() -> tuple[str, list[tuple[str, str]]]:
@@ -73,19 +96,8 @@ def doorstop_statements() -> tuple[str, list[tuple[str, str]]]:
                    if re.fullmatch(r"reqs/REQ\d+\.yml", e["path"]))
     out = []
     for path in paths:
-        lines = raw(DOORSTOP[0], sha, path).splitlines()
-        for i, line in enumerate(lines):
-            if line.strip() == "text: |":
-                body = []
-                for x in lines[i + 1:]:
-                    if x.startswith("  ") or not x.strip():
-                        body.append(x[2:] if x.startswith("  ") else "")
-                    else:
-                        break
-                text = " ".join(y.strip() for y in body if y.strip())
-                if text:
-                    out.append((path.rsplit("/", 1)[-1].removesuffix(".yml"), text))
-                break
+        for text in parse_doorstop(raw(DOORSTOP[0], sha, path).splitlines()):
+            out.append((path.rsplit("/", 1)[-1].removesuffix(".yml"), text))
     return sha, out
 
 
