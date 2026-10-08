@@ -6,11 +6,12 @@
 //!   req canon --fill        — write the derived `canonical.form` + `address`
 //!   req canon --verify      — check the stored derived fields against the parse
 //!   req compare A.yml B.yml — what kind of change is this between two claims?
+//!   req select k=v [...]    — which claims apply in this variant? (tri-state)
 //!
 //! The Tier-1 canonicalizer (src/canon.rs) is deterministic and offline: no model I/O,
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
-use req::{bench, canon, compare, fill};
+use req::{bench, canon, compare, fill, select};
 use std::process::exit;
 
 fn main() {
@@ -21,6 +22,7 @@ fn main() {
     });
     let code = match cmd.as_str() {
         "bench" => bench::run(args.next().as_deref()),
+        "select" => select::run(&args.collect::<Vec<String>>()),
         "compare" => match (args.next(), args.next()) {
             (Some(a), Some(b)) => compare::run(&a, &b),
             _ => {

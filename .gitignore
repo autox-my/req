@@ -15,5 +15,9 @@ Cargo.lock.bak
 .npm-cache/
 tools/ocr/node_modules/
 
+# Python bytecode: the corpus builders import each other, so running one drops a
+# __pycache__/ that is not part of the tree (and blocks `git worktree remove`).
+__pycache__/
+
 # Feature worktrees (inside the workspace; see AGENTS.md)
 worktrees/

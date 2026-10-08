@@ -99,6 +99,13 @@ export OCR_NO_UPDATE=1
   the direction analogue of a false merge), while accuracy is reported against a 0.95
   soft target. A misspelled `direction:` label fails the gate rather than switching the
   check off.
+- Selectors: `cargo run -q -- select key=value [key=value ...]` — which claims apply in a
+  variant (ADR 0003). **Tri-state**: a claim whose `applicability` predicate the context
+  does not decide is reported `UNKNOWN`, never as excluded (REQ-0016) — that would drop a
+  safety claim out of a variant silently. Exit **0** all decided, **3** any undecided,
+  **2** usage. The grammar is deliberately tiny (`key == value`, `key >= number`); anything
+  else is `UNKNOWN` with its text shown. Selection changes no address: a variant is a
+  projection over one model.
 - Docs-only changes: the same gate, with its skips stated in the commit message.
 
 ### Review — OCR in delegation mode (no LLM, no API key)
@@ -177,7 +184,8 @@ matter:
   preview lists the corpus itself as a single item for that reason.
 - `src/` — `lib.rs` (the library surface), `main.rs` (thin CLI over it), `model.rs`
   (claim/registry/corpus types), `canon.rs` (Tier-1 pipeline + diagnostics),
-  `bench.rs` (the gate + its tests).
+  `bench.rs` (the gate + its tests), `select.rs` (tri-state variant selection),
+  `compare.rs` (change direction), `fill.rs` (derived fields).
 - `tools/ocr/` — the pinned review CLI (`package.json` + lockfile committed;
   `node_modules/` ignored).
 - `review/rule.json` — the review rules we own: one checklist per path class, passed
