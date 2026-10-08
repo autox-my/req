@@ -304,6 +304,14 @@ matter:
   `docs/tier2-sample-protocol.md` is the protocol that makes a label on it interpretable, including
   the ceiling that must be measured (two labellers' agreement) before any model is judged against
   one hundred percent.
+  `tools/tier2/validate.py` checks a worksheet against the schema, the outcome vocabulary and the two
+  structural rules (pairs cross requirement ids; the recorded shared count matches the terms listed),
+  tri-state as everywhere: valid, invalid, UNVERIFIABLE when it cannot be read. `undecided` is a
+  first-class outcome — the protocol asks a labeller to admit a pair they cannot decide, and a
+  vocabulary of three labels would push them to guess. `tools/tier2/agreement.py` takes two fillings
+  of one worksheet, refuses to run when both name the same labeller, keeps agreed, disagreed and
+  undecided apart, reports the **ceiling** as agreement over pairs decided by both, names the
+  disagreements, and writes a result-named record under `bench/results/`. Both carry a `--self-check`.
   These corpora are **generated data**: a corpus of this size is reviewed through its
   generator (`tools/corpus/`) and its label scheme, not line by line — the generator,
   the source pins and the sampling rule are the reviewable surface, and the review
