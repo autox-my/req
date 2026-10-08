@@ -31,6 +31,12 @@ pub struct Row {
     pub selectors: Vec<String>,
     /// `(kind, to)` — the outgoing side only (REQ-0020).
     pub relations: Vec<(String, String)>,
+    /// What the *stored* derived fields say, checked against a fresh parse: a release gate
+    /// has to know whether the address on disk is the one the current rules produce.
+    pub stored: crate::fill::StoredState,
+    /// Provenance, for the audit policy and the view.
+    pub rationale_source: String,
+    pub rationale_date: String,
 }
 
 /// What a trace could not settle. Both are outcomes, not warnings: `dangling` is
@@ -62,11 +68,12 @@ pub fn render(rows: &[Row], context: &Context) -> String {
         out.push_str(&format!("\n## {title} ({})\n", matching.len()));
         for row in matching {
             out.push_str(&format!(
-                "- {}  {}  {}  {}\n",
+                "- {}  {}  {}  {}{}\n",
                 row.claim_id,
                 short(&row.address),
                 row.modality,
-                row.statement
+                row.statement,
+                stored_marker(&row.stored)
             ));
             if row.selectors.is_empty() {
                 out.push_str("    selector: (none — applies to every variant)\n");
@@ -198,13 +205,23 @@ fn short(address: &str) -> String {
     address.chars().take(12).collect()
 }
 
+/// A view that showed a stale or tampered address as if it were current would be worse than
+/// no view: the stored state is part of what the reader needs to see.
+fn stored_marker(stored: &crate::fill::StoredState) -> String {
+    match stored {
+        crate::fill::StoredState::Verified => String::new(),
+        crate::fill::StoredState::Candidate(why) => format!("  [candidate: {why}]"),
+        crate::fill::StoredState::Mismatch(why) => format!("  [MISMATCH: {why}]"),
+    }
+}
+
 /// `req render key=value ...`
 pub fn run_render(args: &[String]) -> i32 {
     let context = match context_from(args) {
         Ok(c) => c,
         Err(code) => return code,
     };
-    let rows = match load(&context) {
+    let rows = match load_rows(&context) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
@@ -225,7 +242,7 @@ pub fn run_trace(args: &[String]) -> i32 {
         Ok(c) => c,
         Err(code) => return code,
     };
-    let rows = match load(&context) {
+    let rows = match load_rows(&context) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
@@ -259,7 +276,7 @@ fn context_from(args: &[String]) -> Result<Context, i32> {
     Ok(context)
 }
 
-fn load(context: &Context) -> Result<Vec<Row>, String> {
+pub fn load_rows(context: &Context) -> Result<Vec<Row>, String> {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let registry = crate::canon::load_registry(&root)?;
     let files = crate::canon::claim_files(&root)?;
@@ -270,7 +287,8 @@ fn load(context: &Context) -> Result<Vec<Row>, String> {
         let claim: crate::model::ClaimFile =
             yaml_serde::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
         let verdict = evaluate_claim(&claim, &registry);
-        let address = address_hex(&canonical_json(&verdict.form));
+        let form_json = canonical_json(&verdict.form);
+        let address = address_hex(&form_json);
         let predicates: Vec<_> = claim
             .applicability
             .iter()
@@ -288,6 +306,11 @@ fn load(context: &Context) -> Result<Vec<Row>, String> {
                 .iter()
                 .map(|r| (r.kind.clone(), r.to.clone()))
                 .collect(),
+            // The same check `req canon --verify` runs, so the view and the gate cannot
+            // disagree about whether a stored address is current.
+            stored: crate::fill::verify_text(&text, &form_json, crate::canon::RULES_V),
+            rationale_source: claim.rationale.source.clone(),
+            rationale_date: claim.rationale.date.clone(),
         });
     }
     Ok(rows)
