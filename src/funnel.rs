@@ -572,8 +572,10 @@ impl CommandProvider {
 
 /// The request a command provider receives. Documented because it is a contract: a model server
 /// wrapper only has to read two lines and print one word.
-pub fn provider_request(a: &str, b: &str) -> String {
-    format!("A: {a}\nB: {b}\nCHOOSE: equivalent|related|unrelated\n")
+pub fn provider_request(id: &str, a: &str, b: &str) -> String {
+    // The id travels so a capture can pair rows to labels by identity. Matching on statement text
+    // worked, but it made the evidence depend on two strings staying equal.
+    format!("ID: {id}\nA: {a}\nB: {b}\nCHOOSE: equivalent|related|unrelated\n")
 }
 
 /// Read a label out of a provider's answer. `unrelated` is checked before `related` because the
@@ -668,7 +670,7 @@ impl Provider for CommandProvider {
             .as_mut()
             .map(|stdin| {
                 stdin
-                    .write_all(provider_request(a.statement, b.statement).as_bytes())
+                    .write_all(provider_request(a.claim_id, a.statement, b.statement).as_bytes())
                     .is_ok()
             })
             .unwrap_or(false);
