@@ -155,13 +155,18 @@ export OCR_NO_UPDATE=1
   check is a **process boundary** to a pinned verifier, so the core links no cryptography and
   still no network; with no verifier installed the outcome is UNVERIFIABLE, never a pass.
   **The signing act is the human's**: req emits and verifies, and a key this tool could reach
-  would prove nothing.
+  would prove nothing. The **manifest records the variant**, so verification re-derives the
+  addresses under *that* selection: an explicit context that contradicts it is a **usage error**
+  (exit 2), never drift in the claims — re-deriving under the wrong variant reports the variant's
+  own claims as "no longer applies", which reads as a defect in the requirements instead of a
+  mistake in the invocation.
 - Audit packet: `cargo run -q -- audit [--baseline <file>] [key=value ...]` — the last compiled
   view: for every **applying** claim it prints the address, the coverage state, the provenance
   (rationale source and date) and the outgoing relations, then the **undecided** claims in their
   own section, then its findings. Exit **0** every applying claim covered and still matching,
   **1** a defect (drift, or no provenance), **3** nothing ratified or something uncovered, **2**
-  usage. Coverage is **derived from `baseline::drift`**, not recomputed, so the packet and
+  usage. The selection comes from the Baseline being audited, the same rule as `--verify`.
+  Coverage is **derived from `baseline::drift`**, not recomputed, so the packet and
   `req baseline --verify` cannot disagree about whether a claim still matches what was signed.
   With no `--baseline` it still prints and says plainly that nothing is ratified — an audit that
   passed on an unsigned model would be worse than no audit. It reports **coverage**, and says
