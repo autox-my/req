@@ -285,3 +285,131 @@ fn only_equivalents_are_ever_reported_as_misses() {
         assert_eq!(pair.label, req::funnel::Tier2Label::Equivalent, "{miss}");
     }
 }
+
+/// A provider that calls everything equivalent: the oracle for the scoring maths, in-process and
+/// deterministic. It is also the honest worst case — every non-equivalent it sees becomes a
+/// **false merge**, the one error whose cost is asymmetric.
+#[test]
+fn a_provider_that_calls_everything_equivalent_earns_false_merges() {
+    struct AlwaysEquivalent;
+    impl Provider for AlwaysEquivalent {
+        fn id(&self) -> String {
+            "always-equivalent".to_string()
+        }
+        fn adjudicate(&self, _a: &Candidate<'_>, _b: &Candidate<'_>) -> Adjudication {
+            Adjudication::Equivalent { confidence: 100 }
+        }
+    }
+    let corpus = tier2_gold();
+    let proposed_equivalents = corpus
+        .pairs
+        .iter()
+        .filter(|p| p.label == req::funnel::Tier2Label::Equivalent)
+        .filter(|p| shared_terms(&p.a, &p.b) >= MIN_SHARED_TERMS)
+        .count();
+    let score = req::funnel::score_gold(&corpus, &AlwaysEquivalent, MIN_SHARED_TERMS);
+    assert_eq!(score.true_positives, proposed_equivalents);
+    assert_eq!(score.false_negatives, 0, "it never says anything else");
+    assert!(score.false_positives > 0, "it must be caught: {score:?}");
+    assert_eq!(score.recall(), Some(100));
+    assert!(score.precision().expect("defined") < 100, "{score:?}");
+    assert_eq!(score.not_proposed + score.scored, corpus.pairs.len());
+}
+
+/// Abstention earns no credit and no blame: no answer is `Unverifiable`, not a wrong answer, and
+/// precision and recall are **undefined** rather than zero — a distinction that keeps an unmeasured
+/// provider from looking measured.
+#[test]
+fn an_abstaining_provider_is_unverifiable_not_wrong() {
+    let corpus = tier2_gold();
+    let score = req::funnel::score_gold(&corpus, &NoProvider, MIN_SHARED_TERMS);
+    assert_eq!(score.true_positives, 0);
+    assert_eq!(score.false_positives, 0);
+    assert_eq!(score.false_negatives, 0);
+    assert!(score.unverifiable > 0);
+    assert_eq!(score.precision(), None);
+    assert_eq!(score.recall(), None);
+}
+
+/// REQ-0011 is measured, not assumed: a provider whose answer changes on the second look must be
+/// counted, however deterministic its architecture claims to be.
+#[test]
+fn an_unstable_provider_is_measured_as_flipping() {
+    use std::cell::Cell;
+    struct EveryOther {
+        calls: Cell<usize>,
+    }
+    impl Provider for EveryOther {
+        fn id(&self) -> String {
+            "every-other".to_string()
+        }
+        fn adjudicate(&self, _a: &Candidate<'_>, _b: &Candidate<'_>) -> Adjudication {
+            let n = self.calls.get();
+            self.calls.set(n + 1);
+            if n.is_multiple_of(2) {
+                Adjudication::Equivalent { confidence: 100 }
+            } else {
+                Adjudication::Related { confidence: 100 }
+            }
+        }
+    }
+    let corpus = tier2_gold();
+    let flaky = EveryOther {
+        calls: Cell::new(0),
+    };
+    let proposed = corpus
+        .pairs
+        .iter()
+        .filter(|p| shared_terms(&p.a, &p.b) >= MIN_SHARED_TERMS)
+        .count();
+    let (flipped, measured) = req::funnel::flip_count(&corpus, &flaky, MIN_SHARED_TERMS, 2);
+    assert_eq!(flipped, measured, "every proposed pair flips");
+    // Measured over exactly the pairs blocking proposes: a pair it never hands over cannot flip.
+    assert_eq!(measured, proposed);
+    let (stable, measured) = req::funnel::flip_count(&corpus, &NoProvider, MIN_SHARED_TERMS, 3);
+    assert_eq!(stable, 0);
+    assert!(measured > 0);
+}
+
+/// The command provider is a process boundary with a documented contract — two lines in, one word
+/// out — verified with `sh` standing in for a model, so the protocol is tested without one.
+#[test]
+fn the_command_provider_speaks_the_documented_protocol() {
+    let command = "read -r a; read -r b; echo 'equivalent 87'".to_string();
+    let provider = req::funnel::CommandProvider::new(command.clone());
+    let verdict = provider.adjudicate(
+        &Candidate {
+            claim_id: "T2-E-001",
+            statement: "one",
+        },
+        &Candidate {
+            claim_id: "T2-E-001",
+            statement: "two",
+        },
+    );
+    assert_eq!(
+        verdict,
+        Adjudication::Equivalent { confidence: 87 },
+        "{verdict:?}"
+    );
+    assert_eq!(provider.id(), format!("cmd:{command}"));
+    assert!(req::funnel::provider_request("a", "b").starts_with("A: a\nB: b\nCHOOSE:"));
+}
+
+/// `unrelated` contains `related`. Reading the substring first would turn every abstention into a
+/// confident `related`, so the longer word is checked first — and this pins it.
+#[test]
+fn the_answer_parser_prefers_unrelated_over_its_own_substring() {
+    assert_eq!(
+        req::funnel::parse_adjudication("UNRELATED"),
+        Adjudication::Unrelated { confidence: 0 }
+    );
+    assert_eq!(
+        req::funnel::parse_adjudication("related 40"),
+        Adjudication::Related { confidence: 40 }
+    );
+    assert!(matches!(
+        req::funnel::parse_adjudication("I cannot say"),
+        Adjudication::Unverifiable { .. }
+    ));
+}

@@ -130,7 +130,7 @@ export OCR_NO_UPDATE=1
   and an **undecided** one is never treated as absent. An `impact` answer that a broken
   relation could have made incomplete says so (exit 3) instead of quietly shortening the
   list.
-- Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--gold <file>] [key=value ...]` — the funnel's
+- Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [key=value ...]` — the funnel's
   deterministic half. It skips pairs Tier-1 already resolved (equal address), **blocks** the
   rest on shared content terms (default 2), and hands only those to a provider. Exit **0**
   every candidate adjudicated, **3** anything unadjudicated, **2** usage. The default provider
@@ -145,6 +145,14 @@ export OCR_NO_UPDATE=1
   With `--gold <file>` it also reports the gold set: label counts, blocking **recall** over the
   equivalents (a reachable-pair miss is FAIL), and the provider metrics — precision, recall and the
   REQ-0011 flip rate — as UNVERIFIABLE until a provider exists to measure.
+  `--provider-cmd <cmd>` (run through `sh -c`, so a pipeline is allowed) makes it measurable: req
+  writes `A: <statement>`, `B: <statement>`, `CHOOSE: equivalent|related|unrelated` to the command's
+  stdin and reads the chosen label from stdout, so a model-server wrapper only has to read two lines
+  and print one word. It then reports precision and recall over the equivalents as integer percents,
+  the true/false positives and negatives, the unverifiable and not-proposed counts, and the
+  **REQ-0011 flip rate** across `--repeats N` identical runs (default 1). A **false merge** — calling
+  a non-equivalent pair equivalent — or a flip rate above **2%** is FAIL. The provider's command is
+  recorded verbatim as its id, which is its provenance.
 - Baselines: `cargo run -q -- baseline [key=value ...]` prints the **canonical manifest** — the
   rules version, the selection, and every applying claim's address — which is the exact byte
   string a human signs; `cargo run -q -- baseline --verify <file> [--signature <file>]
@@ -264,7 +272,8 @@ matter:
   row), `impact.rs` (reverse traversal), `gate.rs` (release policies),
   `baseline.rs` (Baseline manifest, drift, trust and verification),
   `audit.rs` (the audit packet, derived from the Baseline's drift),
-  `funnel.rs` (Tier-2 blocking + the provider seam), `fill.rs` (derived fields).
+  `funnel.rs` (Tier-2 blocking, the provider seam, the command provider and the
+  gold-set scoring), `fill.rs` (derived fields).
 - `baselines/` — `trust.yml` is the committed trust anchor (ADR 0010) and the **single home of
   the public key**; `<variant>.json` is a signed Baseline's canonical manifest and
   `<variant>.json.minisig` its signature; `trust.example.yml` is the template. The standalone
