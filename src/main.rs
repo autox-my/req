@@ -11,11 +11,12 @@
 //!   req trace k=v [...]     — the traceability view, with derived incoming edges
 //!   req impact <claim-id>   — what depends on that claim, transitively
 //!   req gate k=v [...]      — may this selection ship? (policies over applying claims)
+//!   req propose             — the Tier-2 funnel: blocking, then provider adjudication (if any)
 //!
 //! The Tier-1 canonicalizer (src/canon.rs) is deterministic and offline: no model I/O,
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
-use req::{bench, canon, compare, fill, gate, impact, select, view};
+use req::{bench, canon, compare, fill, funnel, gate, impact, select, view};
 use std::process::exit;
 
 fn main() {
@@ -31,6 +32,7 @@ fn main() {
         "trace" => view::run_trace(&args.collect::<Vec<String>>()),
         "impact" => impact::run(&args.collect::<Vec<String>>()),
         "gate" => gate::run(&args.collect::<Vec<String>>()),
+        "propose" => funnel::run(&args.collect::<Vec<String>>()),
         "compare" => match (args.next(), args.next()) {
             (Some(a), Some(b)) => compare::run(&a, &b),
             _ => {
