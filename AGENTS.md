@@ -256,10 +256,12 @@ matter:
   `baseline.rs` (Baseline manifest, drift, trust and verification),
   `audit.rs` (the audit packet, derived from the Baseline's drift),
   `funnel.rs` (Tier-2 blocking + the provider seam), `fill.rs` (derived fields).
-- `baselines/` — the signed Baselines themselves: `trust.yml` (the committed trust anchor,
-  ADR 0010), `<variant>.json` (the canonical manifest) and `<variant>.json.minisig` (its
-  signature). `trust.example.yml` is the template, and the only file here until a human signs
-  the first Baseline; req emits and verifies, it never signs.
+- `baselines/` — `trust.yml` is the committed trust anchor (ADR 0010) and the **single home of
+  the public key**; `<variant>.json` is a signed Baseline's canonical manifest and
+  `<variant>.json.minisig` its signature; `trust.example.yml` is the template. The standalone
+  `req.pub` that minisign writes is deliberately **not** kept here: two copies of one key drift,
+  and `minisign -R -s <secret key> -p <path>` regenerates it from the secret half on demand. req
+  emits and verifies; it never signs.
 - `tools/ocr/` — the pinned review CLI (`package.json` + lockfile committed;
   `node_modules/` ignored).
 - `review/rule.json` — the review rules we own: one checklist per path class, passed
