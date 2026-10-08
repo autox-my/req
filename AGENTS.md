@@ -146,7 +146,7 @@ export OCR_NO_UPDATE=1
   equivalents (a reachable-pair miss is FAIL), and the provider metrics — precision, recall and the
   REQ-0011 flip rate — as UNVERIFIABLE until a provider exists to measure.
   `--provider-cmd <cmd>` (run through `sh -c`, so a pipeline is allowed) makes it measurable: req
-  writes `ID: <pair id>`, `A: <statement>`, `B: <statement>`, `CHOOSE: equivalent|related|unrelated` to the command's
+  writes `ID: <pair id>`, `A: <statement>`, `B: <statement>`, `DIFF: <differing content terms>`, `CHOOSE: equivalent|related|unrelated` to the command's
   stdin and reads the chosen label from stdout, so a model-server wrapper only has to read two lines
   and print one word — or a JSON object carrying `choice` and a `confidence` in integer
   percent, which is what a confidence sweep thresholds on. It then reports precision and recall over the equivalents as integer percents,
@@ -293,8 +293,9 @@ matter:
   ones are foreign-domain pairs blocking should never propose.
   `bench/results/` — one record per corpus and rules version; append, do not rewrite.
   `tools/tier2/evaluate.py` scores a **captured** provider run without re-running the model: it
-  chooses the confidence floor on one half of the gold set (`sha256(pair id) % 2`) and reports it on
-  the other, prints both curves, and writes a JSON record under `bench/results/` named by the **result** rather than by the clock, so two runs that agree produce the same path (the second refuses to rewrite it) and two that disagree cannot collide; the capture records the pair id, so rows pair to labels by identity. A floor picked and
+  chooses the confidence floor on each half of the gold set (`sha256(pair id) % 2`) and reports
+  it on the other — two folds, both directions — quoting the **stable floor** that is clean in
+  both rather than the flattering direction, prints both curves, and writes a JSON record under `bench/results/` named by the **result** rather than by the clock, so two runs that agree produce the same path (the second refuses to rewrite it) and two that disagree cannot collide; the capture records the pair id, so rows pair to labels by identity. A floor picked and
   scored on the same pairs is fitted, not measured, and the record states that both halves still come
   from one generator and that confidence is the model's own uncalibrated report.
   These corpora are **generated data**: a corpus of this size is reviewed through its

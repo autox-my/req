@@ -5,7 +5,8 @@ other.
 Reads a capture written by a provider wrapper (one JSON object per line: the two statements and the
 answer, with `choice`, `confidence` and `probabilities`) together with the gold corpus, and reports:
 
-  * the floor picked on the **tune** half, and its precision and recall on the **held-out** half;
+  * the floor picked on each half and reported on the other — two folds, both directions — plus the
+    **stable floor** that is clean in both, which is the operating point worth quoting;
   * both curves, so a reader sees the trade rather than a single number;
   * a JSON record under `bench/results/`, append-only: one file per run, never rewritten.
 
@@ -156,12 +157,26 @@ def main():
               f"more than one pass, so this is a stability signal, not a duplicate")
 
     print(f"\nsplit sha256(id)%2: tune {len(tune)}, held-out {len(held)}")
-    chosen = choose(tune)
-    print(f"\nfloor chosen on the TUNE half: {chosen['floor']}  (no false merge, most recall)")
-    held_result = sweep(held, chosen["floor"])
-    print("  held-out result at that floor:")
-    print(f"    tp {held_result['tp']}  fp {held_result['fp']}  fn {held_result['fn']}  "
-          f"precision {held_result['precision']}%  recall {held_result['recall']}%")
+    # Two folds, both directions. Picking on one arbitrary half and reporting on the other is how
+    # the earlier "zero false merges" turned out to be fitted: the halves disagree about where the
+    # boundary lies, so the operating point worth quoting is the floor clean in *both* directions,
+    # and both directions are printed rather than the flattering one.
+    forward = choose(tune)
+    backward = choose(held)
+    forward_held = sweep(held, forward["floor"])
+    backward_tune = sweep(tune, backward["floor"])
+    stable_floor = max(forward["floor"], backward["floor"])
+    stable = sweep(list(rows.values()), stable_floor)
+
+    print(f"\ntune-half floor {forward['floor']} -> held-out: "
+          f"tp {forward_held['tp']} fp {forward_held['fp']} fn {forward_held['fn']} "
+          f"precision {forward_held['precision']}% recall {forward_held['recall']}%")
+    print(f"held-half floor {backward['floor']} -> tune:      "
+          f"tp {backward_tune['tp']} fp {backward_tune['fp']} fn {backward_tune['fn']} "
+          f"precision {backward_tune['precision']}% recall {backward_tune['recall']}%")
+    print(f"\nstable floor (clean in both directions): {stable_floor}")
+    print(f"  all pairs at {stable_floor}: tp {stable['tp']} fp {stable['fp']} fn {stable['fn']} "
+          f"precision {stable['precision']}% recall {stable['recall']}%")
 
     print("\nheld-out curve (so the trade is visible, not just the point):")
     print("  floor  tp  fp  fn  precision  recall")
@@ -170,7 +185,7 @@ def main():
               f"{result['precision'] if result['precision'] is not None else 'n/a':>9}  "
               f"{result['recall'] if result['recall'] is not None else 'n/a':>6}")
 
-    in_sample = sweep(list(rows.values()), chosen["floor"])
+    in_sample = sweep(list(rows.values()), forward["floor"])
     print(f"\nfor comparison, the same floor on ALL pairs (in-sample, i.e. fitted): "
           f"tp {in_sample['tp']} fp {in_sample['fp']} fn {in_sample['fn']} "
           f"precision {in_sample['precision']}% recall {in_sample['recall']}%")
@@ -190,10 +205,13 @@ def main():
             "split": "sha256(pair id) % 2",
             "tune_pairs": len(tune),
             "held_out_pairs": len(held),
-            "floor_chosen_on_tune": chosen["floor"],
-            "tune_at_chosen_floor": chosen,
-            "held_out_at_chosen_floor": held_result,
-            "in_sample_at_chosen_floor": in_sample,
+            "floor_chosen_on_tune": forward["floor"],
+            "held_out_at_tune_floor": forward_held,
+            "floor_chosen_on_held": backward["floor"],
+            "tune_at_held_floor": backward_tune,
+            "stable_floor": stable_floor,
+            "all_pairs_at_stable_floor": stable,
+            "in_sample_at_tune_floor": in_sample,
             "held_out_curve": curve(held),
             "matched_by_pair_id": by_id,
             "matched_by_statement_text": by_text,
@@ -209,7 +227,7 @@ def main():
         # in the name made "append-only" a promise the code could not keep — two runs in the same
         # second overwrote each other.
         key = json.dumps({k: record[k] for k in (
-            "provider", "corpus", "pairs", "floor_chosen_on_tune", "held_out_at_chosen_floor",
+            "provider", "corpus", "pairs", "stable_floor", "all_pairs_at_stable_floor",
         )}, sort_keys=True)
         digest = hashlib.sha256(key.encode()).hexdigest()[:8]
         path = pathlib.Path("bench/results") / f"tier2-v1-{slug}-{digest}.json"
@@ -221,7 +239,7 @@ def main():
             path.write_text(json.dumps(record, indent=2) + "\n")
             print(f"\nrecorded: {path}")
 
-    return 0 if held_result["fp"] == 0 else 1
+    return 0 if stable["fp"] == 0 else 1
 
 
 if __name__ == "__main__":
