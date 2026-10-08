@@ -25,6 +25,7 @@
 
 use crate::select::Context;
 use crate::view::{Row, load_rows};
+use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Terms a pair must share before it is worth a provider call. Two, not one: a single shared
@@ -245,10 +246,20 @@ pub fn propose(rows: &[Row], provider: &dyn Provider, min_shared: usize) -> (Vec
 pub fn run(args: &[String]) -> i32 {
     let mut context = Context::new();
     let mut min_shared = MIN_SHARED_TERMS;
+    let mut gold_path: Option<String> = None;
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
         index += 1;
+        if arg == "--gold" {
+            let Some(value) = args.get(index) else {
+                eprintln!("--gold needs a file");
+                return 2;
+            };
+            index += 1;
+            gold_path = Some(value.clone());
+            continue;
+        }
         if arg == "--min-shared" {
             let Some(value) = args.get(index) else {
                 eprintln!("usage: req propose [--min-shared N] [key=value ...]");
@@ -323,6 +334,41 @@ pub fn run(args: &[String]) -> i32 {
     if proposals.len() > 12 {
         println!("  … {} more", proposals.len() - 12);
     }
+    let mut gold_misses = 0usize;
+    if let Some(path) = &gold_path {
+        let corpus = match Tier2Corpus::load(path) {
+            Ok(corpus) => corpus,
+            Err(e) => {
+                eprintln!("[UNVERIFIABLE] {e}");
+                return 3;
+            }
+        };
+        let count = |label: Tier2Label| corpus.pairs.iter().filter(|p| p.label == label).count();
+        let equivalents = count(Tier2Label::Equivalent);
+        let misses = tier2_blocking_misses(&corpus, min_shared);
+        gold_misses = misses.len();
+        println!("\n## Tier-2 gold set: {path}");
+        println!(
+            "  {equivalents} equivalent, {} related, {} unrelated",
+            count(Tier2Label::Related),
+            count(Tier2Label::Unrelated)
+        );
+        println!(
+            "  blocking recall: {}/{} equivalent pair(s) reachable",
+            equivalents - gold_misses,
+            equivalents
+        );
+        for miss in &misses {
+            println!("  - MISS {miss}");
+        }
+        println!(
+            "  provider metrics (precision, recall, flag rate): UNVERIFIABLE — no provider configured"
+        );
+    }
+    if gold_misses > 0 {
+        println!("\nverdict: FAIL — an equivalent pair in the gold set is unreachable by blocking");
+        return 1;
+    }
     println!(
         "\nverdict: {}",
         if unverifiable == 0 {
@@ -332,4 +378,62 @@ pub fn run(args: &[String]) -> i32 {
         }
     );
     if unverifiable == 0 { 0 } else { 3 }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The Tier-2 gold set: a labelled evaluation corpus for a provider.
+
+/// Which relationship a gold-set pair asserts. Three, because the provider's answer is three-way:
+/// collapsing on `related` is a false merge, and that is the error this set exists to catch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Tier2Label {
+    Equivalent,
+    Related,
+    Unrelated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Tier2Pair {
+    pub id: String,
+    pub a: String,
+    pub b: String,
+    pub label: Tier2Label,
+    /// The transformation that produced the pair. This is what makes the label reviewable: the
+    /// corpus is reviewed through the generator and this field, never line by line.
+    pub transform: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Tier2Corpus {
+    pub pairs: Vec<Tier2Pair>,
+}
+
+impl Tier2Corpus {
+    pub fn load(path: &str) -> Result<Tier2Corpus, String> {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("read {path}: {e}"))?;
+        yaml_serde::from_str(&text).map_err(|e| format!("parse {path}: {e}"))
+    }
+}
+
+/// Equivalent pairs the gold set labels that blocking would **never propose** — the silent-duplicate
+/// direction, measured on a set built for it rather than on the seed corpus's three pairs.
+///
+/// Related and unrelated pairs are deliberately not required to be reachable: they are not
+/// duplicates, so failing to propose one costs nothing but a missed *proposal*, and an unreachable
+/// negative measures the blocker's cost rather than its recall.
+pub fn tier2_blocking_misses(corpus: &Tier2Corpus, min_shared: usize) -> Vec<String> {
+    corpus
+        .pairs
+        .iter()
+        .filter(|pair| pair.label == Tier2Label::Equivalent)
+        .filter(|pair| shared_terms(&pair.a, &pair.b) < min_shared)
+        .map(|pair| {
+            format!(
+                "{}: only {} shared term(s)",
+                pair.id,
+                shared_terms(&pair.a, &pair.b)
+            )
+        })
+        .collect()
 }
