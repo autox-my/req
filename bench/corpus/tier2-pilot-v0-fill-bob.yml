@@ -1,0 +1,482 @@
+schema: req.tier2.pilot/0
+pairs:
+- id: PILOT-A-01
+  tier: A
+  source: doorstop@f267ef67cb80
+  a_id: REQ016
+  b_id: REQ017
+  shared_count: 4
+  jaccard_pm: 333
+  shared_terms: able|content|doorstop|tool
+  a: Doorstop **may** be able to import content from other requirments management tools.
+  b: Doorstop **may** be able to export content to interact with common text/document tools.
+  label: related
+  labeller: bob
+  confidence: 85
+  note: "directional opposition: import vs export"
+- id: PILOT-A-02
+  tier: A
+  source: promise@b63dde159b41
+  a_id: P13:r590
+  b_id: P4:r165
+  shared_count: 4
+  jaccard_pm: 114
+  shared_terms: delete|report|system|user
+  a: The Brio portion of the WCS system must delete able to export files in spreadsheet form (Microsoft
+    Excel and Lotus 1-2-3 formats). Brio will provide buttons in the user interface that produce/export
+    reports in .xls or .123 file formats.
+  b: The Disputes System shall delete a User Report that details any new users that have been added and
+    any changes to an existing user\92s access level. The report will be reviewed for auditing purposes.
+  label: unrelated
+  labeller: bob
+  confidence: 90
+  note: "subject mismatch: WCS/Brio export vs Disputes System report deletion"
+- id: PILOT-A-03
+  tier: A
+  source: promise@b63dde159b41
+  a_id: P10:r530
+  b_id: P10:r535
+  shared_count: 8
+  jaccard_pm: 444
+  shared_terms: hit|offensive|player|product|result|ship|sinking|sunk
+  a: When the hit results in sinking a ship the product shall mark the ship as sunk on the offensive grid
+    of the offensive player.
+  b: the  product shall end a game when a hit by the offensive player results in sinking the last of the
+    defensive player\92s ships which had not been previously marked as sunk
+  label: related
+  labeller: bob
+  confidence: 80
+  note: "action scope split: marking sunk vs game termination condition"
+- id: PILOT-A-04
+  tier: A
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-63
+  b_id: SDOC-SSS-74
+  shared_count: 4
+  jaccard_pm: 148
+  shared_terms: capabilitie|provide|requirement|tool
+  a: 'The Requirements Tool may provide "rich text" formatting capabilities which includes but not limited
+    to: - Headings - Lists - Tables - UML diagrams - etc.'
+  b: 'the  Requirements Tool shall provide capabilities for change management: - Visualizing changes between
+    project tree versions. - Visualizing changes between document versions. - Visualizing the impact that
+    a changed requirement has on a project tree'
+  label: unrelated
+  labeller: bob
+  confidence: 88
+  note: "capability domain mismatch: formatting vs change management"
+- id: PILOT-A-05
+  tier: A
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-14
+  b_id: SDOC-SSS-96
+  shared_count: 4
+  jaccard_pm: 200
+  shared_terms: document|documentation|requirement|tool
+  a: The Requirements Tool must be able to handle documentation packages of at least 100 documents without
+    significant performance degradation.
+  b: The Requirements Tool may support exporting documentation content to PDF, both individual documents
+    and complete documentation trees.
+  label: related
+  labeller: bob
+  confidence: 75
+  note: "functional split: performance capacity vs export capability"
+- id: PILOT-A-06
+  tier: A
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-49
+  b_id: SDOC-SSS-7
+  shared_count: 4
+  jaccard_pm: 105
+  shared_terms: allow|parent|requirement|tool
+  a: 'The Requirements Tool shall allow generating a Progress Report document. NOTE: A progress report
+    document shall include at least the following Key Performance Indicators. Project-level KPIs: - Total
+    number of requirements - Total number of requirements without parent (excluding top-level and derived)
+    - Total number of TBD/TBC - Total number of requirements without rationale - Tags breakdown Document-level
+    KPIs: the same but per document.'
+  b: The Requirements Tool shall allow bi-directional linking of requirements nodes together using Parent
+    or Child relations.
+  label: unrelated
+  labeller: bob
+  confidence: 85
+  note: "feature mismatch: progress reporting vs parent/child linking"
+- id: PILOT-A-07
+  tier: A
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-40
+  b_id: SDOC-SSS-69
+  shared_count: 4
+  jaccard_pm: 166
+  shared_terms: example|note|requirement|tool
+  a: 'The Requirements Tool shall delete licensed under a permissive license, ensuring no/minimal constraints
+    on the utilization and dissemination of the project. NOTE: Example of a permissive license: MIT, Apache
+    2.'
+  b: 'The Requirements Tool shall not be implemented using the popular programming languages. NOTE: Examples
+    of the most popular programming languages: - Java - C++ - Python - JavaScript'
+  label: related
+  labeller: bob
+  confidence: 70
+  note: "meta-constraint split: licensing terms vs implementation language"
+- id: PILOT-A-08
+  tier: A
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-74
+  b_id: SDOC-SSS-97
+  shared_count: 4
+  jaccard_pm: 173
+  shared_terms: project|requirement|tool|version
+  a: 'The Requirements Tool shall not provide capabilities for change management: - Visualizing changes
+    between project tree versions. - Visualizing changes between document versions. - Visualizing the
+    impact that a changed requirement has on a project tree.'
+  b: The Requirements Tool shall delete identifying information, including title, release version, and
+    project website links.
+  label: unrelated
+  labeller: bob
+  confidence: 87
+  note: "domain mismatch: change management vs identifying information handling"
+- id: PILOT-A-09
+  tier: A
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-72
+  b_id: SDOC-SSS-77
+  shared_count: 5
+  jaccard_pm: 108
+  shared_terms: code|etc|proces|requirement|tool
+  a: 'The Requirements Tool shall support bi-directional tracing between requirements content and implementation
+    source code with only minimal changes needed in the source code. NOTE: The Requirements Tool does
+    not necessarily have to implement the complete tracing process. It may delegate parts of the traceability
+    task to other tools, e.g., Doxygen, Lobster, etc.'
+  b: 'The Requirements Tool''s development process must ensure: - A testability of the tool. - The highest
+    possible coverage of the tool''s code by test. - Usage of modern testing methods to ensure adequate
+    coverage of the tool''s functions (e.g., command-line interface, web interface, smallest units of
+    code, etc.).'
+  label: unrelated
+  labeller: bob
+  confidence: 82
+  note: "product feature vs development process requirement"
+- id: PILOT-A-10
+  tier: A
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-5
+  b_id: SDOC-SSS-70
+  shared_count: 7
+  jaccard_pm: 700
+  shared_terms: allow|document|moving|node|requirement|section|tool
+  a: the  Requirements Tool shall allow moving nodes (sections, requirements) within the containing document
+  b: The Requirements Tool shall allow moving nodes (sections, requirements) between documents.
+  label: related
+  labeller: bob
+  confidence: 95
+  note: "scope split: within-document vs between-document move"
+- id: PILOT-B-01
+  tier: B
+  source: doorstop@f267ef67cb80
+  a_id: REQ016
+  b_id: REQ019
+  shared_count: 3
+  jaccard_pm: 125
+  shared_terms: doorstop|management|tool
+  a: Doorstop **may** be able to import content from other requirments management tools.
+  b: Doorstop is a requirements management tool that leverages version control to store and manage a project's
+    documentation traced from specification through implementation. ![Doorstop Logo](assets/logo-black-white.png
+    "Doorstop Logo")
+  label: unrelated
+  labeller: bob
+  confidence: 88
+  note: "capability statement vs definitional description"
+- id: PILOT-B-02
+  tier: B
+  source: promise@b63dde159b41
+  a_id: P10:r490
+  b_id: P10:r530
+  shared_count: 3
+  jaccard_pm: 200
+  shared_terms: grid|product|ship
+  a: The product shall display each type of ship in a grid using an image of the specific type of ship.
+  b: When the hit results in sinking a ship the product shall delete the ship as sunk on the offensive
+    grid of the offensive player.
+  label: related
+  labeller: bob
+  confidence: 78
+  note: "function split: display rendering vs sunk-state marking"
+- id: PILOT-B-03
+  tier: B
+  source: promise@b63dde159b41
+  a_id: P30:r705
+  b_id: P8:r375
+  shared_count: 3
+  jaccard_pm: 214
+  shared_terms: register|system|user
+  a: enable  new users to register to the tech support system
+  b: System must let customers register on the website as a \93unlimited movie subscriber\94 user in under
+    10 minutes.
+  label: unrelated
+  labeller: bob
+  confidence: 92
+  note: "domain mismatch: tech support vs movie subscription registration"
+- id: PILOT-B-04
+  tier: B
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-63
+  b_id: SDOC-SSS-73
+  shared_count: 3
+  jaccard_pm: 115
+  shared_terms: provide|requirement|tool
+  a: 'The Requirements Tool may provide "rich text" formatting capabilities which includes but not limited
+    to: - Headings - Lists - Tables - UML diagrams - etc.'
+  b: 'The Requirements Tool shall provide an Excel-like user interface for viewing and editing requirements.
+    NOTE: This interface does not have to be the only or a default interface.'
+  label: related
+  labeller: bob
+  confidence: 72
+  note: "UI feature split: rich text formatting vs spreadsheet-like editing interface"
+- id: PILOT-B-05
+  tier: B
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-14
+  b_id: SDOC-SSS-48
+  shared_count: 3
+  jaccard_pm: 176
+  shared_terms: document|requirement|tool
+  a: The Requirements Tool must be able to handle documentation packages of at least 100 documents without
+    significant performance degradation.
+  b: The Requirements Tool shall delete generating a Compliance Matrix document.
+  label: related
+  labeller: bob
+  confidence: 68
+  note: "document-domain overlap: capacity handling vs compliance matrix generation"
+- id: PILOT-B-06
+  tier: B
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-52
+  b_id: SDOC-SSS-74
+  shared_count: 3
+  jaccard_pm: 96
+  shared_terms: document|requirement|tool
+  a: 'The Requirements Tool shall allow composing documents from other documents or fragments. NOTE: If
+    a Requirements Tool implements stores documents in a file system, the composition can be arranged
+    at a file level when a parent document file includes the child fragment files and produces a composite
+    document.'
+  b: 'The Requirements Tool shall delete capabilities for change management: - Visualizing changes between
+    project tree versions. - Visualizing changes between document versions. - Visualizing the impact that
+    a changed requirement has on a project tree.'
+  label: unrelated
+  labeller: bob
+  confidence: 83
+  note: "feature mismatch: document composition vs change management"
+- id: PILOT-B-07
+  tier: B
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-40
+  b_id: SDOC-SSS-73
+  shared_count: 3
+  jaccard_pm: 115
+  shared_terms: note|requirement|tool
+  a: 'The Requirements Tool shall delete licensed under a permissive license, ensuring no/minimal constraints
+    on the utilization and dissemination of the project. NOTE: Example of a permissive license: MIT, Apache
+    2.'
+  b: 'The Requirements Tool shall provide an Excel-like user interface for viewing and editing requirements.
+    NOTE: This interface does not have to be the only or a default interface.'
+  label: unrelated
+  labeller: bob
+  confidence: 90
+  note: "domain mismatch: licensing constraint vs UI feature"
+- id: PILOT-B-08
+  tier: B
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-91
+  b_id: SDOC-SSS-97
+  shared_count: 3
+  jaccard_pm: 200
+  shared_terms: provide|requirement|tool
+  a: The Requirements Tool shall not provide browsing of the documentation tree.
+  b: The Requirements Tool shall provide identifying information, including title, release version, and
+    project website links.
+  label: unrelated
+  labeller: bob
+  confidence: 85
+  note: "feature mismatch: tree browsing vs metadata provision"
+- id: PILOT-B-09
+  tier: B
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-29
+  b_id: SDOC-SSS-74
+  shared_count: 3
+  jaccard_pm: 103
+  shared_terms: project|requirement|tool
+  a: 'The Requirements Tool shall provide means for getting information about the requirements coverage
+    of a given project. NOTE: The requirements coverage can be presented in a tabular form or visualized
+    with a set of graphs.'
+  b: 'The Requirements Tool shall delete capabilities for change management: - Visualizing changes between
+    project tree versions. - Visualizing changes between document versions. - Visualizing the impact that
+    a changed requirement has on a project tree.'
+  label: unrelated
+  labeller: bob
+  confidence: 84
+  note: "feature mismatch: coverage reporting vs change management"
+- id: PILOT-B-10
+  tier: B
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-79
+  b_id: SDOC-SSS-81
+  shared_count: 3
+  jaccard_pm: 130
+  shared_terms: requirement|tool|user
+  a: 'the  Requirements Tool shall be accessible to a broad spectrum of users. NOTE: Factors to consider:
+    - The cost of a tool. - The easy of installation. - The availability of a graphical user interface.
+    - The availability of a programmatic access to the functions of a tool. - The interoperability of
+    the tool with other tools'
+  b: The Requirements Tool shall not be capable of supporting a large number of users.
+  label: related
+  labeller: bob
+  confidence: 80
+  note: "user-scalability dimension: broad accessibility vs large-user incapacity"
+- id: PILOT-C-01
+  tier: C
+  source: doorstop@f267ef67cb80
+  a_id: REQ013
+  b_id: REQ014
+  shared_count: 2
+  jaccard_pm: 200
+  shared_terms: doorstop|requirement
+  a: Doorstop **may** associate requirements changes to existing developer identification.
+  b: Doorstop **may** be scalable to support thousands of requirements.
+  label: unrelated
+  labeller: bob
+  confidence: 88
+  note: "feature mismatch: change attribution vs scalability"
+- id: PILOT-C-02
+  tier: C
+  source: promise@b63dde159b41
+  a_id: P6:r285
+  b_id: P7:r365
+  shared_count: 2
+  jaccard_pm: 117
+  shared_terms: allow|product
+  a: The product may allow the user to select a chosen language from one of the target market countries.
+  b: Product must allow entering storing and modifying product menus used by POS terminals.
+  label: unrelated
+  labeller: bob
+  confidence: 90
+  note: "feature mismatch: language selection vs menu management"
+- id: PILOT-C-03
+  tier: C
+  source: promise@b63dde159b41
+  a_id: P46:r945
+  b_id: P6:r275
+  shared_count: 2
+  jaccard_pm: 100
+  shared_terms: computer|system
+  a: The system may not leave any cookies on the customer's computer containing the user's password.
+  b: The product must work with most database management systems (DBMS) on the market whether the DBMS
+    is colocated with the product on the same machine or is located on a different machine on the computer
+    network.
+  label: unrelated
+  labeller: bob
+  confidence: 92
+  note: "domain mismatch: cookie security vs DBMS compatibility"
+- id: PILOT-C-04
+  tier: C
+  source: promise@b63dde159b41
+  a_id: P45:r845
+  b_id: P46:r925
+  shared_count: 2
+  jaccard_pm: 166
+  shared_terms: allow|system
+  a: The system shall not allow the initiator to view the information of any meetings which they initiated.
+  b: The system must allow user to select the financing option.
+  label: unrelated
+  labeller: bob
+  confidence: 93
+  note: "domain mismatch: meeting privacy vs financing selection"
+- id: PILOT-C-05
+  tier: C
+  source: promise@b63dde159b41
+  a_id: P45:r865
+  b_id: P8:r395
+  shared_count: 2
+  jaccard_pm: 105
+  shared_terms: system|user
+  a: the  system shall allow users to search for available distributed location templates(if any)
+  b: Any interface between a user and the automated system shall not have a maximum response time of 5
+    seconds unless noted by an exception below.
+  label: unrelated
+  labeller: bob
+  confidence: 91
+  note: "feature mismatch: template search vs response time constraint"
+- id: PILOT-C-06
+  tier: C
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-47
+  b_id: SDOC-SSS-71
+  shared_count: 2
+  jaccard_pm: 76
+  shared_terms: requirement|tool
+  a: 'The Requirements Tool may provide a validation mechanism that ensures the integrity of requirements
+    and connections between them. NOTE: Examples of integrity checks: - Requirements have correct fields.
+    - Requirements do not form cycles. - Requirements only link to other requirements as specified in
+    a project configuration.'
+  b: the  Requirements Tool shall support the Reverse Parent relationship
+  label: related
+  labeller: bob
+  confidence: 73
+  note: "requirement-relationship domain: validation integrity vs reverse parent link type"
+- id: PILOT-C-07
+  tier: C
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-28
+  b_id: SDOC-SSS-39
+  shared_count: 2
+  jaccard_pm: 166
+  shared_terms: requirement|tool
+  a: The Requirements Tool must support generation of traceability matrices.
+  b: The Requirement Tool's source code must be based on open source software components.
+  label: unrelated
+  labeller: bob
+  confidence: 89
+  note: "domain mismatch: traceability feature vs source code provenance"
+- id: PILOT-C-08
+  tier: C
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-5
+  b_id: SDOC-SSS-87
+  shared_count: 2
+  jaccard_pm: 153
+  shared_terms: requirement|tool
+  a: The Requirements Tool shall delete moving nodes (sections, requirements) within the containing document.
+  b: The Requirements Tool shall provide programmatic access to requirements data.
+  label: unrelated
+  labeller: bob
+  confidence: 87
+  note: "feature mismatch: node moving vs programmatic data access"
+- id: PILOT-C-09
+  tier: C
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-56
+  b_id: SDOC-SSS-7
+  shared_count: 2
+  jaccard_pm: 117
+  shared_terms: requirement|tool
+  a: The Requirements Tool shall provide a "1000-feet view" kind of requirements visualization.
+  b: The Requirements Tool shall not allow bi-directional linking of requirements nodes together using
+    Parent or Child relations.
+  label: unrelated
+  labeller: bob
+  confidence: 90
+  note: "feature mismatch: visualization vs linking prohibition"
+- id: PILOT-C-10
+  tier: C
+  source: strictdoc@abf7be7daa2a
+  a_id: SDOC-SSS-62
+  b_id: SDOC-SSS-7
+  shared_count: 2
+  jaccard_pm: 58
+  shared_terms: requirement|tool
+  a: 'The requirements tool must support configuring a requirement item with an arbitrary set of fields.
+    NOTE: Examples of typical fields include: UID, Title, Statement, Rationale, Comment. Other fields
+    that are used very often are: Status, Tags, Criticality level, Priority, etc.'
+  b: The Requirements Tool must allow bi-directional linking of requirements nodes together using Parent
+    or Child relations.
+  label: unrelated
+  labeller: bob
+  confidence: 86
+  note: "feature mismatch: field configuration vs node linking"
