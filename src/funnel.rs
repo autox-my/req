@@ -249,10 +249,26 @@ pub fn run(args: &[String]) -> i32 {
     let mut gold_path: Option<String> = None;
     let mut provider_cmd: Option<String> = None;
     let mut repeats = 1usize;
+    let mut min_confidence = 0u8;
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
         index += 1;
+        if arg == "--min-confidence" {
+            let Some(value) = args.get(index) else {
+                eprintln!("--min-confidence needs a percent");
+                return 2;
+            };
+            index += 1;
+            match value.parse::<u8>() {
+                Ok(n) if n <= 100 => min_confidence = n,
+                _ => {
+                    eprintln!("--min-confidence must be a percentage from 0 to 100");
+                    return 2;
+                }
+            }
+            continue;
+        }
         if arg == "--provider-cmd" {
             let Some(value) = args.get(index) else {
                 eprintln!("--provider-cmd needs a command");
@@ -400,11 +416,17 @@ pub fn run(args: &[String]) -> i32 {
             }
         };
         let provider = CommandProvider::new(command.clone());
-        let score = score_gold(&corpus, &provider, min_shared);
+        let score = score_gold(&corpus, &provider, min_shared, min_confidence);
         let (flipped, measured) = flip_count(&corpus, &provider, min_shared, repeats);
         flip_percent = ((flipped * 100).checked_div(measured)).unwrap_or(0) as u32;
         false_merges = score.false_positives;
         println!("  provider: {}", provider.id());
+        if min_confidence > 0 {
+            println!(
+                "  confidence floor: {min_confidence}% — {} declined below it",
+                score.below_floor
+            );
+        }
         println!(
             "  proposed {} pair(s); unverifiable {}; not proposed {}",
             score.scored, score.unverifiable, score.not_proposed
@@ -431,9 +453,15 @@ pub fn run(args: &[String]) -> i32 {
                 println!("  {label}: {}", ids.join(", "));
             }
         }
-        println!(
-            "  REQ-0011 flip rate: {flipped}/{measured} pair(s) changed across {repeats} run(s) = {flip_percent}% (at most 2% required)"
-        );
+        if measured == 0 {
+            println!(
+                "  REQ-0011 flip rate: NOT MEASURED — {repeats} run(s) is not repeated identical input"
+            );
+        } else {
+            println!(
+                "  REQ-0011 flip rate: {flipped}/{measured} pair(s) changed across {repeats} run(s) = {flip_percent}% (at most 2% required)"
+            );
+        }
         if score.false_positives > 0 {
             println!("  - FALSE MERGE: the provider called a non-equivalent pair equivalent");
         }
@@ -694,6 +722,9 @@ pub struct GoldScore {
     pub not_proposed: usize,
     /// Pairs the provider was actually asked about.
     pub scored: usize,
+    /// Pairs whose `equivalent` answer fell below the confidence floor and were therefore
+    /// declined. Reported, never silently dropped: this is the funnel's cost of caution.
+    pub below_floor: usize,
     /// The pairs behind `false_positives` and `false_negatives`, by id. The count says how bad it
     /// is; the ids say what to fix, and the criteria are written against the transformations those
     /// ids name.
@@ -725,7 +756,12 @@ fn predicted(adjudication: &Adjudication) -> Option<Tier2Label> {
 }
 
 /// Score a provider over the pairs blocking would propose, and count the rest as not proposed.
-pub fn score_gold(corpus: &Tier2Corpus, provider: &dyn Provider, min_shared: usize) -> GoldScore {
+pub fn score_gold(
+    corpus: &Tier2Corpus,
+    provider: &dyn Provider,
+    min_shared: usize,
+    min_confidence: u8,
+) -> GoldScore {
     let mut score = GoldScore::default();
     for pair in &corpus.pairs {
         if shared_terms(&pair.a, &pair.b) < min_shared {
@@ -743,6 +779,19 @@ pub fn score_gold(corpus: &Tier2Corpus, provider: &dyn Provider, min_shared: usi
             },
         );
         score.scored += 1;
+        // The floor is the measured remedy for a model that splits equivalent/related 0.478 to
+        // 0.4385: below it the answer is a coin flip, and req declines rather than merging on it.
+        // A declined `equivalent` becomes `related`, so its cost is a missed duplicate — the
+        // asymmetric direction — and it is counted, so the reader sees how much was declined.
+        let verdict = match (&verdict, min_confidence) {
+            (Adjudication::Equivalent { confidence }, floor) if *confidence < floor => {
+                score.below_floor += 1;
+                Adjudication::Related {
+                    confidence: *confidence,
+                }
+            }
+            _ => verdict,
+        };
         match predicted(&verdict) {
             None => score.unverifiable += 1,
             Some(Tier2Label::Equivalent) if pair.label == Tier2Label::Equivalent => {
@@ -772,6 +821,11 @@ pub fn flip_count(
     min_shared: usize,
     repeats: usize,
 ) -> (usize, usize) {
+    if repeats < 2 {
+        // Nothing to compare. Asking once and reporting "0 of N pairs changed" is a measurement
+        // that measured nothing — and it doubled every run's cost and capture on the way.
+        return (0, 0);
+    }
     let mut flipped = 0;
     let mut measured = 0;
     for pair in &corpus.pairs {
