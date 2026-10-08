@@ -14,11 +14,12 @@
 //!   req propose             — the Tier-2 funnel: blocking, then provider adjudication (if any)
 //!   req baseline            — emit the canonical manifest a human signs (ADR 0010)
 //!   req baseline --verify F — verify a signed Baseline: drift, trust, signature
+//!   req audit [--baseline F] — the audit packet: coverage, provenance, undecided
 //!
 //! The Tier-1 canonicalizer (src/canon.rs) is deterministic and offline: no model I/O,
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
-use req::{baseline, bench, canon, compare, fill, funnel, gate, impact, select, view};
+use req::{audit, baseline, bench, canon, compare, fill, funnel, gate, impact, select, view};
 use std::process::exit;
 
 fn main() {
@@ -36,6 +37,7 @@ fn main() {
         "gate" => gate::run(&args.collect::<Vec<String>>()),
         "propose" => funnel::run(&args.collect::<Vec<String>>()),
         "baseline" => baseline::run(&args.collect::<Vec<String>>()),
+        "audit" => audit::run(&args.collect::<Vec<String>>()),
         "compare" => match (args.next(), args.next()) {
             (Some(a), Some(b)) => compare::run(&a, &b),
             _ => {

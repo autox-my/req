@@ -1,0 +1,33 @@
+# The trust anchor for Baselines (ADR 0010).
+#
+# Copy this file to `baselines/trust.yml`, replace the placeholder key with your real public
+# key, and review it like a corpus: it is the statement of which keys may ratify a Baseline,
+# and until when. It is data, not configuration — a change to it is a diff someone reads.
+#
+# Verification consults exactly one key: the `id` passed to `req baseline --verify --key`
+# (default `req-baseline-1`). A key absent from this file is UNVERIFIABLE, never a silent pass.
+#
+#   scheme      the verifier that must check signatures from this key. Today: "minisign".
+#               A key declared for one scheme is never checked by another's verifier.
+#   public_key  the key's text, verbatim. Public, and a pin like Cargo.lock — committing it is
+#               what lets anyone verify a Baseline offline, with no keyserver and no account.
+#   valid_from  the date this key became trusted (ISO-8601, zero-padded, compared as a string).
+#   valid_until optional. Expiry reports UNVERIFIABLE, not FAIL: a Baseline is a historical
+#               record and no trusted signing time exists, so the question cannot be decided.
+#               (RFC 3161 timestamping is what would decide it — ADR 0010.)
+#   revoked_at  optional, and decisive: a revoked key's signatures FAIL, even if they verify.
+#               Record this the moment a private key is lost or retired.
+#
+# Rotating a key means adding a new entry beside the old one with its own validity window.
+# Old Baselines stay verifiable against the old key; new ones must use the new one.
+keys:
+  - id: "req-baseline-1"
+    scheme: "minisign"
+    # PLACEHOLDER — replace with the contents of your `req.pub`. This value is published
+    # verbatim by `minisign -G`, and looks like:
+    #   untrusted comment: minisign public key 6C1B0A...
+    #   RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
+    public_key: "REPLACE-WITH-YOUR-PUBLIC-KEY"
+    valid_from: "2026-10-07"
+    # valid_until: "2027-10-07"
+    # revoked_at: "2026-12-01"

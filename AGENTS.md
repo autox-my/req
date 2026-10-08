@@ -156,6 +156,17 @@ export OCR_NO_UPDATE=1
   still no network; with no verifier installed the outcome is UNVERIFIABLE, never a pass.
   **The signing act is the human's**: req emits and verifies, and a key this tool could reach
   would prove nothing.
+- Audit packet: `cargo run -q -- audit [--baseline <file>] [key=value ...]` — the last compiled
+  view: for every **applying** claim it prints the address, the coverage state, the provenance
+  (rationale source and date) and the outgoing relations, then the **undecided** claims in their
+  own section, then its findings. Exit **0** every applying claim covered and still matching,
+  **1** a defect (drift, or no provenance), **3** nothing ratified or something uncovered, **2**
+  usage. Coverage is **derived from `baseline::drift`**, not recomputed, so the packet and
+  `req baseline --verify` cannot disagree about whether a claim still matches what was signed.
+  With no `--baseline` it still prints and says plainly that nothing is ratified — an audit that
+  passed on an unsigned model would be worse than no audit. It reports **coverage**, and says
+  so: whether a signature is *valid* belongs to `req baseline --verify`, and this packet never
+  asserts authority it did not check.
 - Docs-only changes: the same gate, with its skips stated in the commit message.
 
 ### Review — OCR in delegation mode (no LLM, no API key)
@@ -238,7 +249,12 @@ matter:
   selection), `compare.rs` (change direction), `view.rs` (render/trace + the shared
   row), `impact.rs` (reverse traversal), `gate.rs` (release policies),
   `baseline.rs` (Baseline manifest, drift, trust and verification),
+  `audit.rs` (the audit packet, derived from the Baseline's drift),
   `funnel.rs` (Tier-2 blocking + the provider seam), `fill.rs` (derived fields).
+- `baselines/` — the signed Baselines themselves: `trust.yml` (the committed trust anchor,
+  ADR 0010), `<variant>.json` (the canonical manifest) and `<variant>.json.minisig` (its
+  signature). `trust.example.yml` is the template, and the only file here until a human signs
+  the first Baseline; req emits and verifies, it never signs.
 - `tools/ocr/` — the pinned review CLI (`package.json` + lockfile committed;
   `node_modules/` ignored).
 - `review/rule.json` — the review rules we own: one checklist per path class, passed
