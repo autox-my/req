@@ -257,14 +257,20 @@ fn a_bad_signature_fails_and_a_missing_verifier_does_not_pass() {
     assert_eq!(absent.exit_code(), 3);
 }
 
-/// This environment has no `minisign`, so the real verifier must report that rather than
-/// pretend — the same honesty the funnel's absent provider is held to.
+/// A verifier must never report a bogus signature as `Valid`. Whether it answers `Invalid` or
+/// "cannot answer" depends on whether the tool is installed, and this test must not depend on
+/// that — it did, and installing `minisign` turned a true property into a false failure. A test
+/// that pins the environment instead of the behaviour is the same class of mistake as a corpus
+/// label taken from the implementation.
 #[test]
-fn the_real_verifier_reports_a_missing_tool_rather_than_guessing() {
+fn the_real_verifier_never_calls_a_bogus_signature_valid() {
     let outcome = MinisignCli.verify(b"payload", "untrusted comment: sig", "RWQf");
     assert!(
-        matches!(outcome, SignatureOutcome::Unverifiable(_)),
-        "{outcome:?}"
+        matches!(
+            outcome,
+            SignatureOutcome::Invalid(_) | SignatureOutcome::Unverifiable(_)
+        ),
+        "a bogus signature must never verify: {outcome:?}"
     );
 }
 

@@ -1,0 +1,26 @@
+# The trust anchor for Baselines (ADR 0010).
+#
+# This file is the statement of which keys may ratify a Baseline, and until when. It is data,
+# reviewed like a corpus: a change to it is a diff someone reads. Verification consults exactly
+# the key named by `req baseline --verify --key` (default below); a key absent from this file is
+# UNVERIFIABLE, never a silent pass.
+#
+#   scheme      the verifier that must check signatures from this key ("minisign").
+#   public_key  the key's text, verbatim — the two lines `minisign -G`/`-R` writes, because
+#               `minisign -V -p` wants a key *file*. Public, and a pin like Cargo.lock:
+#               committing it is what lets anyone verify a Baseline offline.
+#   valid_from  the date this key became trusted (ISO-8601, zero-padded, compared as a string).
+#   valid_until optional. Expiry reports UNVERIFIABLE, not FAIL: a Baseline is a historical
+#               record and no trusted signing time exists, so the question cannot be decided.
+#   revoked_at  optional and decisive: a revoked key's signatures FAIL even if they verify.
+#               Record it the moment a private key is lost or retired.
+#
+# Rotating a key means adding an entry beside the old one with its own validity window: old
+# Baselines stay verifiable against the old key, new ones must use the new one.
+keys:
+  - id: "req-baseline-1"
+    scheme: "minisign"
+    public_key: |
+      untrusted comment: minisign public key 645DD76950ED6ADF
+      RWTfau1QadddZOzVi8alyp5FpDVkqDdBP0RvwmPHt5j5s+MyxyEqIkVu
+    valid_from: "2026-10-08"
