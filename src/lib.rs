@@ -10,6 +10,7 @@ pub mod baseline;
 pub mod bench;
 pub mod canon;
 pub mod compare;
+pub mod decision;
 pub mod fill;
 pub mod funnel;
 pub mod gate;

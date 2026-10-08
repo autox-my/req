@@ -183,6 +183,22 @@ export OCR_NO_UPDATE=1
   passed on an unsigned model would be worse than no audit. It reports **coverage**, and says
   so: whether a signature is *valid* belongs to `req baseline --verify`, and this packet never
   asserts authority it did not check.
+- Decision log: `cargo run -q -- decision [--fill] [--verify]` — the recorded decisions and their
+  **hash chain** (design step 8, ADR 0005). One decision per file under `decisions/DEC-*.yml`
+  (zero-padded so file order is chronological), each committing to its predecessor by
+  `sha256("req.decision.v1" ‖ prev_hash ‖ canonical content)`. `--fill` writes the derived
+  `prev_hash`/`hash` **into** the record, preserving comments and the note a human wrote; it never
+  overwrites the file. `--verify` (the default) walks the chain. Exit **0** VALID, **1** TAMPERED,
+  **3** UNVERIFIABLE, **2** usage. The three outcomes are the point: a stored hash that does not
+  recompute, or a `prev_hash` that disagrees with the entry before it, is **TAMPERED** — a definite
+  finding — while an unfilled hash, an unparsable file, an **empty log**, or a log that does not
+  begin at the genesis anchor is **UNVERIFIABLE**. That last case is deliberate: a truncated history
+  and a forged first entry are indistinguishable from the file set alone, so the honest answer is
+  that the question cannot be settled — never that it passed. A decision records the *address* it
+  ratified, so a claim reworded meaning-preservingly keeps its decision while an edit that moves the
+  address leaves the decision pointing at something that no longer exists — which `req audit` and
+  `req baseline --verify` report, not this log: a log is history, and superseding an address later is
+  not tampering.
 - Docs-only changes: the same gate, with its skips stated in the commit message.
 
 ### Review — OCR in delegation mode (no LLM, no API key)
@@ -272,6 +288,7 @@ matter:
   row), `impact.rs` (reverse traversal), `gate.rs` (release policies),
   `baseline.rs` (Baseline manifest, drift, trust and verification),
   `audit.rs` (the audit packet, derived from the Baseline's drift),
+  `decision.rs` (the decision log and its hash chain),
   `funnel.rs` (Tier-2 blocking, the provider seam, the command provider and the
   gold-set scoring), `fill.rs` (derived fields).
 - `baselines/` — `trust.yml` is the committed trust anchor (ADR 0010) and the **single home of
