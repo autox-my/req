@@ -1,0 +1,80 @@
+{
+  "ceiling_percent": 73,
+  "decided_by_both": 30,
+  "disagreements": [
+    {
+      "a": "related",
+      "b": "unrelated",
+      "id": "PILOT-A-04",
+      "tier": "A"
+    },
+    {
+      "a": "related",
+      "b": "unrelated",
+      "id": "PILOT-A-06",
+      "tier": "A"
+    },
+    {
+      "a": "unrelated",
+      "b": "related",
+      "id": "PILOT-A-07",
+      "tier": "A"
+    },
+    {
+      "a": "related",
+      "b": "unrelated",
+      "id": "PILOT-A-09",
+      "tier": "A"
+    },
+    {
+      "a": "related",
+      "b": "unrelated",
+      "id": "PILOT-B-01",
+      "tier": "B"
+    },
+    {
+      "a": "related",
+      "b": "unrelated",
+      "id": "PILOT-B-03",
+      "tier": "B"
+    },
+    {
+      "a": "unrelated",
+      "b": "related",
+      "id": "PILOT-B-05",
+      "tier": "B"
+    },
+    {
+      "a": "unrelated",
+      "b": "related",
+      "id": "PILOT-C-06",
+      "tier": "C"
+    }
+  ],
+  "evaluated_at": "20261008T180656Z",
+  "kind": "tier2-ceiling",
+  "labellers": [
+    "alice",
+    "bob"
+  ],
+  "outcomes": {
+    "agreed": 22,
+    "disagreed": 8
+  },
+  "pairs": 30,
+  "per_tier": {
+    "A": {
+      "agreed": 6,
+      "disagreed": 4
+    },
+    "B": {
+      "agreed": 7,
+      "disagreed": 3
+    },
+    "C": {
+      "agreed": 9,
+      "disagreed": 1
+    }
+  },
+  "worksheet": "bench/corpus/tier2-pilot-v0.yml"
+}
