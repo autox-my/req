@@ -100,6 +100,11 @@ def half(pid):
     return "tune" if int(hashlib.sha256(pid.encode()).hexdigest(), 16) % 2 == 0 else "held"
 
 
+def pct(value):
+    """A rate that was never computable is `n/a` — not a raw None, and not a zero."""
+    return "n/a" if value is None else "%d%%" % value
+
+
 def sweep(rows, floor):
     tp = sum(1 for r in rows if r["label"] == "equivalent" and r["choice"] == "equivalent" and r["confidence"] >= floor)
     fn = sum(1 for r in rows if r["label"] == "equivalent") - tp
@@ -116,7 +121,9 @@ def choose(rows):
         result = sweep(rows, floor)
         if result["fp"] == 0 and result["tp"] > 0:
             return result
-    return sweep(rows, 100)
+    # No floor is clean *and* non-empty: the confidence does not separate the classes. Returning
+    # `sweep(rows, 100)` made that identical to a maximally conservative threshold that passes.
+    return None
 
 
 def curve(rows):
@@ -163,20 +170,34 @@ def main():
     # and both directions are printed rather than the flattering one.
     forward = choose(tune)
     backward = choose(held)
-    forward_held = sweep(held, forward["floor"])
-    backward_tune = sweep(tune, backward["floor"])
-    stable_floor = max(forward["floor"], backward["floor"])
-    stable = sweep(list(rows.values()), stable_floor)
+    forward_held = backward_tune = None
+    stable_floor = stable = None
 
-    print(f"\ntune-half floor {forward['floor']} -> held-out: "
-          f"tp {forward_held['tp']} fp {forward_held['fp']} fn {forward_held['fn']} "
-          f"precision {forward_held['precision']}% recall {forward_held['recall']}%")
-    print(f"held-half floor {backward['floor']} -> tune:      "
-          f"tp {backward_tune['tp']} fp {backward_tune['fp']} fn {backward_tune['fn']} "
-          f"precision {backward_tune['precision']}% recall {backward_tune['recall']}%")
-    print(f"\nstable floor (clean in both directions): {stable_floor}")
-    print(f"  all pairs at {stable_floor}: tp {stable['tp']} fp {stable['fp']} fn {stable['fn']} "
-          f"precision {stable['precision']}% recall {stable['recall']}%")
+    if forward is None:
+        print("\nno floor on the tune half is clean with any true positive: the confidence does "
+              "not separate the classes")
+    else:
+        forward_held = sweep(held, forward["floor"])
+        print(f"\ntune-half floor {forward['floor']} -> held-out: "
+              f"tp {forward_held['tp']} fp {forward_held['fp']} fn {forward_held['fn']} "
+              f"precision {pct(forward_held['precision'])} recall {pct(forward_held['recall'])}")
+    if backward is None:
+        print("no floor on the held-out half is clean with any true positive: the confidence does "
+              "not separate the classes")
+    else:
+        backward_tune = sweep(tune, backward["floor"])
+        print(f"held-half floor {backward['floor']} -> tune:      "
+              f"tp {backward_tune['tp']} fp {backward_tune['fp']} fn {backward_tune['fn']} "
+              f"precision {pct(backward_tune['precision'])} recall {pct(backward_tune['recall'])}")
+    if forward is not None and backward is not None:
+        stable_floor = max(forward["floor"], backward["floor"])
+        stable = sweep(list(rows.values()), stable_floor)
+        print(f"\nstable floor (clean in both directions): {stable_floor}")
+        print(f"  all pairs at {stable_floor}: tp {stable['tp']} fp {stable['fp']} fn {stable['fn']} "
+              f"precision {pct(stable['precision'])} recall {pct(stable['recall'])}")
+    else:
+        print("\nstable floor: NONE — NO USABLE FLOOR EXISTS. This provider's confidence does not "
+              "separate equivalent from non-equivalent on this corpus")
 
     print("\nheld-out curve (so the trade is visible, not just the point):")
     print("  floor  tp  fp  fn  precision  recall")
@@ -185,10 +206,12 @@ def main():
               f"{result['precision'] if result['precision'] is not None else 'n/a':>9}  "
               f"{result['recall'] if result['recall'] is not None else 'n/a':>6}")
 
-    in_sample = sweep(list(rows.values()), forward["floor"])
-    print(f"\nfor comparison, the same floor on ALL pairs (in-sample, i.e. fitted): "
-          f"tp {in_sample['tp']} fp {in_sample['fp']} fn {in_sample['fn']} "
-          f"precision {in_sample['precision']}% recall {in_sample['recall']}%")
+    in_sample = None
+    if forward is not None:
+        in_sample = sweep(list(rows.values()), forward["floor"])
+        print(f"\nfor comparison, the same floor on ALL pairs (in-sample, i.e. fitted): "
+              f"tp {in_sample['tp']} fp {in_sample['fp']} fn {in_sample['fn']} "
+              f"precision {pct(in_sample['precision'])} recall {pct(in_sample['recall'])}")
 
     if not args.no_record:
         stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
@@ -205,12 +228,13 @@ def main():
             "split": "sha256(pair id) % 2",
             "tune_pairs": len(tune),
             "held_out_pairs": len(held),
-            "floor_chosen_on_tune": forward["floor"],
+            "floor_chosen_on_tune": forward["floor"] if forward else None,
             "held_out_at_tune_floor": forward_held,
-            "floor_chosen_on_held": backward["floor"],
+            "floor_chosen_on_held": backward["floor"] if backward else None,
             "tune_at_held_floor": backward_tune,
             "stable_floor": stable_floor,
             "all_pairs_at_stable_floor": stable,
+            "usable_floor": stable_floor is not None,
             "in_sample_at_tune_floor": in_sample,
             "held_out_curve": curve(held),
             "matched_by_pair_id": by_id,
@@ -239,7 +263,7 @@ def main():
             path.write_text(json.dumps(record, indent=2) + "\n")
             print(f"\nrecorded: {path}")
 
-    return 0 if stable["fp"] == 0 else 1
+    return 0 if (stable is not None and stable["fp"] == 0) else 1
 
 
 if __name__ == "__main__":

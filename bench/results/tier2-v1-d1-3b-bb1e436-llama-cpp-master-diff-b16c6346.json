@@ -1,0 +1,105 @@
+{
+  "kind": "tier2-provider-evaluation",
+  "provider": "d1-3b@bb1e436/llama.cpp@master+DIFF",
+  "corpus": "bench/corpus/tier2-v1.yml",
+  "capture": "/home/dsh/understand/.scratch/req-d1-capture-diff.jsonl",
+  "capture_rows": 68,
+  "pairs": 68,
+  "labels": {
+    "equivalent": 36,
+    "related": 32
+  },
+  "repeat_disagreements": 0,
+  "split": "sha256(pair id) % 2",
+  "tune_pairs": 33,
+  "held_out_pairs": 35,
+  "floor_chosen_on_tune": null,
+  "held_out_at_tune_floor": null,
+  "floor_chosen_on_held": null,
+  "tune_at_held_floor": null,
+  "stable_floor": null,
+  "all_pairs_at_stable_floor": null,
+  "usable_floor": false,
+  "in_sample_at_tune_floor": null,
+  "held_out_curve": [
+    {
+      "floor": 0,
+      "tp": 24,
+      "fp": 10,
+      "fn": 0,
+      "precision": 70,
+      "recall": 100
+    },
+    {
+      "floor": 60,
+      "tp": 21,
+      "fp": 9,
+      "fn": 3,
+      "precision": 70,
+      "recall": 87
+    },
+    {
+      "floor": 65,
+      "tp": 19,
+      "fp": 8,
+      "fn": 5,
+      "precision": 70,
+      "recall": 79
+    },
+    {
+      "floor": 70,
+      "tp": 15,
+      "fp": 7,
+      "fn": 9,
+      "precision": 68,
+      "recall": 62
+    },
+    {
+      "floor": 75,
+      "tp": 12,
+      "fp": 4,
+      "fn": 12,
+      "precision": 75,
+      "recall": 50
+    },
+    {
+      "floor": 80,
+      "tp": 6,
+      "fp": 4,
+      "fn": 18,
+      "precision": 60,
+      "recall": 25
+    },
+    {
+      "floor": 85,
+      "tp": 2,
+      "fp": 4,
+      "fn": 22,
+      "precision": 33,
+      "recall": 8
+    },
+    {
+      "floor": 90,
+      "tp": 0,
+      "fp": 1,
+      "fn": 24,
+      "precision": 0,
+      "recall": 0
+    },
+    {
+      "floor": 95,
+      "tp": 0,
+      "fp": 0,
+      "fn": 24,
+      "precision": null,
+      "recall": 0
+    }
+  ],
+  "matched_by_pair_id": 68,
+  "matched_by_statement_text": 0,
+  "caveats": [
+    "both halves come from the same generator and templates: a held-out sample of the same distribution, not an independent one",
+    "confidence is the model's self-report; the serving documentation states the probabilities are not calibrated for this data"
+  ],
+  "evaluated_at": "20261008T163851Z"
+}
