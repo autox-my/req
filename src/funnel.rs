@@ -356,25 +356,34 @@ pub fn run(args: &[String]) -> i32 {
         inverted_index(&applying).len()
     );
     let provider = NoProvider;
-    println!("  provider: {} (offline default)", provider.id());
+    if gold_path.is_none() {
+        println!("  provider: {} (offline default)", provider.id());
+    } else {
+        println!(
+            "  proposals not listed: --gold scores the provider on the gold set, so this pass \
+             reports the funnel's shape only"
+        );
+    }
     let unverifiable = proposals
         .iter()
         .filter(|p| matches!(p.adjudication, Adjudication::Unverifiable { .. }))
         .count();
-    println!(
-        "\n{} proposal(s), {unverifiable} unadjudicated:",
-        proposals.len()
-    );
-    for proposal in proposals.iter().take(12) {
+    if gold_path.is_none() {
         println!(
-            "- {} ~ {}  [{}]",
-            proposal.a,
-            proposal.b,
-            proposal.adjudication.as_str()
+            "\n{} proposal(s), {unverifiable} unadjudicated:",
+            proposals.len()
         );
-    }
-    if proposals.len() > 12 {
-        println!("  … {} more", proposals.len() - 12);
+        for proposal in proposals.iter().take(12) {
+            println!(
+                "- {} ~ {}  [{}]",
+                proposal.a,
+                proposal.b,
+                proposal.adjudication.as_str()
+            );
+        }
+        if proposals.len() > 12 {
+            println!("  … {} more", proposals.len() - 12);
+        }
     }
     let mut gold_misses = 0usize;
     if let Some(path) = &gold_path {
@@ -407,6 +416,7 @@ pub fn run(args: &[String]) -> i32 {
     }
     let mut false_merges = 0usize;
     let mut flip_percent = 0u32;
+    let mut flip_measured = 0usize;
     if let (Some(path), Some(command)) = (&gold_path, &provider_cmd) {
         let corpus = match Tier2Corpus::load(path) {
             Ok(corpus) => corpus,
@@ -419,6 +429,7 @@ pub fn run(args: &[String]) -> i32 {
         let score = score_gold(&corpus, &provider, min_shared, min_confidence);
         let (flipped, measured) = flip_count(&corpus, &provider, min_shared, repeats);
         flip_percent = ((flipped * 100).checked_div(measured)).unwrap_or(0) as u32;
+        flip_measured = measured;
         false_merges = score.false_positives;
         println!("  provider: {}", provider.id());
         if min_confidence > 0 {
@@ -466,11 +477,12 @@ pub fn run(args: &[String]) -> i32 {
             println!("  - FALSE MERGE: the provider called a non-equivalent pair equivalent");
         }
     }
-    if gold_misses > 0 || false_merges > 0 || flip_percent > 2 {
-        println!(
-            "\nverdict: FAIL — unreachable equivalents {gold_misses}, false merges {false_merges}, flip rate {flip_percent}%"
-        );
-        return 1;
+    if gold_path.is_some() {
+        // The gold result is the verdict; the funnel pass above answered a different question and
+        // must not decide this one — it reported "no provider" over a run that had one.
+        let (code, sentence) = gold_verdict(gold_misses, false_merges, flip_percent, flip_measured);
+        println!("\nverdict: {sentence}");
+        return code;
     }
     println!(
         "\nverdict: {}",
@@ -743,6 +755,34 @@ impl GoldScore {
     pub fn recall(&self) -> Option<u32> {
         let denominator = self.true_positives + self.false_negatives;
         (denominator > 0).then(|| (self.true_positives * 100 / denominator) as u32)
+    }
+}
+
+/// The verdict for a gold-set run. A **PASS** requires all three: every equivalent reachable by
+/// blocking, no pair called equivalent that the gold set does not, and stability **measured** —
+/// because REQ-0011 at "not measured" is not satisfied, and an unmeasured requirement must never
+/// read as a pass. A known defect outranks an open question, as everywhere else here.
+pub fn gold_verdict(
+    misses: usize,
+    false_merges: usize,
+    flip_percent: u32,
+    flip_measured: usize,
+) -> (i32, &'static str) {
+    if misses > 0 || false_merges > 0 || flip_percent > 2 {
+        (
+            1,
+            "FAIL — a false merge, an unreachable equivalent, or a flip rate above 2%",
+        )
+    } else if flip_measured == 0 {
+        (
+            3,
+            "UNVERIFIABLE — the score passes, but REQ-0011 is not measured: one run compares nothing",
+        )
+    } else {
+        (
+            0,
+            "PASS — no false merge, every equivalent reachable, stability measured",
+        )
     }
 }
 
