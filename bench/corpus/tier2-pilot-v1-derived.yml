@@ -1,3 +1,14 @@
+# Tier-2 sample, positive tier — the KEY. Labels empty; this file is not shown to labellers.
+#
+# Each pair is one authored row: the statement against its faithful restatement (constructed as
+# equivalent) or against its one-element alteration (constructed as related). The construction is a
+# CLAIM, not ground truth. `constructed_label` records what the author intended; `blind_id` maps the
+# pair to the labelling copy a reader actually sees, so labels can be rejoined to the construction
+# without the reader having been shown it.
+#
+# Authors, who may not be labellers: bob
+# Excluded rows are listed in `excluded` below, as data rather than as a comment: the first version
+# of this file recorded the exclusion in its header, and a re-serialization erased it.
 schema: req.tier2.pilot/0
 authors:
 - bob
@@ -496,3 +507,9 @@ pairs:
   confidence: ''
   note: ''
   blind_id: L-23
+excluded:
+- row: AUTH-015
+  construction: related
+  reason: the alteration changed the examples listed in a NOTE, not the requirement's obligation, so the
+    pair is probably equivalent — a misconstructed negative, excluded and recorded rather than silently
+    dropped
