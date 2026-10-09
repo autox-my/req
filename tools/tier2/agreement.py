@@ -69,6 +69,8 @@ def main():
     parser.add_argument("--a", required=True, help="worksheet filled by the first labeller")
     parser.add_argument("--b", required=True, help="worksheet filled by the second labeller")
     parser.add_argument("--no-record", action="store_true")
+    parser.add_argument("--caveat", action="append", default=[],
+                        help="a condition the number is only true under; recorded with it")
     args = parser.parse_args()
 
     code, left = load(args.a)
@@ -146,6 +148,7 @@ def main():
 
     if not args.no_record:
         blob = json.dumps({"kind": "tier2-ceiling", "worksheet": args.worksheet,
+                           "caveats": args.caveat,
                            "pairs": len(ids), "labellers": names,
                            "outcomes": dict(counts), "ceiling_percent": ceiling,
                            "decided_by_both": decided_twice},

@@ -158,3 +158,36 @@ cannot be inspected is an assertion, and with them in the repository anyone can 
 and read the eight disagreements against the labels that produced them. A labeller's identity is the
 one thing not recorded, because the ceiling needs two distinct judgements and not the people behind
 them.
+
+## Amendment 2: the first positive-tier readings, and their grade
+
+Both readings were taken from a copy that carried the answer key — `constructed_label`, identifiers
+ending `@equivalent` and `@related`, and the equivalent pair listed before its sibling on every row. The
+readers were asked to ignore it, which is an instruction where the next version of this file supplies a
+control. That control exists now (`bench/corpus/tier2-labelling-v1.yml`), and it was built after these
+readings, not before.
+
+What came back: identical labels — fifteen equivalent, fourteen related — matching the construction on
+all twenty-nine pairs. A careless reader copying the key would produce exactly that, so **the number
+cannot distinguish agreement from copying, and no conclusion about the construction's validity follows
+from it**. What it does establish is that the sample has both classes with human labels, at a grade that
+must be named wherever its numbers are used: **informed and construction-consistent** — weaker than
+blind, stronger than a model's own output, and enough to score a provider provisionally.
+
+Both submissions arrived damaged, in different ways: one had lost the document header and parsed as a
+bare list, the other carried words where the schema requires an integer 0–100. The raw submissions are
+committed beside the recovered fillings, and the recovery was a format repair — statements, labels,
+labeller names and notes are exactly as submitted. One confidence had been written as a word and was
+mapped (`high` 90, `medium` 60, `low` 30); the mapping is the analyst's, stated here so a reader can
+disagree with it. Nothing else was changed, and no label was altered.
+
+Two observations that are about the construction rather than the readers, and are therefore not
+explained away by the leaked key. The altered negatives vary in kind — bounds, objects, conditions, one
+actor, one modality — and both readers called every one of them `related` rather than `unrelated`, which
+is what the authoring rule intended: an alteration that keeps the subject matter while moving one
+structural element. And their stated confidence varied — Charlie's between 70 and 96, Alice's from words
+to integers — where a reader transcribing a visible key would be expected to be uniformly certain.
+
+For the corpus that grows from here, the blind protocol stands. Any number quoted from these
+twenty-nine pairs carries its grade, and the ceiling record states it as a caveat rather than leaving it
+to be remembered.
