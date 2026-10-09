@@ -1,0 +1,251 @@
+# Tier-2 sample — the LABELLING copy. This file holds only what is needed to answer.
+#
+# 29 pairs. For each, read the two statements and decide how B stands to A:
+#   equivalent  the same requirement, differently worded
+#   related     the same subject matter with a structural difference (actor, object, bound,
+#               modality, or a condition)
+#   unrelated   no shared requirement
+#   undecided   you cannot tell — this is data, not a failure, so use it rather than guessing
+#
+# Also write: labeller (your name) and confidence (an INTEGER 0-100; a word will be refused).
+# The note field is optional and free.
+#
+# Nothing else is here on purpose. There is no construction label, no identifier that carries one,
+# and no similarity figure, because any of those would hint at the answer. The order is a hash of a
+# hidden id, so pairs that share a statement are not adjacent. Earlier versions of this task leaked
+# the key in those fields, and one of the readings they produced agreed with it on all 29 pairs.
+schema: req.tier2.labelling/0
+pairs:
+- id: L-01
+  a: The Disputes application shall interface with the Cardmember Posting and Billing System. This will
+    allow the Disputes application to request adjustments to cardmember and merchant\92s accounts. All
+    adjustment requests must be sent to the Cardmember Posting and Billing System.
+  b: The Disputes application shall connect to the Cardmember Posting and Billing System so that it can
+    request adjustments to cardmember and merchant accounts, with every adjustment request routed to that
+    system.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-02
+  a: Backspace/reset capability is implemented for typing errors.
+  b: Backspace/reset capability is implemented for data entry errors.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-03
+  a: The Requirement Tool's development process shall include the Requirements Tool's own requirements
+    engineering.
+  b: The development process for the Requirement Tool shall incorporate requirements engineering for the
+    Requirement Tool itself.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-04
+  a: The Requirements Tool shall support requirement trees with at least 10000 requirements.
+  b: The Requirements Tool shall be capable of handling requirement trees containing no fewer than 10000
+    requirements.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-05
+  a: Doorstop **shall** support the storage of external requirements assets.
+  b: Doorstop shall support the storage of external requirements assets and their associated metadata.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-06
+  a: Doorstop **shall** provide a way to view document items interactively.
+  b: Doorstop shall offer an interactive means of viewing the items in a document.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-07
+  a: The Requirements Tool shall support requirement trees with at least 10000 requirements.
+  b: The Requirements Tool shall support requirement trees with at least 50000 requirements.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-08
+  a: Backspace/reset capability is implemented for typing errors.
+  b: The system provides a backspace and reset function to correct typing mistakes.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-09
+  a: The Requirement Tool's development process shall include the Requirements Tool's own requirements
+    engineering.
+  b: The Requirement Tool's development process shall include the Requirements Tool's own requirements
+    engineering and traceability.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-10
+  a: The product shall be able to display calendar dates and times according to the user\92s locale. 90%
+    of survey respondents from each target market country will find that the date and time formatting
+    of the product is correct.
+  b: The product shall be able to display calendar dates and times according to the user\92s locale. 95%
+    of survey respondents from each target market country will find that the date and time formatting
+    of the product is correct.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-11
+  a: The Disputes application shall interface with the Cardmember Posting and Billing System. This will
+    allow the Disputes application to request adjustments to cardmember and merchant\92s accounts. All
+    adjustment requests must be sent to the Cardmember Posting and Billing System.
+  b: The Disputes application shall interface with the Cardmember Posting and Billing System. This will
+    allow the Disputes application to request adjustments to cardmember and merchant\92s accounts. All
+    adjustment requests must be sent to the Cardmember Accounts System.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-12
+  a: Full data backups must be created daily.
+  b: Full data backups must be created hourly.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-13
+  a: Doorstop **shall** support the storage of external requirements assets.
+  b: Doorstop shall be capable of storing assets that originate from outside its own requirement set.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-14
+  a: Doorstop **shall** be scalable to support thousands of requirements.
+  b: Doorstop shall be scalable to support tens of thousands of requirements.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-15
+  a: The Requirement Tool's text language shall be machine-readable.
+  b: The textual language used by the Requirement Tool shall be readable by machines.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-16
+  a: Full data backups must be created daily.
+  b: A complete backup of the data is required to be produced every day.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-17
+  a: The product shall be able to display calendar dates and times according to the user\92s locale. 90%
+    of survey respondents from each target market country will find that the date and time formatting
+    of the product is correct.
+  b: The product shall render calendar dates and times in line with the user's locale, with the expectation
+    that 90% of surveyed respondents in every target market country judge the date and time formatting
+    to be correct.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-18
+  a: The Requirement Tool's text language shall be machine-readable.
+  b: The Requirement Tool's text language shall be human-readable.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-19
+  a: The product shall display each type of ship in a grid using an image of the specific type of ship.
+  b: The product shall display each type of ship in a grid using a text label naming the specific type
+    of ship.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-20
+  a: A meeting scheduler system will temporarily reserve the "time slots" for the proposed meeting.
+  b: The meeting scheduler shall hold the candidate time slots for the proposed meeting on a temporary
+    basis.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-21
+  a: Doorstop **shall** be scalable to support thousands of requirements.
+  b: Doorstop shall scale to handle requirement sets numbering in the thousands.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-22
+  a: The product shall display each type of ship in a grid using an image of the specific type of ship.
+  b: For every ship type, the product shall render it on a grid with a picture of that specific type.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-23
+  a: 'The Requirements Tool shall provide a Software Development Kit (SDK) that allows customization of
+    the Requirements Tool functions. NOTE: An SDK provides access to the API of the Requirements Tool.
+    Examples of functions that may be used by the users of the tool: - Custom import/export functions
+    to/from various requirements/documentation formats. - Implement custom visualization functions. -
+    Implement integration with other tools.'
+  b: 'The Requirements Tool shall supply a Software Development Kit (SDK) through which the tool''s functions
+    can be customized. NOTE: The SDK exposes the Requirements Tool''s API. Functions available to tool
+    users include: custom import/export to and from various requirements and documentation formats; custom
+    visualization functions; and integration with other tools.'
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-24
+  a: Doorstop **shall** provide a way to view document items interactively.
+  b: Doorstop shall provide a way to edit document items interactively.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-25
+  a: A meeting scheduler system will temporarily reserve the "time slots" for the proposed meeting.
+  b: A meeting scheduler system will permanently reserve the "time slots" for the proposed meeting.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-26
+  a: The Requirements Tool shall support structuring requirements in documents.
+  b: The Requirements Tool shall make it possible to organize requirements into documents.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-27
+  a: The Requirement Tool's source code shall be based on open source software components.
+  b: The Requirement Tool's source code shall be based exclusively on open source software components.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-28
+  a: The Requirement Tool's source code shall be based on open source software components.
+  b: The source code of the Requirement Tool shall be built upon open source software components.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''
+- id: L-29
+  a: The Requirements Tool shall support structuring requirements in documents.
+  b: The Requirements Tool shall support structuring requirements in documents and across document sets.
+  label: ''
+  labeller: ''
+  confidence: ''
+  note: ''

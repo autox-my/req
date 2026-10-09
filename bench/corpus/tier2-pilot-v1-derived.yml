@@ -1,13 +1,3 @@
-# Tier-2 sample, positive tier — DERIVED from the authoring sheet, labels empty.
-#
-# Each pair is one authored row: the statement against its faithful restatement (constructed as
-# equivalent) or against its one-element alteration (constructed as related). The construction is a
-# CLAIM, not ground truth: `constructed_label` records what the author intended, and two labellers
-# who did not write these rows judge the pairs blind. A disagreement between the construction and a
-# blind reader is the most informative number the sample can produce.
-#
-# Authors, who may not be labellers: bob
-# Excluded, with reason: AUTH-015/related — the alteration changed the examples listed in a NOTE, not the requirement's obligation, so the pair is probably equivalent — a misconstructed negative, excluded and recorded rather than silently dropped
 schema: req.tier2.pilot/0
 authors:
 - bob
@@ -27,6 +17,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-13
 - id: PILOT-P-02
   tier: P
   source: authored doorstop REQ001
@@ -42,6 +33,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-05
 - id: PILOT-P-03
   tier: P
   source: authored doorstop REQ008
@@ -57,6 +49,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-06
 - id: PILOT-P-04
   tier: P
   source: authored doorstop REQ008
@@ -72,6 +65,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-24
 - id: PILOT-P-05
   tier: P
   source: authored doorstop REQ014
@@ -87,6 +81,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-21
 - id: PILOT-P-06
   tier: P
   source: authored doorstop REQ014
@@ -102,6 +97,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-14
 - id: PILOT-P-07
   tier: P
   source: authored promise P10:r490
@@ -117,6 +113,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-22
 - id: PILOT-P-08
   tier: P
   source: authored promise P10:r490
@@ -133,6 +130,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-19
 - id: PILOT-P-09
   tier: P
   source: authored promise P18:r650
@@ -149,6 +147,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-20
 - id: PILOT-P-10
   tier: P
   source: authored promise P18:r650
@@ -164,6 +163,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-25
 - id: PILOT-P-11
   tier: P
   source: authored promise P32:r740
@@ -179,6 +179,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-16
 - id: PILOT-P-12
   tier: P
   source: authored promise P32:r740
@@ -194,6 +195,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-12
 - id: PILOT-P-13
   tier: P
   source: authored promise P42:r820
@@ -209,6 +211,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-08
 - id: PILOT-P-14
   tier: P
   source: authored promise P42:r820
@@ -224,6 +227,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-02
 - id: PILOT-P-15
   tier: P
   source: authored promise P4:r160
@@ -243,6 +247,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-01
 - id: PILOT-P-16
   tier: P
   source: authored promise P4:r160
@@ -262,6 +267,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-11
 - id: PILOT-P-17
   tier: P
   source: authored promise P6:r320
@@ -281,6 +287,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-17
 - id: PILOT-P-18
   tier: P
   source: authored promise P6:r320
@@ -300,6 +307,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-10
 - id: PILOT-P-19
   tier: P
   source: authored strictdoc SDOC-SSS-13
@@ -316,6 +324,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-04
 - id: PILOT-P-20
   tier: P
   source: authored strictdoc SDOC-SSS-13
@@ -331,6 +340,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-07
 - id: PILOT-P-21
   tier: P
   source: authored strictdoc SDOC-SSS-39
@@ -346,6 +356,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-28
 - id: PILOT-P-22
   tier: P
   source: authored strictdoc SDOC-SSS-39
@@ -361,6 +372,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-27
 - id: PILOT-P-23
   tier: P
   source: authored strictdoc SDOC-SSS-54
@@ -376,6 +388,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-15
 - id: PILOT-P-24
   tier: P
   source: authored strictdoc SDOC-SSS-54
@@ -391,6 +404,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-18
 - id: PILOT-P-25
   tier: P
   source: authored strictdoc SDOC-SSS-64
@@ -406,6 +420,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-26
 - id: PILOT-P-26
   tier: P
   source: authored strictdoc SDOC-SSS-64
@@ -421,6 +436,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-29
 - id: PILOT-P-27
   tier: P
   source: authored strictdoc SDOC-SSS-76
@@ -438,6 +454,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-03
 - id: PILOT-P-28
   tier: P
   source: authored strictdoc SDOC-SSS-76
@@ -455,6 +472,7 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-09
 - id: PILOT-P-29
   tier: P
   source: authored strictdoc SDOC-SSS-86
@@ -477,3 +495,4 @@ pairs:
   labeller: ''
   confidence: ''
   note: ''
+  blind_id: L-23
