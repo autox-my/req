@@ -1,0 +1,204 @@
+# Tier-2 positive tier v1 — authored pairs, scored against human labels.
+#
+# The pool this corpus exists to supply: real paraphrases and deliberate one-element alterations.
+# Mining could not produce them (a mutation corpus pairs what its generator transformed;
+# cross-requirement pairs are different requirements sharing vocabulary) and history does not
+# contain them (requirement prose is rarely edited). Fifteen statements were authored into a
+# restatement and an alteration each, and one alteration was withheld — the key's `excluded` records
+# that it changed a NOTE rather than an obligation.
+#
+# LABEL GRADE: the labels are two human readings, informed rather than blind — the answer key was
+# visible in the copy they filled, and both matched it on all 29 pairs. That is what a copied key
+# produces and also what two careful readers produce, so the labels cannot settle the construction's
+# validity. They are enough to score a provider provisionally, and any number from them carries this.
+#
+# `transform` records the route, which for this corpus is the construction itself: the author's
+# restatement, or the one structural element they changed, in their own words.
+pairs:
+- id: PILOT-P-01
+  a: Doorstop **shall** support the storage of external requirements assets.
+  b: Doorstop shall be capable of storing assets that originate from outside its own requirement set.
+  label: equivalent
+  transform: authored restatement of doorstop REQ001 (author bob)
+- id: PILOT-P-02
+  a: Doorstop **shall** support the storage of external requirements assets.
+  b: Doorstop shall support the storage of external requirements assets and their associated metadata.
+  label: related
+  transform: 'authored alteration of doorstop REQ001: object/scope — added associated metadata to the
+    stored object (author bob)'
+- id: PILOT-P-03
+  a: Doorstop **shall** provide a way to view document items interactively.
+  b: Doorstop shall offer an interactive means of viewing the items in a document.
+  label: equivalent
+  transform: authored restatement of doorstop REQ008 (author bob)
+- id: PILOT-P-04
+  a: Doorstop **shall** provide a way to view document items interactively.
+  b: Doorstop shall provide a way to edit document items interactively.
+  label: related
+  transform: 'authored alteration of doorstop REQ008: object — view changed to edit (author bob)'
+- id: PILOT-P-05
+  a: Doorstop **shall** be scalable to support thousands of requirements.
+  b: Doorstop shall scale to handle requirement sets numbering in the thousands.
+  label: equivalent
+  transform: authored restatement of doorstop REQ014 (author bob)
+- id: PILOT-P-06
+  a: Doorstop **shall** be scalable to support thousands of requirements.
+  b: Doorstop shall be scalable to support tens of thousands of requirements.
+  label: related
+  transform: 'authored alteration of doorstop REQ014: bound — thousands raised to tens of thousands (author
+    bob)'
+- id: PILOT-P-07
+  a: The product shall display each type of ship in a grid using an image of the specific type of ship.
+  b: For every ship type, the product shall render it on a grid with a picture of that specific type.
+  label: equivalent
+  transform: authored restatement of promise P10:r490 (author bob)
+- id: PILOT-P-08
+  a: The product shall display each type of ship in a grid using an image of the specific type of ship.
+  b: The product shall display each type of ship in a grid using a text label naming the specific type
+    of ship.
+  label: related
+  transform: 'authored alteration of promise P10:r490: object — image replaced by text label as the display
+    medium (author bob)'
+- id: PILOT-P-09
+  a: A meeting scheduler system will temporarily reserve the "time slots" for the proposed meeting.
+  b: The meeting scheduler shall hold the candidate time slots for the proposed meeting on a temporary
+    basis.
+  label: equivalent
+  transform: authored restatement of promise P18:r650 (author bob)
+- id: PILOT-P-10
+  a: A meeting scheduler system will temporarily reserve the "time slots" for the proposed meeting.
+  b: A meeting scheduler system will permanently reserve the "time slots" for the proposed meeting.
+  label: related
+  transform: 'authored alteration of promise P18:r650: modality/condition — temporary reservation made
+    permanent (author bob)'
+- id: PILOT-P-11
+  a: Full data backups must be created daily.
+  b: A complete backup of the data is required to be produced every day.
+  label: equivalent
+  transform: authored restatement of promise P32:r740 (author bob)
+- id: PILOT-P-12
+  a: Full data backups must be created daily.
+  b: Full data backups must be created hourly.
+  label: related
+  transform: 'authored alteration of promise P32:r740: bound — daily changed to hourly (author bob)'
+- id: PILOT-P-13
+  a: Backspace/reset capability is implemented for typing errors.
+  b: The system provides a backspace and reset function to correct typing mistakes.
+  label: equivalent
+  transform: authored restatement of promise P42:r820 (author bob)
+- id: PILOT-P-14
+  a: Backspace/reset capability is implemented for typing errors.
+  b: Backspace/reset capability is implemented for data entry errors.
+  label: related
+  transform: 'authored alteration of promise P42:r820: condition — typing errors widened to data entry
+    errors (author bob)'
+- id: PILOT-P-15
+  a: The Disputes application shall interface with the Cardmember Posting and Billing System. This will
+    allow the Disputes application to request adjustments to cardmember and merchant\92s accounts. All
+    adjustment requests must be sent to the Cardmember Posting and Billing System.
+  b: The Disputes application shall connect to the Cardmember Posting and Billing System so that it can
+    request adjustments to cardmember and merchant accounts, with every adjustment request routed to that
+    system.
+  label: equivalent
+  transform: authored restatement of promise P4:r160 (author bob)
+- id: PILOT-P-16
+  a: The Disputes application shall interface with the Cardmember Posting and Billing System. This will
+    allow the Disputes application to request adjustments to cardmember and merchant\92s accounts. All
+    adjustment requests must be sent to the Cardmember Posting and Billing System.
+  b: The Disputes application shall interface with the Cardmember Posting and Billing System. This will
+    allow the Disputes application to request adjustments to cardmember and merchant\92s accounts. All
+    adjustment requests must be sent to the Cardmember Accounts System.
+  label: related
+  transform: 'authored alteration of promise P4:r160: actor — destination system changed from Cardmember
+    Posting and Billing System to Cardmember Accounts System (author bob)'
+- id: PILOT-P-17
+  a: The product shall be able to display calendar dates and times according to the user\92s locale. 90%
+    of survey respondents from each target market country will find that the date and time formatting
+    of the product is correct.
+  b: The product shall render calendar dates and times in line with the user's locale, with the expectation
+    that 90% of surveyed respondents in every target market country judge the date and time formatting
+    to be correct.
+  label: equivalent
+  transform: authored restatement of promise P6:r320 (author bob)
+- id: PILOT-P-18
+  a: The product shall be able to display calendar dates and times according to the user\92s locale. 90%
+    of survey respondents from each target market country will find that the date and time formatting
+    of the product is correct.
+  b: The product shall be able to display calendar dates and times according to the user\92s locale. 95%
+    of survey respondents from each target market country will find that the date and time formatting
+    of the product is correct.
+  label: related
+  transform: 'authored alteration of promise P6:r320: bound — acceptance threshold raised from 90% to
+    95% (author bob)'
+- id: PILOT-P-19
+  a: The Requirements Tool shall support requirement trees with at least 10000 requirements.
+  b: The Requirements Tool shall be capable of handling requirement trees containing no fewer than 10000
+    requirements.
+  label: equivalent
+  transform: authored restatement of strictdoc SDOC-SSS-13 (author bob)
+- id: PILOT-P-20
+  a: The Requirements Tool shall support requirement trees with at least 10000 requirements.
+  b: The Requirements Tool shall support requirement trees with at least 50000 requirements.
+  label: related
+  transform: 'authored alteration of strictdoc SDOC-SSS-13: bound — minimum tree size raised from 10000
+    to 50000 (author bob)'
+- id: PILOT-P-21
+  a: The Requirement Tool's source code shall be based on open source software components.
+  b: The source code of the Requirement Tool shall be built upon open source software components.
+  label: equivalent
+  transform: authored restatement of strictdoc SDOC-SSS-39 (author bob)
+- id: PILOT-P-22
+  a: The Requirement Tool's source code shall be based on open source software components.
+  b: The Requirement Tool's source code shall be based exclusively on open source software components.
+  label: related
+  transform: 'authored alteration of strictdoc SDOC-SSS-39: condition — added exclusivity to the open
+    source basis (author bob)'
+- id: PILOT-P-23
+  a: The Requirement Tool's text language shall be machine-readable.
+  b: The textual language used by the Requirement Tool shall be readable by machines.
+  label: equivalent
+  transform: authored restatement of strictdoc SDOC-SSS-54 (author bob)
+- id: PILOT-P-24
+  a: The Requirement Tool's text language shall be machine-readable.
+  b: The Requirement Tool's text language shall be human-readable.
+  label: related
+  transform: 'authored alteration of strictdoc SDOC-SSS-54: object — machine-readable changed to human-readable
+    (author bob)'
+- id: PILOT-P-25
+  a: The Requirements Tool shall support structuring requirements in documents.
+  b: The Requirements Tool shall make it possible to organize requirements into documents.
+  label: equivalent
+  transform: authored restatement of strictdoc SDOC-SSS-64 (author bob)
+- id: PILOT-P-26
+  a: The Requirements Tool shall support structuring requirements in documents.
+  b: The Requirements Tool shall support structuring requirements in documents and across document sets.
+  label: related
+  transform: 'authored alteration of strictdoc SDOC-SSS-64: object/scope — extended structuring from documents
+    to document sets (author bob)'
+- id: PILOT-P-27
+  a: The Requirement Tool's development process shall include the Requirements Tool's own requirements
+    engineering.
+  b: The development process for the Requirement Tool shall incorporate requirements engineering for the
+    Requirement Tool itself.
+  label: equivalent
+  transform: authored restatement of strictdoc SDOC-SSS-76 (author bob)
+- id: PILOT-P-28
+  a: The Requirement Tool's development process shall include the Requirements Tool's own requirements
+    engineering.
+  b: The Requirement Tool's development process shall include the Requirements Tool's own requirements
+    engineering and traceability.
+  label: related
+  transform: 'authored alteration of strictdoc SDOC-SSS-76: object/scope — added traceability alongside
+    requirements engineering (author bob)'
+- id: PILOT-P-29
+  a: 'The Requirements Tool shall provide a Software Development Kit (SDK) that allows customization of
+    the Requirements Tool functions. NOTE: An SDK provides access to the API of the Requirements Tool.
+    Examples of functions that may be used by the users of the tool: - Custom import/export functions
+    to/from various requirements/documentation formats. - Implement custom visualization functions. -
+    Implement integration with other tools.'
+  b: 'The Requirements Tool shall supply a Software Development Kit (SDK) through which the tool''s functions
+    can be customized. NOTE: The SDK exposes the Requirements Tool''s API. Functions available to tool
+    users include: custom import/export to and from various requirements and documentation formats; custom
+    visualization functions; and integration with other tools.'
+  label: equivalent
+  transform: authored restatement of strictdoc SDOC-SSS-86 (author bob)
