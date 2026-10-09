@@ -26,12 +26,15 @@ import tempfile
 
 SCHEMA = "req.tier2.pilot/0"
 LABELS = ("equivalent", "related", "unrelated")
+TIERS = ("A", "B", "C", "P")
 # `undecided` is a first-class outcome, not a missing value. The protocol asks a labeller to record a
 # pair they cannot decide; a vocabulary that admits only three labels would push them to guess, and a
 # guess is worse than an admitted unknown — the same rule the engine applies everywhere else.
 OUTCOMES = LABELS + ("undecided",)
 FIELDS = ("id", "tier", "source", "a_id", "b_id", "shared_count", "jaccard_pm", "shared_terms",
           "a", "b", "label", "labeller", "confidence", "note")
+# tier P additionally requires constructed_label; checked below rather than in FIELDS, because the
+# pilot tiers do not have one.
 
 
 def yaml_module():
@@ -72,9 +75,15 @@ def validate(path, filled):
         if where in seen:
             findings.append("%s: duplicate id" % where)
         seen.add(where)
-        if pair.get("tier") not in ("A", "B", "C"):
-            findings.append("%s: tier must be A, B or C, got %r" % (where, pair.get("tier")))
-        if pair.get("a_id") and pair.get("a_id") == pair.get("b_id"):
+        if pair.get("tier") not in TIERS:
+            findings.append("%s: tier must be one of %s, got %r" % (where, "|".join(TIERS), pair.get("tier")))
+        if pair.get("tier") == "P":
+            # A positive pair is one requirement in two renderings, by construction, so the cross-id rule
+            # does not apply; what must be present is the author's claim about the pair.
+            if str(pair.get("constructed_label") or "").strip() not in ("equivalent", "related"):
+                findings.append("%s: a tier-P pair needs constructed_label equivalent|related, got %r"
+                                % (where, pair.get("constructed_label")))
+        elif pair.get("a_id") and pair.get("a_id") == pair.get("b_id"):
             findings.append("%s: both statements carry requirement id %r — pairing within one id "
                             "reproduces the source corpus's own Tier-1 transforms" % (where, pair.get("a_id")))
         listed = [t for t in str(pair.get("shared_terms") or "").split("|") if t]
