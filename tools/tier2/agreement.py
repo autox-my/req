@@ -49,6 +49,12 @@ def cohen_kappa(a_labels, b_labels):
     counts_b = collections.Counter(b_labels)
     po = sum(1 for x, y in zip(a_labels, b_labels) if x == y) / n
     pe = sum((counts_a[c] / n) * (counts_b[c] / n) for c in categories)
+    if po >= 1.0:
+        # Perfect agreement is kappa 1.0 by convention, even when every item carries one label — which
+        # is exactly the gate's binary question, where both readers agreed on all thirty pairs. A guard
+        # written against the degenerate denominator was returning None there and made the most
+        # important number unreportable.
+        return 1.0
     if pe >= 1.0:
         return None
     return (po - pe) / (1.0 - pe)
