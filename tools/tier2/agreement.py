@@ -83,6 +83,16 @@ def main():
         print("usage error: both files name the same labeller %r — agreeing with yourself is not "
               "agreement" % names)
         return 2
+    # An author must not label their own pair: their construction is a claim, and the point of the
+    # second reader is to test it. Rejecting two fillings by one labeller is a different check.
+    import yaml as _yaml
+    doc = _yaml.safe_load(open(args.worksheet)) or {}
+    authors = {str(x).strip().lower() for x in (doc.get("authors") or [])}
+    for name in names:
+        if name.lower() in authors:
+            print("usage error: %r is an author of this worksheet, so they cannot be one of its "
+                  "labellers — an author marking their own paraphrase is not evidence" % name)
+            return 2
 
     ids = [pid for pid in left if pid in right]
     missing = sorted(set(left) ^ set(right))
