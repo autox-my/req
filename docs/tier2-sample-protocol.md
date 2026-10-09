@@ -191,3 +191,41 @@ to integers — where a reader transcribing a visible key would be expected to b
 For the corpus that grows from here, the blind protocol stands. Any number quoted from these
 twenty-nine pairs carries its grade, and the ceiling record states it as a caveat rather than leaving it
 to be remembered.
+
+## Amendment 3: the four candidates on the positive tier
+
+The positive tier (29 pairs: 15 authored restatements, 14 authored one-element alterations) has now been
+scored against four providers, each through the same wrapper and the same criteria. Every number below
+carries the label grade from Amendment 2: informed and construction-consistent, not blind.
+
+| provider | paraphrases found | alterations merged | raw precision | confidence separates? |
+| --- | --- | --- | --- | --- |
+| d1-3B | 15/15 | 13/14 | 53% | no — false merges *more* confident (median 84 vs 78) |
+| GLiNER2.5-Decide | 9/15 | 7/14 | ~56% | no — every answer between 0.35 and 0.51 |
+| THX-01 | 12/15 | 13/14 | 48% | no — every confidence between 1 and 14 of 100, entropy near the maximum |
+| Strands v21 | 15/15 | 14/14 | 51% raw | **yes — true positives median 85, false merges median 54, entropy 0.581 vs 1.186** |
+
+Three findings.
+
+**The confidence floor works on exactly one candidate.** A floor at 77 removes every one of Strands'
+false merges and keeps thirteen of its fifteen paraphrases — precision 100%, recall 87%, the first
+configuration in this entire branch that passes the gate. The same sweep is empty for the other three:
+for d1 the only cut that removes every false merge keeps zero true positives, and GLiNER and THX-01 have
+no confidence spread to cut at all.
+
+**The floor is fitted on the same pairs it scores, and the sample is twenty-nine.** Amendment 1's
+warning applies with force: the floor must be validated on pairs it was not chosen from before anything
+is quoted as a result. The labelling copy exists for exactly that; the corpus has to grow first.
+
+**Zero-shot is exhausted as a strategy.** Three architectures — an autoregressive decision LLM, a
+zero-shot encoder, and a purpose-built calibrated decision model — all fail this distinction in the same
+direction, and the two whose vendors claim calibration fail it with honest-looking uncertainty. What the
+failures share is not miscalibration but *indifference*: the models do not represent "one structural
+element changed" as a difference. That is a training matter, and it is why fine-tuning on a grown corpus
+remains the only route to a provider that can be trusted without a floor — with Strands' recipe the
+documented path, and its own generalisation table (0.725 on unseen choice against 0.960 when the task is
+in the mix) measuring exactly the move that would be required.
+
+THX-01's server is committed as `tools/tier2/thx-serve.py`, with the defect that cost three debugging
+rounds recorded in its comments: a server must speak the *wrapper's* request path and payload, and a
+result that is identical for every input is plumbing, not a model.
