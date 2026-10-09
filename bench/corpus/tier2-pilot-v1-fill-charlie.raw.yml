@@ -1,0 +1,450 @@
+# Tier-2 sample, positive tier — DERIVED from the authoring sheet, labels empty.
+#
+# Each pair is one authored row: the statement against its faithful restatement (constructed as
+# equivalent) or against its one-element alteration (constructed as related). The construction is a
+# CLAIM, not ground truth: `constructed_label` records what the author intended, and two labellers
+# who did not write these rows judge the pairs blind. A disagreement between the construction and a
+# blind reader is the most informative number the sample can produce.
+#
+# Authors, who may not be labellers: bob
+# Excluded, with reason: AUTH-015/related — the alteration changed the examples listed in a NOTE, not the requirement's obligation, so the pair is probably equivalent — a misconstructed negative, excluded and recorded rather than silently dropped
+schema: req.tier2.pilot/0
+authors:
+- bob
+pairs:
+- id: PILOT-P-01
+  tier: P
+  source: authored doorstop REQ001
+  a_id: REQ001@original
+  b_id: REQ001@equivalent
+  shared_count: 3
+  jaccard_pm: 272
+  shared_terms: asset|doorstop|requirement
+  a: Doorstop **shall** support the storage of external requirements assets.
+  b: Doorstop shall be capable of storing assets that originate from outside its own requirement set.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '96'
+  note: 'Both require storing external requirements assets; the wording preserves the same capability.'
+- id: PILOT-P-02
+  tier: P
+  source: authored doorstop REQ001
+  a_id: REQ001@original
+  b_id: REQ001@related
+  shared_count: 6
+  jaccard_pm: 666
+  shared_terms: asset|doorstop|external|requirement|storage|support
+  a: Doorstop **shall** support the storage of external requirements assets.
+  b: Doorstop shall support the storage of external requirements assets and their associated metadata.
+  label: 'related'
+  labeller: charlie
+  confidence: '90'
+  note: 'The second adds a requirement to store associated metadata.'
+- id: PILOT-P-03
+  tier: P
+  source: authored doorstop REQ008
+  a_id: REQ008@original
+  b_id: REQ008@equivalent
+  shared_count: 3
+  jaccard_pm: 272
+  shared_terms: document|doorstop|item
+  a: Doorstop **shall** provide a way to view document items interactively.
+  b: Doorstop shall offer an interactive means of viewing the items in a document.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '90'
+  note: 'Both require interactive viewing of document items.'
+- id: PILOT-P-04
+  tier: P
+  source: authored doorstop REQ008
+  a_id: REQ008@original
+  b_id: REQ008@related
+  shared_count: 6
+  jaccard_pm: 750
+  shared_terms: document|doorstop|interactively|item|provide|way
+  a: Doorstop **shall** provide a way to view document items interactively.
+  b: Doorstop shall provide a way to edit document items interactively.
+  label: 'related'
+  labeller: charlie
+  confidence: '90'
+  note: 'Editing is a different capability from viewing.'
+- id: PILOT-P-05
+  tier: P
+  source: authored doorstop REQ014
+  a_id: REQ014@original
+  b_id: REQ014@equivalent
+  shared_count: 3
+  jaccard_pm: 333
+  shared_terms: doorstop|requirement|thousand
+  a: Doorstop **shall** be scalable to support thousands of requirements.
+  b: Doorstop shall scale to handle requirement sets numbering in the thousands.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '90'
+  note: 'Both require scaling to requirement sets in the thousands.'
+- id: PILOT-P-06
+  tier: P
+  source: authored doorstop REQ014
+  a_id: REQ014@original
+  b_id: REQ014@related
+  shared_count: 5
+  jaccard_pm: 833
+  shared_terms: doorstop|requirement|scalable|support|thousand
+  a: Doorstop **shall** be scalable to support thousands of requirements.
+  b: Doorstop shall be scalable to support tens of thousands of requirements.
+  label: 'related'
+  labeller: charlie
+  confidence: '90'
+  note: 'The target scale changes from thousands to tens of thousands.'
+- id: PILOT-P-07
+  tier: P
+  source: authored promise P10:r490
+  a_id: P10:r490@original
+  b_id: P10:r490@equivalent
+  shared_count: 5
+  jaccard_pm: 500
+  shared_terms: grid|product|ship|specific|type
+  a: The product shall display each type of ship in a grid using an image of the specific type of ship.
+  b: For every ship type, the product shall render it on a grid with a picture of that specific type.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '90'
+  note: 'Both require each ship type to appear in a grid with a picture of that type.'
+- id: PILOT-P-08
+  tier: P
+  source: authored promise P10:r490
+  a_id: P10:r490@original
+  b_id: P10:r490@related
+  shared_count: 7
+  jaccard_pm: 636
+  shared_terms: display|grid|product|ship|specific|type|using
+  a: The product shall display each type of ship in a grid using an image of the specific type of ship.
+  b: The product shall display each type of ship in a grid using a text label naming the specific type
+    of ship.
+  label: 'related'
+  labeller: charlie
+  confidence: '90'
+  note: 'A text label does not satisfy the stated image requirement.'
+- id: PILOT-P-09
+  tier: P
+  source: authored promise P18:r650
+  a_id: P18:r650@original
+  b_id: P18:r650@equivalent
+  shared_count: 5
+  jaccard_pm: 416
+  shared_terms: meeting|proposed|scheduler|slot|time
+  a: A meeting scheduler system will temporarily reserve the "time slots" for the proposed meeting.
+  b: The meeting scheduler shall hold the candidate time slots for the proposed meeting on a temporary
+    basis.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '90'
+  note: 'Both temporarily hold candidate time slots for a proposed meeting.'
+- id: PILOT-P-10
+  tier: P
+  source: authored promise P18:r650
+  a_id: P18:r650@original
+  b_id: P18:r650@related
+  shared_count: 7
+  jaccard_pm: 777
+  shared_terms: meeting|proposed|reserve|scheduler|slot|system|time
+  a: A meeting scheduler system will temporarily reserve the "time slots" for the proposed meeting.
+  b: A meeting scheduler system will permanently reserve the "time slots" for the proposed meeting.
+  label: 'related'
+  labeller: charlie
+  confidence: '90'
+  note: 'Permanent reservation differs materially from temporary reservation.'
+- id: PILOT-P-11
+  tier: P
+  source: authored promise P32:r740
+  a_id: P32:r740@original
+  b_id: P32:r740@equivalent
+  shared_count: 2
+  jaccard_pm: 222
+  shared_terms: backup|data
+  a: Full data backups must be created daily.
+  b: A complete backup of the data is required to be produced every day.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '90'
+  note: 'Both require a complete data backup every day.'
+- id: PILOT-P-12
+  tier: P
+  source: authored promise P32:r740
+  a_id: P32:r740@original
+  b_id: P32:r740@related
+  shared_count: 4
+  jaccard_pm: 666
+  shared_terms: backup|created|data|full
+  a: Full data backups must be created daily.
+  b: Full data backups must be created hourly.
+  label: 'related'
+  labeller: charlie
+  confidence: '90'
+  note: 'Hourly backups impose a different frequency from daily backups.'
+- id: PILOT-P-13
+  tier: P
+  source: authored promise P42:r820
+  a_id: P42:r820@original
+  b_id: P42:r820@equivalent
+  shared_count: 3
+  jaccard_pm: 272
+  shared_terms: backspace|reset|typing
+  a: Backspace/reset capability is implemented for typing errors.
+  b: The system provides a backspace and reset function to correct typing mistakes.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '90'
+  note: 'Both provide backspace/reset functionality to correct typing mistakes.'
+- id: PILOT-P-14
+  tier: P
+  source: authored promise P42:r820
+  a_id: P42:r820@original
+  b_id: P42:r820@related
+  shared_count: 5
+  jaccard_pm: 625
+  shared_terms: backspace|capability|error|implemented|reset
+  a: Backspace/reset capability is implemented for typing errors.
+  b: Backspace/reset capability is implemented for data entry errors.
+  label: 'related'
+  labeller: charlie
+  confidence: '70'
+  note: 'Data-entry errors are broader than typing errors, so the stated scope changes.'
+- id: PILOT-P-15
+  tier: P
+  source: authored promise P4:r160
+  a_id: P4:r160@original
+  b_id: P4:r160@equivalent
+  shared_count: 10
+  jaccard_pm: 625
+  shared_terms: account|adjustment|application|billing|cardmember|dispute|merchant|posting|request|system
+  a: The Disputes application shall interface with the Cardmember Posting and Billing System. This will
+    allow the Disputes application to request adjustments to cardmember and merchant\92s accounts. All
+    adjustment requests must be sent to the Cardmember Posting and Billing System.
+  b: The Disputes application shall connect to the Cardmember Posting and Billing System so that it can
+    request adjustments to cardmember and merchant accounts, with every adjustment request routed to that
+    system.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '90'
+  note: 'Both require the same interface, adjustment-request capability, and routing destination.'
+- id: PILOT-P-16
+  tier: P
+  source: authored promise P4:r160
+  a_id: P4:r160@original
+  b_id: P4:r160@related
+  shared_count: 14
+  jaccard_pm: 1000
+  shared_terms: 92s|account|adjustment|allow|application|billing|cardmember|dispute|interface|merchant|posting|request|sent|system
+  a: The Disputes application shall interface with the Cardmember Posting and Billing System. This will
+    allow the Disputes application to request adjustments to cardmember and merchant\92s accounts. All
+    adjustment requests must be sent to the Cardmember Posting and Billing System.
+  b: The Disputes application shall interface with the Cardmember Posting and Billing System. This will
+    allow the Disputes application to request adjustments to cardmember and merchant\92s accounts. All
+    adjustment requests must be sent to the Cardmember Accounts System.
+  label: 'related'
+  labeller: charlie
+  confidence: '90'
+  note: 'The required destination changes from the Cardmember Posting and Billing System to the Cardmember Accounts System.'
+- id: PILOT-P-17
+  tier: P
+  source: authored promise P6:r320
+  a_id: P6:r320@original
+  b_id: P6:r320@equivalent
+  shared_count: 12
+  jaccard_pm: 521
+  shared_terms: calendar|correct|country|date|formatting|locale|market|product|respondent|target|time|user
+  a: The product shall be able to display calendar dates and times according to the user\92s locale. 90%
+    of survey respondents from each target market country will find that the date and time formatting
+    of the product is correct.
+  b: The product shall render calendar dates and times in line with the user's locale, with the expectation
+    that 90% of surveyed respondents in every target market country judge the date and time formatting
+    to be correct.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '90'
+  note: 'Both preserve locale-based date/time formatting and the 90% acceptance criterion in every target market country.'
+- id: PILOT-P-18
+  tier: P
+  source: authored promise P6:r320
+  a_id: P6:r320@original
+  b_id: P6:r320@related
+  shared_count: 18
+  jaccard_pm: 1000
+  shared_terms: 92s|able|according|calendar|correct|country|date|display|find|formatting|locale|market|product|respondent|survey|target|time|user
+  a: The product shall be able to display calendar dates and times according to the user\92s locale. 90%
+    of survey respondents from each target market country will find that the date and time formatting
+    of the product is correct.
+  b: The product shall be able to display calendar dates and times according to the user\92s locale. 95%
+    of survey respondents from each target market country will find that the date and time formatting
+    of the product is correct.
+  label: 'related'
+  labeller: charlie
+  confidence: '90'
+  note: 'The acceptance threshold changes from 90% to 95%.'
+- id: PILOT-P-19
+  tier: P
+  source: authored strictdoc SDOC-SSS-13
+  a_id: SDOC-SSS-13@original
+  b_id: SDOC-SSS-13@equivalent
+  shared_count: 4
+  jaccard_pm: 400
+  shared_terms: 10000|requirement|tool|tree
+  a: The Requirements Tool shall support requirement trees with at least 10000 requirements.
+  b: The Requirements Tool shall be capable of handling requirement trees containing no fewer than 10000
+    requirements.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '90'
+  note: 'Both require support for requirement trees containing at least 10,000 requirements.'
+- id: PILOT-P-20
+  tier: P
+  source: authored strictdoc SDOC-SSS-13
+  a_id: SDOC-SSS-13@original
+  b_id: SDOC-SSS-13@related
+  shared_count: 5
+  jaccard_pm: 714
+  shared_terms: least|requirement|support|tool|tree
+  a: The Requirements Tool shall support requirement trees with at least 10000 requirements.
+  b: The Requirements Tool shall support requirement trees with at least 50000 requirements.
+  label: 'related'
+  labeller: charlie
+  confidence: '90'
+  note: 'The minimum supported tree size changes from 10,000 to 50,000 requirements.'
+- id: PILOT-P-21
+  tier: P
+  source: authored strictdoc SDOC-SSS-39
+  a_id: SDOC-SSS-39@original
+  b_id: SDOC-SSS-39@equivalent
+  shared_count: 7
+  jaccard_pm: 700
+  shared_terms: code|component|open|requirement|software|source|tool
+  a: The Requirement Tool's source code shall be based on open source software components.
+  b: The source code of the Requirement Tool shall be built upon open source software components.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '90'
+  note: 'Both state that the tool''s source code is based on open-source software components.'
+- id: PILOT-P-22
+  tier: P
+  source: authored strictdoc SDOC-SSS-39
+  a_id: SDOC-SSS-39@original
+  b_id: SDOC-SSS-39@related
+  shared_count: 8
+  jaccard_pm: 888
+  shared_terms: based|code|component|open|requirement|software|source|tool
+  a: The Requirement Tool's source code shall be based on open source software components.
+  b: The Requirement Tool's source code shall be based exclusively on open source software components.
+  label: 'related'
+  labeller: charlie
+  confidence: '90'
+  note: 'The second requires exclusively open-source components, a stricter constraint.'
+- id: PILOT-P-23
+  tier: P
+  source: authored strictdoc SDOC-SSS-54
+  a_id: SDOC-SSS-54@original
+  b_id: SDOC-SSS-54@equivalent
+  shared_count: 5
+  jaccard_pm: 625
+  shared_terms: language|machine|readable|requirement|tool
+  a: The Requirement Tool's text language shall be machine-readable.
+  b: The textual language used by the Requirement Tool shall be readable by machines.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '90'
+  note: 'Both require the requirement text language to be machine-readable.'
+- id: PILOT-P-24
+  tier: P
+  source: authored strictdoc SDOC-SSS-54
+  a_id: SDOC-SSS-54@original
+  b_id: SDOC-SSS-54@related
+  shared_count: 5
+  jaccard_pm: 714
+  shared_terms: language|readable|requirement|text|tool
+  a: The Requirement Tool's text language shall be machine-readable.
+  b: The Requirement Tool's text language shall be human-readable.
+  label: 'related'
+  labeller: charlie
+  confidence: '90'
+  note: 'Human-readable and machine-readable are distinct properties; one does not guarantee the other.'
+- id: PILOT-P-25
+  tier: P
+  source: authored strictdoc SDOC-SSS-64
+  a_id: SDOC-SSS-64@original
+  b_id: SDOC-SSS-64@equivalent
+  shared_count: 3
+  jaccard_pm: 375
+  shared_terms: document|requirement|tool
+  a: The Requirements Tool shall support structuring requirements in documents.
+  b: The Requirements Tool shall make it possible to organize requirements into documents.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '90'
+  note: 'Both require the tool to support organizing/structuring requirements in documents.'
+- id: PILOT-P-26
+  tier: P
+  source: authored strictdoc SDOC-SSS-64
+  a_id: SDOC-SSS-64@original
+  b_id: SDOC-SSS-64@related
+  shared_count: 5
+  jaccard_pm: 714
+  shared_terms: document|requirement|structuring|support|tool
+  a: The Requirements Tool shall support structuring requirements in documents.
+  b: The Requirements Tool shall support structuring requirements in documents and across document sets.
+  label: 'related'
+  labeller: charlie
+  confidence: '90'
+  note: 'The second extends the scope to structuring requirements across document sets.'
+- id: PILOT-P-27
+  tier: P
+  source: authored strictdoc SDOC-SSS-76
+  a_id: SDOC-SSS-76@original
+  b_id: SDOC-SSS-76@equivalent
+  shared_count: 5
+  jaccard_pm: 625
+  shared_terms: development|engineering|proces|requirement|tool
+  a: The Requirement Tool's development process shall include the Requirements Tool's own requirements
+    engineering.
+  b: The development process for the Requirement Tool shall incorporate requirements engineering for the
+    Requirement Tool itself.
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '90'
+  note: 'Both include the tool''s own requirements engineering in its development process.'
+- id: PILOT-P-28
+  tier: P
+  source: authored strictdoc SDOC-SSS-76
+  a_id: SDOC-SSS-76@original
+  b_id: SDOC-SSS-76@related
+  shared_count: 6
+  jaccard_pm: 857
+  shared_terms: development|engineering|include|proces|requirement|tool
+  a: The Requirement Tool's development process shall include the Requirements Tool's own requirements
+    engineering.
+  b: The Requirement Tool's development process shall include the Requirements Tool's own requirements
+    engineering and traceability.
+  label: 'related'
+  labeller: charlie
+  confidence: '90'
+  note: 'The second adds traceability as an explicit development-process requirement.'
+- id: PILOT-P-29
+  tier: P
+  source: authored strictdoc SDOC-SSS-86
+  a_id: SDOC-SSS-86@original
+  b_id: SDOC-SSS-86@equivalent
+  shared_count: 18
+  jaccard_pm: 580
+  shared_terms: api|custom|development|documentation|export|format|function|import|integration|kit|note|requirement|sdk|software|tool|user|variou|visualization
+  a: 'The Requirements Tool shall provide a Software Development Kit (SDK) that allows customization of
+    the Requirements Tool functions. NOTE: An SDK provides access to the API of the Requirements Tool.
+    Examples of functions that may be used by the users of the tool: - Custom import/export functions
+    to/from various requirements/documentation formats. - Implement custom visualization functions. -
+    Implement integration with other tools.'
+  b: 'The Requirements Tool shall supply a Software Development Kit (SDK) through which the tool''s functions
+    can be customized. NOTE: The SDK exposes the Requirements Tool''s API. Functions available to tool
+    users include: custom import/export to and from various requirements and documentation formats; custom
+    visualization functions; and integration with other tools.'
+  label: 'equivalent'
+  labeller: charlie
+  confidence: '70'
+  note: 'The SDK customization capability and API access are preserved; the listed example functions are restated without an apparent substantive change.'

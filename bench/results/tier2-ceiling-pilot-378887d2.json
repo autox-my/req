@@ -1,0 +1,25 @@
+{
+  "caveats": [
+    "both readings were taken with the construction visible: informed, not blind",
+    "the two readers therefore cannot be treated as independent of the construction"
+  ],
+  "ceiling_percent": 100,
+  "decided_by_both": 29,
+  "disagreements": [],
+  "evaluated_at": "20261009T140757Z",
+  "kind": "tier2-ceiling",
+  "labellers": [
+    "Alice",
+    "charlie"
+  ],
+  "outcomes": {
+    "agreed": 29
+  },
+  "pairs": 29,
+  "per_tier": {
+    "null": {
+      "agreed": 29
+    }
+  },
+  "worksheet": "bench/corpus/tier2-labelling-v1.yml"
+}

@@ -1,0 +1,245 @@
+# Recovered filling for alice — format repaired by the analyst, content untouched.
+#
+# Source: .scratch/filled-p-alice.yml (bare list (header lost), 29 pair row(s) recovered).
+# The file was given the labelling schema so it validates; its statements and the labels,
+# labeller names and notes are as submitted.
+# Confidence was written as a word where the schema requires an integer 0-100. Mapped, and the
+#   high -> 90, medium -> 60, low -> 30   (0 value(s) mapped)
+# Labels were written with the answer key visible, so they are INFORMED, not blind. That is a
+# weaker grade of evidence and it travels with every number derived from them.
+schema: req.tier2.labelling/0
+pairs:
+- id: L-01
+  a: The Disputes application shall interface with the Cardmember Posting and Billing System. This will
+    allow the Disputes application to request adjustments to cardmember and merchant\92s accounts. All
+    adjustment requests must be sent to the Cardmember Posting and Billing System.
+  b: The Disputes application shall connect to the Cardmember Posting and Billing System so that it can
+    request adjustments to cardmember and merchant accounts, with every adjustment request routed to that
+    system.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Faithfully compresses three sentences into one compound sentence.
+- id: L-02
+  a: Backspace/reset capability is implemented for typing errors.
+  b: Backspace/reset capability is implemented for data entry errors.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: Scope altered from specific typing errors to broader data entry errors.
+- id: L-03
+  a: The Requirement Tool's development process shall include the Requirements Tool's own requirements
+    engineering.
+  b: The development process for the Requirement Tool shall incorporate requirements engineering for the
+    Requirement Tool itself.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Faithful structural passive paraphrase.
+- id: L-04
+  a: The Requirements Tool shall support requirement trees with at least 10000 requirements.
+  b: The Requirements Tool shall be capable of handling requirement trees containing no fewer than 10000
+    requirements.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Faithful paraphrase mapping at least to no fewer than.
+- id: L-05
+  a: Doorstop **shall** support the storage of external requirements assets.
+  b: Doorstop shall support the storage of external requirements assets and their associated metadata.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: 'Altered to add an extra element: associated metadata.'
+- id: L-06
+  a: Doorstop **shall** provide a way to view document items interactively.
+  b: Doorstop shall offer an interactive means of viewing the items in a document.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Structural paraphrase of interactive viewing.
+- id: L-07
+  a: The Requirements Tool shall support requirement trees with at least 10000 requirements.
+  b: The Requirements Tool shall support requirement trees with at least 50000 requirements.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: Numeric scale parameter altered from 10000 to 50000.
+- id: L-08
+  a: Backspace/reset capability is implemented for typing errors.
+  b: The system provides a backspace and reset function to correct typing mistakes.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Faithful semantic restatement of correcting typing errors.
+- id: L-09
+  a: The Requirement Tool's development process shall include the Requirements Tool's own requirements
+    engineering.
+  b: The Requirement Tool's development process shall include the Requirements Tool's own requirements
+    engineering and traceability.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: 'Altered to add an entirely separate discipline component: traceability.'
+- id: L-10
+  a: The product shall be able to display calendar dates and times according to the user\92s locale. 90%
+    of survey respondents from each target market country will find that the date and time formatting
+    of the product is correct.
+  b: The product shall be able to display calendar dates and times according to the user\92s locale. 95%
+    of survey respondents from each target market country will find that the date and time formatting
+    of the product is correct.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: Statistical threshold metric altered from 90% to 95%.
+- id: L-11
+  a: The Disputes application shall interface with the Cardmember Posting and Billing System. This will
+    allow the Disputes application to request adjustments to cardmember and merchant\92s accounts. All
+    adjustment requests must be sent to the Cardmember Posting and Billing System.
+  b: The Disputes application shall interface with the Cardmember Posting and Billing System. This will
+    allow the Disputes application to request adjustments to cardmember and merchant\92s accounts. All
+    adjustment requests must be sent to the Cardmember Accounts System.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: Destination routing target altered from Cardmember Posting and Billing System to Cardmember Accounts
+    System.
+- id: L-12
+  a: Full data backups must be created daily.
+  b: Full data backups must be created hourly.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: Frequency element altered from daily to hourly.
+- id: L-13
+  a: Doorstop **shall** support the storage of external requirements assets.
+  b: Doorstop shall be capable of storing assets that originate from outside its own requirement set.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Faithful paraphrase of external requirements assets.
+- id: L-14
+  a: Doorstop **shall** be scalable to support thousands of requirements.
+  b: Doorstop shall be scalable to support tens of thousands of requirements.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: Quantity boundary altered by an order of magnitude.
+- id: L-15
+  a: The Requirement Tool's text language shall be machine-readable.
+  b: The textual language used by the Requirement Tool shall be readable by machines.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Faithful passive word order variation.
+- id: L-16
+  a: Full data backups must be created daily.
+  b: A complete backup of the data is required to be produced every day.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Faithful paraphrase of full data backups daily.
+- id: L-17
+  a: The product shall be able to display calendar dates and times according to the user\92s locale. 90%
+    of survey respondents from each target market country will find that the date and time formatting
+    of the product is correct.
+  b: The product shall render calendar dates and times in line with the user's locale, with the expectation
+    that 90% of surveyed respondents in every target market country judge the date and time formatting
+    to be correct.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Faithful paraphrase swapping structural verbs and maintain thresholds.
+- id: L-18
+  a: The Requirement Tool's text language shall be machine-readable.
+  b: The Requirement Tool's text language shall be human-readable.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: Target agent attribute altered from machine to human.
+- id: L-19
+  a: The product shall display each type of ship in a grid using an image of the specific type of ship.
+  b: The product shall display each type of ship in a grid using a text label naming the specific type
+    of ship.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: UI representation altered from an image to a text label.
+- id: L-20
+  a: A meeting scheduler system will temporarily reserve the "time slots" for the proposed meeting.
+  b: The meeting scheduler shall hold the candidate time slots for the proposed meeting on a temporary
+    basis.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Paraphrases temporarily reserve to hold on a temporary basis.
+- id: L-21
+  a: Doorstop **shall** be scalable to support thousands of requirements.
+  b: Doorstop shall scale to handle requirement sets numbering in the thousands.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Faithful paraphrase of scale target.
+- id: L-22
+  a: The product shall display each type of ship in a grid using an image of the specific type of ship.
+  b: For every ship type, the product shall render it on a grid with a picture of that specific type.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Swaps display/render and image/picture faithfully.
+- id: L-23
+  a: 'The Requirements Tool shall provide a Software Development Kit (SDK) that allows customization of
+    the Requirements Tool functions. NOTE: An SDK provides access to the API of the Requirements Tool.
+    Examples of functions that may be used by the users of the tool: - Custom import/export functions
+    to/from various requirements/documentation formats. - Implement custom visualization functions. -
+    Implement integration with other tools.'
+  b: 'The Requirements Tool shall supply a Software Development Kit (SDK) through which the tool''s functions
+    can be customized. NOTE: The SDK exposes the Requirements Tool''s API. Functions available to tool
+    users include: custom import/export to and from various requirements and documentation formats; custom
+    visualization functions; and integration with other tools.'
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Faithful paraphrase of the SDK requirement, note, and exact example points.
+- id: L-24
+  a: Doorstop **shall** provide a way to view document items interactively.
+  b: Doorstop shall provide a way to edit document items interactively.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: Core action altered from view to edit.
+- id: L-25
+  a: A meeting scheduler system will temporarily reserve the "time slots" for the proposed meeting.
+  b: A meeting scheduler system will permanently reserve the "time slots" for the proposed meeting.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: Condition altered from temporarily to permanently.
+- id: L-26
+  a: The Requirements Tool shall support structuring requirements in documents.
+  b: The Requirements Tool shall make it possible to organize requirements into documents.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Faithful paraphrase mapping support structuring to organize.
+- id: L-27
+  a: The Requirement Tool's source code shall be based on open source software components.
+  b: The Requirement Tool's source code shall be based exclusively on open source software components.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: 'Altered to introduce an explicit constraint modifier: exclusively.'
+- id: L-28
+  a: The Requirement Tool's source code shall be based on open source software components.
+  b: The source code of the Requirement Tool shall be built upon open source software components.
+  label: equivalent
+  labeller: Alice
+  confidence: '100'
+  note: Faithful paraphrase changing active word structures.
+- id: L-29
+  a: The Requirements Tool shall support structuring requirements in documents.
+  b: The Requirements Tool shall support structuring requirements in documents and across document sets.
+  label: related
+  labeller: Alice
+  confidence: '100'
+  note: Structural scope altered to add cross document sets.
