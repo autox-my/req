@@ -1,0 +1,125 @@
+{
+  "kind": "tier2-provider-evaluation",
+  "provider": "strands-decider-2b-hobson-v21@strands",
+  "corpus": "bench/corpus/tier2-positives-v1.yml",
+  "capture": "bench/corpus/tier2-positives-v1-captures/strands.jsonl",
+  "capture_rows": 30,
+  "pairs": 29,
+  "labels": {
+    "equivalent": 15,
+    "related": 14
+  },
+  "repeat_disagreements": 0,
+  "split": "sha256(pair id) % 2",
+  "tune_pairs": 14,
+  "held_out_pairs": 15,
+  "floor_chosen_on_tune": 72,
+  "held_out_at_tune_floor": {
+    "floor": 72,
+    "tp": 8,
+    "fp": 2,
+    "fn": 1,
+    "precision": 80,
+    "recall": 88
+  },
+  "floor_chosen_on_held": 77,
+  "tune_at_held_floor": {
+    "floor": 77,
+    "tp": 4,
+    "fp": 0,
+    "fn": 2,
+    "precision": 100,
+    "recall": 66
+  },
+  "stable_floor": 77,
+  "all_pairs_at_stable_floor": {
+    "floor": 77,
+    "tp": 12,
+    "fp": 0,
+    "fn": 3,
+    "precision": 100,
+    "recall": 80
+  },
+  "usable_floor": true,
+  "in_sample_at_tune_floor": {
+    "floor": 72,
+    "tp": 13,
+    "fp": 2,
+    "fn": 2,
+    "precision": 86,
+    "recall": 86
+  },
+  "held_out_curve": [
+    {
+      "floor": 0,
+      "tp": 9,
+      "fp": 6,
+      "fn": 0,
+      "precision": 60,
+      "recall": 100
+    },
+    {
+      "floor": 45,
+      "tp": 9,
+      "fp": 4,
+      "fn": 0,
+      "precision": 69,
+      "recall": 100
+    },
+    {
+      "floor": 50,
+      "tp": 9,
+      "fp": 3,
+      "fn": 0,
+      "precision": 75,
+      "recall": 100
+    },
+    {
+      "floor": 55,
+      "tp": 9,
+      "fp": 2,
+      "fn": 0,
+      "precision": 81,
+      "recall": 100
+    },
+    {
+      "floor": 65,
+      "tp": 8,
+      "fp": 2,
+      "fn": 1,
+      "precision": 80,
+      "recall": 88
+    },
+    {
+      "floor": 80,
+      "tp": 7,
+      "fp": 0,
+      "fn": 2,
+      "precision": 100,
+      "recall": 77
+    },
+    {
+      "floor": 85,
+      "tp": 5,
+      "fp": 0,
+      "fn": 4,
+      "precision": 100,
+      "recall": 55
+    },
+    {
+      "floor": 90,
+      "tp": 0,
+      "fp": 0,
+      "fn": 9,
+      "precision": null,
+      "recall": 0
+    }
+  ],
+  "matched_by_pair_id": 29,
+  "matched_by_statement_text": 0,
+  "caveats": [
+    "both halves come from the same generator and templates: a held-out sample of the same distribution, not an independent one",
+    "confidence is the model's self-report; the serving documentation states the probabilities are not calibrated for this data"
+  ],
+  "evaluated_at": "20261009T173154Z"
+}

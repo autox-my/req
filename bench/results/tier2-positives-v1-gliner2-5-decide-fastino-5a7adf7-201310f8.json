@@ -1,0 +1,79 @@
+{
+  "kind": "tier2-provider-evaluation",
+  "provider": "gliner2.5-decide@fastino/5a7adf7",
+  "corpus": "bench/corpus/tier2-positives-v1.yml",
+  "capture": "bench/corpus/tier2-positives-v1-captures/gliner.jsonl",
+  "capture_rows": 29,
+  "pairs": 29,
+  "labels": {
+    "equivalent": 15,
+    "related": 14
+  },
+  "repeat_disagreements": 0,
+  "split": "sha256(pair id) % 2",
+  "tune_pairs": 14,
+  "held_out_pairs": 15,
+  "floor_chosen_on_tune": 42,
+  "held_out_at_tune_floor": {
+    "floor": 42,
+    "tp": 0,
+    "fp": 1,
+    "fn": 9,
+    "precision": 0,
+    "recall": 0
+  },
+  "floor_chosen_on_held": null,
+  "tune_at_held_floor": null,
+  "stable_floor": null,
+  "all_pairs_at_stable_floor": null,
+  "usable_floor": false,
+  "in_sample_at_tune_floor": {
+    "floor": 42,
+    "tp": 1,
+    "fp": 1,
+    "fn": 14,
+    "precision": 50,
+    "recall": 6
+  },
+  "held_out_curve": [
+    {
+      "floor": 0,
+      "tp": 5,
+      "fp": 5,
+      "fn": 4,
+      "precision": 50,
+      "recall": 55
+    },
+    {
+      "floor": 40,
+      "tp": 3,
+      "fp": 1,
+      "fn": 6,
+      "precision": 75,
+      "recall": 33
+    },
+    {
+      "floor": 45,
+      "tp": 0,
+      "fp": 1,
+      "fn": 9,
+      "precision": 0,
+      "recall": 0
+    },
+    {
+      "floor": 55,
+      "tp": 0,
+      "fp": 0,
+      "fn": 9,
+      "precision": null,
+      "recall": 0
+    }
+  ],
+  "matched_by_pair_id": 29,
+  "matched_by_statement_text": 0,
+  "caveats": [
+    "both halves come from the same generator and templates: a held-out sample of the same distribution, not an independent one",
+    "confidence is the model's self-report; the serving documentation states the probabilities are not calibrated for this data"
+  ],
+  "evaluated_at": "20261009T173153Z"
+}
