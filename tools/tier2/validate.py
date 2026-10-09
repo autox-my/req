@@ -25,6 +25,8 @@ import sys
 import tempfile
 
 SCHEMA = "req.tier2.pilot/0"
+LABELLING_SCHEMA = "req.tier2.labelling/0"
+LABELLING_FIELDS = ("id", "a", "b", "label", "labeller", "confidence", "note")
 LABELS = ("equivalent", "related", "unrelated")
 TIERS = ("A", "B", "C", "P")
 # `undecided` is a first-class outcome, not a missing value. The protocol asks a labeller to record a
@@ -45,6 +47,40 @@ def yaml_module():
         return None
 
 
+def validate_labelling(path, doc, filled):
+    """The reader's file: what they were shown and what they wrote, and nothing that could hint at the
+    answer. Its shape is deliberately narrower than the worksheet's."""
+    pairs = doc.get("pairs")
+    if not isinstance(pairs, list) or not pairs:
+        return 1, ["no pairs in %s" % path], []
+    findings, seen = [], set()
+    for index, pair in enumerate(pairs, 1):
+        if not isinstance(pair, dict):
+            findings.append("pair %d is not a mapping" % index)
+            continue
+        where = str(pair.get("id") or "pair %d" % index)
+        for key in LABELLING_FIELDS:
+            if key not in pair:
+                findings.append("%s: missing field %s" % (where, key))
+        if where in seen:
+            findings.append("%s: duplicate id" % where)
+        seen.add(where)
+        label = str(pair.get("label") or "").strip()
+        if label and label not in OUTCOMES:
+            findings.append("%s: label %r is not one of %s" % (where, label, "|".join(OUTCOMES)))
+        if filled:
+            if not label:
+                findings.append("%s: no label — write a label, or `undecided` if you cannot decide"
+                                % where)
+            if not str(pair.get("labeller") or "").strip():
+                findings.append("%s: no labeller" % where)
+            confidence = str(pair.get("confidence") or "").strip()
+            if not confidence.isdigit() or not 0 <= int(confidence) <= 100:
+                findings.append("%s: confidence must be an INTEGER 0..100, not a word — got %r"
+                                % (where, pair.get("confidence")))
+    return (1 if findings else 0), findings, pairs
+
+
 def validate(path, filled):
     """Return (code, findings, pairs)."""
     yaml = yaml_module()
@@ -57,8 +93,11 @@ def validate(path, filled):
         return 3, ["cannot parse %s: %s" % (path, error)], []
     if not isinstance(doc, dict):
         return 1, ["%s is not a mapping" % path], []
+    if doc.get("schema") == LABELLING_SCHEMA:
+        return validate_labelling(path, doc, filled)
     if doc.get("schema") != SCHEMA:
-        return 1, ["schema must be %s, got %r" % (SCHEMA, doc.get("schema"))], []
+        return 1, ["schema must be %s or %s, got %r"
+                   % (SCHEMA, LABELLING_SCHEMA, doc.get("schema"))], []
     pairs = doc.get("pairs")
     if not isinstance(pairs, list) or not pairs:
         return 1, ["no pairs in %s" % path], []
