@@ -312,6 +312,11 @@ matter:
   of one worksheet, refuses to run when both name the same labeller, keeps agreed, disagreed and
   undecided apart, reports the **ceiling** as agreement over pairs decided by both, names the
   disagreements, and writes a result-named record under `bench/results/`. Both carry a `--self-check`.
+  `tools/tier2/entropy.py` reads the same captures and reports the entropy of each returned
+  distribution grouped by what the provider chose and what the gold says, plus whether any cut on it
+  removes every false merge. It exists because the scalar is not the only functional of a
+  distribution, and on this sample the answer is that for three of four providers no functional
+  separates the classes at all — while for the fourth the scalar works and entropy does not.
   These corpora are **generated data**: a corpus of this size is reviewed through its
   generator (`tools/corpus/`) and its label scheme, not line by line — the generator,
   the source pins and the sampling rule are the reviewable surface, and the review

@@ -37,19 +37,32 @@ LABELS = ("equivalent", "related", "unrelated")
 
 
 def load_gold(path):
-    """The corpus is generated and regular; no yaml module is guaranteed on a bare machine."""
+    """Parse with the YAML schema when PyYAML is available; fall back to a line scan otherwise.
+
+    The first version scanned for `  - id: "` — quoted, because the hand-written corpora quote
+    everything — and returned zero pairs for a corpus written by `safe_dump`, which quotes only when
+    it must. A loader that finds no pairs reports every provider as unmeasured, which reads like a
+    result and is not one. The fallback accepts quoted or bare ids.
+    """
     text = pathlib.Path(path).read_text()
+    try:
+        import yaml
+    except ImportError:
+        yaml = None
+    if yaml is not None:
+        doc = yaml.safe_load(text)
+        rows = doc.get("pairs") if isinstance(doc, dict) else None
+        if rows:
+            return {str(r["id"]): {"a": r.get("a"), "b": r.get("b"), "label": r.get("label")}
+                    for r in rows if isinstance(r, dict) and "id" in r}
     pairs = {}
-    for block in text.split('  - id: "')[1:]:
-        pid = block.split("\n")[0].rstrip('"')
-
+    for block in re.split(r"\n  - id: ", text)[1:]:
+        pid = block.split("\n")[0].strip().strip('"')
         def field(name):
-            match = re.search(r'\n    %s: "(.*)"' % name, block)
+            match = re.search(r'\n    %s: "?(.*?)"?\s*$' % name, block, re.M)
             return match.group(1) if match else None
-
         pairs[pid] = {"a": field("a"), "b": field("b"), "label": field("label")}
     return pairs
-
 
 def load_capture(path, gold):
     """Match capture rows to gold pairs by text. The capture carries no pair id yet — a recorded
@@ -254,7 +267,8 @@ def main():
             "provider", "corpus", "pairs", "stable_floor", "all_pairs_at_stable_floor",
         )}, sort_keys=True)
         digest = hashlib.sha256(key.encode()).hexdigest()[:8]
-        path = pathlib.Path("bench/results") / f"tier2-v1-{slug}-{digest}.json"
+        stem = pathlib.Path(args.gold).stem          # a record named for the corpus it scored
+        path = pathlib.Path("bench/results") / f"{stem}-{slug}-{digest}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
             print(f"\nrecord already exists for this result: {path} — not rewritten")

@@ -1,0 +1,72 @@
+{
+  "kind": "tier2-provider-evaluation",
+  "provider": "thx-01@doofz",
+  "corpus": "bench/corpus/tier2-positives-v1.yml",
+  "capture": "bench/corpus/tier2-positives-v1-captures/thx.jsonl",
+  "capture_rows": 29,
+  "pairs": 29,
+  "labels": {
+    "equivalent": 15,
+    "related": 14
+  },
+  "repeat_disagreements": 0,
+  "split": "sha256(pair id) % 2",
+  "tune_pairs": 14,
+  "held_out_pairs": 15,
+  "floor_chosen_on_tune": null,
+  "held_out_at_tune_floor": null,
+  "floor_chosen_on_held": 12,
+  "tune_at_held_floor": {
+    "floor": 12,
+    "tp": 0,
+    "fp": 2,
+    "fn": 6,
+    "precision": 0,
+    "recall": 0
+  },
+  "stable_floor": null,
+  "all_pairs_at_stable_floor": null,
+  "usable_floor": false,
+  "in_sample_at_tune_floor": null,
+  "held_out_curve": [
+    {
+      "floor": 0,
+      "tp": 8,
+      "fp": 6,
+      "fn": 1,
+      "precision": 57,
+      "recall": 88
+    },
+    {
+      "floor": 5,
+      "tp": 5,
+      "fp": 4,
+      "fn": 4,
+      "precision": 55,
+      "recall": 55
+    },
+    {
+      "floor": 10,
+      "tp": 2,
+      "fp": 2,
+      "fn": 7,
+      "precision": 50,
+      "recall": 22
+    },
+    {
+      "floor": 15,
+      "tp": 0,
+      "fp": 0,
+      "fn": 9,
+      "precision": null,
+      "recall": 0
+    }
+  ],
+  "matched_by_pair_id": 29,
+  "matched_by_statement_text": 0,
+  "caveats": [
+    "both halves come from the same generator and templates: a held-out sample of the same distribution, not an independent one",
+    "confidence is the model's self-report; the serving documentation states the probabilities are not calibrated for this data"
+  ],
+  "evaluated_at": "20261009T173154Z"
+}
