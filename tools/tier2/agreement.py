@@ -36,6 +36,38 @@ import pathlib
 import sys
 import time
 
+
+def cohen_kappa(a_labels, b_labels):
+    """Chance-corrected agreement. Raw agreement overstates: two raters with a small label vocabulary
+    agree often by luck, and Fleiss's bands (above 0.75 excellent, 0.40-0.75 fair to good, below poor)
+    are stated on kappa, not on a percentage. Returns None when chance agreement is degenerate."""
+    n = len(a_labels)
+    if n == 0 or n != len(b_labels):
+        return None
+    categories = sorted(set(a_labels) | set(b_labels))
+    counts_a = collections.Counter(a_labels)
+    counts_b = collections.Counter(b_labels)
+    po = sum(1 for x, y in zip(a_labels, b_labels) if x == y) / n
+    pe = sum((counts_a[c] / n) * (counts_b[c] / n) for c in categories)
+    if pe >= 1.0:
+        return None
+    return (po - pe) / (1.0 - pe)
+
+
+def self_check():
+    """The tool's own arithmetic, checked without needing any files. Added now because a merge message
+    once claimed this tool carried a self-check and it did not — a false statement in the record is the
+    one defect this project exists to prevent."""
+    assert abs(cohen_kappa(["y"] * 4 + ["n"] * 4 + ["y", "n"],
+                           ["y"] * 4 + ["n"] * 4 + ["n", "y"]) - 0.6) < 1e-9
+    assert cohen_kappa(["same"] * 5, ["same"] * 5) == 1.0
+    assert cohen_kappa([], []) is None
+    print("self-check PASS: kappa 0.6 on the 8-of-10 balanced case, 1.0 on perfect agreement, "
+          "None on empty input")
+    return 0
+
+
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from validate import validate  # noqa: E402
 
@@ -65,13 +97,21 @@ def load(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--worksheet", required=True)
-    parser.add_argument("--a", required=True, help="worksheet filled by the first labeller")
-    parser.add_argument("--b", required=True, help="worksheet filled by the second labeller")
+    parser.add_argument("--worksheet", required=False)
+    parser.add_argument("--a", required=False, help="worksheet filled by the first labeller")
+    parser.add_argument("--b", required=False, help="worksheet filled by the second labeller")
     parser.add_argument("--no-record", action="store_true")
+    parser.add_argument("--self-check", action="store_true")
     parser.add_argument("--caveat", action="append", default=[],
                         help="a condition the number is only true under; recorded with it")
     args = parser.parse_args()
+    if args.self_check:
+        return self_check()
+    missing = [name for name, value in (("--worksheet", args.worksheet), ("--a", args.a),
+                                        ("--b", args.b)) if not value]
+    if missing:
+        print("%s required (or --self-check)" % ", ".join(missing))
+        return 2
 
     code, left = load(args.a)
     if code:
@@ -139,6 +179,13 @@ def main():
         return 3
     print("\nceiling: %d%% agreement over %d pair(s) decided by both "
           "(agreed %d, disagreed %d)" % (ceiling, decided_twice, counts["agreed"], counts["disagreed"]))
+    decided = [pid for pid in ids
+               if left[pid]["label"] != "undecided" and right[pid]["label"] != "undecided"]
+    kappa = cohen_kappa([left[pid]["label"] for pid in decided],
+                        [right[pid]["label"] for pid in decided])
+    if kappa is not None:
+        print("  cohen's kappa: %+.2f over the same %d pair(s) — chance-corrected; above 0.75 "
+              "excellent, 0.40-0.75 fair to good, below 0.40 poor" % (kappa, len(decided)))
     if disagreed:
         print("the pairs they disagreed about, named:")
         for pid, tier, a, b in disagreed[:20]:
@@ -150,7 +197,7 @@ def main():
         blob = json.dumps({"kind": "tier2-ceiling", "worksheet": args.worksheet,
                            "caveats": args.caveat,
                            "pairs": len(ids), "labellers": names,
-                           "outcomes": dict(counts), "ceiling_percent": ceiling,
+                           "outcomes": dict(counts), "ceiling_percent": ceiling, "kappa": kappa,
                            "decided_by_both": decided_twice},
                           sort_keys=True)
         digest = hashlib.sha256(blob.encode()).hexdigest()[:8]
