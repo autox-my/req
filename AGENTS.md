@@ -136,10 +136,11 @@ export OCR_NO_UPDATE=1
   and an **undecided** one is never treated as absent. An `impact` answer that a broken
   relation could have made incomplete says so (exit 3) instead of quietly shortening the
   list.
-- Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [--pairs] [key=value ...]` — the funnel's
+- Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--max-pairs N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [--pairs] [key=value ...]` — the funnel's
   deterministic half. It skips pairs Tier-1 already resolved (equal address), **blocks** the
   rest on shared content terms (default 2), and hands only those to a provider. Exit **0**
-  every candidate adjudicated, **3** anything unadjudicated, **2** usage. The default provider
+  every candidate adjudicated, **3** anything unadjudicated *or deferred*, **2** usage — except
+  under `--gold`, where the gold result below is the verdict. The default provider
   is the **offline** one and it answers `Unverifiable` — never "unrelated", because no local
   model exists here and REQ-0012 forbids requiring a network call, so Tier-2 *metrics*
   (flip-rate stability, precision/recall) are UNVERIFIABLE in this environment rather than
@@ -165,7 +166,10 @@ export OCR_NO_UPDATE=1
   appends every answer (the pair, the choice, the confidence and the full probability
   distribution) to a capture file (`.scratch/req-d1-capture.jsonl`, `REQ_D1_CAPTURE` to override),
   so a threshold can be swept **offline** rather than paying an inference run per threshold; a
-  missing capture file is a measurement problem, reported as such, never mistaken for a result.
+  missing capture file is a measurement problem, reported as such, never mistaken for a result. Because
+  the provider now drives the claims pass too, a capturing wrapper's file holds claims-pass rows as well
+  (and both passes' rows under `--gold`); the evaluator reports `capture_rows` beside the rows it matched
+  to gold ids, so those extra rows are visible rather than silently folded into a gold pair.
   `--min-confidence N` declines an `equivalent` below N percent: it becomes `related`, is counted as
   declined, and its cost lands in the affordable direction — a missed duplicate rather than a silent
   merge. It is the measured remedy for a model that splits equivalent/related 0.478 to 0.4385; at 90
@@ -173,17 +177,27 @@ export OCR_NO_UPDATE=1
   `--pairs` prints the whole proposal list instead of the first twelve, because the list *is* the
   funnel's output and a cost measurement needs every edge; re-deriving the blocking graph anywhere else
   would be a second implementation of the tokenizer, free to drift from the one that decides what is
-  proposed. The flag is plumbing and carries no test of its own — recorded rather than implied.
-  **The claims pass is always offline.** `--provider-cmd` is wired to the gold-set score, not to the
-  pass over our own claims, so running it without `--gold` adjudicates nothing — the shape report is
-  all it produces. That is a gap rather than a design: ADR 0011 decides Tier-2 is a change-scoped
-  survey, and a survey needs the provider on the claims pass with `--max-pairs` capping the run, the
-  remainder deferred and reported rather than dumped. Until that lands, no path spends a provider's
-  time on our own claims, and a cap would have nothing to cap.
+  proposed. The list it prints is the **capped** one, since the cap decides what is proposed; a cost
+  measurement of the whole graph raises `--max-pairs` above the candidate count. The flag is plumbing
+  and carries no test of its own — recorded rather than implied.
+  **The claims pass runs the provider too.** `--provider-cmd` drives the pass over our own claims as
+  well as the gold-set score; `NoProvider` stays the default, so an offline run still refuses to
+  guess rather than calling anything unrelated. That pass today surveys every applying claim, so the
+  cap is what stands in for the change-scoping ADR 0011 calls for: it bounds a run by one sitting of
+  review, not by a diff.
+  `--max-pairs N` (default **15**, the measured upper end of one sitting of review) caps how many
+  candidates reach the provider, and **the cap binds before the call** — a cap applied afterwards
+  would spend exactly the money it was meant to save; the remainder is **deferred**, counted and
+  named separately from `unverifiable`, never summed with it, because a pair nobody asked about and
+  a pair that was asked about with no answer have different remedies (raise the cap; fix the
+  provider). Without `--gold`, a deferred pair makes the run UNVERIFIABLE (exit 3) beside any
+  unadjudicated one, and the verdict names each reason; the cap is deliberately **not** applied to
+  the gold-set score, which is a measurement and would be corrupted by truncating it.
   **With `--gold`, the gold result is the verdict** — every equivalent reachable, no false merge, and
   a flip rate actually **measured** (`--repeats 2` or more). Stability unmeasured is UNVERIFIABLE,
-  never a pass, and the funnel pass over our own claims is reported as shape only because it answers
-  a different question.
+  never a pass. The claims pass above it still runs (and is still capped); its deferral is reported
+  but does not rewrite a verdict about a different question, exactly as its `unverifiable` count
+  never did.
 - Baselines: `cargo run -q -- baseline [key=value ...]` prints the **canonical manifest** — the
   rules version, the selection, and every applying claim's address — which is the exact byte
   string a human signs; `cargo run -q -- baseline --verify <file> [--signature <file>]

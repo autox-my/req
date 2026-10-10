@@ -89,17 +89,29 @@ selected a provider with no usable operating point.
 
 ## Implementation status (2026-10-10)
 
-Not yet implemented, and the reason is worth recording rather than rediscovering. `--provider-cmd` is
-wired to the gold-set score, not to the pass over our own claims, so today `req propose --provider-cmd
-...` without `--gold` adjudicates nothing and the shape report is all it prints. The cap this decision
-requires therefore has nothing to cap, and capping the gold score instead would corrupt a measurement.
+**Landed the same day.** `--provider-cmd` now drives the claims pass as well as the gold-set score,
+and `--max-pairs N` (default 15, the measured upper end of one sitting of review) caps it: pairs
+past the cap are **deferred**, counted and reported as their own outcome, and the provider is never
+called for them. The cap binds **before** the call, because a cap applied afterwards spends exactly
+the money it was meant to save. Without `--gold`, a deferred pair makes the run UNVERIFIABLE (exit
+3) beside any unadjudicated pair, and the verdict names each reason separately — a pair nobody
+asked about and a pair that was asked about with no answer are different facts. Under `--gold` the
+gold result remains the verdict, as before, and the cap is deliberately not applied to the
+gold-set score: that score is a measurement, and truncating it would corrupt it.
 
-Landing the decision is therefore one change, not two: wire the provider to the claims pass, and add
-`--max-pairs N`, which defers the remainder and reports it. **The cap must be applied before the
-provider is called**, or it saves nothing — the same defect class as a check that verifies nothing.
+The reason this was one change rather than two, kept because it is the finding: `--provider-cmd`
+had been wired to the gold-set score only, not to the pass over our own claims, so `req propose
+--provider-cmd ...` without `--gold` adjudicated nothing and the shape report was all it printed.
+The cap this decision requires therefore had nothing to cap, and capping the gold score instead
+would have corrupted a measurement.
 
 The measured basis for the cap's size: a one-claim edit re-adjudicates its degree in the blocking graph,
 which is 13 pairs for the median claim of 15 (min 1, max 14), about 2.6 minutes at Strands v21's
 measured 12 s per pair. Human reading runs 2-4 minutes per pair, measured while authoring (15 rows in
 about an hour) and labelling (29 pairs, two people, an hour or so each). A run of ten to fifteen pairs
 is therefore about one sitting of review, which is what the cap is for.
+
+Still open, and unchanged by landing this: review time per proposal at scale, held-out validation of
+any provider named as default (`NoProvider` stays the default until then), and the diff-scoped pair
+count at corpus sizes beyond the fifteen claims measured here — the cap will defer most of a large
+corpus's pairs until change-scoping lands, which is the next lever rather than a defect in the cap.
