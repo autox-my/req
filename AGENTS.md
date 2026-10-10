@@ -174,6 +174,12 @@ export OCR_NO_UPDATE=1
   funnel's output and a cost measurement needs every edge; re-deriving the blocking graph anywhere else
   would be a second implementation of the tokenizer, free to drift from the one that decides what is
   proposed. The flag is plumbing and carries no test of its own — recorded rather than implied.
+  **The claims pass is always offline.** `--provider-cmd` is wired to the gold-set score, not to the
+  pass over our own claims, so running it without `--gold` adjudicates nothing — the shape report is
+  all it produces. That is a gap rather than a design: ADR 0011 decides Tier-2 is a change-scoped
+  survey, and a survey needs the provider on the claims pass with `--max-pairs` capping the run, the
+  remainder deferred and reported rather than dumped. Until that lands, no path spends a provider's
+  time on our own claims, and a cap would have nothing to cap.
   **With `--gold`, the gold result is the verdict** — every equivalent reachable, no false merge, and
   a flip rate actually **measured** (`--repeats 2` or more). Stability unmeasured is UNVERIFIABLE,
   never a pass, and the funnel pass over our own claims is reported as shape only because it answers
