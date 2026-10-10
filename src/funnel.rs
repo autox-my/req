@@ -250,10 +250,19 @@ pub fn run(args: &[String]) -> i32 {
     let mut provider_cmd: Option<String> = None;
     let mut repeats = 1usize;
     let mut min_confidence = 0u8;
+    let mut list_all = false;
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
         index += 1;
+        if arg == "--pairs" {
+            // The proposal list is the funnel's actual output; the report truncates it for readability.
+            // A cost measurement needs every edge, and re-deriving the blocking graph elsewhere would
+            // be a second implementation of the tokenizer that could drift from this one.
+            list_all = true;
+            index += 1;
+            continue;
+        }
         if arg == "--min-confidence" {
             let Some(value) = args.get(index) else {
                 eprintln!("--min-confidence needs a percent");
@@ -373,7 +382,8 @@ pub fn run(args: &[String]) -> i32 {
             "\n{} proposal(s), {unverifiable} unadjudicated:",
             proposals.len()
         );
-        for proposal in proposals.iter().take(12) {
+        let shown = if list_all { proposals.len() } else { 12 };
+        for proposal in proposals.iter().take(shown) {
             println!(
                 "- {} ~ {}  [{}]",
                 proposal.a,
@@ -381,8 +391,8 @@ pub fn run(args: &[String]) -> i32 {
                 proposal.adjudication.as_str()
             );
         }
-        if proposals.len() > 12 {
-            println!("  … {} more", proposals.len() - 12);
+        if proposals.len() > shown {
+            println!("  … {} more", proposals.len() - shown);
         }
     }
     let mut gold_misses = 0usize;
