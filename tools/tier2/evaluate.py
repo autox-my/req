@@ -65,9 +65,10 @@ def load_gold(path):
     return pairs
 
 def load_capture(path, gold):
-    """Match capture rows to gold pairs by text. The capture carries no pair id yet — a recorded
-    gap; text matching works because both sides are the statements verbatim, but it is fragile and
-    the fix is to put the id in the provider contract."""
+    """Match capture rows to gold pairs by the pair id the provider contract now carries, and fall
+    back to statement text for rows captured before the id was added. Rows that match neither — the
+    claims-pass rows a `--provider-cmd` run writes, and any row from another gold set — are counted
+    in `total_rows` and reported against what was matched, never silently folded into a gold pair."""
     by_pair = {}
     matched_by_id = [0]
     matched_by_text = [0]

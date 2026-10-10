@@ -204,20 +204,59 @@ pub struct Proposal {
     pub provider: String,
 }
 
-/// Run the funnel: skip pairs Tier-1 already resolved, block the rest, then adjudicate.
+/// The default cap on one survey run. The budget that binds Tier-2 is the **reviewer's attention**,
+/// not the machine's (ADR 0011), so a run must not hand a person more than one sitting of reading:
+/// fifteen is the measured upper end of that sitting. The measurement behind the number: a
+/// one-claim edit re-adjudicates a median 13 pairs, about 2.6 minutes at Strands v21's measured
+/// 12 s per pair, while careful human reading runs 2-4 minutes per pair. Overridden by `--max-pairs`;
+/// the remainder is **deferred**, never dropped.
+pub const MAX_PAIRS_PER_RUN: usize = 15;
+
+/// A `max_pairs` that caps nothing: every candidate reaches the provider. The CLI default is
+/// [`MAX_PAIRS_PER_RUN`]; this sentinel names "no cap" at the call site instead of a bare `usize::MAX`.
+pub const NO_CAP: usize = usize::MAX;
+
+/// What one funnel run produced.
 ///
-/// Returns `(proposals, already_identical)` — the latter counted, not adjudicated, because two
-/// claims at one address are one requirement and a provider has nothing to decide.
-pub fn propose(rows: &[Row], provider: &dyn Provider, min_shared: usize) -> (Vec<Proposal>, usize) {
+/// Three counts, because the outcomes are three and folding them together would hide one in
+/// another: a **proposal** (the provider was asked), an **already-identical** pair (Tier-1 had
+/// resolved it, so nobody was asked), and a **deferred** pair (the cap stopped it *before* the
+/// provider was called). Deferred is not `unverifiable`: nothing was put to a provider, so there is
+/// no answer to be unsure about, and counting it as one would report the cap's cost as a model's
+/// silence.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Proposed {
+    pub proposals: Vec<Proposal>,
+    pub already_identical: usize,
+    pub deferred: usize,
+}
+
+/// Run the funnel: skip pairs Tier-1 already resolved, block the rest, then adjudicate — but never
+/// more than `max_pairs` of them, because **the cap must bind before the provider is called** or it
+/// saves nothing.
+///
+/// Candidates are visited in the stable order [`candidate_pairs`] returns, so exactly which pairs
+/// are deferred is deterministic and reproducible across runs.
+pub fn propose(
+    rows: &[Row],
+    provider: &dyn Provider,
+    min_shared: usize,
+    max_pairs: usize,
+) -> Proposed {
     let by_id: BTreeMap<&str, &Row> = rows.iter().map(|r| (r.claim_id.as_str(), r)).collect();
-    let mut already_identical = 0;
-    let mut proposals = Vec::new();
+    let mut run = Proposed::default();
     for (a, b) in candidate_pairs(rows, min_shared) {
         let (Some(row_a), Some(row_b)) = (by_id.get(a.as_str()), by_id.get(b.as_str())) else {
             continue;
         };
         if row_a.address == row_b.address {
-            already_identical += 1;
+            run.already_identical += 1;
+            continue;
+        }
+        if run.proposals.len() >= max_pairs {
+            // Past the cap the pair is still *counted* — the funnel's output is the whole blocking
+            // graph — but it is not put to the provider, which is the entire point of the cap.
+            run.deferred += 1;
             continue;
         }
         let candidate_a = Candidate {
@@ -228,24 +267,43 @@ pub fn propose(rows: &[Row], provider: &dyn Provider, min_shared: usize) -> (Vec
             claim_id: &row_b.claim_id,
             statement: &row_b.statement,
         };
-        proposals.push(Proposal {
+        run.proposals.push(Proposal {
             a: row_a.claim_id.clone(),
             b: row_b.claim_id.clone(),
             adjudication: provider.adjudicate(&candidate_a, &candidate_b),
             provider: provider.id(),
         });
     }
-    (proposals, already_identical)
+    run
 }
 
-/// `req propose [--min-shared N] [key=value ...]`
+/// The provider a **claims pass** uses: the command seam when `--provider-cmd` is given, and the
+/// offline refusal otherwise. One home for that choice, so the identity printed and the identity
+/// recorded on each proposal cannot be built two different ways and drift apart.
 ///
-/// Exit: **0** every candidate adjudicated, **3** anything left unadjudicated (no provider, or
-/// a provider that declined), **2** usage. Unadjudicated is its own outcome: `req propose` with
-/// no provider prints the funnel's shape and refuses to call anything unrelated.
+/// `NoProvider` stays the default (REQ-0012: no network may be required; ADR 0011: no provider is
+/// named as default until held-out validation).
+fn claims_provider(provider_cmd: Option<&str>) -> Box<dyn Provider> {
+    match provider_cmd {
+        Some(command) => Box::new(CommandProvider::new(command.to_string())),
+        None => Box::new(NoProvider),
+    }
+}
+
+/// `req propose [--min-shared N] [--max-pairs N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [--pairs] [key=value ...]`
+///
+/// Exit: **0** every candidate adjudicated, **3** anything unadjudicated *or deferred* (no
+/// provider, a provider that declined, or a cap that stopped short), **2** usage. Deferred is its
+/// own outcome: a pair the cap never put to a provider is not an answer anyone can be unsure of, so
+/// it is reported separately and never added to the `unverifiable` count.
+///
+/// The provider is wired to **this** pass, not only to the gold-set score: `--provider-cmd` spends
+/// the provider on our own claims, `--max-pairs` bounds how many, and `NoProvider` remains the
+/// default so an offline run still refuses to guess.
 pub fn run(args: &[String]) -> i32 {
     let mut context = Context::new();
     let mut min_shared = MIN_SHARED_TERMS;
+    let mut max_pairs = MAX_PAIRS_PER_RUN;
     let mut gold_path: Option<String> = None;
     let mut provider_cmd: Option<String> = None;
     let mut repeats = 1usize;
@@ -311,6 +369,23 @@ pub fn run(args: &[String]) -> i32 {
             gold_path = Some(value.clone());
             continue;
         }
+        if arg == "--max-pairs" {
+            let Some(value) = args.get(index) else {
+                eprintln!("--max-pairs needs a count");
+                return 2;
+            };
+            index += 1;
+            match value.parse::<usize>() {
+                // Zero is a usage error rather than "defer everything": a run that asks no pair is
+                // a mistake, and silently adjudicating nothing would look like a clean pass.
+                Ok(n) if n > 0 => max_pairs = n,
+                _ => {
+                    eprintln!("--max-pairs must be a positive integer");
+                    return 2;
+                }
+            }
+            continue;
+        }
         if arg == "--min-shared" {
             let Some(value) = args.get(index) else {
                 eprintln!("usage: req propose [--min-shared N] [key=value ...]");
@@ -349,7 +424,15 @@ pub fn run(args: &[String]) -> i32 {
         .filter(|r| r.applies == crate::select::Applies::Yes)
         .cloned()
         .collect();
-    let (proposals, already_identical) = propose(&applying, &NoProvider, min_shared);
+    // The claims pass is the survey ADR 0011 decides on, so it is where `--provider-cmd` belongs
+    // and where `--max-pairs` must bite. The gold-set score below is a *measurement* of the same
+    // provider and is deliberately not capped: capping it would corrupt the measurement.
+    let provider = claims_provider(provider_cmd.as_deref());
+    let Proposed {
+        proposals,
+        already_identical,
+        deferred,
+    } = propose(&applying, provider.as_ref(), min_shared, max_pairs);
 
     let naive = naive_pairs(applying.len());
     let candidates = candidate_pairs(&applying, min_shared).len();
@@ -364,36 +447,32 @@ pub fn run(args: &[String]) -> i32 {
         "  blocking: {min_shared} shared content term(s) minimum, {} terms indexed",
         inverted_index(&applying).len()
     );
-    let provider = NoProvider;
-    if gold_path.is_none() {
-        println!("  provider: {} (offline default)", provider.id());
-    } else {
-        println!(
-            "  proposals not listed: --gold scores the provider on the gold set, so this pass \
-             reports the funnel's shape only"
-        );
+    match &provider_cmd {
+        Some(_) => println!("  provider: {}", provider.id()),
+        None => println!("  provider: {} (offline default)", provider.id()),
+    }
+    if max_pairs != NO_CAP {
+        println!("  cap: {max_pairs} pair(s) per run; {deferred} deferred to a later run");
     }
     let unverifiable = proposals
         .iter()
         .filter(|p| matches!(p.adjudication, Adjudication::Unverifiable { .. }))
         .count();
-    if gold_path.is_none() {
+    println!(
+        "\n{} proposal(s), {unverifiable} unadjudicated, {deferred} deferred:",
+        proposals.len()
+    );
+    let shown = if list_all { proposals.len() } else { 12 };
+    for proposal in proposals.iter().take(shown) {
         println!(
-            "\n{} proposal(s), {unverifiable} unadjudicated:",
-            proposals.len()
+            "- {} ~ {}  [{}]",
+            proposal.a,
+            proposal.b,
+            proposal.adjudication.as_str()
         );
-        let shown = if list_all { proposals.len() } else { 12 };
-        for proposal in proposals.iter().take(shown) {
-            println!(
-                "- {} ~ {}  [{}]",
-                proposal.a,
-                proposal.b,
-                proposal.adjudication.as_str()
-            );
-        }
-        if proposals.len() > shown {
-            println!("  … {} more", proposals.len() - shown);
-        }
+    }
+    if proposals.len() > shown {
+        println!("  … {} more", proposals.len() - shown);
     }
     let mut gold_misses = 0usize;
     if let Some(path) = &gold_path {
@@ -427,7 +506,7 @@ pub fn run(args: &[String]) -> i32 {
     let mut false_merges = 0usize;
     let mut flip_percent = 0u32;
     let mut flip_measured = 0usize;
-    if let (Some(path), Some(command)) = (&gold_path, &provider_cmd) {
+    if let (Some(path), Some(_)) = (&gold_path, &provider_cmd) {
         let corpus = match Tier2Corpus::load(path) {
             Ok(corpus) => corpus,
             Err(e) => {
@@ -435,9 +514,11 @@ pub fn run(args: &[String]) -> i32 {
                 return 3;
             }
         };
-        let provider = CommandProvider::new(command.clone());
-        let score = score_gold(&corpus, &provider, min_shared, min_confidence);
-        let (flipped, measured) = flip_count(&corpus, &provider, min_shared, repeats);
+        // The same provider object the claims pass used, and deliberately **uncapped** here: this
+        // score is a measurement of the model against labelled pairs, so truncating it would
+        // corrupt the number rather than bound a reviewer's reading list.
+        let score = score_gold(&corpus, provider.as_ref(), min_shared, min_confidence);
+        let (flipped, measured) = flip_count(&corpus, provider.as_ref(), min_shared, repeats);
         flip_percent = ((flipped * 100).checked_div(measured)).unwrap_or(0) as u32;
         flip_measured = measured;
         false_merges = score.false_positives;
@@ -494,15 +575,38 @@ pub fn run(args: &[String]) -> i32 {
         println!("\nverdict: {sentence}");
         return code;
     }
-    println!(
-        "\nverdict: {}",
-        if unverifiable == 0 {
-            "PASS — every candidate adjudicated"
-        } else {
-            "UNVERIFIABLE — no provider; every candidate is reported as unadjudicated, never as unrelated"
-        }
-    );
-    if unverifiable == 0 { 0 } else { 3 }
+    // Two reasons a run is not finished, reported separately because they are different facts: a
+    // pair nobody asked about (deferred) and a pair that was asked about and got no answer. Neither
+    // is ever folded into the other, and neither is ever read as "unrelated".
+    let (code, sentence) = claims_verdict(unverifiable, deferred, max_pairs);
+    println!("\nverdict: {sentence}");
+    code
+}
+
+/// The verdict for a **claims pass**. `PASS — every candidate adjudicated` claims that *both*
+/// open counts are zero; anything else is UNVERIFIABLE, and each open reason is named rather than
+/// summed, because a pair the cap never put to a provider and a pair that was asked about with no
+/// answer are different facts with different remedies (raise the cap; fix the provider).
+///
+/// A count of zero is printed as nothing rather than as `0 pairs deferred`: the sentence is read by
+/// a human deciding whether the run finished.
+pub fn claims_verdict(unverifiable: usize, deferred: usize, max_pairs: usize) -> (i32, String) {
+    let mut open: Vec<String> = Vec::new();
+    if deferred > 0 {
+        open.push(format!(
+            "{deferred} candidate pair(s) deferred to a later run by --max-pairs {max_pairs}"
+        ));
+    }
+    if unverifiable > 0 {
+        open.push(format!(
+            "{unverifiable} candidate pair(s) unadjudicated — no answer, never assumed unrelated"
+        ));
+    }
+    if open.is_empty() {
+        (0, "PASS — every candidate adjudicated".to_string())
+    } else {
+        (3, format!("UNVERIFIABLE — {}", open.join("; ")))
+    }
 }
 
 // ---------------------------------------------------------------------------------------------

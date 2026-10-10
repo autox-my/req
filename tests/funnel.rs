@@ -4,8 +4,8 @@
 //! oracle the identity gates use, and the only reason the number means anything.
 
 use req::funnel::{
-    Adjudication, Candidate, MIN_SHARED_TERMS, NoProvider, Provider, blocking_misses,
-    candidate_pairs, content_terms, naive_pairs, propose, shared_terms,
+    Adjudication, Candidate, MAX_PAIRS_PER_RUN, MIN_SHARED_TERMS, NO_CAP, NoProvider, Proposed,
+    Provider, blocking_misses, candidate_pairs, content_terms, naive_pairs, propose, shared_terms,
 };
 use req::model::Corpus;
 use req::select::Applies;
@@ -124,7 +124,12 @@ fn the_offline_default_never_guesses() {
             "b",
         ),
     ];
-    let (proposals, already_identical) = propose(&rows, &NoProvider, MIN_SHARED_TERMS);
+    let Proposed {
+        proposals,
+        already_identical,
+        deferred,
+    } = propose(&rows, &NoProvider, MIN_SHARED_TERMS, NO_CAP);
+    assert_eq!(deferred, 0, "no cap, so nothing is deferred");
     assert_eq!(already_identical, 0);
     assert_eq!(proposals.len(), 1, "{proposals:?}");
     let proposal = &proposals[0];
@@ -156,8 +161,16 @@ fn a_shared_address_is_counted_not_adjudicated() {
             "same-address",
         ),
     ];
-    let (proposals, already_identical) = propose(&rows, &NoProvider, MIN_SHARED_TERMS);
+    let Proposed {
+        proposals,
+        already_identical,
+        deferred,
+    } = propose(&rows, &NoProvider, MIN_SHARED_TERMS, NO_CAP);
     assert_eq!(already_identical, 1);
+    assert_eq!(
+        deferred, 0,
+        "an already-identical pair is resolved, not capped"
+    );
     assert!(proposals.is_empty(), "{proposals:?}");
 }
 
@@ -182,12 +195,141 @@ fn a_provider_that_answers_is_recorded_with_its_verdict() {
             "b",
         ),
     ];
-    let (proposals, _) = propose(&rows, &Stub, MIN_SHARED_TERMS);
+    let Proposed {
+        proposals,
+        deferred,
+        ..
+    } = propose(&rows, &Stub, MIN_SHARED_TERMS, NO_CAP);
+    assert_eq!(deferred, 0);
     assert_eq!(proposals.len(), 1);
     assert_eq!(proposals[0].provider, "stub-1.2.3");
     assert_eq!(
         proposals[0].adjudication,
         Adjudication::Equivalent { confidence: 80 }
+    );
+}
+
+/// **The cap protects the reviewer's attention, not the machine's** (ADR 0011). It must bind
+/// *before* the provider is called: a cap applied after adjudication spends exactly the money it
+/// was meant to save, and the deferred pairs must be counted rather than dropped — a silently
+/// shortened list is the failure mode this whole project runs on.
+#[test]
+fn the_cap_binds_before_the_provider_is_called() {
+    use std::cell::Cell;
+    struct Counting(Cell<usize>);
+    impl Provider for Counting {
+        fn id(&self) -> String {
+            "counting".to_string()
+        }
+        fn adjudicate(&self, _a: &Candidate<'_>, _b: &Candidate<'_>) -> Adjudication {
+            self.0.set(self.0.get() + 1);
+            Adjudication::Unverifiable {
+                reason: "counting only".to_string(),
+            }
+        }
+    }
+    // Five claims whose every pair shares three content terms and whose addresses all differ:
+    // ten candidates, none of them already identical. The count is hand-derived, not recomputed.
+    let rows: Vec<Row> = (0..5)
+        .map(|i| {
+            row(
+                &format!("REQ-{i}"),
+                "The system shall log each command.",
+                &format!("addr-{i}"),
+            )
+        })
+        .collect();
+    assert_eq!(candidate_pairs(&rows, MIN_SHARED_TERMS).len(), 10);
+
+    let provider = Counting(Cell::new(0));
+    let run = propose(&rows, &provider, MIN_SHARED_TERMS, 3);
+    assert_eq!(run.proposals.len(), 3, "the cap is the number of proposals");
+    assert_eq!(
+        provider.0.get(),
+        3,
+        "the provider is asked at most max_pairs times — a cap that calls it first saves nothing"
+    );
+    assert_eq!(
+        run.deferred, 7,
+        "every pair the cap did not reach is deferred, never dropped"
+    );
+    assert_eq!(run.already_identical, 0);
+}
+
+/// A deferred pair is a **third outcome**, not a fourth answer: it was never adjudicated, so it
+/// can never be counted as `unverifiable` — and a cap large enough to reach every candidate
+/// defers nothing at all.
+#[test]
+fn deferred_pairs_are_neither_adjudicated_nor_unverifiable() {
+    let rows: Vec<Row> = (0..3)
+        .map(|i| {
+            row(
+                &format!("REQ-{i}"),
+                "The system shall log each command.",
+                &format!("addr-{i}"),
+            )
+        })
+        .collect();
+    let whole = propose(&rows, &NoProvider, MIN_SHARED_TERMS, NO_CAP);
+    assert_eq!(whole.proposals.len(), 3);
+    assert_eq!(whole.deferred, 0, "no cap, nothing deferred");
+    let unverifiable = |run: &Proposed| {
+        run.proposals
+            .iter()
+            .filter(|p| matches!(p.adjudication, Adjudication::Unverifiable { .. }))
+            .count()
+    };
+    assert_eq!(
+        unverifiable(&whole),
+        3,
+        "the offline default refuses every pair it is asked about"
+    );
+
+    let capped = propose(&rows, &NoProvider, MIN_SHARED_TERMS, 1);
+    assert_eq!(capped.proposals.len(), 1);
+    assert_eq!(capped.deferred, 2);
+    assert_eq!(
+        unverifiable(&capped),
+        1,
+        "the deferred pair was never asked, so it is not an unverifiable answer"
+    );
+    assert_eq!(
+        capped.proposals.len() + capped.deferred,
+        whole.proposals.len(),
+        "the three outcomes partition the candidates"
+    );
+}
+
+/// A deferred pair and an unadjudicated pair are **different facts**, and the claims verdict names
+/// each rather than summing them. `PASS` is a claim that both counts are zero, and a capped run is
+/// never allowed to read as "everything was asked about".
+#[test]
+fn the_claims_verdict_names_deferral_separately_from_no_answer() {
+    let (code, sentence) = req::funnel::claims_verdict(0, 0, MAX_PAIRS_PER_RUN);
+    assert_eq!(code, 0, "{sentence}");
+    assert!(sentence.starts_with("PASS"), "{sentence}");
+
+    let (code, sentence) = req::funnel::claims_verdict(0, 7, 3);
+    assert_eq!(code, 3, "{sentence}");
+    assert!(
+        sentence.contains("7") && sentence.contains("deferred"),
+        "{sentence}"
+    );
+    assert!(
+        !sentence.contains("unadjudicated"),
+        "a deferred pair was never put to the provider, so it is not an answer: {sentence}"
+    );
+
+    let (code, sentence) = req::funnel::claims_verdict(5, 0, MAX_PAIRS_PER_RUN);
+    assert_eq!(code, 3, "{sentence}");
+    assert!(sentence.contains("unadjudicated"), "{sentence}");
+    assert!(!sentence.contains("deferred"), "{sentence}");
+
+    // Both at once: both are named, because reporting one would hide the other.
+    let (_, sentence) = req::funnel::claims_verdict(5, 7, 3);
+    assert!(
+        sentence.contains("deferred") && sentence.contains("unadjudicated"),
+        "{sentence}"
     );
 }
 
