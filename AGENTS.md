@@ -39,6 +39,12 @@ false merges** on the parity + adversarial-trap corpora. It is *measured*
 - **Never change the git identity** and never pass `-c user.name=` / `user.email=`
   to impersonate an author. Commits are authored by the human; provenance feeds the
   decision record (ADR 0005).
+- **External material is read at named provenance, or as a lead.** A number with a source, a sample
+  size, and its author's commercial interest stated is evidence; a number without them is a lead to
+  investigate, never a finding to repeat. Two documents reviewed in this repository's history show the
+  difference: one report whose every figure came from a vendor benchmark or a model card, and one video
+  that named each sample size, each vendor's stake, and one of its own cases as "a warning light". The
+  first supplied leads. The second supplied evidence.
 - **Do not overclaim.** A seed-corpus pass is not the external-corpora
   falsification. Always report which corpus produced which number.
 - **Nothing leaves the machine.** The core crate has no network dependency and
