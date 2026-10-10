@@ -86,3 +86,20 @@ selected a provider with no usable operating point.
   assumption is not silent.
 - **A run's proposals are reviewable as a list.** If ratification turns out to need constant
   back-and-forth rather than periodic review, this ADR is the thing to supersede.
+
+## Implementation status (2026-10-10)
+
+Not yet implemented, and the reason is worth recording rather than rediscovering. `--provider-cmd` is
+wired to the gold-set score, not to the pass over our own claims, so today `req propose --provider-cmd
+...` without `--gold` adjudicates nothing and the shape report is all it prints. The cap this decision
+requires therefore has nothing to cap, and capping the gold score instead would corrupt a measurement.
+
+Landing the decision is therefore one change, not two: wire the provider to the claims pass, and add
+`--max-pairs N`, which defers the remainder and reports it. **The cap must be applied before the
+provider is called**, or it saves nothing — the same defect class as a check that verifies nothing.
+
+The measured basis for the cap's size: a one-claim edit re-adjudicates its degree in the blocking graph,
+which is 13 pairs for the median claim of 15 (min 1, max 14), about 2.6 minutes at Strands v21's
+measured 12 s per pair. Human reading runs 2-4 minutes per pair, measured while authoring (15 rows in
+about an hour) and labelling (29 pairs, two people, an hour or so each). A run of ten to fifteen pairs
+is therefore about one sitting of review, which is what the cap is for.
