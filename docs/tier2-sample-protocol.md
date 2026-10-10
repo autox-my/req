@@ -229,3 +229,53 @@ in the mix) measuring exactly the move that would be required.
 THX-01's server is committed as `tools/tier2/thx-serve.py`, with the defect that cost three debugging
 rounds recorded in its comments: a server must speak the *wrapper's* request path and payload, and a
 result that is identical for every input is plumbing, not a model.
+
+## Amendment 4: the decomposition experiment, and its negative result
+
+The hypothesis: the two-stage pipeline's value is that it converts a *discrimination* problem into an
+*extraction* problem. All four measured providers fail to distinguish a paraphrase from a one-element
+alteration, and the lexical `DIFF` line made d1 worse — so the third attempt gave the judge a *typed*
+input instead: an instruct model names the structural elements that differ (actor, object, bound,
+modality, condition), and the decision model judges with those differences in its state.
+
+**What was run.** Qwen3.5-4B (unsloth UD-Q4_K_XL, served by the llama.cpp already built for this
+repository) decomposed all 29 authored pairs; Strands v21 judged each pair with the decomposer's output
+appended to the state it would otherwise have seen.
+
+**The result.**
+
+| | alterations merged | paraphrases found | decomposer JSON | floor for zero false merges |
+| --- | --- | --- | --- | --- |
+| Strands v21 alone | 14 of 14 | 15 of 15 | — | 77 |
+| + 4B decomposition | **13 of 14** | 15 of 15 | 29 of 29 | 70 (7 of 15 in-sample) |
+
+One alteration declined instead of none. On the thing the experiment exists to move, the typed
+decomposition did nothing.
+
+**Why.** The decomposer produced valid JSON for every pair and reported **zero differences on 28 of the
+29** — including all but one of the fourteen alterations, which were *authored to contain exactly one
+structural change*. Its own `changes_meaning` flag agreed with the gold labels on 16 of 29, barely above
+chance. The extraction stage does not extract: asked to name a structural difference in a pair built to
+contain one, a 4B instruct model says there is none — and the judge, told the pair differs only in
+wording, correctly says `equivalent`.
+
+**Three defects of the harness were found on the way, all recorded rather than tidied.** The first run
+returned empty content for all 29 pairs because llama.cpp applied the model's chat template with
+thinking enabled, and 200 tokens of reasoning never closed the block — the fix is
+`chat_template_kwargs: {"enable_thinking": false}`, which also cut decomposition time from ~140 s to
+23–41 s. The second run re-scored the *first* run's broken capture because a stale file made the resumable
+logic report "29 already judged". And the first of those two runs spent an hour with both models
+co-resident on four cores, starving the judge until every request timed out; the fix is the decoupled
+design now committed — one model resident at a time, each stage resumable.
+
+**What it costs, and what it means.** Phase 1 ran 29 decompositions in 13m20s (~27 s each); phase 2
+judged all 29 in 4m16s. That is workable. What is not workable is the result: at 2B and at 4B, with this
+prompt, the model will not name a structural difference it was asked to find. **The decomposition
+hypothesis is falsified at this model scale**, and the branch's conclusion is unchanged and now better
+supported: zero-shot prompting does not recover this distinction, and the remaining lever is training on
+a grown corpus — with `NoProvider` the honest default until such a model exists.
+
+**One methodological note, against my own reasoning.** I predicted the 4B would be the materially
+stronger extractor because the 2B got a smoke-test pair wrong. That pair — `daily` against `once every
+day` — was the easiest in the corpus, and I generalised from one hand-picked example. The corpus said
+otherwise, which is what corpora are for.

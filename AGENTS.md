@@ -312,6 +312,13 @@ matter:
   of one worksheet, refuses to run when both name the same labeller, keeps agreed, disagreed and
   undecided apart, reports the **ceiling** as agreement over pairs decided by both, names the
   disagreements, and writes a result-named record under `bench/results/`. Both carry a `--self-check`.
+  `tools/tier2/decompose-phase1.py` and `tools/tier2/decompose-phase2.py` are the two halves of a
+  decoupled pipeline for measuring a *decomposer* — an instruct model that names the structural
+  differences between two statements — separately from the judge that weighs them. One model runs at a
+  time because four cores cannot host both, and each stage is resumable because the first attempt lost
+  an hour of completed work to a judge that never answered. The experiment they ran is recorded in the
+  protocol as a negative result: at 2B and 4B the decomposer reports no difference on pairs authored to
+  contain one.
   `tools/tier2/entropy.py` reads the same captures and reports the entropy of each returned
   distribution grouped by what the provider chose and what the gold says, plus whether any cut on it
   removes every false merge. It exists because the scalar is not the only functional of a
