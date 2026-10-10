@@ -136,7 +136,7 @@ export OCR_NO_UPDATE=1
   and an **undecided** one is never treated as absent. An `impact` answer that a broken
   relation could have made incomplete says so (exit 3) instead of quietly shortening the
   list.
-- Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [key=value ...]` — the funnel's
+- Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [--pairs] [key=value ...]` — the funnel's
   deterministic half. It skips pairs Tier-1 already resolved (equal address), **blocks** the
   rest on shared content terms (default 2), and hands only those to a provider. Exit **0**
   every candidate adjudicated, **3** anything unadjudicated, **2** usage. The default provider
@@ -170,6 +170,10 @@ export OCR_NO_UPDATE=1
   declined, and its cost lands in the affordable direction — a missed duplicate rather than a silent
   merge. It is the measured remedy for a model that splits equivalent/related 0.478 to 0.4385; at 90
   the false merges reach zero and precision 100%, at the price of recall 33%.
+  `--pairs` prints the whole proposal list instead of the first twelve, because the list *is* the
+  funnel's output and a cost measurement needs every edge; re-deriving the blocking graph anywhere else
+  would be a second implementation of the tokenizer, free to drift from the one that decides what is
+  proposed. The flag is plumbing and carries no test of its own — recorded rather than implied.
   **With `--gold`, the gold result is the verdict** — every equivalent reachable, no false merge, and
   a flip rate actually **measured** (`--repeats 2` or more). Stability unmeasured is UNVERIFIABLE,
   never a pass, and the funnel pass over our own claims is reported as shape only because it answers

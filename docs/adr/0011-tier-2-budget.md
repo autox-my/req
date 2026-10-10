@@ -1,8 +1,9 @@
 # 0011. Tier-2's budget, and where its cost lands
 
-**Status: proposed** — for the human to ratify. An ADR records a decision, and this one is written by
-the agent that proposes it, because the rule that governs the model governs this document too: the model
-proposes, a human disposes (ADR 0004).
+**Status: accepted** — proposed by the agent, ratified by the maintainer on 2026-10-10. The rule that
+governs the model governs this document too: the model proposes, a human disposes (ADR 0004). The two
+measurements named below (the diff-scoped pair count, and review time per proposal) are still to be
+taken, and no provider is named as default until held-out validation.
 
 Date: 2026-10-10
 
