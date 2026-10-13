@@ -89,6 +89,9 @@ pub struct Evaluation {
     pub direction_label_errors: Vec<String>,
     pub rows: Vec<String>,
     pub verdict: Verdict,
+    /// The direction gate, evaluated once with `verdict` so the record cannot
+    /// re-derive "is there a direction defect" from the same lists differently.
+    pub direction_gate: Verdict,
 }
 
 /// A gate verdict: the three-state outcome plus the degraded record. An enum rather
@@ -261,8 +264,15 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
         )
     };
 
+    // The direction gate is evaluated here, once, beside the verdict it belongs to:
+    // `run` reads it rather than re-deriving "is there a direction defect" from the
+    // same lists, which would be a second spelling of one fact.
+    let direction_defect = !tally.dangerous.is_empty() || !tally.label_errors.is_empty();
+    let direction_gate = direction_gate(tally.checked, direction_defect);
+
     Evaluation {
         verdict,
+        direction_gate,
         fmr_hits,
         fsr_hits,
         tier2,
@@ -342,8 +352,7 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     let direction_unclassifiable = ev.direction_unclassifiable;
     let direction_mismatches = ev.direction_mismatches;
     let direction_label_errors = ev.direction_label_errors;
-    let direction_defect = !dangerous.is_empty() || !direction_label_errors.is_empty();
-    let direction_gate = direction_gate(ev.direction_checked, direction_defect);
+    let direction_gate = ev.direction_gate;
     // The FMR gate is its own tri-state: 0/0 is not a pass, so the record says
     // UNVERIFIABLE there rather than folding the vacuous denominator back in. It comes
     // from the same `fmr_gate` the verdict does — the integer count of collapses, never
@@ -352,12 +361,7 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     // `Verdict::as_str`. These records are append-only history.
     let hard_gate = fmr_gate(fmr_n, ev.not_equivalent_total, ev.unverifiable_pairs.len());
     let report = json!({
-        // The discriminator moved to `/1` with this change: the value space under it
-        // grew (`hard_gate` gained UNVERIFIABLE, `direction.accuracy` became nullable,
-        // and a degraded run that found a defect now writes `verdict: "FAIL"` where it
-        // wrote the degraded wording). Records are named by rules version alone, so the
-        // in-record id is what distinguishes the two generations for a consumer.
-        "schema": "req.bench.result/1",
+        "schema": RECORD_SCHEMA,
         "rules_v": RULES_V,
         "corpus": rel,
         "corpus_sha256": corpus_sha,
@@ -365,7 +369,12 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
         "fmr": {
             "collapses": fmr_n,
             "not_equivalent_total": ev.not_equivalent_total,
-            "rate": fmr_rate,
+            // `null` when the denominator measured nothing — the vacuous 0.0 beside
+            // `hard_gate: "UNVERIFIABLE"` is the fold this change removes.
+            "rate": reported_rate(
+                fmr_measurable(ev.not_equivalent_total, ev.unverifiable_pairs.len()),
+                fmr_rate,
+            ),
             "hard_gate": hard_gate.as_str(),
             "hit_pairs": fmr_pairs,
             "structurally_unverifiable_pairs": ev.unverifiable_pairs.len(),
@@ -381,13 +390,9 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
             "checked": ev.direction_checked,
             "correct": ev.direction_correct,
             // `null`, not `0.0`, when nothing was checked: a vacuous accuracy reads as
-            // a measured one, which is the same fold this change removes from the FMR
-            // gate. The corpora without `direction:` labels are exactly this case.
-            "accuracy": if ev.direction_checked == 0 {
-                None
-            } else {
-                Some(direction_accuracy)
-            },
+            // a measured one, the same fold `reported_rate` removes from the FMR rate.
+            // The corpora without `direction:` labels are exactly this case.
+            "accuracy": reported_rate(ev.direction_checked > 0, direction_accuracy),
             "soft_target": 0.95,
             "hard_gate": direction_gate.as_str(),
             "dangerous_confusions": dangerous,
@@ -441,6 +446,20 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
 /// `hard_gate` cannot disagree about whether anything was measured.
 pub fn fmr_measurable(not_equivalent_total: usize, structurally_unverifiable: usize) -> bool {
     not_equivalent_total > structurally_unverifiable
+}
+
+/// The discriminator the gate writes into every record, bumped with the value space
+/// under it: `/0` had a binary `hard_gate`, a non-null `direction.accuracy` and a
+/// degraded run that always wrote the degraded wording. A consumer migrating from `/0`
+/// is the one that would read a vacuous `rate: 0.0` as a clean measurement, so the
+/// generation has to be visible in the record itself.
+pub const RECORD_SCHEMA: &str = "req.bench.result/1";
+
+/// A rate is reported only when it was measured: `null` when the denominator measured
+/// nothing, for the FMR rate and the direction accuracy alike. `/0` wrote `0.0` there,
+/// which reads as a clean measurement rather than as a question nobody could answer.
+pub fn reported_rate(measured: bool, rate: f64) -> Option<f64> {
+    if measured { Some(rate) } else { None }
 }
 
 /// The FMR gate as one value: a collapse is FAIL; a denominator that measured nothing

@@ -235,6 +235,13 @@ fn a_denominator_of_nothing_but_unverifiable_pairs_is_not_a_pass() {
     assert_eq!(req::bench::fmr_gate(0, 0, 0), Verdict::Unverifiable);
     assert_eq!(req::bench::fmr_gate(0, 3, 3), Verdict::Unverifiable);
     assert_eq!(req::bench::fmr_gate(0, 3, 1), Verdict::Pass);
+    // The /1 value space: a rate is reported only when it was measured, for the FMR
+    // rate and the direction accuracy alike. `/0` wrote 0.0 there, which a consumer
+    // reads as a clean measurement.
+    assert_eq!(req::bench::reported_rate(false, 0.0), None);
+    assert_eq!(req::bench::reported_rate(false, 0.7), None);
+    assert_eq!(req::bench::reported_rate(true, 0.0), Some(0.0));
+    assert_eq!(req::bench::RECORD_SCHEMA, "req.bench.result/1");
 }
 
 /// The direction gate is a tri-state like the FMR gate, and for the same reason: a

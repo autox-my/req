@@ -155,5 +155,13 @@ fn pairs_without_a_direction_label_are_left_alone() {
     );
     assert_eq!(ev.direction_checked, 0);
     assert!(ev.direction_label_errors.is_empty());
+    // `Pass` beside `direction_checked == 0` is not a contradiction of the tri-state:
+    // the top-level verdict answers the FMR question, and D-007's sides both parse, so
+    // that denominator *was* measured (`fmr_gate(0, 1, 0)`). Direction vacuity is
+    // carried where it belongs — `direction_gate`, which the record writes as
+    // UNVERIFIABLE — not folded into the corpus verdict. Contrast
+    // `an_unparseable_side_is_coverage_not_a_correct_answer`, where the pair itself is
+    // unparseable and nothing at all was measured.
     assert_eq!(ev.verdict, Verdict::Pass);
+    assert_eq!(ev.direction_gate, Verdict::Unverifiable);
 }
