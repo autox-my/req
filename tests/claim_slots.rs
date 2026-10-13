@@ -36,12 +36,19 @@ fn claim(text: &str) -> ClaimFile {
 }
 
 /// The authored selector slot, which the loader now requires to be present: the one
-/// line a variant claim edits.
+/// line a variant claim edits. The guard matters: a `replace` that silently no-ops
+/// would make the "variant" byte-identical to the base, and the identity assertion
+/// below would then read as a bug in `evaluate_claim` rather than in this helper.
 fn with_applicability(predicate: &str) -> String {
-    CLAIM.replace(
+    let edited = CLAIM.replace(
         "applicability: []",
         &format!("applicability:\n  - {predicate}"),
-    )
+    );
+    assert_ne!(
+        edited, CLAIM,
+        "the CLAIM template drifted: no `applicability: []` line left to edit"
+    );
+    edited
 }
 
 /// ADR 0003 says variants are selectors and applicability is part of identity. Before

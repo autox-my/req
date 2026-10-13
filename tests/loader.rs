@@ -197,6 +197,41 @@ fn duplicate_claim_ids_error_and_the_content_is_compared() {
 }
 
 // ---------------------------------------------------------------------------
+// Review findings on the loader itself
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_misspelled_nested_key_is_a_parse_error_and_exits_3() {
+    // `deny_unknown_fields` at the top level is not enough. `rationale`'s two
+    // defaulted lists mean a typo one level down loaded as an empty list: the same
+    // silent-loss class F2 exists for, one nesting level past the fix.
+    let f = Fixture::new("f2-nested-typo").claim(
+        "REQ-0001.yml",
+        &claim_text("REQ-0001").replace("rejected_alternatives:", "rejected_alternativs:"),
+    );
+
+    let err = load_claims(f.path()).expect_err("a misspelled nested key must not load");
+    assert!(
+        err.contains("rejected_alternativs"),
+        "the error must name the unknown field: {err}"
+    );
+    assert_eq!(run_claim_diagnostics_at(f.path()), 3);
+}
+
+#[test]
+fn a_claim_renamed_out_of_the_contract_errors_rather_than_vanishing() {
+    // Claim-shaped names that the extension-only candidate gate used to skip. Each
+    // one is a requirement deleted from the corpus in silence — the failure the
+    // loader exists for — so renaming a claim must be loud, not a way to disable it.
+    for file in ["REQ-0008.txt", "REQ-0008", "REQ-0008.yml.disabled"] {
+        let f = Fixture::new("f3-renamed").claim(file, &claim_text("REQ-0008"));
+        let err = load_claims(f.path()).expect_err("a claim-shaped rename must not vanish");
+        assert!(err.contains(file), "the error must name the file: {err}");
+        assert_eq!(run_claim_diagnostics_at(f.path()), 3, "{file}");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Non-breaking: the committed corpus is the fixture that must still load
 // ---------------------------------------------------------------------------
 

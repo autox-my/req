@@ -84,24 +84,33 @@ strict, and every command that reads the corpus returns UNVERIFIABLE (exit 3) ra
 than proceeding over a corpus it could not read:
 
 - **Filename = `claim_id`, spelled exactly.** Every `*.yml`/`*.yaml` in `claims/` is a
-  claim file. One that is not named `REQ-<digits>.yml` (`req-0008.yml`, `REQ-0008.yaml`,
-  `notes.yml`) is a load error — the old behaviour, filtering on prefix and suffix and
-  discarding the rest, made a misnamed claim vanish with every exit code still zero.
-  A file whose stem is not the `claim_id` it declares is a load error too.
+  claim file, and so is anything whose leading dot-segment is `REQ-<digits>` —
+  `REQ-0008.txt`, `REQ-0008`, `REQ-0008.yml.disabled`. One that is not named
+  `REQ-<digits>.yml` (`req-0008.yml`, `REQ-0008.yaml`, `notes.yml`) is a load error — the
+  old behaviour, filtering on prefix and suffix and discarding the rest, made a misnamed
+  claim vanish with every exit code still zero. A file whose stem is not the `claim_id`
+  it declares is a load error too. **Renaming a claim out of the contract does not
+  disable it**: a claim-shaped name is still a candidate, and an unloadable candidate
+  fails the corpus rather than quietly leaving it.
 - **Unique ids.** Two files declaring one `claim_id` is a load error, and their
   **content is compared**: an identical duplicate (the fully silent case — it never
   shows as drift) and a divergent one are named differently. The duplicate pass runs
   over every candidate before the naming pass, so a second file claiming an existing
   id is reported as the duplicate it is, not merely as a filename complaint.
-- **Strict fields.** An unrecognized key is a parse error (`applicabilty:` does not
-  parse as an empty default), and `applicability`/`relations` are *required*: a
-  dropped `relations:` leaves the address untouched while the edges vanish from `trace`
-  and `impact`, and a misspelled `applicability:` makes a variant-scoped claim
-  unconditional — identity *is* the address, so that is two requirements collapsed into
-  one, the failure this project treats as catastrophic.
+- **Strict fields, at every level.** An unrecognized key is a parse error, in the claim
+  file and in its nested objects (`rationale`, `canonical`, `relations[]`): `applicabilty:`
+  does not parse as an empty default, and neither does a misspelled
+  `rejected_alternatives:` inside `rationale` — which would otherwise load as an empty
+  list. `applicability`/`relations` are *required*: a dropped `relations:` leaves the
+  address untouched while the edges vanish from `trace` and `impact`, and a misspelled
+  `applicability:` makes a variant-scoped claim unconditional — identity *is* the address,
+  so that is two requirements collapsed into one, the failure this project treats as
+  catastrophic.
 
-Directory entries that are not `*.yml`/`*.yaml` (`README.md`, editor droppings) are not
-claims and are left alone; that is a naming rule, not a silence.
+Directory entries that are not claims (`README.md`, editor droppings) are left alone;
+that is a naming rule, not a silence. One deliberate exception runs the other way: an
+entry whose *name* is not valid UTF-8 cannot be classified at all — it might be a claim
+written in some other encoding — so it fails the corpus rather than being skipped.
 
 ## State of the seed corpus
 

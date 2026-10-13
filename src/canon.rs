@@ -1272,27 +1272,38 @@ pub struct LoadedClaim {
     pub claim: crate::model::ClaimFile,
 }
 
-/// The canonical claim filename: `REQ-<digits>.yml` (claim-format.md: filename =
-/// claim_id). Deliberately strict about the extension's case and spelling — a
-/// `.yaml` twin of `REQ-0008.yml` is a second claim file, not a second chance.
-fn is_claim_filename(name: &str) -> bool {
-    let Some(stem) = name.strip_suffix(".yml") else {
-        return false;
-    };
+/// The `REQ-<digits>` stem, with no extension: the shape a claim filename shares with
+/// every name that has been renamed *out* of the contract.
+fn is_claim_stem(stem: &str) -> bool {
     let Some(digits) = stem.strip_prefix("REQ-") else {
         return false;
     };
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// Is this entry even a candidate? Anything else in `claims/` (the README, editor
-/// droppings) is not a claim and is left alone; a candidate that turns out not to
-/// match the contract is an error, never a silent drop.
+/// The canonical claim filename: `REQ-<digits>.yml` (claim-format.md: filename =
+/// claim_id). Deliberately strict about the extension's case and spelling — a
+/// `.yaml` twin of `REQ-0008.yml` is a second claim file, not a second chance.
+fn is_claim_filename(name: &str) -> bool {
+    name.strip_suffix(".yml").is_some_and(is_claim_stem)
+}
+
+/// Is this entry even a candidate — something that *might* be a claim file? Anything
+/// else in `claims/` (the README, editor droppings) is not a claim and is left alone;
+/// a candidate that turns out not to match the contract is an error, never a silent
+/// drop.
+///
+/// The gate is deliberately wider than `*.yml`/`*.yaml`: `REQ-0008.txt`, `REQ-0008`
+/// and `REQ-0008.yml.disabled` are claim-shaped names, and renaming a claim out of the
+/// contract must be loud rather than a way to disable a requirement in silence.
 fn looks_like_claim_file(name: &str) -> bool {
-    std::path::Path::new(name)
+    let path = std::path::Path::new(name);
+    let yaml_extension = path
         .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("yml") || e.eq_ignore_ascii_case("yaml"))
+        .is_some_and(|e| e.eq_ignore_ascii_case("yml") || e.eq_ignore_ascii_case("yaml"));
+    let leading_segment = name.split('.').next().unwrap_or(name);
+    yaml_extension || is_claim_stem(leading_segment)
 }
 
 /// The one corpus loader (F2/F3). Every candidate file under `claims/` either loads
