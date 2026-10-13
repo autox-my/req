@@ -164,6 +164,11 @@ fn a_stem_that_is_not_the_claim_id_errors() {
     let err = load_claims(f.path()).expect_err("filename = claim_id is the contract");
     assert!(err.contains("REQ-0009"), "{err}");
     assert!(err.contains("REQ-0010"), "{err}");
+    assert_eq!(
+        run_claim_diagnostics_at(f.path()),
+        3,
+        "a misplaced claim is UNVERIFIABLE, never a pass"
+    );
 }
 
 #[test]
@@ -223,12 +228,54 @@ fn a_claim_renamed_out_of_the_contract_errors_rather_than_vanishing() {
     // Claim-shaped names that the extension-only candidate gate used to skip. Each
     // one is a requirement deleted from the corpus in silence — the failure the
     // loader exists for — so renaming a claim must be loud, not a way to disable it.
-    for file in ["REQ-0008.txt", "REQ-0008", "REQ-0008.yml.disabled"] {
+    // The leading-dot shapes are the same hole seen from the hidden-file side.
+    for file in [
+        "REQ-0008.txt",
+        "REQ-0008",
+        "REQ-0008.yml.disabled",
+        ".REQ-0008",
+        ".REQ-0008.txt",
+    ] {
         let f = Fixture::new("f3-renamed").claim(file, &claim_text("REQ-0008"));
         let err = load_claims(f.path()).expect_err("a claim-shaped rename must not vanish");
         assert!(err.contains(file), "the error must name the file: {err}");
         assert_eq!(run_claim_diagnostics_at(f.path()), 3, "{file}");
     }
+}
+
+#[test]
+fn a_subdirectory_in_claims_is_a_corpus_error() {
+    // `mv claims/REQ-0008.yml claims/archive/` is the natural way to "move it out of
+    // the way", and it deleted the requirement in silence: the corpus is flat, so a
+    // directory here is refused rather than skipped.
+    let f = Fixture::new("f3-subdir").claim("REQ-0008.yml", &claim_text("REQ-0008"));
+    let claims = f.path().join("claims");
+    std::fs::create_dir_all(claims.join("archive")).expect("archive dir");
+    std::fs::rename(
+        claims.join("REQ-0008.yml"),
+        claims.join("archive/REQ-0008.yml"),
+    )
+    .expect("move the claim out of the way");
+
+    let err = load_claims(f.path()).expect_err("a claim filed in a subdirectory must not vanish");
+    assert!(
+        err.contains("archive"),
+        "the error must name the directory: {err}"
+    );
+    assert_eq!(run_claim_diagnostics_at(f.path()), 3);
+}
+
+#[test]
+fn an_empty_corpus_is_unverifiable_never_a_pass() {
+    // `mv claims/*.yml claims/archive/` — or any whole-corpus accident — left a
+    // loader that returned `Ok(vec![])`, a command that printed `claims: 0;
+    // discrepancy flags: 0`, and exit 0. The fully-vanished corpus is the vanish
+    // case, so it can never be a pass.
+    let f = Fixture::new("f3-empty");
+
+    let err = load_claims(f.path()).expect_err("an empty corpus must not load");
+    assert!(err.contains("no claim files"), "{err}");
+    assert_eq!(run_claim_diagnostics_at(f.path()), 3);
 }
 
 // ---------------------------------------------------------------------------
@@ -239,5 +286,13 @@ fn a_claim_renamed_out_of_the_contract_errors_rather_than_vanishing() {
 fn the_committed_corpus_loads_under_the_strict_loader() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let claims = load_claims(&root).expect("the committed corpus must load under the strict rules");
-    assert_eq!(claims.len(), 21, "one claim per file, all 21 present");
+    // The exact count is the one tripwire for a claim file *deleted* from the
+    // corpus: a deletion errors in no other test, because the loader cannot know
+    // how many claims there should be. Bump it deliberately when the corpus grows;
+    // a count that *drops* is a deleted requirement, never a fixture to update.
+    assert_eq!(
+        claims.len(),
+        21,
+        "the committed corpus is 21 claims; bump this by hand when one is added"
+    );
 }

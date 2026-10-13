@@ -36,13 +36,16 @@ fn claim(text: &str) -> ClaimFile {
 }
 
 /// The authored selector slot, which the loader now requires to be present: the one
-/// line a variant claim edits. The guard matters: a `replace` that silently no-ops
-/// would make the "variant" byte-identical to the base, and the identity assertion
-/// below would then read as a bug in `evaluate_claim` rather than in this helper.
+/// line a variant claim edits. `replacen(…, 1)` states the single-edit intent — a
+/// whole-string `replace` would edit every occurrence — and the guard catches a
+/// template that has drifted out from under the helper, which would otherwise make
+/// the "variant" byte-identical to the base and misdirect the failure below into
+/// `evaluate_claim`'s identity logic.
 fn with_applicability(predicate: &str) -> String {
-    let edited = CLAIM.replace(
+    let edited = CLAIM.replacen(
         "applicability: []",
         &format!("applicability:\n  - {predicate}"),
+        1,
     );
     assert_ne!(
         edited, CLAIM,

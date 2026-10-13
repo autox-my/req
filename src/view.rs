@@ -279,9 +279,9 @@ fn context_from(args: &[String]) -> Result<Context, i32> {
 pub fn load_rows(context: &Context) -> Result<Vec<Row>, String> {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let registry = crate::canon::load_registry(&root)?;
-    let files = crate::canon::load_claims(&root)?;
+    let claims = crate::canon::load_claims(&root)?;
     let mut rows = Vec::new();
-    for loaded in files.iter() {
+    for loaded in claims.iter() {
         let text = &loaded.text;
         let claim = &loaded.claim;
         let verdict = evaluate_claim(claim, &registry);

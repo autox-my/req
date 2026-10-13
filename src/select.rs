@@ -153,7 +153,7 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let files = match crate::canon::load_claims(&root) {
+    let claims = match crate::canon::load_claims(&root) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
@@ -162,7 +162,7 @@ pub fn run(args: &[String]) -> i32 {
     };
 
     let (mut yes, mut no, mut unknown) = (0usize, 0usize, 0usize);
-    for loaded in files.iter() {
+    for loaded in claims.iter() {
         let claim = &loaded.claim;
         let predicates: Vec<Predicate> = claim
             .applicability

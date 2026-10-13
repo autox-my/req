@@ -120,7 +120,7 @@ pub fn run_fill() -> i32 {
             return 3;
         }
     };
-    let files = match load_claims(&root) {
+    let claims = match load_claims(&root) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
@@ -129,7 +129,7 @@ pub fn run_fill() -> i32 {
     };
 
     let (mut filled, mut unchanged, mut refused) = (0usize, 0usize, 0usize);
-    for loaded in files.iter() {
+    for loaded in claims.iter() {
         let text = &loaded.text;
         let claim = &loaded.claim;
         let path = &loaded.path;
@@ -237,7 +237,7 @@ pub fn run_verify() -> i32 {
             return 3;
         }
     };
-    let files = match load_claims(&root) {
+    let claims = match load_claims(&root) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
@@ -246,7 +246,7 @@ pub fn run_verify() -> i32 {
     };
 
     let (mut verified, mut candidates, mut mismatches) = (0usize, 0usize, 0usize);
-    for loaded in files.iter() {
+    for loaded in claims.iter() {
         let text = &loaded.text;
         let claim = &loaded.claim;
         let expected = canonical_json(&evaluate_claim(claim, &registry).form);

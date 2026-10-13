@@ -85,13 +85,20 @@ than proceeding over a corpus it could not read:
 
 - **Filename = `claim_id`, spelled exactly.** Every `*.yml`/`*.yaml` in `claims/` is a
   claim file, and so is anything whose leading dot-segment is `REQ-<digits>` —
-  `REQ-0008.txt`, `REQ-0008`, `REQ-0008.yml.disabled`. One that is not named
+  `REQ-0008.txt`, `REQ-0008`, `REQ-0008.yml.disabled`, `.REQ-0008`. One that is not named
   `REQ-<digits>.yml` (`req-0008.yml`, `REQ-0008.yaml`, `notes.yml`) is a load error — the
   old behaviour, filtering on prefix and suffix and discarding the rest, made a misnamed
   claim vanish with every exit code still zero. A file whose stem is not the `claim_id`
   it declares is a load error too. **Renaming a claim out of the contract does not
   disable it**: a claim-shaped name is still a candidate, and an unloadable candidate
   fails the corpus rather than quietly leaving it.
+- **The corpus is flat.** One claim per file in `claims/`, no subdirectories: a directory
+  there is a load error, because `mv claims/REQ-0008.yml claims/archive/` is the natural
+  way to move a claim out of the way and it would otherwise be a silent deletion. A claim
+  file must also be a regular file — a symlink is not one.
+- **A corpus is never empty.** Zero claim files is a load error, not a pass: an empty
+  corpus and a corpus whose every claim vanished are indistinguishable from the file set,
+  and `claims: 0; discrepancy flags: 0` must never read as success.
 - **Unique ids.** Two files declaring one `claim_id` is a load error, and their
   **content is compared**: an identical duplicate (the fully silent case — it never
   shows as drift) and a divergent one are named differently. The duplicate pass runs

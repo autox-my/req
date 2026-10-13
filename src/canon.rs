@@ -1293,16 +1293,19 @@ fn is_claim_filename(name: &str) -> bool {
 /// a candidate that turns out not to match the contract is an error, never a silent
 /// drop.
 ///
-/// The gate is deliberately wider than `*.yml`/`*.yaml`: `REQ-0008.txt`, `REQ-0008`
-/// and `REQ-0008.yml.disabled` are claim-shaped names, and renaming a claim out of the
-/// contract must be loud rather than a way to disable a requirement in silence.
+/// The gate is deliberately wider than `*.yml`/`*.yaml`: `REQ-0008.txt`, `REQ-0008`,
+/// `REQ-0008.yml.disabled` and the hidden `.REQ-0008` are claim-shaped names, and
+/// renaming a claim out of the contract must be loud rather than a way to disable a
+/// requirement in silence. A leading dot is stripped first, because `Path::extension`
+/// sees none on `.REQ-0008` and a leading-dot segment would otherwise be empty.
 fn looks_like_claim_file(name: &str) -> bool {
     let path = std::path::Path::new(name);
     let yaml_extension = path
         .extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| e.eq_ignore_ascii_case("yml") || e.eq_ignore_ascii_case("yaml"));
-    let leading_segment = name.split('.').next().unwrap_or(name);
+    let visible = name.trim_start_matches('.');
+    let leading_segment = visible.split('.').next().unwrap_or(visible);
     yaml_extension || is_claim_stem(leading_segment)
 }
 
@@ -1311,13 +1314,18 @@ fn looks_like_claim_file(name: &str) -> bool {
 /// files, so a file that vanishes silently deletes a requirement.
 ///
 /// Errors, in diagnosis order:
-/// - an unreadable entry, or YAML that does not parse under the strict `ClaimFile`
+/// - an unclassifiable entry: a name that is not valid UTF-8 (it cannot be told from a
+///   claim written in another encoding), or a **directory** — the corpus is flat, so a
+///   subdirectory is a place a claim can be filed out of sight;
+/// - an unreadable file, or YAML that does not parse under the strict `ClaimFile`
 ///   (a misspelled key names itself; a missing `applicability`/`relations` does too);
 /// - two files declaring one `claim_id` — their **content** is compared, so an
 ///   identical copy and a divergent rewrite are named differently;
-/// - a `*.yml`/`*.yaml` file that is not `REQ-<digits>.yml` (`req-0008.yml`,
-///   `REQ-0008.yaml`, `notes.yml`);
-/// - a filename whose stem is not the `claim_id` it declares (claim-format.md).
+/// - a claim-shaped file that is not `REQ-<digits>.yml` (`req-0008.yml`,
+///   `REQ-0008.yaml`, `REQ-0008.txt`, `notes.yml`);
+/// - a filename whose stem is not the `claim_id` it declares (claim-format.md);
+/// - an **empty** corpus: zero claims is indistinguishable from every claim having
+///   vanished, so it is UNVERIFIABLE, never a pass.
 ///
 /// The duplicate pass runs over every parsed candidate *before* the naming pass, so
 /// the one way two files can share an id — the `.yaml` twin of a `.yml` — is
@@ -1331,24 +1339,48 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
         let entry = entry.map_err(|e| format!("claims dir {}: {e}", dir.display()))?;
         // A `read_dir` error is a corpus that cannot be read, not a file that is
         // absent; the old `filter_map(|e| e.ok())` discarded exactly that.
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("claims dir {}: {e}", dir.display()))?;
+        let path = entry.path();
+        // The corpus is flat: `mv claims/REQ-0008.yml claims/archive/` would otherwise
+        // be a silent deletion — the entry is not claim-shaped, and the walk does not
+        // recurse. A symlink to a directory is the same hole wearing a disguise.
+        if file_type.is_dir() || (file_type.is_symlink() && path.is_dir()) {
+            return Err(format!(
+                "{}: `claims/` is flat, one claim per file — a directory here is an \
+                 error, not a place a claim can live",
+                path.display()
+            ));
+        }
         let name = entry.file_name();
         let Some(name) = name.to_str() else {
             return Err(format!(
-                "claims dir {}: entry name is not UTF-8",
+                "claims dir {}: an entry name is not valid UTF-8, so it cannot be \
+                 classified as a claim or as a non-claim",
                 dir.display()
             ));
         };
         if !looks_like_claim_file(name) {
             continue;
         }
-        let path = entry.path();
-        if !path.is_file() {
+        // `file_type` comes from the directory read and does not follow symlinks, so
+        // this is the contract the message states: a symlinked claim is not a claim.
+        if !file_type.is_file() {
             return Err(format!(
-                "{}: a claim file must be a regular file (rename or remove it)",
+                "{}: a claim file must be a regular file (a symlink or special file is \
+                 not one)",
                 path.display()
             ));
         }
         paths.push(path);
+    }
+    if paths.is_empty() {
+        return Err(format!(
+            "claims dir {}: no claim files — an empty corpus is indistinguishable \
+             from one whose claims all vanished, so it is UNVERIFIABLE, never a pass",
+            dir.display()
+        ));
     }
     paths.sort();
 
