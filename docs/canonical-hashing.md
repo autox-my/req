@@ -236,7 +236,11 @@ requirement gets ratified — the direction analogue of a false merge. So the ha
 exactly as FMR is hard and FSR is soft.
 
 The harness reports **PASS / FAIL / UNVERIFIABLE** as three distinct outcomes — a broken
-corpus or harness is never accidentally a pass (the same principle as ADR 0005).
+corpus or harness is never accidentally a pass (the same principle as ADR 0005). A
+denominator that is empty is UNVERIFIABLE, not PASS: with no not-equivalent pairs the FMR
+is **0/0**, which measures nothing, so a generator regression that dropped every mutation
+cannot read as a clean gate. A definite defect still outranks the open question, exactly
+as `req gate` lets Fail outrank Unverifiable.
 
 #### Recorded runs (append-only)
 

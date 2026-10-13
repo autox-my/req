@@ -88,7 +88,47 @@ pub struct Evaluation {
     /// whole check off while every number looked fine.
     pub direction_label_errors: Vec<String>,
     pub rows: Vec<String>,
-    pub verdict: &'static str,
+    pub verdict: Verdict,
+    /// The FMR gate, evaluated once with `verdict` so the record cannot re-derive it.
+    pub fmr_gate: Verdict,
+    /// The direction gate, evaluated once with `verdict` so the record cannot
+    /// re-derive "is there a direction defect" from the same lists differently.
+    pub direction_gate: Verdict,
+}
+
+/// A gate verdict: the three-state outcome plus the degraded record. An enum rather
+/// than a `&str`, so an invalid verdict is unrepresentable at every place one is
+/// produced (`evaluate`, `run`) or consumed (the exit code, the report), while the
+/// strings other tools read stay stable through `as_str()`.
+///
+/// The crate already models this pattern as an enum where a known defect and an open
+/// question must stay distinct (`baseline::Outcome`, `audit`'s verdict lists); this is
+/// the same shape at the benchmark's own boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    Pass,
+    Fail,
+    Unverifiable,
+    Degraded,
+}
+
+impl Verdict {
+    /// The string the report and the log carry. **Stable**: result records under
+    /// `bench/results/` are append-only history, so the wording may not drift.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Verdict::Pass => "PASS",
+            Verdict::Fail => "FAIL",
+            Verdict::Unverifiable => "UNVERIFIABLE",
+            Verdict::Degraded => "DEGRADED-PASS/FAIL-SEE-REPORT",
+        }
+    }
+}
+
+impl std::fmt::Display for Verdict {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// The direction tally, carried through both pair loops as one value.
@@ -206,15 +246,32 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
         ));
     }
 
+    // A corpus with no `not_equivalent` pairs scores FMR *0/0*. That is not a
+    // measurement: the gate has nothing to falsify the bet on, and a generator
+    // regression that dropped every mutation would otherwise read as PASS. The
+    // vacuous denominator is UNVERIFIABLE — and a definite defect still outranks the
+    // open question, exactly as `req gate` lets Fail outrank Unverifiable.
+    //
+    // The same fold hides in a *non-empty* denominator made entirely of pairs whose
+    // sides cannot be parsed: `fmr_gate` is the single expression of the rule, and both
+    // the corpus verdict and the record read it — neither re-derives it.
+    //
+    // Both gates are evaluated here, once, and carried on `Evaluation`: `run` records
+    // what was evaluated rather than spelling "is there a defect" a second time from the
+    // same lists.
+    let direction_defect = !tally.dangerous.is_empty() || !tally.label_errors.is_empty();
+    let fmr = fmr_gate(
+        fmr_hits.len(),
+        corpus.not_equivalent.len(),
+        unverifiable_pairs.len(),
+    );
+    let verdict = if direction_defect { Verdict::Fail } else { fmr };
+    let direction = direction_gate(tally.checked, direction_defect);
+
     Evaluation {
-        verdict: if fmr_hits.is_empty()
-            && tally.dangerous.is_empty()
-            && tally.label_errors.is_empty()
-        {
-            "PASS"
-        } else {
-            "FAIL"
-        },
+        verdict,
+        fmr_gate: fmr,
+        direction_gate: direction,
         fmr_hits,
         fsr_hits,
         tier2,
@@ -234,7 +291,9 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
 
 /// Run the gate over a corpus file — the seed parity corpus by default — and
 /// record the result under `bench/results/`.
-/// Exit codes: 0 PASS / 1 FAIL / 3 UNVERIFIABLE (a degraded run is 3).
+/// Exit codes: 0 PASS / 1 FAIL / 3 UNVERIFIABLE. A run that found a defect is **1**
+/// even when it was degraded (`reported_verdict`); **3** covers a degraded run with
+/// nothing found and a vacuous FMR denominator.
 pub fn run(corpus_path: Option<&str>) -> i32 {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let rel = corpus_path.unwrap_or(CORPUS_REL);
@@ -281,11 +340,8 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     let corpus_sha =
         crate::canon::sha256_hex_raw(&std::fs::read(path.to_str().unwrap()).unwrap_or_default());
     let pair_total = corpus.equivalent.len() + corpus.not_equivalent.len();
-    let verdict = if degraded.is_empty() {
-        ev.verdict
-    } else {
-        "DEGRADED-PASS/FAIL-SEE-REPORT"
-    };
+    let degraded_run = !degraded.is_empty();
+    let verdict = reported_verdict(ev.verdict, degraded_run);
 
     let fmr_n = ev.fmr_hits.len();
     let fmr_pairs = ev.fmr_hits;
@@ -295,13 +351,13 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     let direction_unclassifiable = ev.direction_unclassifiable;
     let direction_mismatches = ev.direction_mismatches;
     let direction_label_errors = ev.direction_label_errors;
-    let direction_gate = if dangerous.is_empty() && direction_label_errors.is_empty() {
-        "PASS"
-    } else {
-        "FAIL"
-    };
+    // The FMR gate comes from `evaluate` with the verdict: the record reads what was
+    // evaluated instead of calling `fmr_gate` a second time from the same numbers, and
+    // it is a `Verdict`, not a literal, so the vocabulary has one home in
+    // `Verdict::as_str`. These records are append-only history.
+    let hard_gate = ev.fmr_gate;
     let report = json!({
-        "schema": "req.bench.result/0",
+        "schema": RECORD_SCHEMA,
         "rules_v": RULES_V,
         "corpus": rel,
         "corpus_sha256": corpus_sha,
@@ -309,8 +365,19 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
         "fmr": {
             "collapses": fmr_n,
             "not_equivalent_total": ev.not_equivalent_total,
-            "rate": fmr_rate,
-            "hard_gate": if fmr_rate == 0.0 { "PASS" } else { "FAIL" },
+            // `null` when the denominator measured nothing — the vacuous 0.0 beside
+            // `hard_gate: "UNVERIFIABLE"` is the fold this change removes.
+            //
+            // The rate's denominator is *every* `not_equivalent` pair, unverifiable
+            // ones included, so on a corpus with mixed coverage it is diluted against
+            // the rate over comparable pairs — `structurally_unverifiable_pairs` is
+            // what a reader subtracts to get the latter, and the gate itself is
+            // count-based, so the dilution changes no verdict.
+            "rate": reported_rate(
+                fmr_measurable(ev.not_equivalent_total, ev.unverifiable_pairs.len()),
+                fmr_rate,
+            ),
+            "hard_gate": hard_gate.as_str(),
             "hit_pairs": fmr_pairs,
             "structurally_unverifiable_pairs": ev.unverifiable_pairs.len(),
             "structurally_unverifiable_ids": ev.unverifiable_pairs,
@@ -318,15 +385,22 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
         "fsr": {
             "splits": fsr_n,
             "structured_equivalent_total": ev.structured_equivalent,
-            "rate": fsr_rate,
+            // The same rule as the FMR rate and the direction accuracy: an FSR over no
+            // structured equivalent pairs is `null`, not a measured-looking `0.0`. A
+            // `/1` consumer that learned `null` means "not measured" in two fields must
+            // not find `0.0` meaning it in the third.
+            "rate": reported_rate(ev.structured_equivalent > 0, fsr_rate),
             "hit_pairs": fsr_pairs,
         },
         "direction": {
             "checked": ev.direction_checked,
             "correct": ev.direction_correct,
-            "accuracy": direction_accuracy,
+            // `null`, not `0.0`, when nothing was checked: a vacuous accuracy reads as
+            // a measured one, the same fold `reported_rate` removes from the FMR rate.
+            // The corpora without `direction:` labels are exactly this case.
+            "accuracy": reported_rate(ev.direction_checked > 0, direction_accuracy),
             "soft_target": 0.95,
-            "hard_gate": direction_gate,
+            "hard_gate": ev.direction_gate.as_str(),
             "dangerous_confusions": dangerous,
             "mismatches": direction_mismatches,
             "unclassifiable": direction_unclassifiable,
@@ -341,7 +415,7 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
         },
         "lints": ev.lints,
         "degraded": degraded,
-        "verdict": verdict,
+        "verdict": verdict.as_str(),
     });
 
     for row in &ev.rows {
@@ -367,10 +441,97 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
         );
     }
 
+    exit_code(verdict)
+}
+
+/// Is the FMR denominator a real measurement? A pair whose side cannot be parsed is
+/// **reported** (`structurally_unverifiable_pairs`), never silently dropped — but a
+/// denominator made *entirely* of such pairs, like an empty one, is 0/0: a regression
+/// that swept every mutation into the unstructured fallback would otherwise read as
+/// rate 0.0 and PASS. One test, used by `evaluate` and the record, so the verdict and
+/// `hard_gate` cannot disagree about whether anything was measured.
+pub fn fmr_measurable(not_equivalent_total: usize, structurally_unverifiable: usize) -> bool {
+    not_equivalent_total > structurally_unverifiable
+}
+
+/// The discriminator the gate writes into every record, bumped with the value space
+/// under it: `/0` had a binary `hard_gate`, a non-null `direction.accuracy` and a
+/// degraded run that always wrote the degraded wording. A consumer migrating from `/0`
+/// is the one that would read a vacuous `rate: 0.0` as a clean measurement, so the
+/// generation has to be visible in the record itself.
+pub const RECORD_SCHEMA: &str = "req.bench.result/1";
+
+/// A rate is reported only when it was measured: `null` when the denominator measured
+/// nothing, for the FMR rate and the direction accuracy alike. `/0` wrote `0.0` there,
+/// which reads as a clean measurement rather than as a question nobody could answer.
+pub fn reported_rate(measured: bool, rate: f64) -> Option<f64> {
+    if measured { Some(rate) } else { None }
+}
+
+/// The FMR gate as one value: a collapse is FAIL; a denominator that measured nothing
+/// is UNVERIFIABLE; no collapse over a measured denominator is PASS. `evaluate`'s
+/// verdict and the record's `hard_gate` both call it, so "nothing collapsed" is spelled
+/// exactly once — the pairs counted, not a float `rate == 0.0` beside it, which is the
+/// same fact written twice and free to drift.
+pub fn fmr_gate(
+    collapses: usize,
+    not_equivalent_total: usize,
+    structurally_unverifiable: usize,
+) -> Verdict {
+    if collapses > 0 {
+        Verdict::Fail
+    } else if fmr_measurable(not_equivalent_total, structurally_unverifiable) {
+        Verdict::Pass
+    } else {
+        Verdict::Unverifiable
+    }
+}
+
+/// The direction gate, as its own tri-state. A dangerous confusion or an unparseable
+/// label is a definite defect (FAIL); **nothing measured is UNVERIFIABLE, never a
+/// vacuous PASS** — the corpora that carry no `direction:` labels reach this with
+/// `checked: 0`, and a `PASS` there would read as "the direction check came back
+/// clean" when no direction check happened.
+///
+/// What does *not* reach the exit code is this gate's UNVERIFIABLE state: the process
+/// verdict answers the FMR question, so a corpus whose direction check was vacuous
+/// still exits 0 when the FMR denominator measured clean. A direction **defect** does
+/// drive exit 1 — `evaluate` folds it into the corpus verdict, and
+/// `a_direction_label_error_outranks_the_vacuous_denominator` pins that.
+pub fn direction_gate(checked: usize, defect: bool) -> Verdict {
+    if defect {
+        Verdict::Fail
+    } else if checked == 0 {
+        Verdict::Unverifiable
+    } else {
+        Verdict::Pass
+    }
+}
+
+/// The verdict a run reports: a definite defect outranks the degraded record, exactly
+/// as `evaluate` lets it outrank the vacuous denominator and `req gate` lets Fail
+/// outrank Unverifiable — "we found a problem" is stronger than "we could not tell",
+/// and a degraded run that *did* find one must not demote it to exit 3. A degraded run
+/// with nothing found is its own outcome (`Degraded`, exit 3), reported with its reason.
+pub fn reported_verdict(evaluated: Verdict, degraded: bool) -> Verdict {
+    match evaluated {
+        Verdict::Fail => Verdict::Fail,
+        _ if degraded => Verdict::Degraded,
+        other => other,
+    }
+}
+
+/// A gate verdict as a process exit code: **0** PASS, **1** FAIL, **3**
+/// UNVERIFIABLE. **3** covers a vacuous FMR denominator and a degraded run that found
+/// nothing; a degraded run that *did* find a defect is **1** (see
+/// `reported_verdict`). The mapping is its own function so the CLI-exit seam is
+/// testable without spawning the binary, and it takes the enum so a string typo cannot
+/// reach it.
+pub fn exit_code(verdict: Verdict) -> i32 {
     match verdict {
-        "PASS" => 0,
-        "FAIL" => 1,
-        _ => 3,
+        Verdict::Pass => 0,
+        Verdict::Fail => 1,
+        Verdict::Unverifiable | Verdict::Degraded => 3,
     }
 }
 
