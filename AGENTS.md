@@ -514,6 +514,12 @@ assumed from a zero exit code.
 
 ### Merge locally (no PR)
 
+**No longer how changes reach the remote.** `main` is protected on Forgejo and this
+environment cannot push it, so a local `--no-ff` merge strands a commit the remote cannot
+see: work in a worktree, push the feature branch, open a pull request, and after the human
+merges, fast-forward locally with `git fetch origin && git pull --ff-only`. What follows
+remains the shape of the work.
+
 From the **main checkout** — a worktree cannot `git checkout main`, because `main`
 is already checked out there:
 
@@ -531,14 +537,15 @@ deliberately left unfixed.
 
 ## Phases
 
-**Phase 1 (now — no remote).** Local gate (`scripts/check.sh`), worktree per
-feature, local `--no-ff` merge. OCR delegation mode is the self-review mechanism.
+**Phase 1 (the local habit).** Local gate (`scripts/check.sh`), worktree per feature,
+OCR delegation mode as the self-review mechanism.
 
-**Phase 2 (when the Forgejo remote lands, on maturity).** The same gate invoked by
-`.forgejo/workflows/` — one implementation, two invocations; never a second copy of
-the check logic in workflow YAML. The flow becomes PR-based (`edh-sdlc`: issue →
-worktree → checks → commit → PR → CI → diagnosis). Branch-protection contexts must
-be exactly what the workflows produce (`<workflow> / <job> (<event>)`) and are
-verified with `forge_repo_setup` before anyone relies on a required check: a
-required context that nothing reports hangs every PR, and a required name with its
-event suffix stripped never reports at all.
+**Phase 2 (partly landed, 2026-10-13).** The Forgejo remote is
+`https://git.xantu-barb.ts.net/fdx/req.git`, and `.forgejo/workflows/ci.yml` invokes
+this same gate there — one implementation, two invocations, no check logic in workflow
+YAML. **Changes reach the remote by feature branch and pull request**, so a local
+`--no-ff` merge into `main` strands a commit the remote cannot see; the agent
+environment cannot push `main` at all (EDH003), which is that guard behaving as
+intended. After a merge, fast-forward locally. Still pending: branch protection, whose
+required context must be exactly what the workflow produces.
+
