@@ -1353,12 +1353,12 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
                 path.display()
             ));
         }
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else {
+        let raw_name = entry.file_name();
+        let Some(name) = raw_name.to_str() else {
             return Err(format!(
-                "claims dir {}: an entry name is not valid UTF-8, so it cannot be \
-                 classified as a claim or as a non-claim",
-                dir.display()
+                "{}: this entry's name is not valid UTF-8 (shown lossily), so it cannot \
+                 be classified as a claim or as a non-claim",
+                path.display()
             ));
         };
         if !looks_like_claim_file(name) {

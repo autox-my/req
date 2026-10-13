@@ -36,22 +36,22 @@ fn claim(text: &str) -> ClaimFile {
 }
 
 /// The authored selector slot, which the loader now requires to be present: the one
-/// line a variant claim edits. `replacen(…, 1)` states the single-edit intent — a
-/// whole-string `replace` would edit every occurrence — and the guard catches a
-/// template that has drifted out from under the helper, which would otherwise make
-/// the "variant" byte-identical to the base and misdirect the failure below into
-/// `evaluate_claim`'s identity logic.
+/// line a variant claim edits. The count assertion is what makes the helper safe: a
+/// template with *no* anchor would leave the "variant" identical to the base (and the
+/// failure would read as a bug in `evaluate_claim`), while a second anchor would let
+/// `replacen(…, 1)` edit one line and silently corrupt the other.
 fn with_applicability(predicate: &str) -> String {
-    let edited = CLAIM.replacen(
+    assert_eq!(
+        CLAIM.matches("applicability: []").count(),
+        1,
+        "the CLAIM template must hold exactly one `applicability: []` line: this \
+         helper edits that one line"
+    );
+    CLAIM.replacen(
         "applicability: []",
         &format!("applicability:\n  - {predicate}"),
         1,
-    );
-    assert_ne!(
-        edited, CLAIM,
-        "the CLAIM template drifted: no `applicability: []` line left to edit"
-    );
-    edited
+    )
 }
 
 /// ADR 0003 says variants are selectors and applicability is part of identity. Before

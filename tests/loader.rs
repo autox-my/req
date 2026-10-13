@@ -286,13 +286,20 @@ fn an_empty_corpus_is_unverifiable_never_a_pass() {
 fn the_committed_corpus_loads_under_the_strict_loader() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let claims = load_claims(&root).expect("the committed corpus must load under the strict rules");
-    // The exact count is the one tripwire for a claim file *deleted* from the
-    // corpus: a deletion errors in no other test, because the loader cannot know
-    // how many claims there should be. Bump it deliberately when the corpus grows;
-    // a count that *drops* is a deleted requirement, never a fixture to update.
+    // The expected id set is the tripwire: a claim file *deleted* from the corpus
+    // errors in no other test — the loader cannot know how many claims there should
+    // be — and naming the ids says which requirement vanished, rather than leaving it
+    // to be reverse-engineered from a count. Extend this list deliberately when a
+    // requirement is added; an id that *drops* out is a deleted requirement, and a
+    // deliberate retirement updates this list in its own reviewable commit.
+    let ids: Vec<&str> = claims.iter().map(|c| c.claim.claim_id.as_str()).collect();
     assert_eq!(
-        claims.len(),
-        21,
-        "the committed corpus is 21 claims; bump this by hand when one is added"
+        ids,
+        [
+            "REQ-0001", "REQ-0002", "REQ-0003", "REQ-0004", "REQ-0005", "REQ-0006", "REQ-0007",
+            "REQ-0008", "REQ-0009", "REQ-0010", "REQ-0011", "REQ-0012", "REQ-0013", "REQ-0014",
+            "REQ-0015", "REQ-0016", "REQ-0017", "REQ-0018", "REQ-0019", "REQ-0020", "REQ-0021",
+        ],
+        "the committed corpus is REQ-0001..REQ-0021, one claim per file"
     );
 }
