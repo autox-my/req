@@ -351,7 +351,6 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     let direction_unclassifiable = ev.direction_unclassifiable;
     let direction_mismatches = ev.direction_mismatches;
     let direction_label_errors = ev.direction_label_errors;
-    let direction_gate = ev.direction_gate;
     // The FMR gate comes from `evaluate` with the verdict: the record reads what was
     // evaluated instead of calling `fmr_gate` a second time from the same numbers, and
     // it is a `Verdict`, not a literal, so the vocabulary has one home in
@@ -368,6 +367,12 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
             "not_equivalent_total": ev.not_equivalent_total,
             // `null` when the denominator measured nothing — the vacuous 0.0 beside
             // `hard_gate: "UNVERIFIABLE"` is the fold this change removes.
+            //
+            // The rate's denominator is *every* `not_equivalent` pair, unverifiable
+            // ones included, so on a corpus with mixed coverage it is diluted against
+            // the rate over comparable pairs — `structurally_unverifiable_pairs` is
+            // what a reader subtracts to get the latter, and the gate itself is
+            // count-based, so the dilution changes no verdict.
             "rate": reported_rate(
                 fmr_measurable(ev.not_equivalent_total, ev.unverifiable_pairs.len()),
                 fmr_rate,
@@ -391,7 +396,7 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
             // The corpora without `direction:` labels are exactly this case.
             "accuracy": reported_rate(ev.direction_checked > 0, direction_accuracy),
             "soft_target": 0.95,
-            "hard_gate": direction_gate.as_str(),
+            "hard_gate": ev.direction_gate.as_str(),
             "dangerous_confusions": dangerous,
             "mismatches": direction_mismatches,
             "unclassifiable": direction_unclassifiable,
