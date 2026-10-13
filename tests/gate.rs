@@ -190,6 +190,41 @@ fn exit_code_maps_the_three_outcomes_and_the_degraded_record() {
     assert_eq!(Verdict::Degraded.as_str(), "DEGRADED-PASS/FAIL-SEE-REPORT");
 }
 
+/// Precedence at the run seam: a definite defect outranks the degraded record, the same
+/// way it outranks the vacuous denominator inside `evaluate`. An empty registry makes
+/// the run untrustworthy, but it does not un-find an FMR hit, a dangerous direction read
+/// or a misspelled label — and demoting that to exit 3 is how a script keyed on exit 1
+/// would miss it.
+#[test]
+fn a_defect_outranks_the_degraded_record() {
+    use req::bench::reported_verdict;
+    assert_eq!(reported_verdict(Verdict::Fail, true), Verdict::Fail);
+    assert_eq!(
+        req::bench::exit_code(reported_verdict(Verdict::Fail, true)),
+        1
+    );
+    // With nothing found, a degraded run is its own outcome — never a PASS.
+    assert_eq!(
+        reported_verdict(Verdict::Pass, true),
+        Verdict::Degraded,
+        "a degraded run must never report the corpus as clean"
+    );
+    assert_eq!(
+        reported_verdict(Verdict::Unverifiable, true),
+        Verdict::Degraded
+    );
+    assert_eq!(
+        req::bench::exit_code(reported_verdict(Verdict::Pass, true)),
+        3
+    );
+    // Undegraded runs pass through untouched.
+    assert_eq!(reported_verdict(Verdict::Pass, false), Verdict::Pass);
+    assert_eq!(
+        reported_verdict(Verdict::Unverifiable, false),
+        Verdict::Unverifiable
+    );
+}
+
 /// A definite defect still outranks the vacuous denominator, exactly as `req gate`
 /// lets Fail outrank Unverifiable: a misspelled `direction:` label — which would
 /// otherwise switch the direction check off — must not hide behind a corpus whose

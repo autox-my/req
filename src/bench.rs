@@ -323,14 +323,7 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     let corpus_sha =
         crate::canon::sha256_hex_raw(&std::fs::read(path.to_str().unwrap()).unwrap_or_default());
     let pair_total = corpus.equivalent.len() + corpus.not_equivalent.len();
-    let verdict = if degraded.is_empty() {
-        ev.verdict
-    } else {
-        // A degraded run is its own outcome: the report carries the reason and the exit
-        // code must never be 0. The literal lives in `Verdict::as_str`, so the test and
-        // the report cannot drift apart.
-        Verdict::Degraded
-    };
+    let verdict = reported_verdict(ev.verdict, !degraded.is_empty());
 
     let fmr_n = ev.fmr_hits.len();
     let fmr_pairs = ev.fmr_hits;
@@ -341,9 +334,20 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     let direction_mismatches = ev.direction_mismatches;
     let direction_label_errors = ev.direction_label_errors;
     let direction_gate = if dangerous.is_empty() && direction_label_errors.is_empty() {
-        "PASS"
+        Verdict::Pass
     } else {
-        "FAIL"
+        Verdict::Fail
+    };
+    // The FMR gate is its own tri-state: 0/0 is not a pass, so the record says
+    // UNVERIFIABLE there rather than folding the vacuous denominator back in. It is a
+    // `Verdict` and not a literal so the vocabulary has one home, `Verdict::as_str` —
+    // these records are append-only history, and two spellings could drift apart.
+    let hard_gate = if ev.not_equivalent_total == 0 {
+        Verdict::Unverifiable
+    } else if fmr_rate == 0.0 {
+        Verdict::Pass
+    } else {
+        Verdict::Fail
     };
     let report = json!({
         "schema": "req.bench.result/0",
@@ -355,15 +359,7 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
             "collapses": fmr_n,
             "not_equivalent_total": ev.not_equivalent_total,
             "rate": fmr_rate,
-            // Tri-state: with no `not_equivalent` pairs the rate is 0/0, and a record
-            // that said PASS there would fold the vacuous denominator back into a pass.
-            "hard_gate": if ev.not_equivalent_total == 0 {
-                "UNVERIFIABLE"
-            } else if fmr_rate == 0.0 {
-                "PASS"
-            } else {
-                "FAIL"
-            },
+            "hard_gate": hard_gate.as_str(),
             "hit_pairs": fmr_pairs,
             "structurally_unverifiable_pairs": ev.unverifiable_pairs.len(),
             "structurally_unverifiable_ids": ev.unverifiable_pairs,
@@ -379,7 +375,7 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
             "correct": ev.direction_correct,
             "accuracy": direction_accuracy,
             "soft_target": 0.95,
-            "hard_gate": direction_gate,
+            "hard_gate": direction_gate.as_str(),
             "dangerous_confusions": dangerous,
             "mismatches": direction_mismatches,
             "unclassifiable": direction_unclassifiable,
@@ -421,6 +417,19 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     }
 
     exit_code(verdict)
+}
+
+/// The verdict a run reports: a definite defect outranks the degraded record, exactly
+/// as `evaluate` lets it outrank the vacuous denominator and `req gate` lets Fail
+/// outrank Unverifiable — "we found a problem" is stronger than "we could not tell",
+/// and a degraded run that *did* find one must not demote it to exit 3. A degraded run
+/// with nothing found is its own outcome (`Degraded`, exit 3), reported with its reason.
+pub fn reported_verdict(evaluated: Verdict, degraded: bool) -> Verdict {
+    match evaluated {
+        Verdict::Fail => Verdict::Fail,
+        _ if degraded => Verdict::Degraded,
+        other => other,
+    }
 }
 
 /// A gate verdict as a process exit code: **0** PASS, **1** FAIL, **3**
