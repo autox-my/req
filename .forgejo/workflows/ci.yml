@@ -34,6 +34,20 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
 
+      - name: the C toolchain the build scripts link against
+        run: |
+          set -eu
+          # A rustup toolchain is not sufficient: crates with build scripts (proc-macro2, quote,
+          # serde_core, generic-array) need a linker. The first run of this workflow failed here and
+          # reported it as an unrelated-looking compile cascade, so the check is explicit and first.
+          if ! command -v cc >/dev/null 2>&1; then
+            echo "::error::no C linker on this runner, so every Rust build script will fail to link"
+            echo "On a Debian-ish host: sudo apt-get update && sudo apt-get install -y build-essential"
+            echo "Or run this job in a container image that ships gcc, such as rust:1.99-bookworm."
+            exit 1
+          fi
+          cc --version | head -1
+
       - name: rustup, the pinned channel, and the components the gate needs
         run: |
           set -eu
