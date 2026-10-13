@@ -206,15 +206,22 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
         ));
     }
 
-    Evaluation {
-        verdict: if fmr_hits.is_empty()
-            && tally.dangerous.is_empty()
-            && tally.label_errors.is_empty()
-        {
-            "PASS"
-        } else {
+    // A corpus with no `not_equivalent` pairs scores FMR *0/0*. That is not a
+    // measurement: the gate has nothing to falsify the bet on, and a generator
+    // regression that dropped every mutation would otherwise read as PASS. The
+    // vacuous denominator is UNVERIFIABLE — and a definite defect still outranks the
+    // open question, exactly as `req gate` lets Fail outrank Unverifiable.
+    let verdict =
+        if !fmr_hits.is_empty() || !tally.dangerous.is_empty() || !tally.label_errors.is_empty() {
             "FAIL"
-        },
+        } else if corpus.not_equivalent.is_empty() {
+            "UNVERIFIABLE"
+        } else {
+            "PASS"
+        };
+
+    Evaluation {
+        verdict,
         fmr_hits,
         fsr_hits,
         tier2,
@@ -310,7 +317,15 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
             "collapses": fmr_n,
             "not_equivalent_total": ev.not_equivalent_total,
             "rate": fmr_rate,
-            "hard_gate": if fmr_rate == 0.0 { "PASS" } else { "FAIL" },
+            // Tri-state: with no `not_equivalent` pairs the rate is 0/0, and a record
+            // that said PASS there would fold the vacuous denominator back into a pass.
+            "hard_gate": if ev.not_equivalent_total == 0 {
+                "UNVERIFIABLE"
+            } else if fmr_rate == 0.0 {
+                "PASS"
+            } else {
+                "FAIL"
+            },
             "hit_pairs": fmr_pairs,
             "structurally_unverifiable_pairs": ev.unverifiable_pairs.len(),
             "structurally_unverifiable_ids": ev.unverifiable_pairs,
@@ -367,6 +382,13 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
         );
     }
 
+    exit_code(verdict)
+}
+
+/// A gate verdict as a process exit code: **0** PASS, **1** FAIL, **3**
+/// UNVERIFIABLE (including a degraded or vacuous run). The mapping is its own
+/// function so the CLI-exit seam is testable without spawning the binary.
+pub fn exit_code(verdict: &str) -> i32 {
     match verdict {
         "PASS" => 0,
         "FAIL" => 1,

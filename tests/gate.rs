@@ -160,3 +160,53 @@ fn absorbed_may_not_exceed_stays_structured_and_weaker() {
     assert_eq!(may_not.modality_str(), "MAY");
     assert_ne!(canonical_json(&shall_not), canonical_json(&may_not));
 }
+
+/// Review [F7]: FMR is *collapsed / all not-equivalent pairs*, so a corpus with no
+/// not-equivalent pairs scores 0/0. That is not a measurement — the gate has nothing
+/// to falsify the bet on — and a generator regression that drops every mutation would
+/// otherwise read as PASS. A vacuous denominator is UNVERIFIABLE, exit 3.
+#[test]
+fn a_corpus_with_no_not_equivalent_pairs_is_unverifiable_not_pass() {
+    let ev = evaluate(&corpus(vec![], vec![]), &Registry::empty());
+    assert_eq!(ev.not_equivalent_total, 0);
+    assert_eq!(ev.verdict, "UNVERIFIABLE");
+    assert_eq!(
+        req::bench::exit_code(ev.verdict),
+        3,
+        "FMR 0/0 must block, not pass"
+    );
+}
+
+/// The seam between a verdict and the process exit code, including the degraded
+/// record: a run that could not be trusted must never exit 0.
+#[test]
+fn exit_code_maps_the_three_outcomes_and_the_degraded_record() {
+    assert_eq!(req::bench::exit_code("PASS"), 0);
+    assert_eq!(req::bench::exit_code("FAIL"), 1);
+    assert_eq!(req::bench::exit_code("UNVERIFIABLE"), 3);
+    assert_eq!(req::bench::exit_code("DEGRADED-PASS/FAIL-SEE-REPORT"), 3);
+}
+
+/// A definite defect still outranks the vacuous denominator, exactly as `req gate`
+/// lets Fail outrank Unverifiable: a misspelled `direction:` label — which would
+/// otherwise switch the direction check off — must not hide behind a corpus whose
+/// FMR denominator is empty.
+#[test]
+fn a_direction_label_error_outranks_the_vacuous_denominator() {
+    let mut labelled = pair(
+        "E-001",
+        "The system shall log each command.",
+        "The system MUST log each command.",
+    );
+    labelled.direction = Some("modality_weaken".to_string()); // misspelled
+    let ev = evaluate(&corpus(vec![labelled], vec![]), &Registry::empty());
+    assert!(
+        ev.direction_label_errors
+            .iter()
+            .any(|e| e.contains("modality_weaken")),
+        "label errors: {:?}",
+        ev.direction_label_errors
+    );
+    assert_eq!(ev.verdict, "FAIL");
+    assert_eq!(req::bench::exit_code(ev.verdict), 1);
+}
