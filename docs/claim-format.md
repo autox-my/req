@@ -90,9 +90,9 @@ than proceeding over a corpus it could not read:
   A file whose stem is not the `claim_id` it declares is a load error too.
 - **Unique ids.** Two files declaring one `claim_id` is a load error, and their
   **content is compared**: an identical duplicate (the fully silent case — it never
-  shows as drift) and a divergent one are named differently. Under the filename rule
-  the only way two files share an id is the `.yaml` twin of a `.yml`, which is exactly
-  the case that used to collapse.
+  shows as drift) and a divergent one are named differently. The duplicate pass runs
+  over every candidate before the naming pass, so a second file claiming an existing
+  id is reported as the duplicate it is, not merely as a filename complaint.
 - **Strict fields.** An unrecognized key is a parse error (`applicabilty:` does not
   parse as an empty default), and `applicability`/`relations` are *required*: a
   dropped `relations:` leaves the address untouched while the edges vanish from `trace`
