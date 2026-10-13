@@ -25,6 +25,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Manual dispatch, so a green run can be produced on demand without inventing a commit —
+  # including after a force-push, which this instance does not appear to re-trigger.
+  workflow_dispatch:
 
 jobs:
   gate:

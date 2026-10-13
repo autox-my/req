@@ -1,0 +1,137 @@
+# The review gate: a model reads the diff and any critical or high finding blocks the merge.
+#
+# A second, independent check beside CI. CI proves the repository's own gate passes; this one
+# asks whether the change is *good*, which no deterministic check can answer. The counting and
+# the verdict live in tools/review/ocr_gate.py — and the step below takes that file from
+# origin/main rather than from the pull request, so a change cannot supply the gate that judges
+# it. That is why the adoption pull request fails this check by design: the gate must already
+# be on main before it can judge anything, and a human merges the adoption change.
+#
+# Runner: host mode, so no `container:` key. No `permissions:` key either — Forgejo ignores it,
+# and dead configuration that warns on every run is worse than none.
+#
+# Configuration (Settings, then Actions):
+#   Secret   OCR_LLM_TOKEN      the provider key
+#   Variable OCR_LLM_URL        the provider base URL
+#   Variable OCR_LLM_PROTOCOL   openai or anthropic
+#   Variable OCR_LLM_MODEL      the model to review with
+#
+# The protocol decides the path OCR appends — /chat/completions for openai, /v1/messages for
+# anthropic — so the URL must end with or without /v1 to match. Getting the pair wrong gives
+# either a doubled path (404) or "model is not supported on this endpoint" (400).
+
+name: OCR Review
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  ocr-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: checkout, with the history the diff needs
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: the review CLI, installed from the committed lockfile
+        run: |
+          set -eu
+          # The lockfile is the pin: npm ci verifies integrity against it, which a global
+          # install of `latest` cannot do. This repository pins its review CLI deliberately.
+          npm --prefix tools/ocr ci --no-fund --no-audit --cache "$GITHUB_WORKSPACE/.npm-cache"
+          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          if ! command -v ocr >/dev/null 2>&1; then
+            echo "::error::ocr did not install, so no review can run"
+            exit 1
+          fi
+          ocr --version
+          # A stale config in a persistent $HOME overrides the environment and produces
+          # "provider has no api_key configured" against a perfectly good token.
+          rm -f "$HOME/.opencodereview/config.json"
+
+      - name: the provider answers
+        env:
+          OCR_LLM_URL: ${{ vars.OCR_LLM_URL }}
+          OCR_LLM_PROTOCOL: ${{ vars.OCR_LLM_PROTOCOL }}
+          OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_TOKEN }}
+          OCR_LLM_MODEL: ${{ vars.OCR_LLM_MODEL }}
+          OCR_LLM_AUTH_HEADER: x-api-key
+        run: |
+          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          if [ -z "${OCR_LLM_TOKEN:-}" ]; then
+            echo "::error::OCR_LLM_TOKEN is not set (Settings, Actions, Secrets)"
+            exit 1
+          fi
+          # Names and lengths, never the token: this line is what separates "the job was
+          # misconfigured" from "the provider refused a correct request".
+          echo "review env: protocol=${OCR_LLM_PROTOCOL:-unset} model=${OCR_LLM_MODEL:-unset} token_len=${#OCR_LLM_TOKEN}"
+          ocr llm test
+
+      - name: review the diff
+        env:
+          OCR_LLM_URL: ${{ vars.OCR_LLM_URL }}
+          OCR_LLM_PROTOCOL: ${{ vars.OCR_LLM_PROTOCOL }}
+          OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_TOKEN }}
+          OCR_LLM_MODEL: ${{ vars.OCR_LLM_MODEL }}
+          OCR_LLM_AUTH_HEADER: x-api-key
+          # The head SHA, not the branch name: a pull request from a fork has no branch ref
+          # in this repository, while the SHA always resolves after a full checkout.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          for attempt in 1 2 3; do
+            echo "== review attempt ${attempt}/3 =="
+            # A congested endpoint can return transient errors for minutes; three attempts
+            # with a pause ride out a bad window without failing the whole review.
+            # Excluded: CI plumbing (human-reviewed by definition) and the generated corpora
+            # and their records, which this repository reviews through their generators.
+            if ocr review \
+                 --from origin/main \
+                 --to "$HEAD_SHA" \
+                 --format json \
+                 --output ocr-result.json \
+                 --effort low \
+                 --timeout 20 \
+                 --exclude '.forgejo/**,bench/corpus/**,bench/results/**'; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "attempt ${attempt} did not complete — retrying in 60s"
+              sleep 60
+            fi
+          done
+          echo "::error::the review did not complete after three attempts"
+          exit 1
+
+      - name: the gate, taken from main rather than from this pull request
+        if: always()
+        run: |
+          GATE_PATH=tools/review/ocr_gate.py
+          if git cat-file -e "origin/main:$GATE_PATH" 2>/dev/null; then
+            GATE="$RUNNER_TEMP/ocr_gate_trusted.py"
+            git show "origin/main:$GATE_PATH" > "$GATE"
+            echo "judging with $GATE_PATH from origin/main"
+          else
+            # Fail CLOSED. Falling back to this checkout would let the very first pull
+            # request supply the gate that judges it.
+            echo "::error::origin/main has no $GATE_PATH — land the gate first (a human merges the adoption change), then every later change is gated by this job"
+            exit 1
+          fi
+          python3 "$GATE" ocr-result.json --emit-json ocr-normalized.json
+
+      - name: the findings, verbatim, in the log
+        if: always()
+        run: |
+          # No artifact upload: this instance's artifact service is unreliable, so the job
+          # log is the durable record. Printing the whole set, not a summary, is what makes
+          # a finding readable after the fact.
+          if [ -f ocr-result.json ]; then
+            echo "--- ocr-result.json ---"
+            cat ocr-result.json
+            echo "--- end ---"
+          else
+            echo "no result file (the review did not produce one)"
+          fi

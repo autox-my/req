@@ -246,7 +246,20 @@ export OCR_NO_UPDATE=1
   not tampering.
 - Docs-only changes: the same gate, with its skips stated in the commit message.
 
-### Review — OCR in delegation mode (no LLM, no API key)
+### Review — delegation mode locally, LLM mode on pull requests
+
+Two mechanisms, one CLI, answering different questions. **Locally** the agent runs delegation
+mode: OCR selects the files and resolves the rules, and the agent is the reviewer — no LLM, no
+API key, nothing leaving the machine. **On a pull request**, `.forgejo/workflows/review.yml` runs
+`ocr review` against the configured provider and blocks the merge on any critical or high
+finding. Its verdict comes from `tools/review/ocr_gate.py`, which the workflow takes from
+`origin/main` and never from the pull request under review, so a change cannot supply the gate
+that judges it — which is why the adoption pull request fails that check by design, and a human
+merges it. The gate carries a `--self-check`, and it treats a review that did not complete as a
+failure rather than a clean run.
+
+CI review does send the diff to the configured provider. REQ-0012 governs the product's runtime,
+not the review of this repository's own changes: req itself still requires no network.
 
 `ocr` is installed **locally and pinned** (a global install would land in
 `/usr`, which is root-owned and read-only here, and would not be lockfile-pinned):
@@ -376,6 +389,9 @@ matter:
   emits and verifies; it never signs.
 - `tools/ocr/` — the pinned review CLI (`package.json` + lockfile committed;
   `node_modules/` ignored).
+- `tools/review/ocr_gate.py` — the verdict on an OCR review result: pass, fail, or a legitimate
+  docs-only skip. Pure decision function plus a `--self-check` table, so its logic is tested
+  without a model. The workflow enforces the copy from `origin/main`, never the pull request's.
 - `review/rule.json` — the review rules we own: one checklist per path class, passed
   to every `ocr` invocation. Its shape and the two CLI behaviours worth knowing are
   documented under **Review** above.
@@ -546,6 +562,7 @@ this same gate there — one implementation, two invocations, no check logic in 
 YAML. **Changes reach the remote by feature branch and pull request**, so a local
 `--no-ff` merge into `main` strands a commit the remote cannot see; the agent
 environment cannot push `main` at all (EDH003), which is that guard behaving as
-intended. After a merge, fast-forward locally. Still pending: branch protection, whose
-required context must be exactly what the workflow produces.
+intended. After a merge, fast-forward locally. Branch protection on `main` requires exactly that context, read back from the API rather than
+assumed, so a pull request merges only on a green run of the real gate.
+`.forgejo/workflows/review.yml` adds a second required check once its gate is on `main`.
 
