@@ -4,7 +4,7 @@
 //! TDD order: this file was written before `bench::evaluate` existed — the
 //! compile error was the red state.
 
-use req::bench::evaluate;
+use req::bench::{Verdict, evaluate};
 use req::canon::{canonical_json, canonicalize_statement};
 use req::model::{Corpus, Pair, Registry};
 
@@ -74,7 +74,7 @@ fn gate_passes_on_a_clean_pair_set() {
     );
     assert!(ev.fmr_hits.is_empty(), "FMR hits: {:?}", ev.fmr_hits);
     assert!(ev.fsr_hits.is_empty(), "FSR hits: {:?}", ev.fsr_hits);
-    assert_eq!(ev.verdict, "PASS");
+    assert_eq!(ev.verdict, Verdict::Pass);
 }
 
 /// A not-equivalent pair with an unstructured side cannot merge, so the FMR
@@ -95,7 +95,7 @@ fn unstructured_not_equivalent_pairs_are_counted_not_hidden() {
     );
     assert_eq!(ev.unverifiable_pairs, vec!["U-001".to_string()]);
     assert!(ev.fmr_hits.is_empty());
-    assert_eq!(ev.verdict, "PASS");
+    assert_eq!(ev.verdict, Verdict::Pass);
 }
 
 /// Mutation-check for the gate itself: a pair labelled not-equivalent that *does*
@@ -115,7 +115,7 @@ fn gate_fails_on_a_degenerate_not_equivalent_pair() {
         &Registry::empty(),
     );
     assert!(ev.fmr_hits.contains(&"M-001".to_string()));
-    assert_eq!(ev.verdict, "FAIL");
+    assert_eq!(ev.verdict, Verdict::Fail);
 }
 
 /// Found by the *widened* external corpus (PROMISE NFR prose), rules v4: a
@@ -169,7 +169,7 @@ fn absorbed_may_not_exceed_stays_structured_and_weaker() {
 fn a_corpus_with_no_not_equivalent_pairs_is_unverifiable_not_pass() {
     let ev = evaluate(&corpus(vec![], vec![]), &Registry::empty());
     assert_eq!(ev.not_equivalent_total, 0);
-    assert_eq!(ev.verdict, "UNVERIFIABLE");
+    assert_eq!(ev.verdict, Verdict::Unverifiable);
     assert_eq!(
         req::bench::exit_code(ev.verdict),
         3,
@@ -178,13 +178,16 @@ fn a_corpus_with_no_not_equivalent_pairs_is_unverifiable_not_pass() {
 }
 
 /// The seam between a verdict and the process exit code, including the degraded
-/// record: a run that could not be trusted must never exit 0.
+/// record: a run that could not be trusted must never exit 0. The enum carries the
+/// outcome, so this test cannot drift from the string the report emits — the degraded
+/// wording has exactly one home, `Verdict::as_str`.
 #[test]
 fn exit_code_maps_the_three_outcomes_and_the_degraded_record() {
-    assert_eq!(req::bench::exit_code("PASS"), 0);
-    assert_eq!(req::bench::exit_code("FAIL"), 1);
-    assert_eq!(req::bench::exit_code("UNVERIFIABLE"), 3);
-    assert_eq!(req::bench::exit_code("DEGRADED-PASS/FAIL-SEE-REPORT"), 3);
+    assert_eq!(req::bench::exit_code(Verdict::Pass), 0);
+    assert_eq!(req::bench::exit_code(Verdict::Fail), 1);
+    assert_eq!(req::bench::exit_code(Verdict::Unverifiable), 3);
+    assert_eq!(req::bench::exit_code(Verdict::Degraded), 3);
+    assert_eq!(Verdict::Degraded.as_str(), "DEGRADED-PASS/FAIL-SEE-REPORT");
 }
 
 /// A definite defect still outranks the vacuous denominator, exactly as `req gate`
@@ -207,6 +210,6 @@ fn a_direction_label_error_outranks_the_vacuous_denominator() {
         "label errors: {:?}",
         ev.direction_label_errors
     );
-    assert_eq!(ev.verdict, "FAIL");
+    assert_eq!(ev.verdict, Verdict::Fail);
     assert_eq!(req::bench::exit_code(ev.verdict), 1);
 }

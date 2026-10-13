@@ -88,7 +88,42 @@ pub struct Evaluation {
     /// whole check off while every number looked fine.
     pub direction_label_errors: Vec<String>,
     pub rows: Vec<String>,
-    pub verdict: &'static str,
+    pub verdict: Verdict,
+}
+
+/// A gate verdict: the three-state outcome plus the degraded record. An enum rather
+/// than a `&str`, so an invalid verdict is unrepresentable at every place one is
+/// produced (`evaluate`, `run`) or consumed (the exit code, the report), while the
+/// strings other tools read stay stable through `as_str()`.
+///
+/// The crate already models this pattern as an enum where a known defect and an open
+/// question must stay distinct (`baseline::Outcome`, `audit`'s verdict lists); this is
+/// the same shape at the benchmark's own boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    Pass,
+    Fail,
+    Unverifiable,
+    Degraded,
+}
+
+impl Verdict {
+    /// The string the report and the log carry. **Stable**: result records under
+    /// `bench/results/` are append-only history, so the wording may not drift.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Verdict::Pass => "PASS",
+            Verdict::Fail => "FAIL",
+            Verdict::Unverifiable => "UNVERIFIABLE",
+            Verdict::Degraded => "DEGRADED-PASS/FAIL-SEE-REPORT",
+        }
+    }
+}
+
+impl std::fmt::Display for Verdict {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// The direction tally, carried through both pair loops as one value.
@@ -213,11 +248,11 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
     // open question, exactly as `req gate` lets Fail outrank Unverifiable.
     let verdict =
         if !fmr_hits.is_empty() || !tally.dangerous.is_empty() || !tally.label_errors.is_empty() {
-            "FAIL"
+            Verdict::Fail
         } else if corpus.not_equivalent.is_empty() {
-            "UNVERIFIABLE"
+            Verdict::Unverifiable
         } else {
-            "PASS"
+            Verdict::Pass
         };
 
     Evaluation {
@@ -291,7 +326,10 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     let verdict = if degraded.is_empty() {
         ev.verdict
     } else {
-        "DEGRADED-PASS/FAIL-SEE-REPORT"
+        // A degraded run is its own outcome: the report carries the reason and the exit
+        // code must never be 0. The literal lives in `Verdict::as_str`, so the test and
+        // the report cannot drift apart.
+        Verdict::Degraded
     };
 
     let fmr_n = ev.fmr_hits.len();
@@ -356,7 +394,7 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
         },
         "lints": ev.lints,
         "degraded": degraded,
-        "verdict": verdict,
+        "verdict": verdict.as_str(),
     });
 
     for row in &ev.rows {
@@ -387,12 +425,13 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
 
 /// A gate verdict as a process exit code: **0** PASS, **1** FAIL, **3**
 /// UNVERIFIABLE (including a degraded or vacuous run). The mapping is its own
-/// function so the CLI-exit seam is testable without spawning the binary.
-pub fn exit_code(verdict: &str) -> i32 {
+/// function so the CLI-exit seam is testable without spawning the binary, and it takes
+/// the enum so a string typo cannot reach it.
+pub fn exit_code(verdict: Verdict) -> i32 {
     match verdict {
-        "PASS" => 0,
-        "FAIL" => 1,
-        _ => 3,
+        Verdict::Pass => 0,
+        Verdict::Fail => 1,
+        Verdict::Unverifiable | Verdict::Degraded => 3,
     }
 }
 

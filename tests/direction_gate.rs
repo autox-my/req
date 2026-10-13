@@ -11,7 +11,7 @@
 //! An unknown `direction:` label fails the gate rather than being ignored: a misspelled
 //! label would otherwise switch the whole check off while every number looked fine.
 
-use req::bench::evaluate;
+use req::bench::{Verdict, evaluate};
 use req::model::{Corpus, Pair, Registry};
 
 fn pair(id: &str, a: &str, b: &str, direction: Option<&str>) -> Pair {
@@ -50,7 +50,7 @@ fn a_correct_direction_is_counted_and_not_dangerous() {
     assert_eq!(ev.direction_correct, 1);
     assert!(ev.dangerous.is_empty());
     assert!(ev.direction_label_errors.is_empty());
-    assert_eq!(ev.verdict, "PASS");
+    assert_eq!(ev.verdict, Verdict::Pass);
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn a_loosening_reported_as_no_change_fails_the_gate() {
     );
     assert_eq!(ev.dangerous.len(), 1, "{:?}", ev.dangerous);
     assert!(ev.dangerous[0].contains("modality_weakening"));
-    assert_eq!(ev.verdict, "FAIL");
+    assert_eq!(ev.verdict, Verdict::Fail);
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn a_loosening_reported_backwards_fails_the_gate() {
         &Registry::empty(),
     );
     assert_eq!(ev.dangerous.len(), 1, "{:?}", ev.dangerous);
-    assert_eq!(ev.verdict, "FAIL");
+    assert_eq!(ev.verdict, Verdict::Fail);
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn a_harmless_misread_fails_nothing_and_lowers_accuracy() {
     assert_eq!(ev.direction_checked, 1);
     assert_eq!(ev.direction_correct, 0);
     assert_eq!(ev.direction_mismatches.len(), 1, "named, not just counted");
-    assert_eq!(ev.verdict, "PASS");
+    assert_eq!(ev.verdict, Verdict::Pass);
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn an_unknown_label_fails_rather_than_switching_the_check_off() {
     );
     assert_eq!(ev.direction_label_errors.len(), 1);
     assert_eq!(ev.direction_checked, 0);
-    assert_eq!(ev.verdict, "FAIL");
+    assert_eq!(ev.verdict, Verdict::Fail);
 }
 
 #[test]
@@ -135,7 +135,7 @@ fn an_unparseable_side_is_coverage_not_a_correct_answer() {
     assert_eq!(ev.direction_unclassifiable, vec!["D-006".to_string()]);
     assert_eq!(ev.direction_checked, 0);
     assert_eq!(ev.direction_correct, 0);
-    assert_eq!(ev.verdict, "PASS", "no merge and no dangerous read");
+    assert_eq!(ev.verdict, Verdict::Pass, "no merge and no dangerous read");
 }
 
 #[test]
@@ -151,5 +151,5 @@ fn pairs_without_a_direction_label_are_left_alone() {
     );
     assert_eq!(ev.direction_checked, 0);
     assert!(ev.direction_label_errors.is_empty());
-    assert_eq!(ev.verdict, "PASS");
+    assert_eq!(ev.verdict, Verdict::Pass);
 }
