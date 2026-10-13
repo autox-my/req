@@ -276,7 +276,9 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
 
 /// Run the gate over a corpus file — the seed parity corpus by default — and
 /// record the result under `bench/results/`.
-/// Exit codes: 0 PASS / 1 FAIL / 3 UNVERIFIABLE (a degraded run is 3).
+/// Exit codes: 0 PASS / 1 FAIL / 3 UNVERIFIABLE. A run that found a defect is **1**
+/// even when it was degraded (`reported_verdict`); **3** covers a degraded run with
+/// nothing found and a vacuous FMR denominator.
 pub fn run(corpus_path: Option<&str>) -> i32 {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let rel = corpus_path.unwrap_or(CORPUS_REL);
@@ -333,11 +335,11 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     let direction_unclassifiable = ev.direction_unclassifiable;
     let direction_mismatches = ev.direction_mismatches;
     let direction_label_errors = ev.direction_label_errors;
-    let direction_gate = if dangerous.is_empty() && direction_label_errors.is_empty() {
-        Verdict::Pass
-    } else {
-        Verdict::Fail
-    };
+    let direction_gate = direction_gate(
+        ev.direction_checked,
+        !dangerous.is_empty(),
+        !direction_label_errors.is_empty(),
+    );
     // The FMR gate is its own tri-state: 0/0 is not a pass, so the record says
     // UNVERIFIABLE there rather than folding the vacuous denominator back in. It is a
     // `Verdict` and not a literal so the vocabulary has one home, `Verdict::as_str` —
@@ -373,7 +375,14 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
         "direction": {
             "checked": ev.direction_checked,
             "correct": ev.direction_correct,
-            "accuracy": direction_accuracy,
+            // `null`, not `0.0`, when nothing was checked: a vacuous accuracy reads as
+            // a measured one, which is the same fold this change removes from the FMR
+            // gate. The corpora without `direction:` labels are exactly this case.
+            "accuracy": if ev.direction_checked == 0 {
+                None
+            } else {
+                Some(direction_accuracy)
+            },
             "soft_target": 0.95,
             "hard_gate": direction_gate.as_str(),
             "dangerous_confusions": dangerous,
@@ -419,6 +428,22 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     exit_code(verdict)
 }
 
+/// The direction gate, as its own tri-state. A dangerous confusion or an unparseable
+/// label is a definite defect (FAIL); **nothing measured is UNVERIFIABLE, never a
+/// vacuous PASS** — the corpora that carry no `direction:` labels reach this with
+/// `checked: 0`, and a `PASS` there would read as "the direction check came back
+/// clean" when no direction check happened. It does not move the process exit code,
+/// which answers the FMR question; the record says which question was answered.
+pub fn direction_gate(checked: usize, dangerous: bool, label_errors: bool) -> Verdict {
+    if dangerous || label_errors {
+        Verdict::Fail
+    } else if checked == 0 {
+        Verdict::Unverifiable
+    } else {
+        Verdict::Pass
+    }
+}
+
 /// The verdict a run reports: a definite defect outranks the degraded record, exactly
 /// as `evaluate` lets it outrank the vacuous denominator and `req gate` lets Fail
 /// outrank Unverifiable — "we found a problem" is stronger than "we could not tell",
@@ -433,9 +458,11 @@ pub fn reported_verdict(evaluated: Verdict, degraded: bool) -> Verdict {
 }
 
 /// A gate verdict as a process exit code: **0** PASS, **1** FAIL, **3**
-/// UNVERIFIABLE (including a degraded or vacuous run). The mapping is its own
-/// function so the CLI-exit seam is testable without spawning the binary, and it takes
-/// the enum so a string typo cannot reach it.
+/// UNVERIFIABLE. **3** covers a vacuous FMR denominator and a degraded run that found
+/// nothing; a degraded run that *did* find a defect is **1** (see
+/// `reported_verdict`). The mapping is its own function so the CLI-exit seam is
+/// testable without spawning the binary, and it takes the enum so a string typo cannot
+/// reach it.
 pub fn exit_code(verdict: Verdict) -> i32 {
     match verdict {
         Verdict::Pass => 0,

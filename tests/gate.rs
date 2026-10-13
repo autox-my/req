@@ -187,7 +187,34 @@ fn exit_code_maps_the_three_outcomes_and_the_degraded_record() {
     assert_eq!(req::bench::exit_code(Verdict::Fail), 1);
     assert_eq!(req::bench::exit_code(Verdict::Unverifiable), 3);
     assert_eq!(req::bench::exit_code(Verdict::Degraded), 3);
+    // Every wording the report emits goes through `as_str`, and those records are
+    // append-only history: pin all four, not just the degraded one, so a silent
+    // rewording of PASS/FAIL/UNVERIFIABLE fails here rather than in the archive.
+    assert_eq!(Verdict::Pass.as_str(), "PASS");
+    assert_eq!(Verdict::Fail.as_str(), "FAIL");
+    assert_eq!(Verdict::Unverifiable.as_str(), "UNVERIFIABLE");
     assert_eq!(Verdict::Degraded.as_str(), "DEGRADED-PASS/FAIL-SEE-REPORT");
+}
+
+/// The direction gate is a tri-state like the FMR gate, and for the same reason: a
+/// corpus that carries no `direction:` labels (or whose sides cannot be parsed) has
+/// `checked: 0`, and a `PASS` there would read as "the direction check came back
+/// clean" when no direction check happened.
+#[test]
+fn the_direction_gate_is_not_a_vacuous_pass() {
+    use req::bench::direction_gate;
+    assert_eq!(
+        direction_gate(0, false, false),
+        Verdict::Unverifiable,
+        "nothing measured is not a pass"
+    );
+    assert_eq!(direction_gate(1050, false, false), Verdict::Pass);
+    assert_eq!(direction_gate(2, true, false), Verdict::Fail);
+    assert_eq!(
+        direction_gate(0, false, true),
+        Verdict::Fail,
+        "a label error is a corpus defect even when nothing else was checked"
+    );
 }
 
 /// Precedence at the run seam: a definite defect outranks the degraded record, the same

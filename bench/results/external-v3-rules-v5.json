@@ -3,11 +3,11 @@
   "corpus_sha256": "2417eccb19b49540e1f3e9e5dc321f12363d5e62da152179b0fc1eb147b026ab",
   "degraded": [],
   "direction": {
-    "accuracy": 0.0,
+    "accuracy": null,
     "checked": 0,
     "correct": 0,
     "dangerous_confusions": [],
-    "hard_gate": "PASS",
+    "hard_gate": "UNVERIFIABLE",
     "mismatches": [],
     "note": "a loosening reported as no change, or as the opposite direction, is the dangerous confusion — the direction analogue of a false merge. Accuracy is reported rather than gated: a harmless misread costs nothing, while a dangerous one costs a ratified loosening.",
     "soft_target": 0.95,
