@@ -248,16 +248,18 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
     // open question, exactly as `req gate` lets Fail outrank Unverifiable.
     //
     // The same fold hides in a *non-empty* denominator made entirely of pairs whose
-    // sides cannot be parsed: `fmr_measurable` is the single test for both, so the
-    // rate is never reported as a measured 0.0 when nothing was comparable.
-    let verdict =
-        if !fmr_hits.is_empty() || !tally.dangerous.is_empty() || !tally.label_errors.is_empty() {
-            Verdict::Fail
-        } else if !fmr_measurable(corpus.not_equivalent.len(), unverifiable_pairs.len()) {
-            Verdict::Unverifiable
-        } else {
-            Verdict::Pass
-        };
+    // sides cannot be parsed: `fmr_gate` is the single expression of the rule, shared
+    // with the record, so a rate is never reported as a measured 0.0 when nothing was
+    // comparable.
+    let verdict = if !tally.dangerous.is_empty() || !tally.label_errors.is_empty() {
+        Verdict::Fail
+    } else {
+        fmr_gate(
+            fmr_hits.len(),
+            corpus.not_equivalent.len(),
+            unverifiable_pairs.len(),
+        )
+    };
 
     Evaluation {
         verdict,
@@ -343,18 +345,19 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     let direction_defect = !dangerous.is_empty() || !direction_label_errors.is_empty();
     let direction_gate = direction_gate(ev.direction_checked, direction_defect);
     // The FMR gate is its own tri-state: 0/0 is not a pass, so the record says
-    // UNVERIFIABLE there rather than folding the vacuous denominator back in. It is a
-    // `Verdict` and not a literal so the vocabulary has one home, `Verdict::as_str` —
-    // these records are append-only history, and two spellings could drift apart.
-    let hard_gate = if !fmr_measurable(ev.not_equivalent_total, ev.unverifiable_pairs.len()) {
-        Verdict::Unverifiable
-    } else if fmr_rate == 0.0 {
-        Verdict::Pass
-    } else {
-        Verdict::Fail
-    };
+    // UNVERIFIABLE there rather than folding the vacuous denominator back in. It comes
+    // from the same `fmr_gate` the verdict does — the integer count of collapses, never
+    // a second spelling of "nothing collapsed" as `rate == 0.0`, which is free to drift
+    // — and it is a `Verdict`, not a literal, so the vocabulary has one home in
+    // `Verdict::as_str`. These records are append-only history.
+    let hard_gate = fmr_gate(fmr_n, ev.not_equivalent_total, ev.unverifiable_pairs.len());
     let report = json!({
-        "schema": "req.bench.result/0",
+        // The discriminator moved to `/1` with this change: the value space under it
+        // grew (`hard_gate` gained UNVERIFIABLE, `direction.accuracy` became nullable,
+        // and a degraded run that found a defect now writes `verdict: "FAIL"` where it
+        // wrote the degraded wording). Records are named by rules version alone, so the
+        // in-record id is what distinguishes the two generations for a consumer.
+        "schema": "req.bench.result/1",
         "rules_v": RULES_V,
         "corpus": rel,
         "corpus_sha256": corpus_sha,
@@ -438,6 +441,25 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
 /// `hard_gate` cannot disagree about whether anything was measured.
 pub fn fmr_measurable(not_equivalent_total: usize, structurally_unverifiable: usize) -> bool {
     not_equivalent_total > structurally_unverifiable
+}
+
+/// The FMR gate as one value: a collapse is FAIL; a denominator that measured nothing
+/// is UNVERIFIABLE; no collapse over a measured denominator is PASS. `evaluate`'s
+/// verdict and the record's `hard_gate` both call it, so "nothing collapsed" is spelled
+/// exactly once — the pairs counted, not a float `rate == 0.0` beside it, which is the
+/// same fact written twice and free to drift.
+pub fn fmr_gate(
+    collapses: usize,
+    not_equivalent_total: usize,
+    structurally_unverifiable: usize,
+) -> Verdict {
+    if collapses > 0 {
+        Verdict::Fail
+    } else if fmr_measurable(not_equivalent_total, structurally_unverifiable) {
+        Verdict::Pass
+    } else {
+        Verdict::Unverifiable
+    }
 }
 
 /// The direction gate, as its own tri-state. A dangerous confusion or an unparseable

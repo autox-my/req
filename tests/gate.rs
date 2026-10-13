@@ -228,6 +228,13 @@ fn a_denominator_of_nothing_but_unverifiable_pairs_is_not_a_pass() {
     assert_eq!(req::bench::exit_code(ev.verdict), 3);
     assert!(!req::bench::fmr_measurable(1, 1));
     assert!(req::bench::fmr_measurable(1, 0));
+    // And the gate they feed, spelled once for both the verdict and the record: a
+    // collapse is FAIL, an unmeasured denominator is UNVERIFIABLE, no collapse over a
+    // measured denominator is PASS.
+    assert_eq!(req::bench::fmr_gate(1, 5, 0), Verdict::Fail);
+    assert_eq!(req::bench::fmr_gate(0, 0, 0), Verdict::Unverifiable);
+    assert_eq!(req::bench::fmr_gate(0, 3, 3), Verdict::Unverifiable);
+    assert_eq!(req::bench::fmr_gate(0, 3, 1), Verdict::Pass);
 }
 
 /// The direction gate is a tri-state like the FMR gate, and for the same reason: a

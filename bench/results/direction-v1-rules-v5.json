@@ -2730,7 +2730,7 @@
   ],
   "pairs_total": 1159,
   "rules_v": 5,
-  "schema": "req.bench.result/0",
+  "schema": "req.bench.result/1",
   "tier2": {
     "candidates": 70,
     "collapsed_at_tier1": 70,
