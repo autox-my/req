@@ -311,6 +311,9 @@ matter:
 
 ## Where things live / how data flows
 
+- `README.md` — the human-facing front page: what req is, the bet, the commands,
+  and the honest status of both tiers. Kept consistent with this file; where the two
+  disagree, one of them is wrong.
 - `CONTEXT.md` — glossary only; no implementation detail.
 - `docs/design.md` — design of record: the six tensions, the layers, the build
   order and its gates.
