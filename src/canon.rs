@@ -1275,13 +1275,26 @@ pub struct LoadedClaim {
     pub claim: crate::model::ClaimFile,
 }
 
-/// The `REQ-<digits>` stem, with no extension: the shape a claim filename shares with
-/// every name that has been renamed *out* of the contract.
+/// The canonical `REQ-<digits>` stem: uppercase exactly, because the canonical
+/// filename is `REQ-<digits>.yml` (claim-format.md). This is the *naming* rule.
 fn is_claim_stem(stem: &str) -> bool {
     let Some(digits) = stem.strip_prefix("REQ-") else {
         return false;
     };
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// The *candidate* stem: the same shape, case-insensitively. A claim renamed with the
+/// case knocked out of its stem (`req-0008.txt`, `Req-0008`) must still be seen and
+/// reported — that is the identity/deletion failure this loader exists for — so
+/// candidacy is deliberately looser than the naming rule, which stays exact.
+fn looks_like_claim_stem(stem: &str) -> bool {
+    let Some(prefix) = stem.get(..4) else {
+        return false;
+    };
+    prefix.eq_ignore_ascii_case("req-")
+        && stem.len() > 4
+        && stem[4..].bytes().all(|b| b.is_ascii_digit())
 }
 
 /// Is this entry even a candidate — something that *might* be a claim file? Anything
@@ -1290,10 +1303,11 @@ fn is_claim_stem(stem: &str) -> bool {
 /// drop.
 ///
 /// The gate is deliberately wider than `*.yml`/`*.yaml`: `REQ-0008.txt`, `REQ-0008`,
-/// `REQ-0008.yml.disabled` and the hidden `.REQ-0008` are claim-shaped names, and
-/// renaming a claim out of the contract must be loud rather than a way to disable a
-/// requirement in silence. A leading dot is stripped first, because `Path::extension`
-/// sees none on `.REQ-0008` and a leading-dot segment would otherwise be empty.
+/// `REQ-0008.yml.disabled`, the hidden `.REQ-0008` and the lowercase `req-0008.txt`
+/// are claim-shaped names, and renaming a claim out of the contract must be loud
+/// rather than a way to disable a requirement in silence. A leading dot is stripped
+/// first, because `Path::extension` sees none on `.REQ-0008` and the leading segment
+/// would otherwise be empty.
 fn looks_like_claim_file(name: &str) -> bool {
     let path = std::path::Path::new(name);
     let yaml_extension = path
@@ -1301,8 +1315,8 @@ fn looks_like_claim_file(name: &str) -> bool {
         .and_then(|e| e.to_str())
         .is_some_and(|e| e.eq_ignore_ascii_case("yml") || e.eq_ignore_ascii_case("yaml"));
     let visible = name.trim_start_matches('.');
-    let leading_segment = visible.split('.').next().unwrap_or(visible);
-    yaml_extension || is_claim_stem(leading_segment)
+    let leading_segment = visible.split_once('.').map_or(visible, |(head, _)| head);
+    yaml_extension || looks_like_claim_stem(leading_segment)
 }
 
 /// The one corpus loader (F2/F3). Every candidate file under `claims/` either loads

@@ -28,6 +28,8 @@ address: null
 rationale:
   source: docs/adr/0007-tier1-collapses-only-on-meaning-preserving-rules.md
   date: 2026-10-07
+  rejected_alternatives: []
+  assumptions: []
 relations: []
 ";
 

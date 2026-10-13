@@ -121,7 +121,7 @@ pub fn run_fill() -> i32 {
         }
     };
     let claims = match load_claims(&root) {
-        Ok(f) => f,
+        Ok(c) => c,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
             return 3;
@@ -238,7 +238,7 @@ pub fn run_verify() -> i32 {
         }
     };
     let claims = match load_claims(&root) {
-        Ok(f) => f,
+        Ok(c) => c,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
             return 3;

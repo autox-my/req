@@ -215,6 +215,31 @@ fn duplicate_claim_ids_error_and_the_content_is_compared() {
 // ---------------------------------------------------------------------------
 
 #[test]
+fn a_dropped_rationale_key_is_a_parse_error_and_exits_3() {
+    // The same shape as the dropped `relations:` key. The rationale sits outside the
+    // canonical form, so losing a list leaves the address untouched and nothing else
+    // in the tooling ever reads these fields — the loss would be silent. AGENTS.md: a
+    // rationale is an object with source, date, rejected alternatives, assumptions.
+    // The anchors carry their indentation: dropping a bare `assumptions: []` would
+    // leave the removed line's indent on the next key, which YAML then reads as a
+    // continuation of `date:` rather than as a missing rationale key.
+    for (line, field) in [
+        ("  rejected_alternatives: []\n", "rejected_alternatives"),
+        ("  assumptions: []\n", "assumptions"),
+    ] {
+        let f = Fixture::new("f2-rationale")
+            .claim("REQ-0001.yml", &claim_text("REQ-0001").replace(line, ""));
+
+        let err = load_claims(f.path()).expect_err("a missing rationale key must not load");
+        assert!(
+            err.contains(field),
+            "the error must name the missing field: {err}"
+        );
+        assert_eq!(run_claim_diagnostics_at(f.path()), 3, "{field}");
+    }
+}
+
+#[test]
 fn non_claim_entries_in_claims_are_left_alone() {
     // The tolerant side of the gate. The committed corpus depends on it —
     // `claims/README.md` is not a claim — so a gate tightened to error on every
@@ -252,13 +277,18 @@ fn a_claim_renamed_out_of_the_contract_errors_rather_than_vanishing() {
     // Claim-shaped names that the extension-only candidate gate used to skip. Each
     // one is a requirement deleted from the corpus in silence — the failure the
     // loader exists for — so renaming a claim must be loud, not a way to disable it.
-    // The leading-dot shapes are the same hole seen from the hidden-file side.
+    // The leading-dot and case-variant shapes are the same hole seen from the hidden
+    // file and the lowercase-rename side: a claim renamed to `req-0008.txt` must be
+    // reported, even though `REQ-<digits>.yml` is uppercase by contract.
     for file in [
         "REQ-0008.txt",
         "REQ-0008",
         "REQ-0008.yml.disabled",
         ".REQ-0008",
         ".REQ-0008.txt",
+        "req-0008",
+        "req-0008.txt",
+        "Req-0008",
     ] {
         let f = Fixture::new("f3-renamed").claim(file, &claim_text("REQ-0008"));
         let err = load_claims(f.path()).expect_err("a claim-shaped rename must not vanish");

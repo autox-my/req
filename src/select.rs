@@ -154,7 +154,7 @@ pub fn run(args: &[String]) -> i32 {
 
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let claims = match crate::canon::load_claims(&root) {
-        Ok(f) => f,
+        Ok(c) => c,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
             return 3;

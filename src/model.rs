@@ -7,17 +7,17 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-/// The nested structs are strict too: `deny_unknown_fields` on `ClaimFile` alone
-/// leaves the same silent-loss class one level down, where `rationale`'s defaulted
-/// lists make a misspelled `rejected_alternatives:` load as an empty list.
+/// The nested structs are strict too, and every key is required. `deny_unknown_fields`
+/// on `ClaimFile` alone leaves the same silent-loss class one level down; so does a
+/// defaulted list, because the rationale sits outside the canonical form: a dropped
+/// or misspelled `rejected_alternatives:` would leave the address untouched and lose
+/// the record, and nothing in the tooling reads the field to notice.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rationale {
     pub source: String,
     pub date: String,
-    #[serde(default)]
     pub rejected_alternatives: Vec<String>,
-    #[serde(default)]
     pub assumptions: Vec<String>,
 }
 
