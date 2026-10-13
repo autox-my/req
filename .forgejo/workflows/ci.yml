@@ -1,0 +1,77 @@
+# req's CI: the same gate as scripts/check.sh, invoked rather than reimplemented.
+#
+# One implementation, two invocations. There is no check logic in this file: a check added to
+# scripts/check.sh runs here with no change, and the two cannot drift.
+#
+# Three things shape it, all of them load-bearing.
+#
+#   1. scripts/check.sh resolves the toolchain from $HOME/.rustup/toolchains/<channel>-*/bin and
+#      exits 2 when it finds none. A container image that ships cargo without rustup, or that
+#      puts RUSTUP_HOME elsewhere (the official rust images use /usr/local/rustup), fails the
+#      gate outright. rustup must own $HOME/.rustup for the runner's user.
+#
+#   2. It prints SKIP and still exits 0 when a check could not run: rustfmt, clippy, python3 and
+#      the review CLI can each skip. A green exit is therefore not a verdict, which is why the
+#      last step fails the job when any SKIP line appears. "A skipped check is never a pass" is
+#      enforced here rather than trusted.
+#
+#   3. runs-on must name a label some runner actually carries. A workflow with no matching
+#      runner queues forever, which reads as "CI is slow" rather than "CI is absent" — adjust
+#      this one line to whatever the runner registered with.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: rustup, the pinned channel, and the components the gate needs
+        run: |
+          set -eu
+          export RUSTUP_HOME="$HOME/.rustup"
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --profile minimal --default-toolchain none
+            . "$HOME/.cargo/env"
+          fi
+          rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
+          rustup run 1.99.0 cargo --version
+          rustup run 1.99.0 rustfmt --version
+          rustup run 1.99.0 cargo clippy --version
+
+      - name: the review CLI, installed from the committed lockfile
+        run: |
+          set -eu
+          npm --prefix tools/ocr ci --no-fund --no-audit --cache "$GITHUB_WORKSPACE/.npm-cache"
+          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          # The binary comes from a platform optionalDependency and the package's postinstall is
+          # skipped by policy, so a successful npm ci is not proof the CLI exists. Verify the
+          # effect: npm ci has already fixed the version to the locked one.
+          if ! command -v ocr >/dev/null 2>&1; then
+            echo "::error::ocr did not install, so the rule-glob check would skip"
+            exit 1
+          fi
+          ocr --version
+          python3 --version
+
+      - name: the gate — the exit code and the log both count
+        run: |
+          set -o pipefail
+          bash scripts/check.sh 2>&1 | tee /tmp/gate.log
+          rc=${PIPESTATUS[0]}
+          echo "check.sh exit: $rc"
+          if grep -q '^SKIP' /tmp/gate.log; then
+            echo "::error::a check was skipped; a skipped check is never a pass"
+            grep '^SKIP' /tmp/gate.log
+            exit 1
+          fi
+          exit $rc
