@@ -18,6 +18,7 @@ claim_id: REQ-X
 statement: The system shall log each command.
 modality: SHALL
 subject: SYSTEM
+applicability: []
 unstructured: false
 canonical:
   rules_v: null
@@ -27,10 +28,20 @@ address: null
 rationale:
   source: docs/adr/0007-tier1-collapses-only-on-meaning-preserving-rules.md
   date: 2026-10-07
+relations: []
 ";
 
 fn claim(text: &str) -> ClaimFile {
     yaml_serde::from_str(text).expect("claim parses")
+}
+
+/// The authored selector slot, which the loader now requires to be present: the one
+/// line a variant claim edits.
+fn with_applicability(predicate: &str) -> String {
+    CLAIM.replace(
+        "applicability: []",
+        &format!("applicability:\n  - {predicate}"),
+    )
 }
 
 /// ADR 0003 says variants are selectors and applicability is part of identity. Before
@@ -39,9 +50,7 @@ fn claim(text: &str) -> ClaimFile {
 #[test]
 fn authored_applicability_is_part_of_identity() {
     let base = claim(CLAIM);
-    let variant = claim(&format!(
-        "{CLAIM}applicability:\n  - deployment_mode == air_gapped\n"
-    ));
+    let variant = claim(&with_applicability("deployment_mode == air_gapped"));
     let a = evaluate_claim(&base, &Registry::empty());
     let b = evaluate_claim(&variant, &Registry::empty());
     assert_ne!(canonical_json(&a.form), canonical_json(&b.form));

@@ -1263,20 +1263,142 @@ pub fn evaluate_claim(claim: &crate::model::ClaimFile, registry: &Registry) -> C
     }
 }
 
-/// Claim files under `claims/`, sorted: one claim per file (claim-format).
-pub fn claim_files(root: &std::path::Path) -> Result<Vec<std::path::PathBuf>, String> {
-    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(root.join("claims"))
-        .map_err(|e| format!("claims dir: {e}"))?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| {
-            p.file_name()
-                .and_then(|f| f.to_str())
-                .is_some_and(|f| f.starts_with("REQ-") && f.ends_with(".yml"))
-        })
-        .collect();
-    files.sort();
-    Ok(files)
+/// One claim file, loaded and validated: the path it came from, its bytes (the
+/// writers preserve comments, so `text` is what `--fill` edits), and its parse.
+#[derive(Debug)]
+pub struct LoadedClaim {
+    pub path: std::path::PathBuf,
+    pub text: String,
+    pub claim: crate::model::ClaimFile,
+}
+
+/// The canonical claim filename: `REQ-<digits>.yml` (claim-format.md: filename =
+/// claim_id). Deliberately strict about the extension's case and spelling — a
+/// `.yaml` twin of `REQ-0008.yml` is a second claim file, not a second chance.
+fn is_claim_filename(name: &str) -> bool {
+    let Some(stem) = name.strip_suffix(".yml") else {
+        return false;
+    };
+    let Some(digits) = stem.strip_prefix("REQ-") else {
+        return false;
+    };
+    !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Is this entry even a candidate? Anything else in `claims/` (the README, editor
+/// droppings) is not a claim and is left alone; a candidate that turns out not to
+/// match the contract is an error, never a silent drop.
+fn looks_like_claim_file(name: &str) -> bool {
+    std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("yml") || e.eq_ignore_ascii_case("yaml"))
+}
+
+/// The one corpus loader (F2/F3). Every candidate file under `claims/` either loads
+/// as a claim or fails the corpus: identity is a content address over the set of
+/// files, so a file that vanishes silently deletes a requirement.
+///
+/// Errors, in diagnosis order:
+/// - an unreadable entry, or YAML that does not parse under the strict `ClaimFile`
+///   (a misspelled key names itself; a missing `applicability`/`relations` does too);
+/// - two files declaring one `claim_id` — their **content** is compared, so an
+///   identical copy and a divergent rewrite are named differently;
+/// - a `*.yml`/`*.yaml` file that is not `REQ-<digits>.yml` (`req-0008.yml`,
+///   `REQ-0008.yaml`, `notes.yml`);
+/// - a filename whose stem is not the `claim_id` it declares (claim-format.md).
+///
+/// The duplicate pass runs over every parsed candidate *before* the naming pass, so
+/// the one way two files can share an id — the `.yaml` twin of a `.yml` — is
+/// reported as the duplicate it is rather than as a filename complaint.
+pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
+    let dir = root.join("claims");
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    for entry in
+        std::fs::read_dir(&dir).map_err(|e| format!("claims dir {}: {e}", dir.display()))?
+    {
+        let entry = entry.map_err(|e| format!("claims dir {}: {e}", dir.display()))?;
+        // A `read_dir` error is a corpus that cannot be read, not a file that is
+        // absent; the old `filter_map(|e| e.ok())` discarded exactly that.
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            return Err(format!(
+                "claims dir {}: entry name is not UTF-8",
+                dir.display()
+            ));
+        };
+        if !looks_like_claim_file(name) {
+            continue;
+        }
+        let path = entry.path();
+        if !path.is_file() {
+            return Err(format!(
+                "{}: a claim file must be a regular file (rename or remove it)",
+                path.display()
+            ));
+        }
+        paths.push(path);
+    }
+    paths.sort();
+
+    let mut loaded: Vec<LoadedClaim> = Vec::new();
+    for path in paths {
+        let text =
+            std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let claim: crate::model::ClaimFile =
+            yaml_serde::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
+        loaded.push(LoadedClaim { path, text, claim });
+    }
+
+    // Duplicate ids, with the files' content compared: an identical copy is the
+    // fully silent case, a divergent rewrite is one that would collapse two
+    // meanings into one address.
+    let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
+    for (i, loaded_claim) in loaded.iter().enumerate() {
+        if let Some(&first) = seen.get(loaded_claim.claim.claim_id.as_str()) {
+            let compared = if loaded[first].text == loaded_claim.text {
+                "identical content"
+            } else {
+                "content differs"
+            };
+            return Err(format!(
+                "duplicate claim_id {}: {} and {} ({compared})",
+                loaded_claim.claim.claim_id,
+                loaded[first].path.display(),
+                loaded_claim.path.display()
+            ));
+        }
+        seen.insert(loaded_claim.claim.claim_id.as_str(), i);
+    }
+
+    for loaded_claim in loaded.iter() {
+        let path = &loaded_claim.path;
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        if !is_claim_filename(&name) {
+            return Err(format!(
+                "{}: not a claim filename — a claim file is `REQ-<digits>.yml` \
+                 (filename = claim_id)",
+                path.display()
+            ));
+        }
+        let stem = path
+            .file_stem()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if stem != loaded_claim.claim.claim_id {
+            return Err(format!(
+                "{}: claim_id {} does not match the filename stem {stem} \
+                 (claim-format.md: filename = claim_id)",
+                path.display(),
+                loaded_claim.claim.claim_id
+            ));
+        }
+    }
+    Ok(loaded)
 }
 
 /// The subject registry. A caller that cannot load it reports UNVERIFIABLE.
@@ -1286,18 +1408,24 @@ pub fn load_registry(root: &std::path::Path) -> Result<Registry, String> {
 }
 
 pub fn run_claim_diagnostics() -> i32 {
-    use crate::model::ClaimFile;
-
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let registry = match load_registry(&root) {
+    run_claim_diagnostics_at(&root)
+}
+
+/// The diagnostics command over an explicit root. The repository's own corpus is
+/// what `run_claim_diagnostics` loads; the parameter exists so the strict loader can
+/// be exercised against a fixture corpus without writing into `claims/` (which root
+/// a command *uses* is F6's separate, undecided question).
+pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
+    let registry = match load_registry(root) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
             return 3;
         }
     };
-    let files = match claim_files(&root) {
-        Ok(f) => f,
+    let claims = match load_claims(root) {
+        Ok(c) => c,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
             return 3;
@@ -1306,22 +1434,9 @@ pub fn run_claim_diagnostics() -> i32 {
 
     let mut checked = 0usize;
     let mut flags_total = 0usize;
-    for path in files.iter() {
-        let text = match std::fs::read_to_string(path) {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("[UNVERIFIABLE] read {}: {e}", path.display());
-                return 3;
-            }
-        };
-        let claim: ClaimFile = match yaml_serde::from_str(&text) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[UNVERIFIABLE] parse {}: {e}", path.display());
-                return 3;
-            }
-        };
-        let verdict = evaluate_claim(&claim, &registry);
+    for loaded in claims.iter() {
+        let claim = &loaded.claim;
+        let verdict = evaluate_claim(claim, &registry);
         checked += 1;
         flags_total += verdict.flags();
         println!(

@@ -34,13 +34,13 @@ state: it is always derived from `decisions.jsonl`, never copied into claim file
 | `subject` | registry id | must resolve in `aliases/subjects.yml` |
 | `attribute` / `operator` / `value` / `unit` | the bounded obligation | operator per T1.5 {LT, LE, EQ, GE, GT, NE}; `unit: none` for non-SI quantities |
 | `conditions[]` | guard clauses **parsed from the statement** (when/if/unless/during) | part of identity; sorted at T1.8. `req canon` compares it with the parse, so a scope predicate written here but absent from the statement is a *flag*, not a nuance — a variant belongs in `applicability` |
-| `applicability[]` | variant predicates (`applies_when`) — the **selector slot** | part of identity (ADR 0003); since rules v5 an *input* to the canonical form, because the statement carries no formal selector syntax: the sorted authored list is hashed |
+| `applicability[]` | variant predicates (`applies_when`) — the **selector slot** | **required** (an omitted key is a parse error, never `[]`); part of identity (ADR 0003); since rules v5 an *input* to the canonical form, because the statement carries no formal selector syntax: the sorted authored list is hashed |
 | `exception`, `temporal`, `quantifier` | reserved slots: no derivation, no field | `null` when unused; authoring one is **refused** by `req canon --fill` rather than silently dropped from identity |
 | `unstructured` | true → the structured slots are all null | the claim gets its raw-form canonical bytes + address per hashing spec §4, and opts out of structural merge-direction analysis |
 | `canonical` | `{rules_v, subject_registry, form}` | written **only** by `req canon --fill`; `form` is stored as a YAML literal block so the hashed bytes are the stored bytes |
 | `address` | `sha256("req.claim.v1\0" \|\| canonical_form_bytes)` | written by `req canon --fill`; `req canon --verify` enforces `sha256(tag \|\| stored form) == address` (REQ-0017) |
 | `rationale` | object: `source`, `date`, `rejected_alternatives[]`, `assumptions[]` | the losing side is preserved — never a string field |
-| `relations[]` | `{type, to}` outgoing only | incoming relations are always *derived* by traversal, never stored (REQ-0020); `relations: []` = a root claim |
+| `relations[]` | `{type, to}` outgoing only | **required** (an omitted key is a parse error: relations sit outside the canonical form, so a dropped key leaves the address untouched while the edges vanish); incoming relations are always *derived* by traversal, never stored (REQ-0020); `relations: []` = a root claim |
 
 Reference types (`to`, `source`) use `claim_id`s, addresses, or repo paths —
 whatever stays stable under rewording.
@@ -75,6 +75,33 @@ claim file, before merge direction analysis is trusted.
   `ambiguous_modality`), never a guess (REQ-0019).
 - Alias sets are disjoint per subject; `req` is deliberately excluded from
   `REQ_TOOL`'s aliases because it names the CLI binary in other contexts.
+
+## Corpus integrity (the loader's contract)
+
+One claim per file means the *file set* is the corpus: a file that drops out silently
+deletes a requirement, and a file that joins silently adds one. So the loader is
+strict, and every command that reads the corpus returns UNVERIFIABLE (exit 3) rather
+than proceeding over a corpus it could not read:
+
+- **Filename = `claim_id`, spelled exactly.** Every `*.yml`/`*.yaml` in `claims/` is a
+  claim file. One that is not named `REQ-<digits>.yml` (`req-0008.yml`, `REQ-0008.yaml`,
+  `notes.yml`) is a load error — the old behaviour, filtering on prefix and suffix and
+  discarding the rest, made a misnamed claim vanish with every exit code still zero.
+  A file whose stem is not the `claim_id` it declares is a load error too.
+- **Unique ids.** Two files declaring one `claim_id` is a load error, and their
+  **content is compared**: an identical duplicate (the fully silent case — it never
+  shows as drift) and a divergent one are named differently. Under the filename rule
+  the only way two files share an id is the `.yaml` twin of a `.yml`, which is exactly
+  the case that used to collapse.
+- **Strict fields.** An unrecognized key is a parse error (`applicabilty:` does not
+  parse as an empty default), and `applicability`/`relations` are *required*: a
+  dropped `relations:` leaves the address untouched while the edges vanish from `trace`
+  and `impact`, and a misspelled `applicability:` makes a variant-scoped claim
+  unconditional — identity *is* the address, so that is two requirements collapsed into
+  one, the failure this project treats as catastrophic.
+
+Directory entries that are not `*.yml`/`*.yaml` (`README.md`, editor droppings) are not
+claims and are left alone; that is a naming rule, not a silence.
 
 ## State of the seed corpus
 

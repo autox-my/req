@@ -34,7 +34,14 @@ pub struct CanonicalCache {
     pub form: Option<String>,
 }
 
+/// A claim file, strictly: an unrecognized key is a parse error (F2), and
+/// `applicability` / `relations` are required rather than defaulted to empty — a
+/// dropped `relations:` key leaves the address untouched while the edges vanish from
+/// `trace` and `impact`, and a misspelled `applicability:` silently makes a
+/// variant-scoped claim unconditional (identity *is* the address, so that is a
+/// conflation of two requirements, not a wrong variant membership).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ClaimFile {
     pub schema: String,
     pub claim_id: String,
@@ -48,7 +55,6 @@ pub struct ClaimFile {
     pub unit: Option<String>,
     #[serde(default)]
     pub conditions: Vec<String>,
-    #[serde(default)]
     pub applicability: Vec<String>,
     pub exception: Option<String>,
     pub temporal: Option<String>,
@@ -57,7 +63,6 @@ pub struct ClaimFile {
     pub canonical: CanonicalCache,
     pub address: Option<String>,
     pub rationale: Rationale,
-    #[serde(default)]
     pub relations: Vec<Relation>,
 }
 

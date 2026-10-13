@@ -153,7 +153,7 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let files = match crate::canon::claim_files(&root) {
+    let files = match crate::canon::load_claims(&root) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
@@ -162,21 +162,8 @@ pub fn run(args: &[String]) -> i32 {
     };
 
     let (mut yes, mut no, mut unknown) = (0usize, 0usize, 0usize);
-    for path in files.iter() {
-        let text = match std::fs::read_to_string(path) {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("[UNVERIFIABLE] read {}: {e}", path.display());
-                return 3;
-            }
-        };
-        let claim: crate::model::ClaimFile = match yaml_serde::from_str(&text) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[UNVERIFIABLE] parse {}: {e}", path.display());
-                return 3;
-            }
-        };
+    for loaded in files.iter() {
+        let claim = &loaded.claim;
         let predicates: Vec<Predicate> = claim
             .applicability
             .iter()
