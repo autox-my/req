@@ -36,6 +36,20 @@ EXIT_PASS = 0
 EXIT_FAIL = 1
 
 COMPLETE = frozenset({"complete", "success"})
+
+
+def is_blocking(comment: object) -> bool:
+    """The single blocking predicate, shared by the verdict and the emitted counts.
+
+    It exists because the first version wrote it twice and the two copies diverged — a
+    trailing space counted one way and not the other, and a comment that was not an object
+    was dropped by one and counted by the other. The review gate that reviewed this file
+    found that, which is the defect class this repository keeps recording.
+    """
+    if not isinstance(comment, dict):
+        return True  # unreadable: fail closed
+    severity = str(comment.get("severity", "")).strip().lower()
+    return severity in BLOCKING or severity not in KNOWN
 BLOCKING = frozenset({"critical", "high"})
 KNOWN = ("critical", "high", "medium", "low")
 
@@ -55,13 +69,24 @@ def verdict(document: object) -> tuple[int, list[str]]:
         return EXIT_FAIL, ["FAIL  neither 'comments' nor 'issues' — unrecognised schema"]
 
     status = document.get("status", "missing")
-    comments = document.get("comments") or []
+    comments = document.get("comments")
     if not isinstance(comments, list):
-        return EXIT_FAIL, ["FAIL  'comments' is present but not a list"]
+        # Checked before any coercion. `or []` here would turn a null comments field into a
+        # clean pass on a *completed* run — the exact shape a broken run produces, and the
+        # case this gate exists to catch. The review gate reviewing this file found that, so
+        # the case is pinned in --self-check below.
+        return EXIT_FAIL, [
+            "FAIL  'comments' is present but is not a list (got %s)" % type(comments).__name__
+        ]
 
     if status == "skipped":
-        summary = document.get("summary") or {}
-        reviewed = summary.get("files_reviewed", 0) if isinstance(summary, dict) else 0
+        summary = document.get("summary")
+        if not isinstance(summary, dict) or "files_reviewed" not in summary:
+            return EXIT_FAIL, [
+                "FAIL  status is 'skipped' but summary/files_reviewed is missing — "
+                "a skip must show its fingerprint (zero files reviewed and no comments)",
+            ]
+        reviewed = summary.get("files_reviewed")
         if reviewed in (0, "0") and not comments:
             return EXIT_PASS, ["PASS  skipped: nothing reviewable in this diff"]
         return EXIT_FAIL, [
@@ -84,9 +109,9 @@ def verdict(document: object) -> tuple[int, list[str]]:
             continue
         severity = str(comment.get("severity", "")).strip().lower()
         hist[severity or "missing"] = hist.get(severity or "missing", 0) + 1
-        if severity in BLOCKING:
+        if is_blocking(comment):
             blocking += 1
-        elif severity not in KNOWN:
+        if severity not in KNOWN and severity:
             # Fail closed on a severity we do not recognise: a schema drift must be loud,
             # not a silent pass. Counted as blocking and named.
             unknown.append(f"unrecognised severity {comment.get('severity')!r} at "
@@ -142,6 +167,17 @@ def self_check() -> int:
         ("an unrecognised severity fails closed", {"status": "complete",
          "comments": [{"severity": "catastrophic"}]}, EXIT_FAIL),
         ("a failed run is not a clean run", {"status": "failed", "comments": None}, EXIT_FAIL),
+        ("a completed run with null comments fails closed", {"status": "complete",
+         "comments": None}, EXIT_FAIL),
+        ("a completed run with a non-list comments field fails", {"status": "complete",
+         "comments": "nonsense"}, EXIT_FAIL),
+        ("a skip with no fingerprint fails", {"status": "skipped", "comments": []}, EXIT_FAIL),
+        ("a skip whose summary is not an object fails", {"status": "skipped",
+         "summary": "x", "comments": []}, EXIT_FAIL),
+        ("a severity with surrounding space still blocks", {"status": "complete",
+         "comments": [{"severity": " high "}]}, EXIT_FAIL),
+        ("a non-object comment fails closed", {"status": "complete",
+         "comments": ["nonsense"]}, EXIT_FAIL),
         ("a missing status fails", {"comments": []}, EXIT_FAIL),
         ("the legacy schema is named", {"status": "complete", "issues": []}, EXIT_FAIL),
         ("an unmatched schema fails", {"status": "complete"}, EXIT_FAIL),
@@ -182,9 +218,9 @@ def main() -> int:
     print("\n".join(lines))
     if args.emit_json and isinstance(document, dict):
         comments = document.get("comments") or []
-        blocking = [c for c in comments if isinstance(c, dict)
-                    and (str(c.get("severity", "")).lower() in BLOCKING
-                         or str(c.get("severity", "")).lower() not in KNOWN)]
+        # The same predicate the verdict used. A second copy of it is how the two counts
+        # drifted once already.
+        blocking = [c for c in comments if is_blocking(c)]
         Path(args.emit_json).write_text(json.dumps(
             {"status": "pass" if code == EXIT_PASS else "fail",
              "counts": {"total": len(comments), "blocking": len(blocking)},
