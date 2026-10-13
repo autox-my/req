@@ -206,8 +206,7 @@ fn exit_code_maps_the_three_outcomes_and_the_degraded_record() {
 /// actually comparable. A corpus whose mutation sides all fell to the unstructured
 /// fallback has a *non-empty* denominator that measured nothing — 0 hits over N
 /// unverifiable pairs — which is the same 0/0 as the empty case, and it must not read
-/// as PASS. (The seed direction corpus records `checked: 1050`, but the boundary this
-/// function turns on is one measurable pair, so that is what is pinned.)
+/// as PASS.
 #[test]
 fn a_denominator_of_nothing_but_unverifiable_pairs_is_not_a_pass() {
     let ev = evaluate(
@@ -241,6 +240,13 @@ fn a_denominator_of_nothing_but_unverifiable_pairs_is_not_a_pass() {
     assert_eq!(req::bench::reported_rate(false, 0.0), None);
     assert_eq!(req::bench::reported_rate(false, 0.7), None);
     assert_eq!(req::bench::reported_rate(true, 0.0), Some(0.0));
+}
+
+/// The record's discriminator is part of the consumer contract, so it is pinned here
+/// beside the rest of the value space rather than smuggled into a denominator test: a
+/// deliberate bump is a migration step, and it should fail a test named for it.
+#[test]
+fn the_record_schema_names_its_value_space() {
     assert_eq!(req::bench::RECORD_SCHEMA, "req.bench.result/1");
 }
 

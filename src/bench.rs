@@ -89,6 +89,8 @@ pub struct Evaluation {
     pub direction_label_errors: Vec<String>,
     pub rows: Vec<String>,
     pub verdict: Verdict,
+    /// The FMR gate, evaluated once with `verdict` so the record cannot re-derive it.
+    pub fmr_gate: Verdict,
     /// The direction gate, evaluated once with `verdict` so the record cannot
     /// re-derive "is there a direction defect" from the same lists differently.
     pub direction_gate: Verdict,
@@ -251,28 +253,25 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
     // open question, exactly as `req gate` lets Fail outrank Unverifiable.
     //
     // The same fold hides in a *non-empty* denominator made entirely of pairs whose
-    // sides cannot be parsed: `fmr_gate` is the single expression of the rule, shared
-    // with the record, so a rate is never reported as a measured 0.0 when nothing was
-    // comparable.
-    let verdict = if !tally.dangerous.is_empty() || !tally.label_errors.is_empty() {
-        Verdict::Fail
-    } else {
-        fmr_gate(
-            fmr_hits.len(),
-            corpus.not_equivalent.len(),
-            unverifiable_pairs.len(),
-        )
-    };
-
-    // The direction gate is evaluated here, once, beside the verdict it belongs to:
-    // `run` reads it rather than re-deriving "is there a direction defect" from the
-    // same lists, which would be a second spelling of one fact.
+    // sides cannot be parsed: `fmr_gate` is the single expression of the rule, and both
+    // the corpus verdict and the record read it — neither re-derives it.
+    //
+    // Both gates are evaluated here, once, and carried on `Evaluation`: `run` records
+    // what was evaluated rather than spelling "is there a defect" a second time from the
+    // same lists.
     let direction_defect = !tally.dangerous.is_empty() || !tally.label_errors.is_empty();
-    let direction_gate = direction_gate(tally.checked, direction_defect);
+    let fmr = fmr_gate(
+        fmr_hits.len(),
+        corpus.not_equivalent.len(),
+        unverifiable_pairs.len(),
+    );
+    let verdict = if direction_defect { Verdict::Fail } else { fmr };
+    let direction = direction_gate(tally.checked, direction_defect);
 
     Evaluation {
         verdict,
-        direction_gate,
+        fmr_gate: fmr,
+        direction_gate: direction,
         fmr_hits,
         fsr_hits,
         tier2,
@@ -353,13 +352,11 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     let direction_mismatches = ev.direction_mismatches;
     let direction_label_errors = ev.direction_label_errors;
     let direction_gate = ev.direction_gate;
-    // The FMR gate is its own tri-state: 0/0 is not a pass, so the record says
-    // UNVERIFIABLE there rather than folding the vacuous denominator back in. It comes
-    // from the same `fmr_gate` the verdict does — the integer count of collapses, never
-    // a second spelling of "nothing collapsed" as `rate == 0.0`, which is free to drift
-    // — and it is a `Verdict`, not a literal, so the vocabulary has one home in
+    // The FMR gate comes from `evaluate` with the verdict: the record reads what was
+    // evaluated instead of calling `fmr_gate` a second time from the same numbers, and
+    // it is a `Verdict`, not a literal, so the vocabulary has one home in
     // `Verdict::as_str`. These records are append-only history.
-    let hard_gate = fmr_gate(fmr_n, ev.not_equivalent_total, ev.unverifiable_pairs.len());
+    let hard_gate = ev.fmr_gate;
     let report = json!({
         "schema": RECORD_SCHEMA,
         "rules_v": RULES_V,
