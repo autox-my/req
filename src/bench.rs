@@ -246,10 +246,14 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
     // regression that dropped every mutation would otherwise read as PASS. The
     // vacuous denominator is UNVERIFIABLE — and a definite defect still outranks the
     // open question, exactly as `req gate` lets Fail outrank Unverifiable.
+    //
+    // The same fold hides in a *non-empty* denominator made entirely of pairs whose
+    // sides cannot be parsed: `fmr_measurable` is the single test for both, so the
+    // rate is never reported as a measured 0.0 when nothing was comparable.
     let verdict =
         if !fmr_hits.is_empty() || !tally.dangerous.is_empty() || !tally.label_errors.is_empty() {
             Verdict::Fail
-        } else if corpus.not_equivalent.is_empty() {
+        } else if !fmr_measurable(corpus.not_equivalent.len(), unverifiable_pairs.len()) {
             Verdict::Unverifiable
         } else {
             Verdict::Pass
@@ -325,7 +329,8 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     let corpus_sha =
         crate::canon::sha256_hex_raw(&std::fs::read(path.to_str().unwrap()).unwrap_or_default());
     let pair_total = corpus.equivalent.len() + corpus.not_equivalent.len();
-    let verdict = reported_verdict(ev.verdict, !degraded.is_empty());
+    let degraded_run = !degraded.is_empty();
+    let verdict = reported_verdict(ev.verdict, degraded_run);
 
     let fmr_n = ev.fmr_hits.len();
     let fmr_pairs = ev.fmr_hits;
@@ -335,16 +340,13 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     let direction_unclassifiable = ev.direction_unclassifiable;
     let direction_mismatches = ev.direction_mismatches;
     let direction_label_errors = ev.direction_label_errors;
-    let direction_gate = direction_gate(
-        ev.direction_checked,
-        !dangerous.is_empty(),
-        !direction_label_errors.is_empty(),
-    );
+    let direction_defect = !dangerous.is_empty() || !direction_label_errors.is_empty();
+    let direction_gate = direction_gate(ev.direction_checked, direction_defect);
     // The FMR gate is its own tri-state: 0/0 is not a pass, so the record says
     // UNVERIFIABLE there rather than folding the vacuous denominator back in. It is a
     // `Verdict` and not a literal so the vocabulary has one home, `Verdict::as_str` —
     // these records are append-only history, and two spellings could drift apart.
-    let hard_gate = if ev.not_equivalent_total == 0 {
+    let hard_gate = if !fmr_measurable(ev.not_equivalent_total, ev.unverifiable_pairs.len()) {
         Verdict::Unverifiable
     } else if fmr_rate == 0.0 {
         Verdict::Pass
@@ -428,14 +430,24 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
     exit_code(verdict)
 }
 
+/// Is the FMR denominator a real measurement? A pair whose side cannot be parsed is
+/// **reported** (`structurally_unverifiable_pairs`), never silently dropped — but a
+/// denominator made *entirely* of such pairs, like an empty one, is 0/0: a regression
+/// that swept every mutation into the unstructured fallback would otherwise read as
+/// rate 0.0 and PASS. One test, used by `evaluate` and the record, so the verdict and
+/// `hard_gate` cannot disagree about whether anything was measured.
+pub fn fmr_measurable(not_equivalent_total: usize, structurally_unverifiable: usize) -> bool {
+    not_equivalent_total > structurally_unverifiable
+}
+
 /// The direction gate, as its own tri-state. A dangerous confusion or an unparseable
 /// label is a definite defect (FAIL); **nothing measured is UNVERIFIABLE, never a
 /// vacuous PASS** — the corpora that carry no `direction:` labels reach this with
 /// `checked: 0`, and a `PASS` there would read as "the direction check came back
 /// clean" when no direction check happened. It does not move the process exit code,
 /// which answers the FMR question; the record says which question was answered.
-pub fn direction_gate(checked: usize, dangerous: bool, label_errors: bool) -> Verdict {
-    if dangerous || label_errors {
+pub fn direction_gate(checked: usize, defect: bool) -> Verdict {
+    if defect {
         Verdict::Fail
     } else if checked == 0 {
         Verdict::Unverifiable

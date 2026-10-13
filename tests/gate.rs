@@ -79,7 +79,9 @@ fn gate_passes_on_a_clean_pair_set() {
 
 /// A not-equivalent pair with an unstructured side cannot merge, so the FMR
 /// property holds — but it was NOT structurally verified. It must be counted, not
-/// silently ignored (an unverified pair is not a verified pair).
+/// silently ignored (an unverified pair is not a verified pair), and a denominator
+/// made only of such pairs measured nothing, so the run is UNVERIFIABLE rather than a
+/// clean PASS.
 #[test]
 fn unstructured_not_equivalent_pairs_are_counted_not_hidden() {
     let ev = evaluate(
@@ -95,7 +97,11 @@ fn unstructured_not_equivalent_pairs_are_counted_not_hidden() {
     );
     assert_eq!(ev.unverifiable_pairs, vec!["U-001".to_string()]);
     assert!(ev.fmr_hits.is_empty());
-    assert_eq!(ev.verdict, Verdict::Pass);
+    assert_eq!(
+        ev.verdict,
+        Verdict::Unverifiable,
+        "counted, and never reported as a measured 0.0 rate"
+    );
 }
 
 /// Mutation-check for the gate itself: a pair labelled not-equivalent that *does*
@@ -196,6 +202,34 @@ fn exit_code_maps_the_three_outcomes_and_the_degraded_record() {
     assert_eq!(Verdict::Degraded.as_str(), "DEGRADED-PASS/FAIL-SEE-REPORT");
 }
 
+/// The FMR denominator is measurable only if at least one `not_equivalent` pair was
+/// actually comparable. A corpus whose mutation sides all fell to the unstructured
+/// fallback has a *non-empty* denominator that measured nothing — 0 hits over N
+/// unverifiable pairs — which is the same 0/0 as the empty case, and it must not read
+/// as PASS. (The seed direction corpus records `checked: 1050`, but the boundary this
+/// function turns on is one measurable pair, so that is what is pinned.)
+#[test]
+fn a_denominator_of_nothing_but_unverifiable_pairs_is_not_a_pass() {
+    let ev = evaluate(
+        &corpus(
+            vec![],
+            vec![pair(
+                "N-001",
+                "The system shall respond quickly.",
+                "The system shall be seamless.",
+            )],
+        ),
+        &Registry::empty(),
+    );
+    assert_eq!(ev.not_equivalent_total, 1, "the denominator is not empty");
+    assert_eq!(ev.unverifiable_pairs, vec!["N-001".to_string()]);
+    assert!(ev.fmr_hits.is_empty());
+    assert_eq!(ev.verdict, Verdict::Unverifiable);
+    assert_eq!(req::bench::exit_code(ev.verdict), 3);
+    assert!(!req::bench::fmr_measurable(1, 1));
+    assert!(req::bench::fmr_measurable(1, 0));
+}
+
 /// The direction gate is a tri-state like the FMR gate, and for the same reason: a
 /// corpus that carries no `direction:` labels (or whose sides cannot be parsed) has
 /// `checked: 0`, and a `PASS` there would read as "the direction check came back
@@ -204,14 +238,15 @@ fn exit_code_maps_the_three_outcomes_and_the_degraded_record() {
 fn the_direction_gate_is_not_a_vacuous_pass() {
     use req::bench::direction_gate;
     assert_eq!(
-        direction_gate(0, false, false),
+        direction_gate(0, false),
         Verdict::Unverifiable,
         "nothing measured is not a pass"
     );
-    assert_eq!(direction_gate(1050, false, false), Verdict::Pass);
-    assert_eq!(direction_gate(2, true, false), Verdict::Fail);
+    // One comparable pair is the boundary: measured, so the gate can pass.
+    assert_eq!(direction_gate(1, false), Verdict::Pass);
+    assert_eq!(direction_gate(2, true), Verdict::Fail);
     assert_eq!(
-        direction_gate(0, false, true),
+        direction_gate(0, true),
         Verdict::Fail,
         "a label error is a corpus defect even when nothing else was checked"
     );
@@ -271,6 +306,14 @@ fn a_direction_label_error_outranks_the_vacuous_denominator() {
             .any(|e| e.contains("modality_weaken")),
         "label errors: {:?}",
         ev.direction_label_errors
+    );
+    // The premise, pinned: this test is only about the precedence when the FMR
+    // denominator is vacuous. If the lists were ever swapped, the pair would collapse
+    // and count as an FMR hit — the test would still see FAIL and stop exercising the
+    // label-error-outranks-vacuous path at all.
+    assert_eq!(
+        ev.not_equivalent_total, 0,
+        "the denominator must be vacuous"
     );
     assert_eq!(ev.verdict, Verdict::Fail);
     assert_eq!(req::bench::exit_code(ev.verdict), 1);

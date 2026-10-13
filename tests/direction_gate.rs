@@ -135,7 +135,11 @@ fn an_unparseable_side_is_coverage_not_a_correct_answer() {
     assert_eq!(ev.direction_unclassifiable, vec!["D-006".to_string()]);
     assert_eq!(ev.direction_checked, 0);
     assert_eq!(ev.direction_correct, 0);
-    assert_eq!(ev.verdict, Verdict::Pass, "no merge and no dangerous read");
+    // An unparseable pair is neither a merge nor a direction read — and with no pair
+    // comparable at all, the corpus is not measured either: 0 hits over one
+    // unverifiable pair is 0/0, so the verdict is UNVERIFIABLE, never PASS.
+    assert_eq!(ev.verdict, Verdict::Unverifiable);
+    assert_eq!(req::bench::exit_code(ev.verdict), 3);
 }
 
 #[test]
