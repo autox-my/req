@@ -279,14 +279,12 @@ fn context_from(args: &[String]) -> Result<Context, i32> {
 pub fn load_rows(context: &Context) -> Result<Vec<Row>, String> {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let registry = crate::canon::load_registry(&root)?;
-    let files = crate::canon::claim_files(&root)?;
+    let claims = crate::canon::load_claims(&root)?;
     let mut rows = Vec::new();
-    for path in files.iter() {
-        let text =
-            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        let claim: crate::model::ClaimFile =
-            yaml_serde::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
-        let verdict = evaluate_claim(&claim, &registry);
+    for loaded in claims.iter() {
+        let text = &loaded.text;
+        let claim = &loaded.claim;
+        let verdict = evaluate_claim(claim, &registry);
         let form_json = canonical_json(&verdict.form);
         let address = address_hex(&form_json);
         let predicates: Vec<_> = claim
@@ -308,7 +306,7 @@ pub fn load_rows(context: &Context) -> Result<Vec<Row>, String> {
                 .collect(),
             // The same check `req canon --verify` runs, so the view and the gate cannot
             // disagree about whether a stored address is current.
-            stored: crate::fill::verify_text(&text, &form_json, crate::canon::RULES_V),
+            stored: crate::fill::verify_text(text, &form_json, crate::canon::RULES_V),
             rationale_source: claim.rationale.source.clone(),
             rationale_date: claim.rationale.date.clone(),
         });

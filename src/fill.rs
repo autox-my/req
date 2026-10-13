@@ -15,7 +15,7 @@
 //! serializer would rewrite all of them.
 
 use crate::canon::{
-    RULES_V, address_hex, canonical_json, claim_files, evaluate_claim, load_registry,
+    RULES_V, address_hex, canonical_json, evaluate_claim, load_claims, load_registry,
 };
 use std::path::Path;
 
@@ -120,8 +120,8 @@ pub fn run_fill() -> i32 {
             return 3;
         }
     };
-    let files = match claim_files(&root) {
-        Ok(f) => f,
+    let claims = match load_claims(&root) {
+        Ok(c) => c,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
             return 3;
@@ -129,22 +129,11 @@ pub fn run_fill() -> i32 {
     };
 
     let (mut filled, mut unchanged, mut refused) = (0usize, 0usize, 0usize);
-    for path in files.iter() {
-        let text = match std::fs::read_to_string(path) {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("[UNVERIFIABLE] read {}: {e}", path.display());
-                return 3;
-            }
-        };
-        let claim: crate::model::ClaimFile = match yaml_serde::from_str(&text) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[UNVERIFIABLE] parse {}: {e}", path.display());
-                return 3;
-            }
-        };
-        let verdict = evaluate_claim(&claim, &registry);
+    for loaded in claims.iter() {
+        let text = &loaded.text;
+        let claim = &loaded.claim;
+        let path = &loaded.path;
+        let verdict = evaluate_claim(claim, &registry);
         if verdict.flags() > 0 {
             println!(
                 "{}  REFUSED  {} discrepancy flag(s): authored slots and parse disagree — \
@@ -158,20 +147,15 @@ pub fn run_fill() -> i32 {
 
         let form_json = canonical_json(&verdict.form);
         let address = address_hex(&form_json);
-        let updated = match fill_text(
-            &text,
-            &form_json,
-            &address,
-            RULES_V,
-            registry.version as u32,
-        ) {
+        let updated = match fill_text(text, &form_json, &address, RULES_V, registry.version as u32)
+        {
             Ok(u) => u,
             Err(e) => {
                 eprintln!("[UNVERIFIABLE] {}: {e}", path.display());
                 return 3;
             }
         };
-        if updated == text {
+        if updated == *text {
             println!("{}  filled (unchanged)", claim.claim_id);
             unchanged += 1;
             continue;
@@ -253,8 +237,8 @@ pub fn run_verify() -> i32 {
             return 3;
         }
     };
-    let files = match claim_files(&root) {
-        Ok(f) => f,
+    let claims = match load_claims(&root) {
+        Ok(c) => c,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
             return 3;
@@ -262,23 +246,11 @@ pub fn run_verify() -> i32 {
     };
 
     let (mut verified, mut candidates, mut mismatches) = (0usize, 0usize, 0usize);
-    for path in files.iter() {
-        let text = match std::fs::read_to_string(path) {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("[UNVERIFIABLE] read {}: {e}", path.display());
-                return 3;
-            }
-        };
-        let claim: crate::model::ClaimFile = match yaml_serde::from_str(&text) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[UNVERIFIABLE] parse {}: {e}", path.display());
-                return 3;
-            }
-        };
-        let expected = canonical_json(&evaluate_claim(&claim, &registry).form);
-        match verify_text(&text, &expected, RULES_V) {
+    for loaded in claims.iter() {
+        let text = &loaded.text;
+        let claim = &loaded.claim;
+        let expected = canonical_json(&evaluate_claim(claim, &registry).form);
+        match verify_text(text, &expected, RULES_V) {
             StoredState::Verified => {
                 verified += 1;
                 let short = claim

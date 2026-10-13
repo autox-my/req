@@ -56,7 +56,7 @@ fn the_lint_names_the_word_it_rejected() {
     // fill, not silently filled.
     let v = evaluate_claim(
         &yaml_serde::from_str(
-            "schema: req.claim/0\nclaim_id: REQ-Q\nstatement: The system shall be easy-to-use.\nmodality: SHALL\nsubject: SYSTEM\nunstructured: false\ncanonical:\n  rules_v: null\n  subject_registry: 1\n  form: null\naddress: null\nrationale:\n  source: x\n  date: 2026-10-07\n",
+            "schema: req.claim/0\nclaim_id: REQ-Q\nstatement: The system shall be easy-to-use.\nmodality: SHALL\nsubject: SYSTEM\napplicability: []\nunstructured: false\ncanonical:\n  rules_v: null\n  subject_registry: 1\n  form: null\naddress: null\nrationale:\n  source: x\n  date: 2026-10-07\n  rejected_alternatives: []\n  assumptions: []\nrelations: []\n",
         )
         .expect("claim parses"),
         &Registry::empty(),

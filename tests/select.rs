@@ -117,7 +117,7 @@ fn a_claims_applicability_is_its_selector() {
         "schema: req.claim/0\nclaim_id: REQ-X\nstatement: The system shall log each command.\n\
          modality: SHALL\nsubject: SYSTEM\nunstructured: false\ncanonical:\n  rules_v: null\n  \
          subject_registry: 1\n  form: null\naddress: null\nrationale:\n  source: x\n  \
-         date: 2026-10-07\napplicability:\n  - deployment_mode == air_gapped\n",
+         date: 2026-10-07\n  rejected_alternatives: []\n  assumptions: []\napplicability:\n  - deployment_mode == air_gapped\nrelations: []\n",
     )
     .expect("claim parses");
     let predicates: Vec<_> = claim

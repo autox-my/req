@@ -34,13 +34,13 @@ state: it is always derived from `decisions.jsonl`, never copied into claim file
 | `subject` | registry id | must resolve in `aliases/subjects.yml` |
 | `attribute` / `operator` / `value` / `unit` | the bounded obligation | operator per T1.5 {LT, LE, EQ, GE, GT, NE}; `unit: none` for non-SI quantities |
 | `conditions[]` | guard clauses **parsed from the statement** (when/if/unless/during) | part of identity; sorted at T1.8. `req canon` compares it with the parse, so a scope predicate written here but absent from the statement is a *flag*, not a nuance — a variant belongs in `applicability` |
-| `applicability[]` | variant predicates (`applies_when`) — the **selector slot** | part of identity (ADR 0003); since rules v5 an *input* to the canonical form, because the statement carries no formal selector syntax: the sorted authored list is hashed |
+| `applicability[]` | variant predicates (`applies_when`) — the **selector slot** | **required** (an omitted key is a parse error, never `[]`); part of identity (ADR 0003); since rules v5 an *input* to the canonical form, because the statement carries no formal selector syntax: the sorted authored list is hashed |
 | `exception`, `temporal`, `quantifier` | reserved slots: no derivation, no field | `null` when unused; authoring one is **refused** by `req canon --fill` rather than silently dropped from identity |
 | `unstructured` | true → the structured slots are all null | the claim gets its raw-form canonical bytes + address per hashing spec §4, and opts out of structural merge-direction analysis |
 | `canonical` | `{rules_v, subject_registry, form}` | written **only** by `req canon --fill`; `form` is stored as a YAML literal block so the hashed bytes are the stored bytes |
 | `address` | `sha256("req.claim.v1\0" \|\| canonical_form_bytes)` | written by `req canon --fill`; `req canon --verify` enforces `sha256(tag \|\| stored form) == address` (REQ-0017) |
-| `rationale` | object: `source`, `date`, `rejected_alternatives[]`, `assumptions[]` | the losing side is preserved — never a string field |
-| `relations[]` | `{type, to}` outgoing only | incoming relations are always *derived* by traversal, never stored (REQ-0020); `relations: []` = a root claim |
+| `rationale` | object: `source`, `date`, `rejected_alternatives[]`, `assumptions[]` | all four **required** (an omitted list is a parse error, not an empty one); the losing side is preserved — never a string field |
+| `relations[]` | `{type, to}` outgoing only | **required** (an omitted key is a parse error: relations sit outside the canonical form, so a dropped key leaves the address untouched while the edges vanish); incoming relations are always *derived* by traversal, never stored (REQ-0020); `relations: []` = a root claim |
 
 Reference types (`to`, `source`) use `claim_id`s, addresses, or repo paths —
 whatever stays stable under rewording.
@@ -75,6 +75,53 @@ claim file, before merge direction analysis is trusted.
   `ambiguous_modality`), never a guess (REQ-0019).
 - Alias sets are disjoint per subject; `req` is deliberately excluded from
   `REQ_TOOL`'s aliases because it names the CLI binary in other contexts.
+
+## Corpus integrity (the loader's contract)
+
+One claim per file means the *file set* is the corpus: a file that drops out silently
+deletes a requirement, and a file that joins silently adds one. So the loader is
+strict, and every command that reads the corpus returns UNVERIFIABLE (exit 3) rather
+than proceeding over a corpus it could not read:
+
+- **Filename = `claim_id`, spelled exactly.** Every `*.yml`/`*.yaml` in `claims/` is a
+  claim file, and so is anything whose leading dot-segment is claim-shaped up to case —
+  `REQ-0008.txt`, `REQ-0008`, `REQ-0008.yml.disabled`, `.REQ-0008`, `req-0008.txt`. One
+  that is not named `REQ-<digits>.yml` (`req-0008.yml`, `REQ-0008.yaml`, `notes.yml`) is a
+  load error — the old behaviour, filtering on prefix and suffix and discarding the rest,
+  made a misnamed claim vanish with every exit code still zero. A file whose stem is not
+  the `claim_id` it declares is a load error too. **Renaming a claim out of the contract
+  does not disable it**: a claim-shaped name is still a candidate, and an unloadable
+  candidate fails the corpus rather than quietly leaving it. Candidacy is
+  case-insensitive; the *canonical* name is not — a lowercase `req-0008.txt` is reported,
+  and `REQ-0008.yml` is the only filename that loads.
+- **The corpus is flat.** One claim per file in `claims/`, no subdirectories: a directory
+  there is a load error, because `mv claims/REQ-0008.yml claims/archive/` is the natural
+  way to move a claim out of the way and it would otherwise be a silent deletion. A claim
+  file must also be a regular file — a symlink is not one.
+- **A corpus is never empty.** Zero claim files is a load error, not a pass: an empty
+  corpus and a corpus whose every claim vanished are indistinguishable from the file set,
+  and `claims: 0; discrepancy flags: 0` must never read as success.
+- **Unique ids.** Two files declaring one `claim_id` is a load error, and their
+  **content is compared**: an identical duplicate (the fully silent case — it never
+  shows as drift) and a divergent one are named differently. The duplicate pass runs
+  over every candidate before the naming pass, so a second file claiming an existing
+  id is reported as the duplicate it is, not merely as a filename complaint.
+- **Strict fields, at every level.** An unrecognized key is a parse error, in the claim
+  file and in its nested objects (`rationale`, `canonical`, `relations[]`): `applicabilty:`
+  does not parse as an empty default, and neither does a misspelled
+  `rejected_alternatives:` inside `rationale`. The keys that carry meaning *outside* the
+  canonical form are **required**, because losing one moves no address and nothing else
+  would notice: `applicability` (a variant-scoped claim would otherwise become
+  unconditional — identity *is* the address, so that is two requirements collapsed into
+  one), `relations` (the edges would vanish from `trace` and `impact`), and the
+  rationale's `rejected_alternatives`/`assumptions` (the losing side of a decision would
+  be dropped from the record). Writing them as `[]` is how a claim says "none"; omitting
+  them is the failure this project treats as catastrophic.
+
+Directory entries that are not claims (`README.md`, editor droppings) are left alone;
+that is a naming rule, not a silence. One deliberate exception runs the other way: an
+entry whose *name* is not valid UTF-8 cannot be classified at all — it might be a claim
+written in some other encoding — so it fails the corpus rather than being skipped.
 
 ## State of the seed corpus
 

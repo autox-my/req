@@ -7,17 +7,22 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+/// The nested structs are strict too, and every key is required. `deny_unknown_fields`
+/// on `ClaimFile` alone leaves the same silent-loss class one level down; so does a
+/// defaulted list, because the rationale sits outside the canonical form: a dropped
+/// or misspelled `rejected_alternatives:` would leave the address untouched and lose
+/// the record, and nothing in the tooling reads the field to notice.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Rationale {
     pub source: String,
     pub date: String,
-    #[serde(default)]
     pub rejected_alternatives: Vec<String>,
-    #[serde(default)]
     pub assumptions: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Relation {
     #[serde(rename = "type")]
     pub kind: String,
@@ -25,6 +30,7 @@ pub struct Relation {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CanonicalCache {
     /// Normalization-rules version. `None` while unfilled (the v0 seed state).
     pub rules_v: Option<u32>,
@@ -34,7 +40,14 @@ pub struct CanonicalCache {
     pub form: Option<String>,
 }
 
+/// A claim file, strictly: an unrecognized key is a parse error (F2), and
+/// `applicability` / `relations` are required rather than defaulted to empty — a
+/// dropped `relations:` key leaves the address untouched while the edges vanish from
+/// `trace` and `impact`, and a misspelled `applicability:` silently makes a
+/// variant-scoped claim unconditional (identity *is* the address, so that is a
+/// conflation of two requirements, not a wrong variant membership).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ClaimFile {
     pub schema: String,
     pub claim_id: String,
@@ -48,7 +61,6 @@ pub struct ClaimFile {
     pub unit: Option<String>,
     #[serde(default)]
     pub conditions: Vec<String>,
-    #[serde(default)]
     pub applicability: Vec<String>,
     pub exception: Option<String>,
     pub temporal: Option<String>,
@@ -57,7 +69,6 @@ pub struct ClaimFile {
     pub canonical: CanonicalCache,
     pub address: Option<String>,
     pub rationale: Rationale,
-    #[serde(default)]
     pub relations: Vec<Relation>,
 }
 

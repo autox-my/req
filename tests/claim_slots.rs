@@ -18,6 +18,7 @@ claim_id: REQ-X
 statement: The system shall log each command.
 modality: SHALL
 subject: SYSTEM
+applicability: []
 unstructured: false
 canonical:
   rules_v: null
@@ -27,10 +28,32 @@ address: null
 rationale:
   source: docs/adr/0007-tier1-collapses-only-on-meaning-preserving-rules.md
   date: 2026-10-07
+  rejected_alternatives: []
+  assumptions: []
+relations: []
 ";
 
 fn claim(text: &str) -> ClaimFile {
     yaml_serde::from_str(text).expect("claim parses")
+}
+
+/// The authored selector slot, which the loader now requires to be present: the one
+/// line a variant claim edits. The count assertion is what makes the helper safe: a
+/// template with *no* anchor would leave the "variant" identical to the base (and the
+/// failure would read as a bug in `evaluate_claim`), while a second anchor would let
+/// `replacen(…, 1)` edit one line and silently corrupt the other.
+fn with_applicability(predicate: &str) -> String {
+    assert_eq!(
+        CLAIM.matches("applicability: []").count(),
+        1,
+        "the CLAIM template must hold exactly one `applicability: []` line: this \
+         helper edits that one line"
+    );
+    CLAIM.replacen(
+        "applicability: []",
+        &format!("applicability:\n  - {predicate}"),
+        1,
+    )
 }
 
 /// ADR 0003 says variants are selectors and applicability is part of identity. Before
@@ -39,9 +62,7 @@ fn claim(text: &str) -> ClaimFile {
 #[test]
 fn authored_applicability_is_part_of_identity() {
     let base = claim(CLAIM);
-    let variant = claim(&format!(
-        "{CLAIM}applicability:\n  - deployment_mode == air_gapped\n"
-    ));
+    let variant = claim(&with_applicability("deployment_mode == air_gapped"));
     let a = evaluate_claim(&base, &Registry::empty());
     let b = evaluate_claim(&variant, &Registry::empty());
     assert_ne!(canonical_json(&a.form), canonical_json(&b.form));
