@@ -385,7 +385,11 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
         "fsr": {
             "splits": fsr_n,
             "structured_equivalent_total": ev.structured_equivalent,
-            "rate": fsr_rate,
+            // The same rule as the FMR rate and the direction accuracy: an FSR over no
+            // structured equivalent pairs is `null`, not a measured-looking `0.0`. A
+            // `/1` consumer that learned `null` means "not measured" in two fields must
+            // not find `0.0` meaning it in the third.
+            "rate": reported_rate(ev.structured_equivalent > 0, fsr_rate),
             "hit_pairs": fsr_pairs,
         },
         "direction": {
@@ -487,8 +491,13 @@ pub fn fmr_gate(
 /// label is a definite defect (FAIL); **nothing measured is UNVERIFIABLE, never a
 /// vacuous PASS** — the corpora that carry no `direction:` labels reach this with
 /// `checked: 0`, and a `PASS` there would read as "the direction check came back
-/// clean" when no direction check happened. It does not move the process exit code,
-/// which answers the FMR question; the record says which question was answered.
+/// clean" when no direction check happened.
+///
+/// What does *not* reach the exit code is this gate's UNVERIFIABLE state: the process
+/// verdict answers the FMR question, so a corpus whose direction check was vacuous
+/// still exits 0 when the FMR denominator measured clean. A direction **defect** does
+/// drive exit 1 — `evaluate` folds it into the corpus verdict, and
+/// `a_direction_label_error_outranks_the_vacuous_denominator` pins that.
 pub fn direction_gate(checked: usize, defect: bool) -> Verdict {
     if defect {
         Verdict::Fail

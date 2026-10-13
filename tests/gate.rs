@@ -189,6 +189,9 @@ fn a_corpus_with_no_not_equivalent_pairs_is_unverifiable_not_pass() {
 /// wording has exactly one home, `Verdict::as_str`.
 #[test]
 fn exit_code_maps_the_three_outcomes_and_the_degraded_record() {
+    // Exit 2 is deliberately absent: `src/main.rs` reserves it for CLI usage errors
+    // (missing or unrecognized subcommand, bad arguments) and `gate` follows the same
+    // convention, so no bench outcome may be renumbered onto it.
     assert_eq!(req::bench::exit_code(Verdict::Pass), 0);
     assert_eq!(req::bench::exit_code(Verdict::Fail), 1);
     assert_eq!(req::bench::exit_code(Verdict::Unverifiable), 3);
@@ -225,18 +228,34 @@ fn a_denominator_of_nothing_but_unverifiable_pairs_is_not_a_pass() {
     assert!(ev.fmr_hits.is_empty());
     assert_eq!(ev.verdict, Verdict::Unverifiable);
     assert_eq!(req::bench::exit_code(ev.verdict), 3);
+}
+
+/// The measurable boundary, on its own: one comparable pair is enough to measure, and
+/// a denominator made entirely of unverifiable pairs (or none at all) is not.
+#[test]
+fn fmr_measurable_needs_one_comparable_pair() {
     assert!(!req::bench::fmr_measurable(1, 1));
+    assert!(!req::bench::fmr_measurable(0, 0));
     assert!(req::bench::fmr_measurable(1, 0));
-    // And the gate they feed, spelled once for both the verdict and the record: a
-    // collapse is FAIL, an unmeasured denominator is UNVERIFIABLE, no collapse over a
-    // measured denominator is PASS.
+    assert!(req::bench::fmr_measurable(12, 11));
+}
+
+/// The FMR gate's truth table, the value `evaluate`'s verdict and the record's
+/// `hard_gate` both read: a collapse is FAIL, an unmeasured denominator is
+/// UNVERIFIABLE, and no collapse over a measured denominator is PASS.
+#[test]
+fn fmr_gate_truth_table() {
     assert_eq!(req::bench::fmr_gate(1, 5, 0), Verdict::Fail);
     assert_eq!(req::bench::fmr_gate(0, 0, 0), Verdict::Unverifiable);
     assert_eq!(req::bench::fmr_gate(0, 3, 3), Verdict::Unverifiable);
     assert_eq!(req::bench::fmr_gate(0, 3, 1), Verdict::Pass);
-    // The /1 value space: a rate is reported only when it was measured, for the FMR
-    // rate and the direction accuracy alike. `/0` wrote 0.0 there, which a consumer
-    // reads as a clean measurement.
+}
+
+/// The `/1` value space for the rates: reported only when they were measured, for the
+/// FMR rate, the direction accuracy and the FSR rate alike. `/0` wrote `0.0` there,
+/// which a consumer reads as a clean measurement.
+#[test]
+fn reported_rate_only_when_measured() {
     assert_eq!(req::bench::reported_rate(false, 0.0), None);
     assert_eq!(req::bench::reported_rate(false, 0.7), None);
     assert_eq!(req::bench::reported_rate(true, 0.0), Some(0.0));
