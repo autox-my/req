@@ -88,6 +88,15 @@ impl Fixture {
     }
 }
 
+/// Remove the fixture when the test ends — including on a panic, which is exactly
+/// when a half-written corpus is most likely to be mistaken for real state. The
+/// pre-create cleanup keeps reruns deterministic; this keeps `target/` clean.
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // F2 — a misspelled or omitted key is a parse error, not a default
 // ---------------------------------------------------------------------------
@@ -204,6 +213,21 @@ fn duplicate_claim_ids_error_and_the_content_is_compared() {
 // ---------------------------------------------------------------------------
 // Review findings on the loader itself
 // ---------------------------------------------------------------------------
+
+#[test]
+fn non_claim_entries_in_claims_are_left_alone() {
+    // The tolerant side of the gate. The committed corpus depends on it —
+    // `claims/README.md` is not a claim — so a gate tightened to error on every
+    // unrecognized name would be wrong, and nothing else pins that direction.
+    let f = Fixture::new("f3-strays").claim("REQ-0001.yml", &claim_text("REQ-0001"));
+    for stray in ["README.md", ".DS_Store", "notes.txt", "archive.tar.gz"] {
+        std::fs::write(f.path().join("claims").join(stray), "not a claim\n").expect("stray file");
+    }
+
+    let claims = load_claims(f.path()).expect("strays are not claims and are left alone");
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].claim.claim_id, "REQ-0001");
+}
 
 #[test]
 fn a_misspelled_nested_key_is_a_parse_error_and_exits_3() {

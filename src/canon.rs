@@ -1263,11 +1263,14 @@ pub fn evaluate_claim(claim: &crate::model::ClaimFile, registry: &Registry) -> C
     }
 }
 
-/// One claim file, loaded and validated: the path it came from, its bytes (the
+/// One claim file, loaded and validated: the path it came from, the file name the
+/// scan already validated as UTF-8 (the naming pass re-derives nothing, so a broken
+/// invariant cannot turn into a misleading "empty stem" complaint), its bytes (the
 /// writers preserve comments, so `text` is what `--fill` edits), and its parse.
 #[derive(Debug)]
 pub struct LoadedClaim {
     pub path: std::path::PathBuf,
+    pub name: String,
     pub text: String,
     pub claim: crate::model::ClaimFile,
 }
@@ -1279,13 +1282,6 @@ fn is_claim_stem(stem: &str) -> bool {
         return false;
     };
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
-}
-
-/// The canonical claim filename: `REQ-<digits>.yml` (claim-format.md: filename =
-/// claim_id). Deliberately strict about the extension's case and spelling — a
-/// `.yaml` twin of `REQ-0008.yml` is a second claim file, not a second chance.
-fn is_claim_filename(name: &str) -> bool {
-    name.strip_suffix(".yml").is_some_and(is_claim_stem)
 }
 
 /// Is this entry even a candidate — something that *might* be a claim file? Anything
@@ -1332,7 +1328,7 @@ fn looks_like_claim_file(name: &str) -> bool {
 /// reported as the duplicate it is rather than as a filename complaint.
 pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
     let dir = root.join("claims");
-    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut candidates: Vec<(std::path::PathBuf, String)> = Vec::new();
     for entry in
         std::fs::read_dir(&dir).map_err(|e| format!("claims dir {}: {e}", dir.display()))?
     {
@@ -1373,24 +1369,29 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
                 path.display()
             ));
         }
-        paths.push(path);
+        candidates.push((path, name.to_string()));
     }
-    if paths.is_empty() {
+    if candidates.is_empty() {
         return Err(format!(
             "claims dir {}: no claim files — an empty corpus is indistinguishable \
              from one whose claims all vanished, so it is UNVERIFIABLE, never a pass",
             dir.display()
         ));
     }
-    paths.sort();
+    candidates.sort();
 
     let mut loaded: Vec<LoadedClaim> = Vec::new();
-    for path in paths {
+    for (path, name) in candidates {
         let text =
             std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
         let claim: crate::model::ClaimFile =
             yaml_serde::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
-        loaded.push(LoadedClaim { path, text, claim });
+        loaded.push(LoadedClaim {
+            path,
+            name,
+            text,
+            claim,
+        });
     }
 
     // Duplicate ids, with the files' content compared: an identical copy is the
@@ -1416,22 +1417,20 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
 
     for loaded_claim in loaded.iter() {
         let path = &loaded_claim.path;
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default()
-            .to_string();
-        if !is_claim_filename(&name) {
+        // The naming pass and the stem it reports come from one strip: if the suffix
+        // and the `<digits>` shape both hold, that IS the stem, and re-deriving it
+        // (with an `unwrap_or_default`) could only mask a broken invariant.
+        let Some(stem) = loaded_claim
+            .name
+            .strip_suffix(".yml")
+            .filter(|s| is_claim_stem(s))
+        else {
             return Err(format!(
                 "{}: not a claim filename — a claim file is `REQ-<digits>.yml` \
                  (filename = claim_id)",
                 path.display()
             ));
-        }
-        let stem = path
-            .file_stem()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default();
+        };
         if stem != loaded_claim.claim.claim_id {
             return Err(format!(
                 "{}: claim_id {} does not match the filename stem {stem} \
@@ -1441,6 +1440,8 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
             ));
         }
     }
+    // `candidates` was sorted by path before parsing, so `loaded` already is: the
+    // order never depends on how the filesystem enumerated the directory.
     Ok(loaded)
 }
 
