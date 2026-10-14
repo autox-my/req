@@ -143,7 +143,9 @@ fi
 # not be able to redirect the verification the gate exists to perform.
 verify_baseline() {
   if [ "$step" = baseline ] && [ -n "${REQ_GATE_BIN:-}" ]; then
-    if [ ! -x "$REQ_GATE_BIN" ]; then
+    # A regular executable: `-x` alone is also true for a directory, which would fail later
+    # as a generic gate failure instead of the usage error promised here.
+    if [ ! -f "$REQ_GATE_BIN" ] || [ ! -x "$REQ_GATE_BIN" ]; then
       printf 'REQ_GATE_BIN is not an executable file: %s\n' "$REQ_GATE_BIN" >&2
       exit 2
     fi

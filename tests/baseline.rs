@@ -686,21 +686,28 @@ fn a_tampered_baseline_does_not_verify() {
     assert!(stdout.contains("[FAIL]"), "{stdout}");
 }
 
-/// Runs `scripts/check.sh` with `args` from the tree under test. Two things are wired up:
-/// the pinned toolchain's HOME — check.sh resolves it under `$HOME/.rustup/toolchains`, and
-/// this workspace keeps it in .tools/home instead (gitignored; see .tools/README.md),
-/// shared through the git common dir so a feature worktree finds the main checkout's — and
-/// `REQ_GATE_BIN`, which points the Baseline step at the binary this test run already built
-/// rather than nesting a second cargo inside `cargo test`.
+/// Runs `scripts/check.sh` with `args` from the tree under test, handing the Baseline step
+/// the binary this test run already built.
 #[cfg(unix)]
 fn check_sh_args(args: &[&std::ffi::OsStr]) -> std::process::Output {
+    check_sh_env(args, &req_bin())
+}
+
+/// ...with an explicit `REQ_GATE_BIN` value, so the seam's own validation is testable.
+/// Two things are wired up: the pinned toolchain's HOME — check.sh resolves it under
+/// `$HOME/.rustup/toolchains`, and this workspace keeps it in .tools/home instead (gitignored;
+/// see .tools/README.md), shared through the git common dir so a feature worktree finds the
+/// main checkout's — and `REQ_GATE_BIN`, which points the Baseline step at a binary instead of
+/// nesting a second cargo inside `cargo test`.
+#[cfg(unix)]
+fn check_sh_env(args: &[&std::ffi::OsStr], req_gate_bin: &std::path::Path) -> std::process::Output {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut command = std::process::Command::new("bash");
     command
         .arg(root.join("scripts/check.sh"))
         .args(args)
         .current_dir(&root)
-        .env("REQ_GATE_BIN", req_bin());
+        .env("REQ_GATE_BIN", req_gate_bin);
     let home_has_rustup = std::env::var_os("HOME")
         .is_some_and(|h| std::path::Path::new(&h).join(".rustup/toolchains").exists());
     if !home_has_rustup {
@@ -819,6 +826,31 @@ fn the_gate_rejects_an_unknown_step_and_stray_arguments() {
     }
 }
 
+/// The binary seam refuses what it cannot mean, by name and with exit 2: a value that is not
+/// a regular executable file. A directory is the interesting case — `-x` is true for it, so
+/// testing only executability would send it to a generic gate failure instead.
+#[cfg(unix)]
+#[test]
+fn the_gate_refuses_a_binary_override_that_is_not_an_executable_file() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for bad in [root.clone(), root.join("nowhere-at-all")] {
+        let refused = check_sh_env(&["baseline".as_ref()], &bad);
+        assert_eq!(
+            refused.status.code(),
+            Some(2),
+            "{} must be refused as a usage error:\n{}",
+            bad.display(),
+            String::from_utf8_lossy(&refused.stdout)
+        );
+        assert!(
+            String::from_utf8_lossy(&refused.stderr)
+                .contains("REQ_GATE_BIN is not an executable file"),
+            "{}",
+            String::from_utf8_lossy(&refused.stderr)
+        );
+    }
+}
+
 /// The red test of the wiring: the gate runs the Baseline step, and a Baseline that
 /// does not verify fails it. Before the step existed the gate stayed green while the
 /// committed Baseline no longer verified — the exact blind spot F5 files.
@@ -846,6 +878,10 @@ fn the_gate_fails_when_the_baseline_does_not_verify() {
 #[cfg(unix)]
 #[test]
 fn the_gate_blocks_an_unverifiable_baseline() {
+    // Without the verifier this test would pass for the wrong reason: a missing minisign
+    // answers [UNVERIFIABLE] just as a missing signature does, so the unsigned-manifest path
+    // it claims to prove would never be exercised.
+    require_minisign();
     let fixture = Fixture::new("gate-unsigned");
     let manifest = unsigned_fixture(fixture.path());
     let output = check_sh(Some(&manifest));
