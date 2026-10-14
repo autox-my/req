@@ -620,21 +620,30 @@ impl Drop for Fixture {
 }
 
 /// A copy of the committed Baseline with one hex digit of one address flipped, the
-/// signature still beside it: the bytes no longer match what was signed and the
-/// address no longer recomputes — both definite findings, so exit 1.
+/// signature still beside it: the bytes no longer match what was signed and the address no
+/// longer recomputes — both definite findings, so exit 1.
+///
+/// The manifest is read and written through the library's own parser and canonical writer,
+/// so the tamper depends on the manifest *schema* rather than on the exact byte formatting
+/// of the committed file (a pretty-printed re-emit would otherwise break the fixture
+/// instead of exercising the FAIL path).
 fn tampered_fixture(dir: &std::path::Path) -> std::path::PathBuf {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let text = std::fs::read_to_string(root.join("baselines/air-gapped.json"))
         .expect("the committed manifest reads");
-    let marker = "\"address\":\"";
-    let at = text.find(marker).expect("the manifest records an address") + marker.len();
-    let mut bytes = text.into_bytes();
-    let byte = bytes
-        .get_mut(at)
-        .expect("a hex address follows the \"address\":\" marker");
+    let mut parsed = from_json(&text).expect("the committed manifest parses");
+    let entry = parsed
+        .claims
+        .first_mut()
+        .expect("the manifest records at least one claim");
+    let mut address = entry.address.clone().into_bytes();
+    let byte = address
+        .first_mut()
+        .expect("an address is a non-empty hex string");
     *byte = if *byte == b'a' { b'b' } else { b'a' };
+    entry.address = String::from_utf8(address).expect("hex is ASCII");
     let path = dir.join("air-gapped.json");
-    std::fs::write(&path, bytes).expect("writes the tampered manifest");
+    std::fs::write(&path, canonical_bytes(&parsed)).expect("writes the tampered manifest");
     std::fs::copy(
         root.join("baselines/air-gapped.json.minisig"),
         dir.join("air-gapped.json.minisig"),
