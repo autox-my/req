@@ -5,13 +5,18 @@
 # a check that cannot run is not a passing check, and the commit message must say
 # so. The first non-zero status fails the gate.
 #
-# Usage: scripts/check.sh [baseline [baseline.json]]
+# Usage: scripts/check.sh [baseline [baseline.json]] | [plan]
 #   no argument        every check (the default; CI uses this)
 #   baseline [file]    only the Baseline step (file defaults to the committed one).
 #                      The step exists so its failure modes are testable —
 #                      tests/baseline.rs drives it against tampered and unsigned
 #                      fixtures — and so one check can be re-run alone. It must
 #                      never recurse into the full gate, which runs `cargo test`.
+#   plan               print the command of every check the default run would execute,
+#                      from the same call sites, and execute none of them. Its verdict
+#                      is UNVERIFIABLE (exit 3): a plan is not a pass. tests/baseline.rs
+#                      uses it to pin that the default run still verifies the Baseline —
+#                      the step branch returns before that call site.
 #
 # Never read a status through a pipeline (`cmd | tail` reports tail's status, not
 # the command's). The sandbox denies writes to $HOME, so all tool state lives in
@@ -44,9 +49,16 @@ export CARGO_HOME="$CACHE_ROOT/.cargo-home"
 export OCR_NO_UPDATE=1
 
 fail=0
+dry=0
 say()  { printf '\n== %s\n' "$*"; }
 skip() { printf 'SKIP  %s\n' "$1"; }
 run()  {
+  # A plan prints what the default run would execute and executes nothing, so the
+  # Baseline step's *default-run* call site is testable without running the gate.
+  if [ "$dry" -eq 1 ]; then
+    printf 'PLAN  %s\n' "$*"
+    return 0
+  fi
   say "$*"
   "$@"
   rc=$?
@@ -63,7 +75,7 @@ run()  {
 # is a usage error (exit 2), never a quiet run of a different scope: an unknown step
 # name, an extra positional, or a second file are all rejected.
 usage() {
-  printf 'usage: scripts/check.sh [baseline [baseline.json]]\n' >&2
+  printf 'usage: scripts/check.sh [baseline [baseline.json]] | [plan]\n' >&2
 }
 
 # One home for the committed Baseline the gate verifies: the full run and the standalone
@@ -83,6 +95,7 @@ case $step in
       shift
     fi
     ;;
+  plan) dry=1 ;;
   *)
     usage
     exit 2
@@ -121,6 +134,11 @@ verify_baseline() {
 
 finish() {
   printf '\n----------------------------------------\n'
+  if [ "$dry" -eq 1 ]; then
+    # Nothing was executed, so nothing was checked: exit 3, and never a pass.
+    printf 'GATE: UNVERIFIABLE (plan only: nothing was executed)\n'
+    exit 3
+  fi
   if [ $fail -eq 0 ]; then
     printf 'GATE: PASS (skips above are not passes)\n'
   else

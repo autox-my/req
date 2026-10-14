@@ -715,6 +715,33 @@ fn check_sh(baseline: Option<&std::path::Path>) -> std::process::Output {
     }
 }
 
+/// The default run's own call site — the F5 wiring that re-verifies the committed
+/// Baseline on every gate invocation. The step tests above cannot reach it: `baseline`
+/// takes the standalone branch and returns before the default flow. The `plan` step
+/// prints the default run's commands from the same call sites and executes none, so this
+/// pins the wiring without running the gate. It is UNVERIFIABLE (exit 3): a plan is not a
+/// pass.
+#[cfg(unix)]
+#[test]
+fn the_default_gate_run_verifies_the_committed_baseline() {
+    let plan = check_sh_args(&["plan".as_ref()]);
+    let stdout = String::from_utf8_lossy(&plan.stdout);
+    assert_eq!(
+        plan.status.code(),
+        Some(3),
+        "a plan executes nothing, so it is UNVERIFIABLE, never a pass:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("baseline --verify baselines/air-gapped.json"),
+        "the default run must verify the committed Baseline:\n{stdout}"
+    );
+    // ...and it is the default run being planned, not the single step.
+    assert!(stdout.contains("PLAN  cargo test"), "{stdout}");
+    assert!(stdout.contains("GATE: UNVERIFIABLE"), "{stdout}");
+}
+
+/// The step-name contract fails fast: an unknown step, or an argument the contract does
+/// not define, exits 2 with usage on stderr — never a quiet run of a different scope.
 #[cfg(unix)]
 #[test]
 fn the_gate_rejects_an_unknown_step_and_stray_arguments() {
