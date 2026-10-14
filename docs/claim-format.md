@@ -127,7 +127,7 @@ written in some other encoding — so it fails the corpus rather than being skip
 
 `claims/REQ-0001 … claims/REQ-0021` were authored **structured-first**: the author
 supplied the parse deliberately, and `canonical.form`/`address` stayed `null` until the
-rules that define them existed. They are now **filled under rules v3** by
+rules that define them existed. They are now **filled under rules v5** by
 `req canon --fill`, and `req canon --verify` reports `21 verified, 0 candidates, 0
 mismatches`, so the corpus is address-addressed end to end.
 
