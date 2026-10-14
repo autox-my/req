@@ -24,13 +24,18 @@ identity with audit surface; all of them require that what an auditor relies on 
 The Baseline manifest attests the requirement **and its audit surface**. Each `claims` entry keeps
 `claim_id` and `address` — identity stays meaning-only, per ADR 0007 — and gains:
 
-- `relations_hash` — `sha256("req.relations.v1\0" ‖ canonical JSON of the parsed relations)`;
-- `rationale_hash` — `sha256("req.rationale.v1\0" ‖ canonical JSON of the parsed rationale)`.
+- `relations_hash` — `sha256("req.relations.v1\0" ‖ serde_json::to_string(relations))`;
+- `rationale_hash` — `sha256("req.rationale.v1\0" ‖ serde_json::to_string(rationale))`.
 
-The hashes are over the **parsed values, canonically serialized** — the same discipline as the
-address itself — so formatting in the YAML file does not churn the manifest, and a semantic edit
-cannot hide behind whitespace. `req baseline --verify` re-derives both. A relation or a rationale
-edited after signing is **FAIL** — the same class as a hand-edited digest.
+The hashes are over the **parsed values, deterministically serialized**: `serde_json::to_string`
+of the typed struct, whose fields are in declaration order, so the bytes are a pure function of
+the parsed values — formatting in the YAML file does not churn the manifest, and a semantic edit
+cannot hide behind whitespace. It is *not* `canon::canonical_json`, which is the address's
+fixed-shape serializer for the canonical form and cannot serialize a `Relation` or a `Rationale`;
+"canonical" here means exactly the writer named above, so a re-implementation hashes the same
+bytes. The tag is NUL-delimited (`req.relations.v1\0`) so one surface's prefix can never straddle
+another's. `req baseline --verify` re-derives both. A relation or a rationale edited after signing
+is **FAIL** — the same class as a hand-edited digest.
 
 ## Consequences
 

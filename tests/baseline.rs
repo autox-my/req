@@ -297,8 +297,10 @@ fn a_manifest_missing_claim_id_gets_the_plain_unreadable_message() {
         "{\"version\":2,\"rules_v\":5,\"selection\":{},\"claims\":[{\"address\":\"aaa\",\"relations_hash\":\"r\",\"rationale_hash\":\"q\"}]}",
     )
     .expect_err("a manifest without claim_id is unreadable");
+    // Only the code-owned parts of the message are asserted: the serde detail is forwarded
+    // verbatim but is serde's text, not a contract — the same reason the code does not branch
+    // on it.
     assert!(err.contains("manifest is not readable"), "{err}");
-    assert!(err.contains("claim_id"), "{err}");
     assert!(!err.contains("re-issue"), "{err}");
     assert!(!err.contains("ADR 0013"), "{err}");
 }
@@ -314,8 +316,8 @@ fn a_v2_manifest_missing_one_attested_hash_is_corrupt_not_v1() {
         "{\"version\":2,\"rules_v\":5,\"selection\":{},\"claims\":[{\"claim_id\":\"REQ-A\",\"address\":\"aaa\",\"relations_hash\":\"r\"}]}",
     )
     .expect_err("a v2 manifest missing rationale_hash is unreadable");
+    // Code-owned parts only; the serde detail is forwarded, not a contract (see above).
     assert!(err.contains("manifest is not readable"), "{err}");
-    assert!(err.contains("rationale_hash"), "{err}");
     assert!(!err.contains("re-issue"), "{err}");
     assert!(!err.contains("ADR 0013"), "{err}");
 }
@@ -327,8 +329,8 @@ fn a_v2_manifest_missing_one_attested_hash_is_corrupt_not_v1() {
 fn a_manifest_with_no_version_field_gets_the_plain_message() {
     let err = from_json("{\"rules_v\":5,\"selection\":{},\"claims\":[]}")
         .expect_err("a manifest without a version field is unreadable");
+    // Code-owned parts only; the serde detail is forwarded, not a contract.
     assert!(err.contains("manifest is not readable"), "{err}");
-    assert!(err.contains("version"), "{err}");
     assert!(!err.contains("re-issue"), "{err}");
     assert!(!err.contains("ADR 0013"), "{err}");
 }

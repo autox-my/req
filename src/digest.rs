@@ -21,9 +21,15 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 /// chain does *not* take this: it builds a multi-part input and calls the plain
 /// [`sha256_hex`]. The prefix **must be NUL-delimited** — every real tag is
 /// (`req.claim.v1\0`, `req.relations.v1\0`, `req.rationale.v1\0`) — which is what actually
-/// stops one surface's prefix from straddling another's; a caller passing a bare domain name
-/// would let `req.relations.v1` match `req.relations.v1extra`.
+/// stops one surface's prefix from straddling another's; a bare domain name would let
+/// `req.relations.v1` match `req.relations.v1extra`. That contract is caller-side, so it is
+/// checked here rather than only documented.
 pub fn sha256_hex_prefixed(prefix: &[u8], bytes: &[u8]) -> String {
+    assert!(
+        prefix.ends_with(b"\0"),
+        "digest prefix must be NUL-delimited so domains cannot straddle: {:?}",
+        String::from_utf8_lossy(prefix)
+    );
     let mut hasher = Sha256::new();
     hasher.update(prefix);
     hasher.update(bytes);
@@ -62,5 +68,13 @@ mod tests {
             sha256_hex(b""),
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
+    }
+
+    /// A bare domain name would let `req.relations.v1` straddle `req.relations.v1extra`, so the
+    /// guard refuses it rather than silently weakening the separation.
+    #[test]
+    #[should_panic(expected = "NUL-delimited")]
+    fn a_bare_domain_prefix_is_refused() {
+        let _ = sha256_hex_prefixed(b"req.relations.v1", b"[]");
     }
 }
