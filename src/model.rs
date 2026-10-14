@@ -33,24 +33,34 @@ pub struct Relation {
 // The audit-surface hashes (ADR 0013)
 // ---------------------------------------------------------------------------
 
-/// The relations as the manifest attests them: `sha256("req.relations.v1\0" ‖ canonical
-/// JSON of the parsed relations)`. Serialization of a typed struct is deterministic
-/// (fields in declaration order), so no hand-ordered writer is needed here; the domain
-/// prefix keeps the two surfaces from ever trading hashes.
+/// The domain prefix that keeps the relations digest from ever trading hashes with another
+/// surface — a named constant, like [`crate::canon::ADDRESS_TAG`] and [`crate::decision::DOMAIN`],
+/// so the domain-separation registry stays greppable in one style and a future surface cannot
+/// misspell or omit a prefix.
+pub const RELATIONS_TAG: &[u8] = b"req.relations.v1\0";
+
+/// The rationale's domain prefix, for the same reason.
+pub const RATIONALE_TAG: &[u8] = b"req.rationale.v1\0";
+
+/// The relations as the manifest attests them: `sha256(RELATIONS_TAG ‖ serde_json::to_string(
+/// relations))` — **plain serde JSON** of the typed struct, fields in declaration order. Not
+/// `canon::canonical_json`, which normalizes numbers and strings and produces different bytes;
+/// naming the writer here is what makes the byte format unambiguous to a re-implementation.
+/// Serialization of a typed struct is deterministic, so no hand-ordered writer is needed.
 pub fn relations_digest(relations: &[Relation]) -> String {
     crate::digest::sha256_hex_prefixed(
-        b"req.relations.v1\0",
+        RELATIONS_TAG,
         serde_json::to_string(relations)
             .expect("Relation serializes infallibly")
             .as_bytes(),
     )
 }
 
-/// The rationale as the manifest attests it: `sha256("req.rationale.v1\0" ‖ canonical JSON
-/// of the parsed rationale)`. Provenance is part of what was signed.
+/// The rationale as the manifest attests them: `sha256(RATIONALE_TAG ‖ serde_json::to_string(
+/// rationale))`, the same plain serde JSON — provenance is part of what was signed.
 pub fn rationale_digest(rationale: &Rationale) -> String {
     crate::digest::sha256_hex_prefixed(
-        b"req.rationale.v1\0",
+        RATIONALE_TAG,
         serde_json::to_string(rationale)
             .expect("Rationale serializes infallibly")
             .as_bytes(),

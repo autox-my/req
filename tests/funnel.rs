@@ -38,8 +38,10 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
         relations_hash,
         rationale_hash: rationale_digest(&provenance),
         stored: req::fill::StoredState::Verified,
-        rationale_source: provenance.source.clone(),
-        rationale_date: provenance.date.clone(),
+        // Moved, not cloned: the borrow above has ended and the struct literal is the last
+        // use, the same idiom `common::row` uses for this pattern.
+        rationale_source: provenance.source,
+        rationale_date: provenance.date,
     }
 }
 

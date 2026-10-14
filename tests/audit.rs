@@ -5,7 +5,7 @@ mod common;
 use common::rationale_of;
 use req::audit::{coverage, findings, packet};
 use req::baseline::{canonical_bytes, from_json, manifest};
-use req::model::{Relation, rationale_digest, relations_digest};
+use req::model::{Relation, rationale_digest};
 use req::select::{Applies, Context};
 use req::view::Row;
 
@@ -45,8 +45,10 @@ fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
         relations_hash,
         rationale_hash: rationale_digest(&provenance),
         stored: req::fill::StoredState::Verified,
-        rationale_source: provenance.source.clone(),
-        rationale_date: provenance.date.clone(),
+        // Moved, not cloned: the borrow above has ended and the struct literal is the last
+        // use, the same idiom `common::row` uses for this pattern.
+        rationale_source: provenance.source,
+        rationale_date: provenance.date,
     }
 }
 
@@ -141,18 +143,16 @@ fn an_edited_attested_surface_is_reported_drifted_and_fails() {
     let manifest = baseline_for(&signed_rows);
 
     // Same address — the statement's meaning is untouched — with a relation added, so the
-    // attested surface is what moved. A real digest over that relation: the state `load_rows`
-    // produces from the edited file, not a placeholder.
-    let relations = vec![Relation {
+    // attested surface is what moved. A real digest over that relation — the state `load_rows`
+    // produces from the edited file, not a placeholder — derived together with the columns by
+    // the shared helper, the same idiom the fixtures use.
+    let (relations, relations_hash) = common::relation_columns(vec![Relation {
         kind: "refines".to_string(),
         to: "REQ-B".to_string(),
-    }];
+    }]);
     let mut edited = row("REQ-A", "aaa", Applies::Yes, "docs/adr/0001.md");
-    edited.relations = relations
-        .iter()
-        .map(|relation| (relation.kind.clone(), relation.to.clone()))
-        .collect();
-    edited.relations_hash = relations_digest(&relations);
+    edited.relations = relations;
+    edited.relations_hash = relations_hash;
     let edited = vec![edited];
 
     let coverage = coverage(&edited, &manifest);
