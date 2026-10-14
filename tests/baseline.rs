@@ -10,6 +10,19 @@ use req::model::{Rationale, Relation, rationale_digest, relations_digest};
 use req::select::{Applies, Context};
 use req::view::Row;
 
+/// Pinned oracles, computed independently of the code under test and named once so the pinned
+/// bytes below cannot carry a stale hand-copy. Asserting a digest against itself recomputed
+/// would pin nothing, because it could not fail; never regenerate these from the implementation.
+///
+/// `printf 'req.relations.v1\0[]' | shasum -a 256` (the `\0` is a literal NUL byte):
+const EMPTY_RELATIONS_DIGEST: &str =
+    "479fcec2cd9b2af0bc13fa4054307413459ae1ad7ca6344435530570226dc1af";
+/// `printf 'req.rationale.v1\0{"source":"docs/adr/0010-baseline-signing-and-trust.md",
+/// "date":"2026-10-07","rejected_alternatives":[],"assumptions":[]}' | shasum -a 256` — the
+/// fixture rationale every row in this file carries:
+const FIXTURE_RATIONALE_DIGEST: &str =
+    "bd57ad973193c6a0537045b60db5890f854b15616391b6ffe0e661c5709185c5";
+
 fn row(id: &str, address: &str, applies: Applies) -> Row {
     // One rationale shape, shared with every other row-fixture target
     // (`common::rationale_of`), so the attested digest and the displayed provenance cannot be
@@ -99,18 +112,19 @@ fn canonical_bytes_do_not_depend_on_input_order() {
     );
     assert_eq!(canonical_bytes(&forward), canonical_bytes(&backward));
     // Selection keys sorted, non-applying claims absent, one trailing newline, and the
-    // fixture's real digests in the bytes (both hexes from the independent oracle:
-    // `printf 'req.relations.v1\0[]' | shasum -a 256` for the empty relations, and the
-    // same command over `req.rationale.v1\0{...}` with the fixture rationale for the other).
+    // fixture's real digests in the bytes — both interpolated from the named oracles at the top
+    // of this file, so the pin has one home rather than a hand-copy per claim.
     assert_eq!(
         canonical_bytes(&forward),
-        "{\"version\":2,\"rules_v\":5,\"selection\":{\"a\":\"1\",\"b\":\"2\"},\
-         \"claims\":[{\"claim_id\":\"REQ-A\",\"address\":\"aaa\",\
-         \"relations_hash\":\"479fcec2cd9b2af0bc13fa4054307413459ae1ad7ca6344435530570226dc1af\",\
-         \"rationale_hash\":\"bd57ad973193c6a0537045b60db5890f854b15616391b6ffe0e661c5709185c5\"},\
-         {\"claim_id\":\"REQ-B\",\"address\":\"bbb\",\
-         \"relations_hash\":\"479fcec2cd9b2af0bc13fa4054307413459ae1ad7ca6344435530570226dc1af\",\
-         \"rationale_hash\":\"bd57ad973193c6a0537045b60db5890f854b15616391b6ffe0e661c5709185c5\"}]}\n"
+        format!(
+            "{{\"version\":2,\"rules_v\":5,\"selection\":{{\"a\":\"1\",\"b\":\"2\"}},\
+             \"claims\":[{{\"claim_id\":\"REQ-A\",\"address\":\"aaa\",\
+             \"relations_hash\":\"{EMPTY_RELATIONS_DIGEST}\",\
+             \"rationale_hash\":\"{FIXTURE_RATIONALE_DIGEST}\"}},\
+             {{\"claim_id\":\"REQ-B\",\"address\":\"bbb\",\
+             \"relations_hash\":\"{EMPTY_RELATIONS_DIGEST}\",\
+             \"rationale_hash\":\"{FIXTURE_RATIONALE_DIGEST}\"}}]}}\n"
+        )
     );
 }
 
@@ -289,13 +303,6 @@ fn a_manifest_missing_claim_id_gets_the_plain_unreadable_message() {
     assert!(!err.contains("re-issue"), "{err}");
     assert!(!err.contains("ADR 0013"), "{err}");
 }
-
-/// Pinned oracle for the empty case, computed independently of the code under test —
-/// `printf 'req.relations.v1\0[]' | shasum -a 256` (the `\0` is a literal NUL byte).
-/// Asserting the digest against itself recomputed would pin nothing: it could not fail.
-/// Never regenerate this literal from the implementation.
-const EMPTY_RELATIONS_DIGEST: &str =
-    "479fcec2cd9b2af0bc13fa4054307413459ae1ad7ca6344435530570226dc1af";
 
 /// The audit hashes are over the parsed values, canonically serialized: deterministic for
 /// identical values, distinct across surfaces, moved by an edit, and defined for the empty

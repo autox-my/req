@@ -9,7 +9,7 @@ use req::funnel::{
     Adjudication, Candidate, MAX_PAIRS_PER_RUN, MIN_SHARED_TERMS, NO_CAP, NoProvider, Proposed,
     Provider, blocking_misses, candidate_pairs, content_terms, naive_pairs, propose, shared_terms,
 };
-use req::model::{Corpus, rationale_digest, relations_digest};
+use req::model::{Corpus, Relation, rationale_digest, relations_digest};
 use req::select::Applies;
 use req::view::Row;
 
@@ -21,6 +21,9 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
         "docs/adr/0004-model-proposes-human-disposes.md",
         "2026-10-07",
     );
+    // Bound once, then used for both the row's relations and their digest: two independent
+    // expressions can be edited apart, which is the drift this fixture exists to avoid.
+    let relations: Vec<Relation> = Vec::new();
     Row {
         claim_id: id.to_string(),
         statement: statement.to_string(),
@@ -28,10 +31,13 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
         address: address.to_string(),
         applies: Applies::Yes,
         selectors: Vec::new(),
-        relations: Vec::new(),
-        // Real digests over the fixture's own content: a placeholder hash beside empty
+        relations: relations
+            .iter()
+            .map(|relation| (relation.kind.clone(), relation.to.clone()))
+            .collect(),
+        // A real digest over the fixture's own content: a placeholder hash beside empty
         // relations is a Row state `load_rows` can never produce.
-        relations_hash: relations_digest(&[]),
+        relations_hash: relations_digest(&relations),
         rationale_hash: rationale_digest(&provenance),
         stored: req::fill::StoredState::Verified,
         rationale_source: provenance.source.clone(),

@@ -52,12 +52,14 @@ pub fn coverage(rows: &[Row], manifest: &Manifest) -> Coverage {
         manifest
             .claims
             .iter()
-            .map(|claim| claim.claim_id.clone())
-            .filter(|id| {
-                !changed.contains(id.as_str())
-                    && !attested.contains(id.as_str())
-                    && !missing.contains(id.as_str())
+            // Filter on the borrowed id first, so a claim that turns out drifted, attested or
+            // missing is never cloned only to be dropped.
+            .filter(|claim| {
+                !changed.contains(claim.claim_id.as_str())
+                    && !attested.contains(claim.claim_id.as_str())
+                    && !missing.contains(claim.claim_id.as_str())
             })
+            .map(|claim| claim.claim_id.clone())
             .collect()
     };
 
