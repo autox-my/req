@@ -771,12 +771,24 @@ fn the_default_gate_run_verifies_the_committed_baseline() {
         Some(3),
         "a plan executes nothing, so it is UNVERIFIABLE, never a pass:\n{stdout}"
     );
+    // Compared on normalized lines: the plan's content is the contract, its column padding is
+    // not, so a cosmetic reformat of check.sh must not fail this test.
+    let planned: Vec<String> = stdout
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect();
     assert!(
-        stdout.contains("baseline --verify baselines/air-gapped.json"),
+        planned.iter().any(|line| line.starts_with("PLAN ")
+            && line.contains("baseline --verify baselines/air-gapped.json")),
         "the default run must verify the committed Baseline:\n{stdout}"
     );
     // ...and it is the default run being planned, not the single step.
-    assert!(stdout.contains("PLAN  cargo test"), "{stdout}");
+    assert!(
+        planned
+            .iter()
+            .any(|line| line.starts_with("PLAN ") && line.contains("cargo test")),
+        "{stdout}"
+    );
     assert!(stdout.contains("GATE: UNVERIFIABLE"), "{stdout}");
 }
 
@@ -835,8 +847,18 @@ fn the_gate_rejects_an_unknown_step_and_stray_arguments() {
 #[cfg(unix)]
 #[test]
 fn the_gate_refuses_a_binary_override_that_is_not_an_executable_file() {
+    use std::os::unix::fs::PermissionsExt;
+
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    for bad in [root.clone(), root.join("nowhere-at-all")] {
+    // A regular file with the execute bit cleared is the only value that reaches the second
+    // half of the guard: a directory and a missing path already fail its regular-file test.
+    let fixture = Fixture::new("binary-override");
+    let plain = fixture.path().join("not-executable");
+    std::fs::write(&plain, b"#!/bin/sh\nexit 0\n").expect("writes a plain file");
+    std::fs::set_permissions(&plain, std::fs::Permissions::from_mode(0o644))
+        .expect("clears the execute bit");
+
+    for bad in [root.clone(), root.join("nowhere-at-all"), plain.clone()] {
         let refused = check_sh_env(&["baseline".as_ref()], &bad);
         assert_eq!(
             refused.status.code(),
