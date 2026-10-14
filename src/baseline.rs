@@ -574,7 +574,7 @@ fn staging_dir_at(base: &Path) -> Result<StagingDir, BaseRefusal> {
     // directory we did not create. That leak is accepted and recorded here rather than papered
     // over, and it is one empty directory on a path that requires an attacker-owned sticky
     // ancestor.
-    require_safe_base(base, None).map_err(BaseRefusal::Unsafe)?;
+    require_safe_base(base, None)?;
     ensure_base(base).map_err(BaseRefusal::Io)?;
     let mut attempt = 0;
     loop {
@@ -591,7 +591,7 @@ fn staging_dir_at(base: &Path) -> Result<StagingDir, BaseRefusal> {
                     let me = std::fs::metadata(guard.path())
                         .map_err(BaseRefusal::Io)?
                         .uid();
-                    require_safe_base(base, Some(me)).map_err(BaseRefusal::Unsafe)?;
+                    require_safe_base(base, Some(me))?;
                 }
                 return Ok(guard);
             }
@@ -654,8 +654,12 @@ fn ensure_base(base: &Path) -> std::io::Result<()> {
 /// The caller passes an absolute path: `ancestors()` of a relative one stops at the empty
 /// component, which would silently skip every directory between the base and the working
 /// directory — the very components a rename attack would use.
+///
+/// The reason is part of the result: a component this refuses is [`BaseRefusal::Unsafe`], while
+/// a `stat` that fails for any other reason is [`BaseRefusal::Io`] — the filesystem's answer,
+/// which must not be relabelled as a refusal, or the fallback would move on and hide it.
 #[cfg(unix)]
-fn require_safe_base(base: &Path, me: Option<u32>) -> std::io::Result<()> {
+fn require_safe_base(base: &Path, me: Option<u32>) -> Result<(), BaseRefusal> {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
     // A real assert, not a debug one: the failure it guards is silent in release — a relative
     // base would skip every component above the working directory — and the guard is cheap.
@@ -674,7 +678,9 @@ fn require_safe_base(base: &Path, me: Option<u32>) -> std::io::Result<()> {
             // Not created yet: `ensure_base` makes it 0700 inside a chain already checked above
             // it, so it cannot be the unsafe link.
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(e),
+            // A `stat` failure is the filesystem's answer, not a refusal: relabelling it would
+            // send the fallback to the next candidate instead of surfacing the real cause.
+            Err(e) => return Err(BaseRefusal::Io(e)),
         };
         let mode = meta.permissions().mode();
         if mode & 0o022 == 0 {
@@ -687,7 +693,7 @@ fn require_safe_base(base: &Path, me: Option<u32>) -> std::io::Result<()> {
         // pass, once our uid is known, is what refuses a sticky directory owned by someone
         // else, whose owner could unlink our entry regardless of the sticky bit.
         if !sticky || (me.is_some() && !owner_is_trusted) {
-            return Err(std::io::Error::new(
+            return Err(BaseRefusal::Unsafe(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 format!(
                     "the staging base {} runs through {}, which is group/other-writable {}: make \
@@ -701,7 +707,7 @@ fn require_safe_base(base: &Path, me: Option<u32>) -> std::io::Result<()> {
                         "without the sticky bit"
                     }
                 ),
-            ));
+            )));
         }
     }
     Ok(())
@@ -710,7 +716,7 @@ fn require_safe_base(base: &Path, me: Option<u32>) -> std::io::Result<()> {
 /// No portable ownership or mode check exists; on other platforms this adds nothing and the
 /// staging directory keeps the platform default, as elsewhere in this module.
 #[cfg(not(unix))]
-fn require_safe_base(_base: &Path, _me: Option<u32>) -> std::io::Result<()> {
+fn require_safe_base(_base: &Path, _me: Option<u32>) -> Result<(), BaseRefusal> {
     Ok(())
 }
 
@@ -1274,11 +1280,36 @@ mod tests {
 
         let error = match require_safe_base(&base, Some(other)) {
             Ok(()) => panic!("a sticky directory owned by another user must be refused"),
-            Err(error) => error,
+            Err(BaseRefusal::Unsafe(error)) => error,
+            Err(BaseRefusal::Io(error)) => {
+                panic!("the refusal must be the chain's, not an I/O error: {error}")
+            }
         };
         assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A `stat` failure that is not `NotFound` is the filesystem's answer, not a refusal, and it
+    /// has to stay `Io` or the fallback would quietly move to the next candidate. A symlink loop
+    /// produces one without needing a second uid.
+    #[cfg(unix)]
+    #[test]
+    fn a_stat_failure_is_an_io_error_not_a_refusal() {
+        let outer = unique_base("req-symlink-loop");
+        std::fs::create_dir_all(&outer).expect("the fixture outer directory");
+        let looped = outer.join("loop");
+        std::os::unix::fs::symlink(&looped, &looped).expect("the loop symlink");
+
+        match require_safe_base(&looped.join("staging"), None) {
+            Err(BaseRefusal::Io(error)) => {
+                assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
+            }
+            Err(BaseRefusal::Unsafe(_)) => panic!("a stat failure is not a refusal"),
+            Ok(()) => panic!("a looping path cannot be validated"),
+        }
+
+        let _ = std::fs::remove_dir_all(&outer);
     }
 
     /// The chain check refuses a relative base: its `ancestors()` stops at the empty component,
