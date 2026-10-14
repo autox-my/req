@@ -477,18 +477,24 @@ pub fn staging_dir() -> std::io::Result<StagingDir> {
 ///
 /// The environment's temp dir is the first candidate and what every ordinary run uses; the
 /// user's own cache root is the fallback for a system whose temp dir is one another local user
-/// may write. Validation still runs per candidate, so a refusal stays the last word when no
-/// candidate is safe.
+/// may write. Only a refusal moves on to the next candidate: a transient failure — a full or
+/// unwritable filesystem, an exhausted run of name collisions — is that base's answer, and
+/// relocating into the persistent cache tree would hide it. The first refusal is kept, so an
+/// operator is told about the temp dir they configured rather than only about the fallback.
 fn staging_dir_first_safe(bases: &[PathBuf]) -> std::io::Result<StagingDir> {
-    let mut last =
-        std::io::Error::new(std::io::ErrorKind::NotFound, "no staging base is available");
+    let mut refusal = None;
     for base in bases {
         match staging_dir_in(base) {
             Ok(dir) => return Ok(dir),
-            Err(e) => last = e,
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                refusal.get_or_insert(e);
+            }
+            Err(e) => return Err(e),
         }
     }
-    Err(last)
+    Err(refusal.unwrap_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "no staging base is available")
+    }))
 }
 
 /// A private staging root under the user's own cache directory, for a system whose temp dir is
@@ -607,7 +613,9 @@ fn ensure_base(base: &Path) -> std::io::Result<()> {
 #[cfg(unix)]
 fn require_safe_base(base: &Path, me: Option<u32>) -> std::io::Result<()> {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
-    debug_assert!(
+    // A real assert, not a debug one: the failure it guards is silent in release — a relative
+    // base would skip every component above the working directory — and the guard is cheap.
+    assert!(
         base.is_absolute(),
         "the chain check needs an absolute base, or it would skip the components above the base"
     );
@@ -1024,13 +1032,16 @@ fn civil_from_days(days: i64) -> String {
 mod tests {
     use super::*;
 
-    /// A base under the real temp dir, unique to this process and moment.
+    /// A base under the real temp dir, unique to this process and moment. Absolutized for the
+    /// same reason `staging_dir` does it: `TMPDIR` is returned verbatim and may be relative.
     fn unique_base(tag: &str) -> PathBuf {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or_default();
-        std::env::temp_dir().join(format!("{tag}-{}-{nanos}", std::process::id()))
+        std::path::absolute(std::env::temp_dir())
+            .expect("the temp dir resolves to an absolute path")
+            .join(format!("{tag}-{}-{nanos}", std::process::id()))
     }
 
     /// Whether the ambient temp dir's chain passes even the provisional check. On a host whose
