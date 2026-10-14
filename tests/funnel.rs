@@ -7,7 +7,7 @@ use req::funnel::{
     Adjudication, Candidate, MAX_PAIRS_PER_RUN, MIN_SHARED_TERMS, NO_CAP, NoProvider, Proposed,
     Provider, blocking_misses, candidate_pairs, content_terms, naive_pairs, propose, shared_terms,
 };
-use req::model::Corpus;
+use req::model::{Corpus, Rationale, rationale_digest, relations_digest};
 use req::select::Applies;
 use req::view::Row;
 
@@ -20,8 +20,15 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
         applies: Applies::Yes,
         selectors: Vec::new(),
         relations: Vec::new(),
-        relations_hash: "relations-hash".to_string(),
-        rationale_hash: "rationale-hash".to_string(),
+        // Real digests over the fixture's own content: a placeholder hash beside empty
+        // relations is a Row state `load_rows` can never produce.
+        relations_hash: relations_digest(&[]),
+        rationale_hash: rationale_digest(&Rationale {
+            source: "docs/adr/0004-model-proposes-human-disposes.md".to_string(),
+            date: "2026-10-07".to_string(),
+            rejected_alternatives: vec![],
+            assumptions: vec![],
+        }),
         stored: req::fill::StoredState::Verified,
         rationale_source: "docs/adr/0004-model-proposes-human-disposes.md".to_string(),
         rationale_date: "2026-10-07".to_string(),

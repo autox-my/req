@@ -123,8 +123,14 @@ fn json_string(value: &str) -> String {
 pub fn from_json(text: &str) -> Result<Manifest, String> {
     serde_json::from_str(text).map_err(|e| {
         let detail = e.to_string();
-        if detail.contains("missing field") {
-            // A manifest without the attested hashes is a v1 Baseline: stale, not corrupt.
+        // Branch on WHICH field serde names — the message carries it in backticks — not on
+        // "missing" in general. Only a manifest missing the *attested hashes* is a v1
+        // Baseline: stale, and the reader should be told to re-issue and re-sign (ADR 0013).
+        // Any other missing field is ordinary corruption, and v1 advice would send them off
+        // to re-sign over a defect that was never a stale envelope.
+        let v1_shape = detail.contains("missing field `relations_hash`")
+            || detail.contains("missing field `rationale_hash`");
+        if v1_shape {
             format!(
                 "manifest is not readable: {detail} — a manifest without the attested \
                      hashes is a v1 Baseline: re-issue and re-sign (ADR 0013)"

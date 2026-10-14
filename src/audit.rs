@@ -20,6 +20,7 @@
 use crate::baseline::{self, Manifest};
 use crate::select::{Applies, Context};
 use crate::view::Row;
+use std::collections::BTreeSet;
 
 /// Which claims a signed Baseline covers, and how well. Derived from [`baseline::drift`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -37,15 +38,21 @@ pub struct Coverage {
 
 pub fn coverage(rows: &[Row], manifest: &Manifest) -> Coverage {
     let drift = baseline::drift(rows, manifest);
+    // The drift id sets, built once: membership here is asked per claim below, and three
+    // linear `Vec::contains` scans per claim re-read the same lists for every claim in the
+    // manifest.
+    let changed: BTreeSet<&str> = drift.changed.iter().map(String::as_str).collect();
+    let attested: BTreeSet<&str> = drift.attested_changed.iter().map(String::as_str).collect();
+    let missing: BTreeSet<&str> = drift.missing.iter().map(String::as_str).collect();
     Coverage {
         signed: manifest
             .claims
             .iter()
             .map(|claim| claim.claim_id.clone())
             .filter(|id| {
-                !drift.changed.contains(id)
-                    && !drift.attested_changed.contains(id)
-                    && !drift.missing.contains(id)
+                !changed.contains(id.as_str())
+                    && !attested.contains(id.as_str())
+                    && !missing.contains(id.as_str())
             })
             .collect(),
         drifted: {

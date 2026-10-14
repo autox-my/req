@@ -8,7 +8,20 @@ use req::model::{Rationale, Relation, rationale_digest, relations_digest};
 use req::select::{Applies, Context};
 use req::view::Row;
 
+/// The provenance every fixture row carries. The row's `rationale_hash` is the digest of
+/// exactly this rationale, so a fixture row is a state `load_rows` can actually produce —
+/// not a Row whose hash names content it does not have.
+fn fixture_rationale() -> Rationale {
+    Rationale {
+        source: "docs/adr/0010-baseline-signing-and-trust.md".to_string(),
+        date: "2026-10-07".to_string(),
+        rejected_alternatives: vec![],
+        assumptions: vec![],
+    }
+}
+
 fn row(id: &str, address: &str, applies: Applies) -> Row {
+    let rationale = fixture_rationale();
     Row {
         claim_id: id.to_string(),
         statement: format!("{id} shall log each command."),
@@ -17,11 +30,14 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
         applies,
         selectors: Vec::new(),
         relations: Vec::new(),
-        relations_hash: "relations-hash".to_string(),
-        rationale_hash: "rationale-hash".to_string(),
+        // Real digests over the fixture's own content: a placeholder hash beside empty
+        // relations is a Row state `load_rows` can never produce, so a test passing on it
+        // would prove nothing about the emit/verify round trip.
+        relations_hash: relations_digest(&[]),
+        rationale_hash: rationale_digest(&rationale),
         stored: req::fill::StoredState::Verified,
-        rationale_source: "docs/adr/0010-baseline-signing-and-trust.md".to_string(),
-        rationale_date: "2026-10-07".to_string(),
+        rationale_source: rationale.source.clone(),
+        rationale_date: rationale.date.clone(),
     }
 }
 
@@ -88,12 +104,19 @@ fn canonical_bytes_do_not_depend_on_input_order() {
         &context,
     );
     assert_eq!(canonical_bytes(&forward), canonical_bytes(&backward));
-    // Selection keys sorted, non-applying claims absent, and one trailing newline.
+    // Selection keys sorted, non-applying claims absent, one trailing newline, and the
+    // fixture's real digests in the bytes (both hexes from the independent oracle:
+    // `printf 'req.relations.v1\0[]' | shasum -a 256` for the empty relations, and the
+    // same command over `req.rationale.v1\0{...}` with the fixture rationale for the other).
     assert_eq!(
         canonical_bytes(&forward),
         "{\"version\":2,\"rules_v\":5,\"selection\":{\"a\":\"1\",\"b\":\"2\"},\
-         \"claims\":[{\"claim_id\":\"REQ-A\",\"address\":\"aaa\",\"relations_hash\":\"relations-hash\",\"rationale_hash\":\"rationale-hash\"},\
-         {\"claim_id\":\"REQ-B\",\"address\":\"bbb\",\"relations_hash\":\"relations-hash\",\"rationale_hash\":\"rationale-hash\"}]}\n"
+         \"claims\":[{\"claim_id\":\"REQ-A\",\"address\":\"aaa\",\
+         \"relations_hash\":\"479fcec2cd9b2af0bc13fa4054307413459ae1ad7ca6344435530570226dc1af\",\
+         \"rationale_hash\":\"bd57ad973193c6a0537045b60db5890f854b15616391b6ffe0e661c5709185c5\"},\
+         {\"claim_id\":\"REQ-B\",\"address\":\"bbb\",\
+         \"relations_hash\":\"479fcec2cd9b2af0bc13fa4054307413459ae1ad7ca6344435530570226dc1af\",\
+         \"rationale_hash\":\"bd57ad973193c6a0537045b60db5890f854b15616391b6ffe0e661c5709185c5\"}]}\n"
     );
 }
 
@@ -180,8 +203,12 @@ fn the_manifest_carries_the_attested_hashes() {
     assert_eq!(parsed, manifest);
 }
 
-/// ADR 0013: the audit surface is attested — editing a relation after signing is detected
-/// even when the meaning (and so the address) is untouched.
+/// ADR 0013: the audit surface is attested — a post-signing relation edit is detected even
+/// when the meaning (and so the address) is untouched. The test simulates that edit by
+/// changing the attested hash, because `load_rows` computes the hash *from* the content:
+/// the edit happens in a claim file, the loader re-derives the hash from it, and a Row is
+/// what arrives here — so overriding the hash is exactly the state an edited relation
+/// produces at this seam. (The address, computed only from meaning, is untouched.)
 #[test]
 fn an_edited_relation_after_signing_fails_verification() {
     let (rows, manifest) = signed_manifest();
@@ -252,6 +279,30 @@ fn a_v1_manifest_names_the_reissue() {
     assert!(err.contains("ADR 0013"), "{err}");
 }
 
+/// Ordinary corruption — here a manifest missing `claim_id`, not the attested hashes —
+/// must get the plain unreadable message. The v1 advice ("re-issue and re-sign", ADR 0013)
+/// is for a manifest *without the attested hashes*; a corrupt manifest is not a version of
+/// anything, and sending its reader off to re-sign would re-issue over a defect that was
+/// never a stale envelope.
+#[test]
+fn a_manifest_missing_claim_id_gets_the_plain_unreadable_message() {
+    let err = from_json(
+        "{\"version\":2,\"rules_v\":5,\"selection\":{},\"claims\":[{\"address\":\"aaa\",\"relations_hash\":\"r\",\"rationale_hash\":\"q\"}]}",
+    )
+    .expect_err("a manifest without claim_id is unreadable");
+    assert!(err.contains("manifest is not readable"), "{err}");
+    assert!(err.contains("claim_id"), "{err}");
+    assert!(!err.contains("re-issue"), "{err}");
+    assert!(!err.contains("ADR 0013"), "{err}");
+}
+
+/// Pinned oracle for the empty case, computed independently of the code under test —
+/// `printf 'req.relations.v1\0[]' | shasum -a 256` (the `\0` is a literal NUL byte).
+/// Asserting the digest against itself recomputed would pin nothing: it could not fail.
+/// Never regenerate this literal from the implementation.
+const EMPTY_RELATIONS_DIGEST: &str =
+    "479fcec2cd9b2af0bc13fa4054307413459ae1ad7ca6344435530570226dc1af";
+
 /// The audit hashes are over the parsed values, canonically serialized: deterministic for
 /// identical values, distinct across surfaces, moved by an edit, and defined for the empty
 /// list — an empty `relations:` still attests.
@@ -281,8 +332,8 @@ fn the_audit_hashes_are_deterministic_and_separate() {
     assert_ne!(a, relations_digest(&edited), "an edit must move the hash");
     assert_eq!(
         relations_digest(&[]),
-        relations_digest(&[]),
-        "an empty list still attests"
+        EMPTY_RELATIONS_DIGEST,
+        "an empty list still attests — against the shasum oracle, not against itself"
     );
 }
 

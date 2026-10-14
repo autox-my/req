@@ -2,10 +2,27 @@
 
 use req::audit::{coverage, findings, packet};
 use req::baseline::{canonical_bytes, from_json, manifest};
+use req::model::{Rationale, rationale_digest, relations_digest};
 use req::select::{Applies, Context};
 use req::view::Row;
 
+/// The full rationale a row's provenance fields stand for: the attested digest is over all
+/// four fields, so the hash and the displayed provenance are computed from one shape.
+fn fixture_rationale(source: &str) -> Rationale {
+    Rationale {
+        source: source.to_string(),
+        date: if source.is_empty() {
+            String::new()
+        } else {
+            "2026-10-07".to_string()
+        },
+        rejected_alternatives: vec![],
+        assumptions: vec![],
+    }
+}
+
 fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
+    let provenance = fixture_rationale(rationale);
     Row {
         claim_id: id.to_string(),
         statement: format!("{id} shall log each command."),
@@ -18,15 +35,13 @@ fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
             Vec::new()
         },
         relations: Vec::new(),
-        relations_hash: "relations-hash".to_string(),
-        rationale_hash: "rationale-hash".to_string(),
+        // Real digests over this row's own content — a placeholder hash beside empty
+        // relations is a Row state `load_rows` can never produce.
+        relations_hash: relations_digest(&[]),
+        rationale_hash: rationale_digest(&provenance),
         stored: req::fill::StoredState::Verified,
-        rationale_source: rationale.to_string(),
-        rationale_date: if rationale.is_empty() {
-            String::new()
-        } else {
-            "2026-10-07".to_string()
-        },
+        rationale_source: provenance.source.clone(),
+        rationale_date: provenance.date.clone(),
     }
 }
 
