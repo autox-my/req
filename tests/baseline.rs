@@ -566,6 +566,22 @@ fn req_bin() -> std::path::PathBuf {
         .expect("integration tests run with CARGO_BIN_EXE_req set")
 }
 
+/// The verifier the Baseline tests need, asserted up front so a machine without it fails
+/// naming the tool and its install line, rather than as a puzzling `[UNVERIFIABLE]` where a
+/// test expected `[VERIFIED]`. There is deliberately no skip path: the gate's Baseline step
+/// has none either, because an unverified Baseline must never read as a pass (ADR 0010).
+fn require_minisign() {
+    let installed = std::process::Command::new("minisign")
+        .arg("-v")
+        .output()
+        .is_ok_and(|out| out.status.success());
+    assert!(
+        installed,
+        "minisign is required — install it first: `brew install minisign` \
+         (Debian: `apt-get install minisign`)"
+    );
+}
+
 /// A fixture directory that removes itself when the test ends — including when an
 /// assertion panics, which a trailing cleanup call would skip.
 struct Fixture(std::path::PathBuf);
@@ -633,6 +649,7 @@ fn unsigned_fixture(dir: &std::path::Path) -> std::path::PathBuf {
 /// here, before an audit ever has to.
 #[test]
 fn the_committed_baseline_verifies_against_the_working_tree() {
+    require_minisign();
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let output = std::process::Command::new(req_bin())
         .args(["baseline", "--verify"])
@@ -652,6 +669,7 @@ fn the_committed_baseline_verifies_against_the_working_tree() {
 /// signature no longer matches and the address no longer recomputes.
 #[test]
 fn a_tampered_baseline_does_not_verify() {
+    require_minisign();
     let fixture = Fixture::new("cli-tampered");
     let manifest = tampered_fixture(fixture.path());
     let output = std::process::Command::new(req_bin())
@@ -701,14 +719,19 @@ fn check_sh_args(args: &[&std::ffi::OsStr]) -> std::process::Output {
             String::from_utf8_lossy(&common.stderr)
         );
         let common = String::from_utf8_lossy(&common.stdout).trim().to_string();
-        let home = std::path::PathBuf::from(common)
+        // Failing here, by name, beats letting check.sh exit 2 with its generic "no rust
+        // toolchain" for a layout this helper was supposed to find.
+        let candidate = std::path::PathBuf::from(&common)
             .parent()
-            .map(|main| main.join(".tools/home"));
-        if let Some(home) =
-            home.filter(|h| h.is_absolute() && h.join(".rustup/toolchains").exists())
-        {
-            command.env("HOME", home);
-        }
+            .map(|main| main.join(".tools/home"))
+            .filter(|h| h.is_absolute() && h.join(".rustup/toolchains").exists());
+        let Some(home) = candidate else {
+            panic!(
+                "no toolchain home for check.sh: $HOME/.rustup/toolchains is absent and so is \
+                 <git common dir>/../.tools/home/.rustup/toolchains (see .tools/README.md)"
+            );
+        };
+        command.env("HOME", home);
     }
     command.output().expect("runs scripts/check.sh")
 }
@@ -802,6 +825,7 @@ fn the_gate_rejects_an_unknown_step_and_stray_arguments() {
 #[cfg(unix)]
 #[test]
 fn the_gate_fails_when_the_baseline_does_not_verify() {
+    require_minisign();
     let fixture = Fixture::new("gate-tampered");
     let manifest = tampered_fixture(fixture.path());
     let output = check_sh(Some(&manifest));
@@ -841,6 +865,7 @@ fn the_gate_blocks_an_unverifiable_baseline() {
 #[cfg(unix)]
 #[test]
 fn the_gate_verifies_the_committed_baseline() {
+    require_minisign();
     let output = check_sh(None);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(

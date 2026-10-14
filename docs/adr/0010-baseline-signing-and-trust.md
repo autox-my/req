@@ -74,10 +74,9 @@ named human approving a specific decision, and they reuse this same scheme and t
 
 - **The core gains no cryptography and no network.** The manifest — sorted addresses, rules
   version, selection context — is emitted by our own canonical writer, and the signature check
-  is a **process boundary** to a pinned verifier (`minisign`), exactly as providers are. In
-  this development environment `minisign` is **not installed** and `gpg` is, so signature
-  verification reports UNVERIFIABLE here; that is an environment fact about this container,
-  not a property of the decision.
+  is a **process boundary** to a pinned verifier (`minisign`), exactly as providers are. It is
+  installed in the development environment and on the CI runner; where it is absent the outcome
+  is UNVERIFIABLE, never a pass, which is why the gate's Baseline step carries no SKIP.
 - **Drift becomes detectable.** Addresses are re-derived at verification: a claim edited after
   signing no longer matches its manifest entry and is **FAIL** — the same class as a
   hand-edited digest, and the reason a Baseline is worth more than a tag.

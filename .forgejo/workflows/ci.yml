@@ -13,7 +13,9 @@
 #   2. It prints SKIP and still exits 0 when a check could not run: rustfmt, clippy, python3 and
 #      the review CLI can each skip. A green exit is therefore not a verdict, which is why the
 #      last step fails the job when any SKIP line appears. "A skipped check is never a pass" is
-#      enforced here rather than trusted.
+#      enforced here rather than trusted. The Baseline step is the exception: it has no SKIP,
+#      because an unverified Baseline is UNVERIFIABLE, so this workflow verifies minisign above
+#      and the gate blocks without it.
 #
 #   3. runs-on must name a label some runner actually carries. A workflow with no matching
 #      runner queues forever, which reads as "CI is slow" rather than "CI is absent" — adjust
@@ -50,6 +52,21 @@ jobs:
             exit 1
           fi
           cc --version | head -1
+
+      - name: minisign, the verifier the Baseline step needs
+        run: |
+          set -eu
+          # scripts/check.sh re-verifies the committed Baseline on every run, and that step has
+          # no SKIP: with no verifier req answers UNVERIFIABLE and the gate blocks. The runner
+          # image ships minisign; verify the effect here so a runner that lost it fails naming
+          # the reason, rather than as an UNVERIFIABLE verdict inside the gate log.
+          if ! command -v minisign >/dev/null 2>&1; then
+            echo "::error::minisign is not installed, so the Baseline step cannot verify"
+            echo "On a Debian-ish host: sudo apt-get update && sudo apt-get install -y minisign"
+            echo "On macOS: brew install minisign"
+            exit 1
+          fi
+          minisign -v
 
       - name: rustup, the pinned channel, and the components the gate needs
         run: |

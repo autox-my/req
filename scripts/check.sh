@@ -5,9 +5,10 @@
 # a check that cannot run is not a passing check, and the commit message must say
 # so. The first non-zero status fails the gate.
 #
-# Usage: scripts/check.sh [baseline [baseline.json]] | [plan]
+# Usage: scripts/check.sh [baseline [file]] | [plan]
 #   no argument        every check (the default; CI uses this)
-#   baseline [file]    only the Baseline step (file defaults to the committed one).
+#   baseline [file]    only the Baseline step (file defaults to
+#                      baselines/air-gapped.json).
 #                      The step exists so its failure modes are testable —
 #                      tests/baseline.rs drives it against tampered and unsigned
 #                      fixtures — and so one check can be re-run alone. It must
@@ -79,7 +80,7 @@ run()  {
 # is a usage error (exit 2), never a quiet run of a different scope: an unknown step
 # name, an extra positional, or a second file are all rejected.
 usage() {
-  printf 'usage: scripts/check.sh [baseline [baseline.json]] | [plan]\n' >&2
+  printf 'usage: scripts/check.sh [baseline [file]] | [plan]\n' >&2
 }
 
 # One home for the committed Baseline the gate verifies: the full run and the standalone
@@ -135,11 +136,17 @@ fi
 # `apt-get install minisign`; the CI runner image already ships minisign 0.12).
 #
 # The step drives the req binary: normally `cargo run -q --` like every other step here.
-# tests/baseline.rs sets REQ_GATE_BIN to the binary the test run already built, so the
-# step is exercised without nesting a second cargo invocation — and a second build-dir
-# lock — inside `cargo test`. Ordinary and CI invocations never set it.
+# The *standalone* step alone also honors REQ_GATE_BIN — the seam tests/baseline.rs uses to
+# exercise it against the binary the test run already built, with no second cargo invocation
+# (and no second build-dir lock) inside `cargo test`. The full gate never honors it, and an
+# override that is not an executable file is refused by name: a stray environment value must
+# not be able to redirect the verification the gate exists to perform.
 verify_baseline() {
-  if [ -n "${REQ_GATE_BIN:-}" ]; then
+  if [ "$step" = baseline ] && [ -n "${REQ_GATE_BIN:-}" ]; then
+    if [ ! -x "$REQ_GATE_BIN" ]; then
+      printf 'REQ_GATE_BIN is not an executable file: %s\n' "$REQ_GATE_BIN" >&2
+      exit 2
+    fi
     run "$REQ_GATE_BIN" baseline --verify "$1"
   else
     run cargo run -q -- baseline --verify "$1"
