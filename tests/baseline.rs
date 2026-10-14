@@ -4,7 +4,7 @@ use req::baseline::{
     BASELINE_VERSION, Manifest, MinisignCli, Outcome, SignatureOutcome, SignatureVerifier,
     TrustFile, canonical_bytes, drift, from_json, manifest, verify,
 };
-use req::model::{Relation, Rationale, rationale_digest, relations_digest};
+use req::model::{Rationale, Relation, rationale_digest, relations_digest};
 use req::select::{Applies, Context};
 use req::view::Row;
 
@@ -162,8 +162,16 @@ fn the_manifest_carries_the_attested_hashes() {
             .iter()
             .find(|r| r.claim_id == claim.claim_id)
             .expect("manifest claims come from rows");
-        assert_eq!(claim.relations_hash, row.relations_hash, "{}", claim.claim_id);
-        assert_eq!(claim.rationale_hash, row.rationale_hash, "{}", claim.claim_id);
+        assert_eq!(
+            claim.relations_hash, row.relations_hash,
+            "{}",
+            claim.claim_id
+        );
+        assert_eq!(
+            claim.rationale_hash, row.rationale_hash,
+            "{}",
+            claim.claim_id
+        );
     }
     let bytes = canonical_bytes(&manifest);
     assert!(bytes.contains("\"relations_hash\""), "{bytes}");

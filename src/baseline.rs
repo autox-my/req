@@ -125,8 +125,10 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
         let detail = e.to_string();
         if detail.contains("missing field") {
             // A manifest without the attested hashes is a v1 Baseline: stale, not corrupt.
-            format!("manifest is not readable: {detail} — a manifest without the attested \
-                     hashes is a v1 Baseline: re-issue and re-sign (ADR 0013)")
+            format!(
+                "manifest is not readable: {detail} — a manifest without the attested \
+                     hashes is a v1 Baseline: re-issue and re-sign (ADR 0013)"
+            )
         } else {
             format!("manifest is not readable: {detail}")
         }
