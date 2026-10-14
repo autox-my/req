@@ -610,14 +610,21 @@ impl Fixture {
     }
 
     /// A fixture whose name is unique to this process and moment, for a test that must not
-    /// collide with a concurrent run of itself. The cleanup is `Fixture`'s, not a second
-    /// copy's.
+    /// collide with a concurrent run of itself. A process-local counter carries the guarantee
+    /// rather than the clock, whose resolution is not one. The cleanup is `Fixture`'s, not a
+    /// second copy's.
     fn unique(tag: &str) -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        // `unwrap_or_default` collapses a pre-epoch clock error to zero and a coarse clock can
+        // repeat a value, and a repeated name would make `Fixture::new` delete a sibling
+        // fixture's live directory.
+        static NEXT: AtomicU64 = AtomicU64::new(0);
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or_default();
-        Fixture::new(&format!("{tag}-{}-{nanos}", std::process::id()))
+        let serial = NEXT.fetch_add(1, Ordering::Relaxed);
+        Fixture::new(&format!("{tag}-{}-{nanos}-{serial}", std::process::id()))
     }
 
     fn path(&self) -> &std::path::Path {
@@ -1115,28 +1122,20 @@ fn dropping_the_staging_guard_removes_its_directory() {
     );
 }
 
-/// The cleanup a failing assertion actually needs. A trailing `remove_dir_all` is never
-/// reached when an `assert!` panics, so the base of a *failing* run is the one that leaks.
-/// Hold the fixture across a panic and prove the directory is gone anyway.
+/// The cleanup a failing assertion relies on. The F9 tests used to carry a trailing
+/// `remove_dir_all`, which a panicking `assert!` never reaches, so the base of a *failing* run
+/// was the one that leaked. This pins the fixture's own drop without a deliberate panic: that
+/// `Drop` runs while unwinding is a language guarantee, whereas hiding a deliberate panic's
+/// output needs a process-global hook swap that would also mute a concurrent test's genuine
+/// failure.
 #[test]
-fn a_panicking_test_still_removes_its_base_directory() {
-    // The panic is the fixture, not a failure: the default hook would print a
-    // failure-looking message and backtrace on a test that passes. Silenced for the
-    // unwinding only and restored before the assertions, so the window in which another
-    // thread's panic would be muted is as short as it can be.
-    let previous = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let mut observed = None;
-    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let base = Fixture::unique("req-f9-panicking");
-        observed = Some(base.path().to_path_buf());
-        panic!("a failing assertion unwinds through the fixture");
-    }));
-    std::panic::set_hook(previous);
-    assert!(panicked.is_err(), "catch_unwind observes the panic");
-    let leaked = observed.expect("the closure records its base before panicking");
+fn a_fixture_removes_its_directory_on_drop() {
+    let fixture = Fixture::unique("req-f9-cleanup");
+    let dir = fixture.path().to_path_buf();
+    assert!(dir.exists(), "the fixture directory exists before the drop");
+    drop(fixture);
     assert!(
-        !leaked.exists(),
-        "a panicking test must not leak its base directory: {leaked:?}"
+        !dir.exists(),
+        "dropping the fixture removes its directory: {dir:?}"
     );
 }

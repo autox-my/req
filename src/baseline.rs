@@ -460,25 +460,40 @@ fn ensure_base(base: &Path) -> std::io::Result<()> {
 ///
 /// `create_staging_dir` makes the staging directory exclusively and 0700, but exclusivity says
 /// nothing about the directory holding it: removing an entry needs write permission on the
-/// *parent*, so in a group- or other-writable base without the sticky bit another local user
-/// can unlink the freshly created 0700 directory, plant a symlink at the same name, and have
-/// the trusted inputs written — and the guard's `remove_dir_all` aimed — where they choose.
-/// The sticky bit is what makes `/tmp` (1777) safe: an entry there belongs to its creator, so
-/// only its owner may remove it. A base that is neither private nor sticky makes the
-/// verification `Unverifiable`, which is the honest outcome when the inputs cannot be staged
-/// somewhere only we can reach them.
+/// *parent*, so in a group- or other-writable directory without the sticky bit another local
+/// user can unlink the freshly created 0700 directory, plant a symlink at the same name, and
+/// have the trusted inputs written — and the guard's `remove_dir_all` aimed — where they
+/// choose. The sticky bit is what makes `/tmp` (1777) safe: an entry there belongs to its
+/// creator, so only its owner may remove it.
+///
+/// The check walks the whole chain, and it is still a check followed by an act: the `mkdir` is
+/// a separate syscall, so a base that passes can be swapped in between. Closing that needs
+/// `openat`/`O_NOFOLLOW` semantics the standard library does not offer without a new
+/// dependency, so what remains is a race a local attacker has microseconds to win rather than
+/// the standing invitation of staging into a directory anyone may write. A base that is
+/// neither private nor sticky makes the verification `Unverifiable`, which is the honest
+/// outcome when the inputs cannot be staged somewhere only we can reach them.
 #[cfg(unix)]
 fn require_safe_base(base: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
-    let mode = std::fs::metadata(base)?.permissions().mode();
-    if mode & 0o022 != 0 && mode & 0o1000 == 0 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            format!(
-                "the staging base {} is group/other-writable without the sticky bit",
-                base.display()
-            ),
-        ));
+    // Every directory on the way down, not just the leaf: renaming the leaf's parent is enough
+    // to move the leaf elsewhere, so a private base under a writable ancestor is no safer.
+    for dir in base.ancestors() {
+        if dir.as_os_str().is_empty() {
+            continue;
+        }
+        let mode = std::fs::metadata(dir)?.permissions().mode();
+        if mode & 0o022 != 0 && mode & 0o1000 == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!(
+                    "the staging base {} runs through {}, which is group/other-writable \
+                     without the sticky bit",
+                    base.display(),
+                    dir.display()
+                ),
+            ));
+        }
     }
     Ok(())
 }
@@ -905,6 +920,30 @@ mod tests {
         assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A safe leaf under an unsafe parent is still a base another user can swap — renaming the
+    /// parent is enough — so the whole chain is checked, not just the leaf.
+    #[cfg(unix)]
+    #[test]
+    fn a_base_under_a_writable_ancestor_is_refused() {
+        use std::os::unix::fs::PermissionsExt;
+        let outer = unique_base("req-unsafe-ancestor");
+        std::fs::create_dir_all(&outer).expect("the fixture outer directory");
+        std::fs::set_permissions(&outer, std::fs::Permissions::from_mode(0o777))
+            .expect("the outer directory is made world-writable");
+        let base = outer.join("staging");
+        std::fs::create_dir_all(&base).expect("the fixture base");
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700))
+            .expect("the base itself is private");
+
+        let error = match staging_dir_in(&base) {
+            Ok(_) => panic!("a base under a writable ancestor must be refused"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+
+        let _ = std::fs::remove_dir_all(&outer);
     }
 
     /// `/tmp` itself is 1777: writable by everyone, but the sticky bit means only an entry's
