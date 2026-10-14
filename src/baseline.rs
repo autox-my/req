@@ -594,9 +594,17 @@ fn ensure_base(base: &Path) -> std::io::Result<()> {
 /// accepts makes the verification `Unverifiable`, which is the honest outcome when the inputs
 /// cannot be staged somewhere only we can reach them, and the reason names the directory so an
 /// operator can fix the mode rather than guess.
+///
+/// The caller passes an absolute path: `ancestors()` of a relative one stops at the empty
+/// component, which would silently skip every directory between the base and the working
+/// directory — the very components a rename attack would use.
 #[cfg(unix)]
 fn require_safe_base(base: &Path, me: Option<u32>) -> std::io::Result<()> {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    debug_assert!(
+        base.is_absolute(),
+        "the chain check needs an absolute base, or it would skip the components above the base"
+    );
     // Every directory on the way down, not just the leaf: renaming the leaf's parent is enough
     // to move the leaf elsewhere, so a private base under a writable ancestor is no safer.
     for dir in base.ancestors() {
@@ -1019,11 +1027,22 @@ mod tests {
         std::env::temp_dir().join(format!("{tag}-{}-{nanos}", std::process::id()))
     }
 
+    /// Whether the ambient temp dir's chain passes even the provisional check. On a host whose
+    /// temp dir sits under a group/other-writable, non-sticky ancestor the production refusal
+    /// is correct, but a test that needs a *successful* staging run has nothing to assert.
+    fn ambient_temp_dir_is_usable() -> bool {
+        require_safe_base(&std::env::temp_dir(), None).is_ok()
+    }
+
     /// A base that does not exist yet — an unusual `TMPDIR` — must be created rather than
     /// failing the verification as `Unverifiable`, which the pre-F9 `create_dir_all` covered.
     /// The staging name itself stays exclusively created, so this does not weaken the guard.
     #[test]
     fn a_missing_base_is_created_for_the_staging_directory() {
+        if !ambient_temp_dir_is_usable() {
+            eprintln!("skipping: the ambient temp dir chain is not private or root-sticky");
+            return;
+        }
         let base = unique_base("req-missing-base");
         assert!(!base.exists(), "the fixture base starts absent");
 
@@ -1120,6 +1139,10 @@ mod tests {
     #[test]
     fn an_unsafe_base_falls_back_to_a_safe_one() {
         use std::os::unix::fs::PermissionsExt;
+        if !ambient_temp_dir_is_usable() {
+            eprintln!("skipping: the ambient temp dir chain is not private or root-sticky");
+            return;
+        }
         let unsafe_base = unique_base("req-fallback-unsafe");
         std::fs::create_dir_all(&unsafe_base).expect("the fixture unsafe base");
         std::fs::set_permissions(&unsafe_base, std::fs::Permissions::from_mode(0o777))
@@ -1146,6 +1169,10 @@ mod tests {
     #[test]
     fn a_sticky_base_writable_by_others_is_accepted() {
         use std::os::unix::fs::PermissionsExt;
+        if !ambient_temp_dir_is_usable() {
+            eprintln!("skipping: the ambient temp dir chain is not private or root-sticky");
+            return;
+        }
         let base = unique_base("req-sticky-base");
         std::fs::create_dir_all(&base).expect("the fixture base");
         std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o1777))
@@ -1174,6 +1201,12 @@ mod tests {
         std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o1777))
             .expect("the fixture base is made sticky and world-writable");
         let ours = std::fs::metadata(&base).expect("metadata").uid();
+        // Owner 0 is trusted by construction, so when the suite itself runs as root there is no
+        // "another user" to name and the case cannot exist: skip it rather than assert it.
+        if ours == 0 {
+            let _ = std::fs::remove_dir_all(&base);
+            return;
+        }
         let other = if ours == 1 { 2 } else { 1 };
 
         let error = match require_safe_base(&base, Some(other)) {
