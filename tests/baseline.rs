@@ -25,7 +25,7 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
     // One idiom with every other row fixture (`common::rationale_columns`): the displayed
     // provenance and its attested digest are derived together. The pinned canonical bytes below
     // were computed over exactly this rationale.
-    let (rationale_source, rationale_date, rationale_hash) = common::rationale_columns(
+    let provenance = common::rationale_columns(
         "docs/adr/0010-baseline-signing-and-trust.md",
         common::FIXTURE_DATE,
     );
@@ -42,10 +42,10 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
         selectors: Vec::new(),
         relations,
         relations_hash,
-        rationale_hash,
+        rationale_hash: provenance.hash,
         stored: req::fill::StoredState::Verified,
-        rationale_source,
-        rationale_date,
+        rationale_source: provenance.source,
+        rationale_date: provenance.date,
     }
 }
 
@@ -561,8 +561,9 @@ fn drift_names_changed_missing_and_added_separately() {
 /// exclusive by precedence. A claim whose address **and** attested surface both moved is
 /// recorded in `changed` alone — never in `attested_changed` too — so merging the two lists
 /// cannot double-count an id, and `reasons()` names the address without also claiming the audit
-/// surface moved. Pinned because a reordered match arm would break it silently: verification
-/// would still fail, but the packet would count the claim twice.
+/// surface moved. Pinned because inverting the nesting — checking the attested surface before
+/// identity — would break it silently: verification would still fail, but the packet would
+/// count the claim twice.
 #[test]
 fn a_claim_whose_address_and_attested_surface_both_moved_is_changed_alone() {
     // The columns and their digest derived together by the shared helper: a real digest, not a

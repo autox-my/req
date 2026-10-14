@@ -47,13 +47,26 @@ pub fn relation_columns(rels: &[(&str, &str)]) -> (Vec<(String, String)>, String
     (columns, digest)
 }
 
+/// The provenance a row displays, with the attested digest over the same rationale. A named
+/// struct, not a tuple: all three fields are `String`, so a transposed tuple binding would
+/// compile silently and pair the digest with the wrong rationale — the exact drift this helper
+/// exists to prevent (`relation_columns`' tuple is safe only because its element types differ).
+pub struct Provenance {
+    pub source: String,
+    pub date: String,
+    pub hash: String,
+}
+
 /// The rationale-side mirror of `relation_columns`: the displayed provenance and the attested
 /// digest over the same rationale, derived together, so pairing the hash to the source and date
 /// it covers rests on one definition rather than per-call-site discipline.
-pub fn rationale_columns(source: &str, date: &str) -> (String, String, String) {
+pub fn rationale_columns(source: &str, date: &str) -> Provenance {
     let rationale = rationale_of(source, date);
-    let digest = rationale_digest(&rationale);
-    (rationale.source, rationale.date, digest)
+    Provenance {
+        hash: rationale_digest(&rationale),
+        source: rationale.source,
+        date: rationale.date,
+    }
 }
 
 /// A settled, verified, fully-provenanced claim with the given outgoing relations.
@@ -62,7 +75,7 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
     // is a Row state `load_rows` can never produce, and a fixture that could not exist
     // proves nothing about the layers above it.
     let (relations, relations_hash) = relation_columns(rels);
-    let (rationale_source, rationale_date, rationale_hash) = rationale_columns(
+    let provenance = rationale_columns(
         "docs/adr/0007-tier1-collapses-only-on-meaning-preserving-rules.md",
         FIXTURE_DATE,
     );
@@ -75,10 +88,10 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
         selectors: Vec::new(),
         relations,
         relations_hash,
-        rationale_hash,
+        rationale_hash: provenance.hash,
         stored: StoredState::Verified,
-        rationale_source,
-        rationale_date,
+        rationale_source: provenance.source,
+        rationale_date: provenance.date,
     }
 }
 
@@ -90,9 +103,9 @@ pub fn stored(mut row: Row, state: StoredState) -> Row {
 pub fn rationale(mut row: Row, source: &str) -> Row {
     // The provenance and its attested digest are derived together, so a changed source cannot
     // leave the old hash behind — the unproducible row this module exists to prevent.
-    let (new_source, date, hash) = rationale_columns(source, &row.rationale_date);
-    row.rationale_source = new_source;
-    row.rationale_date = date;
-    row.rationale_hash = hash;
+    let provenance = rationale_columns(source, &row.rationale_date);
+    row.rationale_source = provenance.source;
+    row.rationale_date = provenance.date;
+    row.rationale_hash = provenance.hash;
     row
 }

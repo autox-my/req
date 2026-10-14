@@ -236,15 +236,16 @@ pub fn drift(rows: &[Row], manifest: &Manifest) -> Drift {
     for claim in &manifest.claims {
         match current.get(claim.claim_id.as_str()) {
             // Identity first; the audit surface only attests when the identity still matches.
-            Some((address, _, _)) if *address != claim.address => {
-                out.changed.push(claim.claim_id.clone())
+            // The precedence is **structural** — nested, not match-arm order — so the
+            // exclusivity the categories are documented to have (and `audit::coverage`'s merge
+            // relies on) does not depend on which arm happens to come first.
+            Some((address, relations, rationale)) => {
+                if *address != claim.address {
+                    out.changed.push(claim.claim_id.clone())
+                } else if *relations != claim.relations_hash || *rationale != claim.rationale_hash {
+                    out.attested_changed.push(claim.claim_id.clone())
+                }
             }
-            Some((_, relations, rationale))
-                if *relations != claim.relations_hash || *rationale != claim.rationale_hash =>
-            {
-                out.attested_changed.push(claim.claim_id.clone())
-            }
-            Some(_) => {}
             None => out.missing.push(claim.claim_id.clone()),
         }
     }

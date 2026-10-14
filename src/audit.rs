@@ -243,8 +243,12 @@ pub fn findings(
         ),
         (Some(_), Some(coverage)) => {
             for id in &coverage.drifted {
+                // `drifted` merges the two drift classes (the address, and the attested
+                // relations/rationale), so the wording covers both: for an attested-only edit
+                // the ratified *text* is untouched — what no longer recomputes is the claim as
+                // it was ratified.
                 failed.push(format!(
-                    "{id}: edited after signing — the ratified text is gone"
+                    "{id}: edited after signing — the ratified claim no longer recomputes"
                 ));
             }
             for id in &coverage.missing {

@@ -17,7 +17,7 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
     // One idiom with every other row fixture (`common::rationale_columns`): the displayed
     // provenance and its attested digest are derived together, so the two cannot be edited
     // apart.
-    let (rationale_source, rationale_date, rationale_hash) = common::rationale_columns(
+    let provenance = common::rationale_columns(
         "docs/adr/0004-model-proposes-human-disposes.md",
         common::FIXTURE_DATE,
     );
@@ -34,10 +34,10 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
         selectors: Vec::new(),
         relations,
         relations_hash,
-        rationale_hash,
+        rationale_hash: provenance.hash,
         stored: req::fill::StoredState::Verified,
-        rationale_source,
-        rationale_date,
+        rationale_source: provenance.source,
+        rationale_date: provenance.date,
     }
 }
 
