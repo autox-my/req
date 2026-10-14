@@ -445,8 +445,11 @@ fn staging_dir_in(base: &Path) -> std::io::Result<StagingDir> {
     loop {
         match create_staging_dir(base, &staging_dir_name(attempt)) {
             Ok(dir) => return Ok(StagingDir(dir)),
+            // Advance only while another fresh name remains, so `STAGING_ATTEMPTS` names are
+            // tried — attempt 0 through `STAGING_ATTEMPTS - 1` — and not one more.
             Err(e)
-                if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < STAGING_ATTEMPTS =>
+                if e.kind() == std::io::ErrorKind::AlreadyExists
+                    && attempt + 1 < STAGING_ATTEMPTS =>
             {
                 attempt += 1;
             }
@@ -465,13 +468,11 @@ fn ensure_base(base: &Path) -> std::io::Result<()> {
         use std::os::unix::fs::DirBuilderExt;
         builder.mode(0o700);
     }
-    match builder.create(base) {
-        Ok(()) => Ok(()),
-        // An existing directory is the normal case and is left as it is; whether it is a safe
-        // place to stage into is `require_safe_base`'s question, not this call's.
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && base.is_dir() => Ok(()),
-        Err(e) => Err(e),
-    }
+    // `recursive` makes an existing directory a success and leaves its mode alone, so a
+    // `TMPDIR` someone else configured is not chmodded; whether it is a safe place to stage
+    // into is `require_safe_base`'s question, not this call's. An existing *non*-directory is
+    // still an error.
+    builder.create(base)
 }
 
 /// Refuse a base another local user could swap the staging directory out of.

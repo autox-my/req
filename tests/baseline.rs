@@ -1088,6 +1088,31 @@ fn creating_the_same_staging_dir_twice_is_already_exists() {
     );
 }
 
+/// F9: the exclusive creation is what makes a *planted symlink* harmless — `mkdir` refuses any
+/// existing entry, so a symlink at the staging name is neither followed nor turned into a
+/// directory whose contents the trusted inputs are written through. This is the threat the
+/// explicit-creation comment names; the test above only re-creates a real directory.
+#[cfg(unix)]
+#[test]
+fn a_symlink_at_the_staging_name_is_not_followed() {
+    let base = Fixture::unique("req-f9-symlink");
+    let elsewhere = Fixture::unique("req-f9-symlink-target");
+    let name = staging_dir_name(0);
+    std::os::unix::fs::symlink(elsewhere.path(), base.path().join(&name))
+        .expect("the symlink is planted at the staging name");
+
+    let error = create_staging_dir(base.path(), &name)
+        .expect_err("an existing entry, symlink included, is not reused");
+    assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(
+        std::fs::read_dir(elsewhere.path())
+            .expect("the target directory reads")
+            .count(),
+        0,
+        "nothing is staged through the planted symlink"
+    );
+}
+
 /// F9: mode 0700, so another local user cannot read the staged manifest — or, worse, replace
 /// the files between staging and the verifier process reading them.
 #[cfg(unix)]
