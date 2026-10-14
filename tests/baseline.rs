@@ -1120,12 +1120,19 @@ fn dropping_the_staging_guard_removes_its_directory() {
 /// Hold the fixture across a panic and prove the directory is gone anyway.
 #[test]
 fn a_panicking_test_still_removes_its_base_directory() {
+    // The panic is the fixture, not a failure: the default hook would print a
+    // failure-looking message and backtrace on a test that passes. Silenced for the
+    // unwinding only and restored before the assertions, so the window in which another
+    // thread's panic would be muted is as short as it can be.
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
     let mut observed = None;
     let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let base = Fixture::unique("req-f9-panicking");
         observed = Some(base.path().to_path_buf());
         panic!("a failing assertion unwinds through the fixture");
     }));
+    std::panic::set_hook(previous);
     assert!(panicked.is_err(), "catch_unwind observes the panic");
     let leaked = observed.expect("the closure records its base before panicking");
     assert!(

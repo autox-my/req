@@ -418,12 +418,13 @@ pub fn staging_dir() -> std::io::Result<StagingDir> {
 /// The staging attempt loop against an explicit base, so a test can drive it without mutating
 /// the process environment.
 fn staging_dir_in(base: &Path) -> std::io::Result<StagingDir> {
-    // `temp_dir()` is read from the environment and may name a directory that does not exist
-    // yet, and `create_staging_dir` makes only the final component. The base is not where the
-    // trusted inputs land — the exclusively-created directory under it is — so creating it is
-    // not the reuse hazard that `create` guards against, and the pre-F9 `create_dir_all`
-    // covered exactly this case.
-    std::fs::create_dir_all(base)?;
+    // `temp_dir()` is read from the environment (TMPDIR/TMP/TEMP) and may name a directory
+    // that does not exist yet, and `create_staging_dir` makes only the final component. The
+    // pre-F9 `create_dir_all` covered that; `ensure_base` keeps that behaviour while choosing
+    // the mode rather than inheriting it from the umask, and `require_safe_base` refuses a
+    // base another local user could swap the staging directory out of.
+    ensure_base(base)?;
+    require_safe_base(base)?;
     let mut attempt = 0;
     loop {
         match create_staging_dir(base, &staging_dir_name(attempt)) {
@@ -434,6 +435,59 @@ fn staging_dir_in(base: &Path) -> std::io::Result<StagingDir> {
             Err(e) => return Err(e),
         }
     }
+}
+
+/// Create `base` if it is missing — mode 0700 on Unix — and leave an existing directory's mode
+/// alone, since a `TMPDIR` someone else configured is not ours to chmod.
+fn ensure_base(base: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    match builder.create(base) {
+        Ok(()) => Ok(()),
+        // An existing directory is the normal case and is left as it is; whether it is a safe
+        // place to stage into is `require_safe_base`'s question, not this call's.
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && base.is_dir() => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Refuse a base another local user could swap the staging directory out of.
+///
+/// `create_staging_dir` makes the staging directory exclusively and 0700, but exclusivity says
+/// nothing about the directory holding it: removing an entry needs write permission on the
+/// *parent*, so in a group- or other-writable base without the sticky bit another local user
+/// can unlink the freshly created 0700 directory, plant a symlink at the same name, and have
+/// the trusted inputs written — and the guard's `remove_dir_all` aimed — where they choose.
+/// The sticky bit is what makes `/tmp` (1777) safe: an entry there belongs to its creator, so
+/// only its owner may remove it. A base that is neither private nor sticky makes the
+/// verification `Unverifiable`, which is the honest outcome when the inputs cannot be staged
+/// somewhere only we can reach them.
+#[cfg(unix)]
+fn require_safe_base(base: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(base)?.permissions().mode();
+    if mode & 0o022 != 0 && mode & 0o1000 == 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!(
+                "the staging base {} is group/other-writable without the sticky bit",
+                base.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// No portable ownership or mode check exists; on other platforms this adds nothing and the
+/// staging directory keeps the platform default, as elsewhere in this module.
+#[cfg(not(unix))]
+fn require_safe_base(_base: &Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 /// The pinned `minisign` CLI. Absent in this development environment, which the outcome
@@ -798,17 +852,21 @@ fn civil_from_days(days: i64) -> String {
 mod tests {
     use super::*;
 
+    /// A base under the real temp dir, unique to this process and moment.
+    fn unique_base(tag: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        std::env::temp_dir().join(format!("{tag}-{}-{nanos}", std::process::id()))
+    }
+
     /// A base that does not exist yet — an unusual `TMPDIR` — must be created rather than
     /// failing the verification as `Unverifiable`, which the pre-F9 `create_dir_all` covered.
     /// The staging name itself stays exclusively created, so this does not weaken the guard.
     #[test]
     fn a_missing_base_is_created_for_the_staging_directory() {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or_default();
-        let base =
-            std::env::temp_dir().join(format!("req-missing-base-{}-{nanos}", std::process::id()));
+        let base = unique_base("req-missing-base");
         assert!(!base.exists(), "the fixture base starts absent");
 
         let guard = staging_dir_in(&base).expect("a missing base is created, not an error");
@@ -817,6 +875,52 @@ mod tests {
             dir.exists(),
             "the staging directory exists under the created base"
         );
+        drop(guard);
+        assert!(
+            !dir.exists(),
+            "the guard still removes the staging directory"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Unlinking the 0700 staging directory needs write permission on the directory that
+    /// holds it, not on the staging directory itself. A base another local user may write,
+    /// without the sticky bit, therefore lets them replace the staging directory with a
+    /// symlink and aim the trusted inputs — and the guard's `remove_dir_all` — at a path they
+    /// chose.
+    #[cfg(unix)]
+    #[test]
+    fn a_base_another_user_could_write_is_refused() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = unique_base("req-unsafe-base");
+        std::fs::create_dir_all(&base).expect("the fixture base");
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o777))
+            .expect("the fixture base is made world-writable");
+
+        let error = match staging_dir_in(&base) {
+            Ok(_) => panic!("an unsafe base must be refused, not staged into"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// `/tmp` itself is 1777: writable by everyone, but the sticky bit means only an entry's
+    /// owner may remove it, so it must not be refused — a check that rejected it would break
+    /// every verification on a system whose `TMPDIR` is `/tmp`.
+    #[cfg(unix)]
+    #[test]
+    fn a_sticky_base_writable_by_others_is_accepted() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = unique_base("req-sticky-base");
+        std::fs::create_dir_all(&base).expect("the fixture base");
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o1777))
+            .expect("the fixture base is made sticky and world-writable");
+
+        let guard = staging_dir_in(&base).expect("a sticky base is safe to stage in");
+        let dir = guard.path().to_path_buf();
         drop(guard);
         assert!(
             !dir.exists(),
