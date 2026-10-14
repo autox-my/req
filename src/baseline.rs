@@ -332,6 +332,11 @@ pub trait SignatureVerifier {
     fn verify(&self, message: &[u8], signature: &str, public_key: &str) -> SignatureOutcome;
 }
 
+/// How many fresh names one verification will try before giving up on a collision. The name
+/// already carries a clock reading, so a real collision is unreachable; the bound is here only
+/// so a pathological filesystem cannot make the loop run forever.
+const STAGING_ATTEMPTS: u32 = 16;
+
 /// The name of one staging attempt: `req-baseline-<pid>-<nanos-since-epoch>-<attempt>`.
 ///
 /// The process id alone is a name another local process can guess and pre-create; the clock
@@ -411,6 +416,13 @@ impl Drop for StagingDir {
 /// The only way to obtain a [`StagingDir`]: it always creates a fresh, exclusively-created
 /// directory under the temp dir, so the guard's `Drop` removes only what this call made and
 /// no caller can hand it an arbitrary path to delete.
+///
+/// The temp dir itself must be one only its owner may write, or one with the sticky bit, as
+/// `/tmp` (1777) has. That is the operator contract, and it is checked rather than assumed:
+/// another local user who may write the base could unlink the 0700 staging directory and put
+/// a symlink in its place, so such a base is refused, which surfaces as `Unverifiable`, and
+/// the reason names the directory to fix. A base that does not exist yet is created 0700 and
+/// satisfies the same contract.
 pub fn staging_dir() -> std::io::Result<StagingDir> {
     staging_dir_in(&std::env::temp_dir())
 }
@@ -421,15 +433,21 @@ fn staging_dir_in(base: &Path) -> std::io::Result<StagingDir> {
     // `temp_dir()` is read from the environment (TMPDIR/TMP/TEMP) and may name a directory
     // that does not exist yet, and `create_staging_dir` makes only the final component. The
     // pre-F9 `create_dir_all` covered that; `ensure_base` keeps that behaviour while choosing
-    // the mode rather than inheriting it from the umask, and `require_safe_base` refuses a
-    // base another local user could swap the staging directory out of.
-    ensure_base(base)?;
+    // the mode rather than inheriting it from the umask.
+    //
+    // The chain is validated *before* anything is created, so a refusal cannot leave a
+    // directory behind inside a location it has just called untrustworthy. A component that
+    // does not exist yet is skipped by the check and created 0700 by `ensure_base`, which
+    // cannot be group- or other-writable.
     require_safe_base(base)?;
+    ensure_base(base)?;
     let mut attempt = 0;
     loop {
         match create_staging_dir(base, &staging_dir_name(attempt)) {
             Ok(dir) => return Ok(StagingDir(dir)),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 16 => {
+            Err(e)
+                if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < STAGING_ATTEMPTS =>
+            {
                 attempt += 1;
             }
             Err(e) => return Err(e),
@@ -472,7 +490,11 @@ fn ensure_base(base: &Path) -> std::io::Result<()> {
 /// dependency, so what remains is a race a local attacker has microseconds to win rather than
 /// the standing invitation of staging into a directory anyone may write. A base that is
 /// neither private nor sticky makes the verification `Unverifiable`, which is the honest
-/// outcome when the inputs cannot be staged somewhere only we can reach them.
+/// outcome when the inputs cannot be staged somewhere only we can reach them, and the reason
+/// names the directory so an operator can fix the mode rather than guess.
+///
+/// This runs before anything is created, so a refusal leaves no directory behind in a place
+/// the check has just called untrustworthy.
 #[cfg(unix)]
 fn require_safe_base(base: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
@@ -482,13 +504,20 @@ fn require_safe_base(base: &Path) -> std::io::Result<()> {
         if dir.as_os_str().is_empty() {
             continue;
         }
-        let mode = std::fs::metadata(dir)?.permissions().mode();
+        let mode = match std::fs::metadata(dir) {
+            Ok(meta) => meta.permissions().mode(),
+            // Not created yet: `ensure_base` makes it 0700 inside a chain already checked above
+            // it, so it cannot be the unsafe link.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e),
+        };
         if mode & 0o022 != 0 && mode & 0o1000 == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 format!(
-                    "the staging base {} runs through {}, which is group/other-writable \
-                     without the sticky bit",
+                    "the staging base {} runs through {}, which is group/other-writable without \
+                     the sticky bit: make the temporary directory private (mode 0700) or sticky, \
+                     or point TMPDIR at one that is",
                     base.display(),
                     dir.display()
                 ),
@@ -942,6 +971,31 @@ mod tests {
             Err(error) => error,
         };
         assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+
+        let _ = std::fs::remove_dir_all(&outer);
+    }
+
+    /// A refusal must not leave a directory behind inside the location it has just called
+    /// untrustworthy, so the chain is checked before anything is created.
+    #[cfg(unix)]
+    #[test]
+    fn a_refused_base_is_not_created() {
+        use std::os::unix::fs::PermissionsExt;
+        let outer = unique_base("req-unsafe-parent-no-create");
+        std::fs::create_dir_all(&outer).expect("the fixture outer directory");
+        std::fs::set_permissions(&outer, std::fs::Permissions::from_mode(0o777))
+            .expect("the outer directory is made world-writable");
+        let base = outer.join("never-created");
+
+        assert!(
+            staging_dir_in(&base).is_err(),
+            "a chain through a writable ancestor is refused"
+        );
+        assert!(
+            !base.exists(),
+            "the refusal must not leave {} behind",
+            base.display()
+        );
 
         let _ = std::fs::remove_dir_all(&outer);
     }
