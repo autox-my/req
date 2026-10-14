@@ -120,11 +120,15 @@ fn json_string(value: &str) -> String {
 
 /// The one field a parse error leaves readable: the envelope version the manifest declares.
 /// Recovered leniently — `Option` defaults, everything else ignored — because the error itself
-/// is about the very fields a v1 manifest does not carry.
+/// is about the very fields a stale manifest does not carry.
 #[derive(Deserialize)]
 struct EnvelopeVersion {
     version: Option<u32>,
 }
+
+/// The advice a stale envelope's reader is given, shared by the parse path and [`verify`] so
+/// the wording cannot drift between the two places it is printed.
+const REISSUE_ADVICE: &str = "re-issue and re-sign (ADR 0013)";
 
 /// Parse a manifest back. Reading is not the address path, so the ordinary JSON reader is
 /// fine here — only the *emitted* bytes have to be canonical.
@@ -133,19 +137,23 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
         let detail = e.to_string();
         // Branch on the *declared envelope version*, recovered by a lenient parse that
         // survives the missing fields serde is complaining about. Not on serde's message text,
-        // which is not a stable contract; and not on the field name alone, because a stale v1
-        // is missing *both* attested hashes while serde names only the first — a v2 manifest
-        // that lost exactly one hash would otherwise be told it is a v1 Baseline. A manifest
-        // declaring the current version is corrupt, and re-issue advice would send its reader
-        // off to re-sign over a defect that was never a stale envelope (ADR 0013).
-        let declared_v1 = serde_json::from_str::<EnvelopeVersion>(text)
+        // which is not a stable contract; and not on the field name alone, because a stale
+        // manifest is missing *both* attested hashes while serde names only the first — a
+        // current-version manifest that lost exactly one hash would otherwise be told it is
+        // stale. The stale test is *any declared version below this build's*, derived from
+        // BASELINE_VERSION rather than hardcoded, so the next envelope bump cannot silently
+        // drop the advice; a manifest declaring the current version (or newer) is corrupt, and
+        // re-issue advice would send its reader off to re-sign over a defect that was never a
+        // stale envelope (ADR 0013).
+        let declared = serde_json::from_str::<EnvelopeVersion>(text)
             .ok()
-            .and_then(|envelope| envelope.version)
-            == Some(1);
-        if declared_v1 {
+            .and_then(|envelope| envelope.version);
+        let stale = declared.is_some_and(|version| version < BASELINE_VERSION);
+        if stale {
             format!(
-                "manifest is not readable: {detail} — this manifest declares version 1, which \
-                     predates the attested hashes: re-issue and re-sign (ADR 0013)"
+                "manifest is not readable: {detail} — this manifest declares version {}, which \
+                     predates the version this build writes ({BASELINE_VERSION}): {REISSUE_ADVICE}",
+                declared.unwrap_or(0)
             )
         } else {
             format!("manifest is not readable: {detail}")
@@ -416,7 +424,7 @@ pub fn verify(
     if manifest.version < BASELINE_VERSION {
         open.push(format!(
             "manifest version {} predates the version this build writes ({BASELINE_VERSION}) — \
-             re-issue and re-sign (ADR 0013)",
+             {REISSUE_ADVICE}",
             manifest.version
         ));
     } else if manifest.version > BASELINE_VERSION {

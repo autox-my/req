@@ -19,12 +19,12 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
     // apart.
     let (rationale_source, rationale_date, rationale_hash) = common::rationale_columns(
         "docs/adr/0004-model-proposes-human-disposes.md",
-        "2026-10-07",
+        common::FIXTURE_DATE,
     );
     // One idiom with every other row fixture (`common::relation_columns`): the columns and
     // their digest are derived together, so the empty case is a single expression, not two
     // that must be kept in step.
-    let (relations, relations_hash) = common::relation_columns(Vec::new());
+    let (relations, relations_hash) = common::relation_columns(&[]);
     Row {
         claim_id: id.to_string(),
         statement: statement.to_string(),

@@ -4,13 +4,8 @@ mod common;
 
 use req::audit::{coverage, findings, packet};
 use req::baseline::{canonical_bytes, from_json, manifest};
-use req::model::Relation;
 use req::select::{Applies, Context};
 use req::view::Row;
-
-/// The date these fixtures carry when they have provenance at all; a claim with no source is
-/// the packet's MISSING-provenance case, and it has no date either.
-const FIXTURE_DATE: &str = "2026-10-07";
 
 fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
     // One idiom with every other row fixture (`common::rationale_columns`): the displayed
@@ -22,13 +17,13 @@ fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
         if rationale.is_empty() {
             ""
         } else {
-            FIXTURE_DATE
+            common::FIXTURE_DATE
         },
     );
     // One idiom with every other row fixture (`common::relation_columns`): the columns and
     // their digest are derived together, so the empty case is a single expression, not two
     // that must be kept in step.
-    let (relations, relations_hash) = common::relation_columns(Vec::new());
+    let (relations, relations_hash) = common::relation_columns(&[]);
     Row {
         claim_id: id.to_string(),
         statement: format!("{id} shall log each command."),
@@ -143,10 +138,7 @@ fn an_edited_attested_surface_is_reported_drifted_and_fails() {
     // attested surface is what moved. A real digest over that relation — the state `load_rows`
     // produces from the edited file, not a placeholder — derived together with the columns by
     // the shared helper, the same idiom the fixtures use.
-    let (relations, relations_hash) = common::relation_columns(vec![Relation {
-        kind: "refines".to_string(),
-        to: "REQ-B".to_string(),
-    }]);
+    let (relations, relations_hash) = common::relation_columns(&[("refines", "REQ-B")]);
     let mut edited = row("REQ-A", "aaa", Applies::Yes, "docs/adr/0001.md");
     edited.relations = relations;
     edited.relations_hash = relations_hash;

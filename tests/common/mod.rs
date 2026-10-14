@@ -27,11 +27,21 @@ pub fn rationale_of(source: &str, date: &str) -> Rationale {
     }
 }
 
-/// A Row's relation columns and the digest over the same typed relations, derived together so
-/// the two cannot be edited apart. One definition, so the empty case and the non-empty case
-/// have a single idiom across every row fixture: the columns and their hash can never disagree
-/// about which relations they describe.
-pub fn relation_columns(relations: Vec<Relation>) -> (Vec<(String, String)>, String) {
+/// The date every fixture's provenance carries — one home, so the bare literal is not repeated
+/// at every call site across the fixture files.
+pub const FIXTURE_DATE: &str = "2026-10-07";
+
+/// A Row's relation columns and the digest over the same relations, derived together so the two
+/// cannot be edited apart. Takes the tuple form `row()` already receives, so the conversion to
+/// the typed relations is written here — once — rather than kept in step at every call site.
+pub fn relation_columns(rels: &[(&str, &str)]) -> (Vec<(String, String)>, String) {
+    let relations: Vec<Relation> = rels
+        .iter()
+        .map(|(kind, to)| Relation {
+            kind: kind.to_string(),
+            to: to.to_string(),
+        })
+        .collect();
     let digest = relations_digest(&relations);
     let columns = relations.into_iter().map(|r| (r.kind, r.to)).collect();
     (columns, digest)
@@ -51,17 +61,10 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
     // Real digests over this row's own content: a placeholder hash beside real relations
     // is a Row state `load_rows` can never produce, and a fixture that could not exist
     // proves nothing about the layers above it.
-    let (relations, relations_hash) = relation_columns(
-        rels.iter()
-            .map(|(kind, to)| Relation {
-                kind: kind.to_string(),
-                to: to.to_string(),
-            })
-            .collect(),
-    );
+    let (relations, relations_hash) = relation_columns(rels);
     let (rationale_source, rationale_date, rationale_hash) = rationale_columns(
         "docs/adr/0007-tier1-collapses-only-on-meaning-preserving-rules.md",
-        "2026-10-07",
+        FIXTURE_DATE,
     );
     Row {
         claim_id: id.to_string(),

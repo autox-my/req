@@ -25,12 +25,14 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
     // One idiom with every other row fixture (`common::rationale_columns`): the displayed
     // provenance and its attested digest are derived together. The pinned canonical bytes below
     // were computed over exactly this rationale.
-    let (rationale_source, rationale_date, rationale_hash) =
-        common::rationale_columns("docs/adr/0010-baseline-signing-and-trust.md", "2026-10-07");
+    let (rationale_source, rationale_date, rationale_hash) = common::rationale_columns(
+        "docs/adr/0010-baseline-signing-and-trust.md",
+        common::FIXTURE_DATE,
+    );
     // One idiom with every other row fixture (`common::relation_columns`): the columns and
     // their digest are derived together, so the empty case is a single expression, not two
     // that must be kept in step.
-    let (relations, relations_hash) = common::relation_columns(Vec::new());
+    let (relations, relations_hash) = common::relation_columns(&[]);
     Row {
         claim_id: id.to_string(),
         statement: format!("{id} shall log each command."),
@@ -335,6 +337,22 @@ fn a_manifest_with_no_version_field_gets_the_plain_message() {
     assert!(!err.contains("ADR 0013"), "{err}");
 }
 
+/// The stale-envelope contract is *any declared version below this build's* — derived from
+/// BASELINE_VERSION, not hardcoded to 1 — so the next envelope bump cannot silently turn a
+/// current-version manifest missing the then-new fields into an unreadable-manifest message
+/// with no advice. BASELINE_VERSION cannot move in a test, so the generalization is pinned with
+/// a version-0 declaration: below this build's whatever else it is, and the stale branch fires
+/// exactly as it would for a v2 manifest at a v3 bump.
+#[test]
+fn a_manifest_declaring_any_older_version_is_stale() {
+    let err = from_json(
+        "{\"version\":0,\"rules_v\":5,\"selection\":{},\"claims\":[{\"claim_id\":\"REQ-A\",\"address\":\"aaa\"}]}",
+    )
+    .expect_err("a manifest declaring a version below this build's is stale, not corrupt");
+    assert!(err.contains("re-issue"), "{err}");
+    assert!(err.contains("ADR 0013"), "{err}");
+}
+
 /// A manifest written by a *newer* build must not be told to re-issue and re-sign with this
 /// (older) binary: that would downgrade the attested surface instead of upgrading the reader.
 /// The re-issue advice is for a stale (older) envelope only.
@@ -547,12 +565,9 @@ fn drift_names_changed_missing_and_added_separately() {
 /// would still fail, but the packet would count the claim twice.
 #[test]
 fn a_claim_whose_address_and_attested_surface_both_moved_is_changed_alone() {
-    // A real relation digest, not a placeholder: the row is the state `load_rows` produces
-    // from the edited file.
-    let relations = vec![Relation {
-        kind: "refines".to_string(),
-        to: "REQ-B".to_string(),
-    }];
+    // The columns and their digest derived together by the shared helper: a real digest, not a
+    // placeholder — the row is the state `load_rows` produces from the edited file.
+    let (relations, relations_hash) = common::relation_columns(&[("refines", "REQ-B")]);
     let (rows, manifest) = signed_manifest();
     let edited: Vec<Row> = rows
         .iter()
@@ -562,11 +577,8 @@ fn a_claim_whose_address_and_attested_surface_both_moved_is_changed_alone() {
                 // Both surfaces move: a reworded statement (a new address) and a relation
                 // added after signing (a new attested hash).
                 r.address = "bbb-changed".to_string();
-                r.relations = relations
-                    .iter()
-                    .map(|relation| (relation.kind.clone(), relation.to.clone()))
-                    .collect();
-                r.relations_hash = relations_digest(&relations);
+                r.relations = relations.clone();
+                r.relations_hash = relations_hash.clone();
             }
             r
         })
