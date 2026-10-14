@@ -38,14 +38,18 @@ pub struct Coverage {
 
 pub fn coverage(rows: &[Row], manifest: &Manifest) -> Coverage {
     let drift = baseline::drift(rows, manifest);
-    // The drift id sets, built once: membership here is asked per claim below, and three
-    // linear `Vec::contains` scans per claim re-read the same lists for every claim in the
-    // manifest.
-    let changed: BTreeSet<&str> = drift.changed.iter().map(String::as_str).collect();
-    let attested: BTreeSet<&str> = drift.attested_changed.iter().map(String::as_str).collect();
-    let missing: BTreeSet<&str> = drift.missing.iter().map(String::as_str).collect();
-    Coverage {
-        signed: manifest
+
+    // `signed` asks membership against all three drift lists for every claim in the manifest.
+    // The id sets are built once, so that is three set lookups per claim rather than three
+    // linear scans of the same lists. They are scoped to this block so their borrows of `drift`
+    // provably end before its fields are moved out below: a set kept alive to the end of the
+    // function is the shape that reads as a borrow error to a reviewer even though the compiler
+    // accepts it, and the returned ids are built first for the same reason.
+    let signed: Vec<String> = {
+        let changed: BTreeSet<&str> = drift.changed.iter().map(String::as_str).collect();
+        let attested: BTreeSet<&str> = drift.attested_changed.iter().map(String::as_str).collect();
+        let missing: BTreeSet<&str> = drift.missing.iter().map(String::as_str).collect();
+        manifest
             .claims
             .iter()
             .map(|claim| claim.claim_id.clone())
@@ -54,12 +58,16 @@ pub fn coverage(rows: &[Row], manifest: &Manifest) -> Coverage {
                     && !attested.contains(id.as_str())
                     && !missing.contains(id.as_str())
             })
-            .collect(),
-        drifted: {
-            let mut drifted = drift.changed;
-            drifted.extend(drift.attested_changed);
-            drifted
-        },
+            .collect()
+    };
+
+    // `changed ++ attested_changed` is exactly `drifted`: the merge takes the ids whose
+    // address or attested surface moved, and `signed` above has already excluded them all.
+    let mut drifted = drift.changed;
+    drifted.extend(drift.attested_changed);
+    Coverage {
+        signed,
+        drifted,
         uncovered: drift.added,
         missing: drift.missing,
     }

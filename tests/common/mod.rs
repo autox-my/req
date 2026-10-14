@@ -14,10 +14,11 @@ use req::select::Applies;
 use req::view::Row;
 
 /// The full rationale a row's provenance fields stand for. The attested digest is over all
-/// four fields, and these fixtures carry none of the optional ones — this is the single
-/// place the fixture's rationale shape is written, so the hash and the displayed
-/// provenance cannot drift apart.
-fn rationale_of(source: &str, date: &str) -> Rationale {
+/// four fields, and these fixtures carry none of the optional ones — this is the single place
+/// the fixture's rationale shape is written, so the hash and the displayed provenance cannot
+/// drift apart. Public so every row-fixture target shares one shape instead of keeping its own
+/// copy: this suite's stated failure mode is fixture copies drifting apart.
+pub fn rationale_of(source: &str, date: &str) -> Rationale {
     Rationale {
         source: source.to_string(),
         date: date.to_string(),
@@ -38,6 +39,12 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
             to: to.to_string(),
         })
         .collect();
+    // Bound once and read for both the digest and the displayed provenance, so the two cannot
+    // be edited apart.
+    let provenance = rationale_of(
+        "docs/adr/0007-tier1-collapses-only-on-meaning-preserving-rules.md",
+        "2026-10-07",
+    );
     Row {
         claim_id: id.to_string(),
         statement: format!("{id} shall log each command."),
@@ -50,14 +57,10 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
             .map(|r| (r.kind.clone(), r.to.clone()))
             .collect(),
         relations_hash: relations_digest(&relations),
-        rationale_hash: rationale_digest(&rationale_of(
-            "docs/adr/0007-tier1-collapses-only-on-meaning-preserving-rules.md",
-            "2026-10-07",
-        )),
+        rationale_hash: rationale_digest(&provenance),
         stored: StoredState::Verified,
-        rationale_source: "docs/adr/0007-tier1-collapses-only-on-meaning-preserving-rules.md"
-            .to_string(),
-        rationale_date: "2026-10-07".to_string(),
+        rationale_source: provenance.source.clone(),
+        rationale_date: provenance.date.clone(),
     }
 }
 

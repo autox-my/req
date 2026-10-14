@@ -3,15 +3,24 @@
 //! The recall property is measured against the corpus's own labels — the same independent
 //! oracle the identity gates use, and the only reason the number means anything.
 
+mod common;
+
 use req::funnel::{
     Adjudication, Candidate, MAX_PAIRS_PER_RUN, MIN_SHARED_TERMS, NO_CAP, NoProvider, Proposed,
     Provider, blocking_misses, candidate_pairs, content_terms, naive_pairs, propose, shared_terms,
 };
-use req::model::{Corpus, Rationale, rationale_digest, relations_digest};
+use req::model::{Corpus, rationale_digest, relations_digest};
 use req::select::Applies;
 use req::view::Row;
 
 fn row(id: &str, statement: &str, address: &str) -> Row {
+    // One rationale shape, shared with every other row-fixture target
+    // (`common::rationale_of`), so the attested digest and the displayed provenance cannot be
+    // edited apart.
+    let provenance = common::rationale_of(
+        "docs/adr/0004-model-proposes-human-disposes.md",
+        "2026-10-07",
+    );
     Row {
         claim_id: id.to_string(),
         statement: statement.to_string(),
@@ -23,15 +32,10 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
         // Real digests over the fixture's own content: a placeholder hash beside empty
         // relations is a Row state `load_rows` can never produce.
         relations_hash: relations_digest(&[]),
-        rationale_hash: rationale_digest(&Rationale {
-            source: "docs/adr/0004-model-proposes-human-disposes.md".to_string(),
-            date: "2026-10-07".to_string(),
-            rejected_alternatives: vec![],
-            assumptions: vec![],
-        }),
+        rationale_hash: rationale_digest(&provenance),
         stored: req::fill::StoredState::Verified,
-        rationale_source: "docs/adr/0004-model-proposes-human-disposes.md".to_string(),
-        rationale_date: "2026-10-07".to_string(),
+        rationale_source: provenance.source.clone(),
+        rationale_date: provenance.date.clone(),
     }
 }
 

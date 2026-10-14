@@ -142,6 +142,15 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
 }
 
 /// What the working tree says about a signed manifest.
+///
+/// The categories are **mutually exclusive, by precedence**: a claim whose address no longer
+/// recomputes is recorded in `changed` alone, even when its attested surface moved too —
+/// identity first, as in [`drift`]. Consumers merge the lists (`audit::coverage` extends
+/// `drifted` with `attested_changed`) and rely on that exclusivity to avoid double-counting an
+/// id, so a claim whose address *and* attested surface both moved is reported as `changed`
+/// only; `reasons()` says the address no longer recomputes and does not separately name the
+/// audit surface. Reporting both would mean pushing to both lists and de-duplicating at every
+/// merge site.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Drift {
     /// In the manifest, applying now, but at a different address — an edited claim.

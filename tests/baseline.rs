@@ -1,5 +1,7 @@
 //! The Baseline: canonical bytes, drift, and the three-state verdict.
 
+mod common;
+
 use req::baseline::{
     BASELINE_VERSION, Manifest, MinisignCli, Outcome, SignatureOutcome, SignatureVerifier,
     TrustFile, canonical_bytes, drift, from_json, manifest, verify,
@@ -8,20 +10,12 @@ use req::model::{Rationale, Relation, rationale_digest, relations_digest};
 use req::select::{Applies, Context};
 use req::view::Row;
 
-/// The provenance every fixture row carries. The row's `rationale_hash` is the digest of
-/// exactly this rationale, so a fixture row is a state `load_rows` can actually produce —
-/// not a Row whose hash names content it does not have.
-fn fixture_rationale() -> Rationale {
-    Rationale {
-        source: "docs/adr/0010-baseline-signing-and-trust.md".to_string(),
-        date: "2026-10-07".to_string(),
-        rejected_alternatives: vec![],
-        assumptions: vec![],
-    }
-}
-
 fn row(id: &str, address: &str, applies: Applies) -> Row {
-    let rationale = fixture_rationale();
+    // One rationale shape, shared with every other row-fixture target
+    // (`common::rationale_of`), so the attested digest and the displayed provenance cannot be
+    // edited apart. The pinned canonical bytes below were computed over exactly this rationale.
+    let rationale =
+        common::rationale_of("docs/adr/0010-baseline-signing-and-trust.md", "2026-10-07");
     Row {
         claim_id: id.to_string(),
         statement: format!("{id} shall log each command."),
