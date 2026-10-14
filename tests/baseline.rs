@@ -549,9 +549,10 @@ fn the_real_verifier_never_calls_a_bogus_signature_valid() {
 // Tooling these tests require, deliberately with no skip path: a working `minisign` — a
 // hard requirement recorded in the gate itself (`brew install minisign`), because a run
 // without a verifier answers UNVERIFIABLE rather than passing — and, for the gate tests,
-// `bash`, `git`, and the `$HOME/.rustup/toolchains` layout scripts/check.sh resolves. A
+// `bash`, `git`, and a `$HOME/.rustup/toolchains` layout scripts/check.sh resolves. A
 // missing tool fails the suite loudly; skipping would drop the Baseline check silently,
-// and a skipped check is never a pass. The gate tests are `#[cfg(unix)]` because they
+// and a skipped check is never a pass. `cargo test` therefore needs `minisign` installed,
+// exactly as `scripts/check.sh` does. The gate tests are `#[cfg(unix)]` because they
 // spawn a shell script.
 //
 // Fixtures live under `CARGO_TARGET_TMPDIR`, the repo's pattern (tests/loader.rs), and the
@@ -571,8 +572,15 @@ fn req_bin() -> std::path::PathBuf {
 
 /// The verifier the Baseline tests need, asserted up front so a machine without it fails
 /// naming the tool and its install line, rather than as a puzzling `[UNVERIFIABLE]` where a
-/// test expected `[VERIFIED]`. There is deliberately no skip path: the gate's Baseline step
-/// has none either, because an unverified Baseline must never read as a pass (ADR 0010).
+/// test expected `[VERIFIED]`.
+///
+/// This is a deliberate prerequisite of the suite: `cargo test` needs `minisign` on the host.
+/// The alternative — skipping the Baseline assertions when the tool is absent — would leave the
+/// verification untested and green, the same failure the gate refuses by carrying no SKIP on its
+/// Baseline step (AGENTS.md). It is a different question from
+/// `the_real_verifier_never_calls_a_bogus_signature_valid` above: that test asserts a property
+/// which must hold whether or not the tool is installed (a bogus signature is never `Valid`),
+/// while these assert the outcome of a real verification, which exists only with the tool.
 fn require_minisign() {
     let installed = std::process::Command::new("minisign")
         .arg("-v")
@@ -697,11 +705,9 @@ fn check_sh_args(args: &[&std::ffi::OsStr]) -> std::process::Output {
 }
 
 /// ...with an explicit `REQ_GATE_BIN` value, so the seam's own validation is testable.
-/// Two things are wired up: the pinned toolchain's HOME — check.sh resolves it under
-/// `$HOME/.rustup/toolchains`, and this workspace keeps it in .tools/home instead (gitignored;
-/// see .tools/README.md), shared through the git common dir so a feature worktree finds the
-/// main checkout's — and `REQ_GATE_BIN`, which points the Baseline step at a binary instead of
-/// nesting a second cargo inside `cargo test`.
+/// Two things are wired up: HOME, so `scripts/check.sh` finds the same toolchain this
+/// workspace's own gate runs under, and `REQ_GATE_BIN`, which points the Baseline step at a
+/// binary instead of nesting a second cargo inside `cargo test`.
 #[cfg(unix)]
 fn check_sh_env(args: &[&std::ffi::OsStr], req_gate_bin: &std::path::Path) -> std::process::Output {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -711,39 +717,49 @@ fn check_sh_env(args: &[&std::ffi::OsStr], req_gate_bin: &std::path::Path) -> st
         .args(args)
         .current_dir(&root)
         .env("REQ_GATE_BIN", req_gate_bin);
+    // The checkout's own toolchain home wins when it has one — that is how the gate is run by
+    // hand in this workspace (.tools/README.md) — so the test drives the toolchain the gate is
+    // meant to use rather than whatever the ambient HOME happens to hold. Where there is none,
+    // HOME is left exactly as the developer or CI set it (CI installs the pinned channel into
+    // $HOME/.rustup and means it). Neither present is a failure named here, not check.sh's
+    // generic exit 2.
     let home_has_rustup = std::env::var_os("HOME")
         .is_some_and(|h| std::path::Path::new(&h).join(".rustup/toolchains").exists());
-    if !home_has_rustup {
-        // git is a hard requirement of these tests (documented above): its failure is
-        // reported here, with git's own message, rather than swallowed into an empty path
-        // that would surface later as check.sh's generic "no rust toolchain".
-        let common = std::process::Command::new("git")
-            .arg("-C")
-            .arg(&root)
-            .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
-            .output()
-            .expect("git is required to locate the shared toolchain home");
-        assert!(
-            common.status.success(),
-            "git rev-parse --git-common-dir failed: {}",
-            String::from_utf8_lossy(&common.stderr)
-        );
-        let common = String::from_utf8_lossy(&common.stdout).trim().to_string();
-        // Failing here, by name, beats letting check.sh exit 2 with its generic "no rust
-        // toolchain" for a layout this helper was supposed to find.
-        let candidate = std::path::PathBuf::from(&common)
-            .parent()
-            .map(|main| main.join(".tools/home"))
-            .filter(|h| h.is_absolute() && h.join(".rustup/toolchains").exists());
-        let Some(home) = candidate else {
-            panic!(
-                "no toolchain home for check.sh: $HOME/.rustup/toolchains is absent and so is \
-                 <git common dir>/../.tools/home/.rustup/toolchains (see .tools/README.md)"
-            );
-        };
-        command.env("HOME", home);
+    match workspace_toolchain_home(&root) {
+        Some(workspace) => {
+            command.env("HOME", workspace);
+        }
+        None if home_has_rustup => {}
+        None => panic!(
+            "no toolchain home for check.sh: this checkout has no .tools/home/.rustup/toolchains \
+             and $HOME/.rustup/toolchains does not exist either (see .tools/README.md)"
+        ),
     }
     command.output().expect("runs scripts/check.sh")
+}
+
+/// The toolchain home this checkout keeps for `scripts/check.sh`, when it has one: `.tools/home`
+/// beside the git common dir (.tools/README.md), which a feature worktree shares with the main
+/// checkout. `git` is a hard requirement of these tests: its failure is reported here, with
+/// git's own message, rather than swallowed into an empty path.
+#[cfg(unix)]
+fn workspace_toolchain_home(root: &std::path::Path) -> Option<std::path::PathBuf> {
+    let common = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .output()
+        .expect("git is required to locate the shared toolchain home");
+    assert!(
+        common.status.success(),
+        "git rev-parse --git-common-dir failed: {}",
+        String::from_utf8_lossy(&common.stderr)
+    );
+    let common = String::from_utf8_lossy(&common.stdout).trim().to_string();
+    std::path::PathBuf::from(common)
+        .parent()
+        .map(|main| main.join(".tools/home"))
+        .filter(|home| home.is_absolute() && home.join(".rustup/toolchains").exists())
 }
 
 /// The Baseline step, with an optional fixture in place of the committed Baseline.
