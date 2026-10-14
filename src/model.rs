@@ -12,6 +12,11 @@ use serde::{Deserialize, Serialize};
 /// defaulted list, because the rationale sits outside the canonical form: a dropped
 /// or misspelled `rejected_alternatives:` would leave the address untouched and lose
 /// the record, and nothing in the tooling reads the field to notice.
+///
+/// Its serialized bytes are attested in signed manifests (ADR 0013), so its fields must remain
+/// serde_json-encodable: `String` and `Vec<String>` encode infallibly, and
+/// [`rationale_digest`] `expect`s on that — a future field type serde cannot encode would turn
+/// an attestation call into a panic rather than a typed error.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rationale {
@@ -21,6 +26,9 @@ pub struct Rationale {
     pub assumptions: Vec<String>,
 }
 
+/// Its serialized bytes are attested in signed manifests (ADR 0013), so its fields must remain
+/// serde_json-encodable — the same invariant [`Rationale`] carries; [`relations_digest`]
+/// `expect`s on it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Relation {
