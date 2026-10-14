@@ -22,11 +22,11 @@ const FIXTURE_RATIONALE_DIGEST: &str =
     "bd57ad973193c6a0537045b60db5890f854b15616391b6ffe0e661c5709185c5";
 
 fn row(id: &str, address: &str, applies: Applies) -> Row {
-    // One rationale shape, shared with every other row-fixture target
-    // (`common::rationale_of`), so the attested digest and the displayed provenance cannot be
-    // edited apart. The pinned canonical bytes below were computed over exactly this rationale.
-    let rationale =
-        common::rationale_of("docs/adr/0010-baseline-signing-and-trust.md", "2026-10-07");
+    // One idiom with every other row fixture (`common::rationale_columns`): the displayed
+    // provenance and its attested digest are derived together. The pinned canonical bytes below
+    // were computed over exactly this rationale.
+    let (rationale_source, rationale_date, rationale_hash) =
+        common::rationale_columns("docs/adr/0010-baseline-signing-and-trust.md", "2026-10-07");
     // One idiom with every other row fixture (`common::relation_columns`): the columns and
     // their digest are derived together, so the empty case is a single expression, not two
     // that must be kept in step.
@@ -40,13 +40,10 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
         selectors: Vec::new(),
         relations,
         relations_hash,
-        // A real digest over the fixture's own content: a placeholder hash beside empty
-        // relations is a Row state `load_rows` can never produce, so a test passing on it
-        // would prove nothing about the emit/verify round trip.
-        rationale_hash: rationale_digest(&rationale),
+        rationale_hash,
         stored: req::fill::StoredState::Verified,
-        rationale_source: rationale.source.clone(),
-        rationale_date: rationale.date.clone(),
+        rationale_source,
+        rationale_date,
     }
 }
 
@@ -321,6 +318,51 @@ fn a_v2_manifest_missing_one_attested_hash_is_corrupt_not_v1() {
     assert!(err.contains("rationale_hash"), "{err}");
     assert!(!err.contains("re-issue"), "{err}");
     assert!(!err.contains("ADR 0013"), "{err}");
+}
+
+/// The lenient recovery that decides v1 advice fires only on a *declared* version 1. A manifest
+/// with no version field at all is ordinary corruption with nothing to recover, so it gets the
+/// plain unreadable message — pinned so a widened recovery cannot start advising on it.
+#[test]
+fn a_manifest_with_no_version_field_gets_the_plain_message() {
+    let err = from_json("{\"rules_v\":5,\"selection\":{},\"claims\":[]}")
+        .expect_err("a manifest without a version field is unreadable");
+    assert!(err.contains("manifest is not readable"), "{err}");
+    assert!(err.contains("version"), "{err}");
+    assert!(!err.contains("re-issue"), "{err}");
+    assert!(!err.contains("ADR 0013"), "{err}");
+}
+
+/// A manifest written by a *newer* build must not be told to re-issue and re-sign with this
+/// (older) binary: that would downgrade the attested surface instead of upgrading the reader.
+/// The re-issue advice is for a stale (older) envelope only.
+#[test]
+fn a_newer_manifest_is_not_told_to_downgrade() {
+    let (rows, mut manifest) = signed_manifest();
+    let verify_at = |manifest: &Manifest| {
+        verify(
+            &rows,
+            manifest,
+            Some("sig"),
+            &trust(false, None),
+            "req-baseline-1",
+            &Stub(SignatureOutcome::Valid),
+            "2026-10-07",
+        )
+    };
+    manifest.version = BASELINE_VERSION + 1;
+    let newer = verify_at(&manifest);
+    assert_eq!(newer.exit_code(), 3, "{newer:?}");
+    let reasons = newer.reasons().join(" ");
+    assert!(reasons.contains("newer"), "{reasons}");
+    assert!(!reasons.contains("re-issue"), "{reasons}");
+
+    // ...and the stale direction keeps the advice: an older envelope is exactly the case
+    // ADR 0013's re-issue is for.
+    manifest.version = BASELINE_VERSION - 1;
+    let stale = verify_at(&manifest);
+    assert_eq!(stale.exit_code(), 3, "{stale:?}");
+    assert!(stale.reasons().join(" ").contains("re-issue"));
 }
 
 /// The audit hashes are over the parsed values, canonically serialized: deterministic for

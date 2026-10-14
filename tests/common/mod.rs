@@ -37,6 +37,15 @@ pub fn relation_columns(relations: Vec<Relation>) -> (Vec<(String, String)>, Str
     (columns, digest)
 }
 
+/// The rationale-side mirror of `relation_columns`: the displayed provenance and the attested
+/// digest over the same rationale, derived together, so pairing the hash to the source and date
+/// it covers rests on one definition rather than per-call-site discipline.
+pub fn rationale_columns(source: &str, date: &str) -> (String, String, String) {
+    let rationale = rationale_of(source, date);
+    let digest = rationale_digest(&rationale);
+    (rationale.source, rationale.date, digest)
+}
+
 /// A settled, verified, fully-provenanced claim with the given outgoing relations.
 pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
     // Real digests over this row's own content: a placeholder hash beside real relations
@@ -50,9 +59,7 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
             })
             .collect(),
     );
-    // Bound once and read for both the digest and the displayed provenance, so the two cannot
-    // be edited apart.
-    let provenance = rationale_of(
+    let (rationale_source, rationale_date, rationale_hash) = rationale_columns(
         "docs/adr/0007-tier1-collapses-only-on-meaning-preserving-rules.md",
         "2026-10-07",
     );
@@ -65,10 +72,10 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
         selectors: Vec::new(),
         relations,
         relations_hash,
-        rationale_hash: rationale_digest(&provenance),
+        rationale_hash,
         stored: StoredState::Verified,
-        rationale_source: provenance.source,
-        rationale_date: provenance.date,
+        rationale_source,
+        rationale_date,
     }
 }
 
@@ -78,10 +85,11 @@ pub fn stored(mut row: Row, state: StoredState) -> Row {
 }
 
 pub fn rationale(mut row: Row, source: &str) -> Row {
-    row.rationale_source = source.to_string();
-    // Re-derive the attested hash from the provenance the row now displays: a changed
-    // source with the old hash would recreate the unproducible row this module exists
-    // to avoid.
-    row.rationale_hash = rationale_digest(&rationale_of(source, &row.rationale_date));
+    // The provenance and its attested digest are derived together, so a changed source cannot
+    // leave the old hash behind — the unproducible row this module exists to prevent.
+    let (new_source, date, hash) = rationale_columns(source, &row.rationale_date);
+    row.rationale_source = new_source;
+    row.rationale_date = date;
+    row.rationale_hash = hash;
     row
 }

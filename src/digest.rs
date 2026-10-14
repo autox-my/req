@@ -15,9 +15,14 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     to_hex(&Sha256::digest(bytes))
 }
 
-/// `sha256(prefix ‖ bytes)` as lowercase hex — the domain-separated form the identity path, the
-/// decision chain and the audit-surface digests all take, so two surfaces can never trade
-/// hashes.
+/// `sha256(prefix ‖ bytes)` as lowercase hex — the domain-separated form taken by the
+/// audit-surface digests (`model::relations_digest` / `model::rationale_digest`) and by the
+/// Tier-1 identity (`canon::address_hex`, the same shape over `ADDRESS_TAG`). The decision
+/// chain does *not* take this: it builds a multi-part input and calls the plain
+/// [`sha256_hex`]. The prefix **must be NUL-delimited** — every real tag is
+/// (`req.claim.v1\0`, `req.relations.v1\0`, `req.rationale.v1\0`) — which is what actually
+/// stops one surface's prefix from straddling another's; a caller passing a bare domain name
+/// would let `req.relations.v1` match `req.relations.v1extra`.
 pub fn sha256_hex_prefixed(prefix: &[u8], bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(prefix);

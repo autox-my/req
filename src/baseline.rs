@@ -409,10 +409,20 @@ pub fn verify(
     let mut failed: Vec<String> = Vec::new();
     let mut open: Vec<String> = Vec::new();
 
-    if manifest.version != BASELINE_VERSION {
+    // The direction of the mismatch decides the advice: a *stale* envelope is exactly the case
+    // ADR 0013's re-issue is for, but a manifest written by a *newer* build must not be told to
+    // re-sign with this binary — that would downgrade the attested surface instead of upgrading
+    // the reader.
+    if manifest.version < BASELINE_VERSION {
         open.push(format!(
-            "manifest version {} is not the version this build writes ({BASELINE_VERSION}) — \
+            "manifest version {} predates the version this build writes ({BASELINE_VERSION}) — \
              re-issue and re-sign (ADR 0013)",
+            manifest.version
+        ));
+    } else if manifest.version > BASELINE_VERSION {
+        open.push(format!(
+            "manifest version {} is newer than the version this build writes \
+             ({BASELINE_VERSION}) — verify with a build that writes it",
             manifest.version
         ));
     }

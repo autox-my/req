@@ -9,15 +9,15 @@ use req::funnel::{
     Adjudication, Candidate, MAX_PAIRS_PER_RUN, MIN_SHARED_TERMS, NO_CAP, NoProvider, Proposed,
     Provider, blocking_misses, candidate_pairs, content_terms, naive_pairs, propose, shared_terms,
 };
-use req::model::{Corpus, rationale_digest};
+use req::model::Corpus;
 use req::select::Applies;
 use req::view::Row;
 
 fn row(id: &str, statement: &str, address: &str) -> Row {
-    // One rationale shape, shared with every other row-fixture target
-    // (`common::rationale_of`), so the attested digest and the displayed provenance cannot be
-    // edited apart.
-    let provenance = common::rationale_of(
+    // One idiom with every other row fixture (`common::rationale_columns`): the displayed
+    // provenance and its attested digest are derived together, so the two cannot be edited
+    // apart.
+    let (rationale_source, rationale_date, rationale_hash) = common::rationale_columns(
         "docs/adr/0004-model-proposes-human-disposes.md",
         "2026-10-07",
     );
@@ -33,15 +33,11 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
         applies: Applies::Yes,
         selectors: Vec::new(),
         relations,
-        // A real digest over the fixture's own content: a placeholder hash beside empty
-        // relations is a Row state `load_rows` can never produce.
         relations_hash,
-        rationale_hash: rationale_digest(&provenance),
+        rationale_hash,
         stored: req::fill::StoredState::Verified,
-        // Moved, not cloned: the borrow above has ended and the struct literal is the last
-        // use, the same idiom `common::row` uses for this pattern.
-        rationale_source: provenance.source,
-        rationale_date: provenance.date,
+        rationale_source,
+        rationale_date,
     }
 }
 

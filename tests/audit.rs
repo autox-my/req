@@ -2,10 +2,9 @@
 
 mod common;
 
-use common::rationale_of;
 use req::audit::{coverage, findings, packet};
 use req::baseline::{canonical_bytes, from_json, manifest};
-use req::model::{Relation, rationale_digest};
+use req::model::Relation;
 use req::select::{Applies, Context};
 use req::view::Row;
 
@@ -14,9 +13,11 @@ use req::view::Row;
 const FIXTURE_DATE: &str = "2026-10-07";
 
 fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
-    // One shape, shared with every other row-fixture target (common::rationale_of), so the
-    // hash and the displayed provenance cannot be edited apart.
-    let provenance = rationale_of(
+    // One idiom with every other row fixture (`common::rationale_columns`): the displayed
+    // provenance and its attested digest are derived together, so the two cannot be edited
+    // apart. A claim with no source is the packet's MISSING-provenance case, and it has no
+    // date either.
+    let (rationale_source, rationale_date, rationale_hash) = common::rationale_columns(
         rationale,
         if rationale.is_empty() {
             ""
@@ -24,9 +25,9 @@ fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
             FIXTURE_DATE
         },
     );
-    // Bound once, then used for both the row's relations and their digest: two independent
-    // expressions can be edited apart, which is the drift this fixture exists to avoid. One
-    // idiom with every other row fixture (`common::relation_columns`).
+    // One idiom with every other row fixture (`common::relation_columns`): the columns and
+    // their digest are derived together, so the empty case is a single expression, not two
+    // that must be kept in step.
     let (relations, relations_hash) = common::relation_columns(Vec::new());
     Row {
         claim_id: id.to_string(),
@@ -40,15 +41,11 @@ fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
             Vec::new()
         },
         relations,
-        // A real digest over this row's own content — a placeholder hash beside empty
-        // relations is a Row state `load_rows` can never produce.
         relations_hash,
-        rationale_hash: rationale_digest(&provenance),
+        rationale_hash,
         stored: req::fill::StoredState::Verified,
-        // Moved, not cloned: the borrow above has ended and the struct literal is the last
-        // use, the same idiom `common::row` uses for this pattern.
-        rationale_source: provenance.source,
-        rationale_date: provenance.date,
+        rationale_source,
+        rationale_date,
     }
 }
 
