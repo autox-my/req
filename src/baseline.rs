@@ -351,7 +351,9 @@ pub fn staging_dir_name(attempt: u32) -> String {
 /// `AlreadyExists` error instead of a directory we then write the trusted inputs into. On
 /// Unix the directory is created 0700, which keeps another local user out of the staged
 /// manifest between writing it and minisign reading it; other platforms get the platform
-/// default, so that privacy is a Unix property and not a portable one.
+/// default, so that privacy is a Unix property and not a portable one. `base` itself is the
+/// caller's to provide: this creates only the final component, and [`staging_dir`] creates a
+/// missing base before calling.
 pub fn create_staging_dir(base: &Path, name: &str) -> std::io::Result<PathBuf> {
     let dir = base.join(name);
     staging_dir_builder().create(&dir)?;
@@ -410,10 +412,21 @@ impl Drop for StagingDir {
 /// directory under the temp dir, so the guard's `Drop` removes only what this call made and
 /// no caller can hand it an arbitrary path to delete.
 pub fn staging_dir() -> std::io::Result<StagingDir> {
-    let base = std::env::temp_dir();
+    staging_dir_in(&std::env::temp_dir())
+}
+
+/// The staging attempt loop against an explicit base, so a test can drive it without mutating
+/// the process environment.
+fn staging_dir_in(base: &Path) -> std::io::Result<StagingDir> {
+    // `temp_dir()` is read from the environment and may name a directory that does not exist
+    // yet, and `create_staging_dir` makes only the final component. The base is not where the
+    // trusted inputs land — the exclusively-created directory under it is — so creating it is
+    // not the reuse hazard that `create` guards against, and the pre-F9 `create_dir_all`
+    // covered exactly this case.
+    std::fs::create_dir_all(base)?;
     let mut attempt = 0;
     loop {
-        match create_staging_dir(&base, &staging_dir_name(attempt)) {
+        match create_staging_dir(base, &staging_dir_name(attempt)) {
             Ok(dir) => return Ok(StagingDir(dir)),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 16 => {
                 attempt += 1;
@@ -779,4 +792,37 @@ fn civil_from_days(days: i64) -> String {
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = if month <= 2 { year + 1 } else { year };
     format!("{year:04}-{month:02}-{day:02}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A base that does not exist yet — an unusual `TMPDIR` — must be created rather than
+    /// failing the verification as `Unverifiable`, which the pre-F9 `create_dir_all` covered.
+    /// The staging name itself stays exclusively created, so this does not weaken the guard.
+    #[test]
+    fn a_missing_base_is_created_for_the_staging_directory() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        let base =
+            std::env::temp_dir().join(format!("req-missing-base-{}-{nanos}", std::process::id()));
+        assert!(!base.exists(), "the fixture base starts absent");
+
+        let guard = staging_dir_in(&base).expect("a missing base is created, not an error");
+        let dir = guard.path().to_path_buf();
+        assert!(
+            dir.exists(),
+            "the staging directory exists under the created base"
+        );
+        drop(guard);
+        assert!(
+            !dir.exists(),
+            "the guard still removes the staging directory"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

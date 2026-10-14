@@ -609,6 +609,17 @@ impl Fixture {
         Fixture(dir)
     }
 
+    /// A fixture whose name is unique to this process and moment, for a test that must not
+    /// collide with a concurrent run of itself. The cleanup is `Fixture`'s, not a second
+    /// copy's.
+    fn unique(tag: &str) -> Self {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        Fixture::new(&format!("{tag}-{}-{nanos}", std::process::id()))
+    }
+
     fn path(&self) -> &std::path::Path {
         &self.0
     }
@@ -1050,40 +1061,12 @@ fn a_contradicting_context_is_a_usage_error_not_a_finding() {
     assert!(error.contains("networked"), "{error}");
 }
 
-/// A private base directory per test, removed on *every* exit path — including the panic a
-/// failing assertion unwinds through, which a trailing `remove_dir_all` never reaches.
-struct TempBase(std::path::PathBuf);
-
-impl TempBase {
-    /// The directory, for building the paths a test stages into.
-    fn path(&self) -> &std::path::Path {
-        &self.0
-    }
-}
-
-impl Drop for TempBase {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-/// A private base directory per test, so the two F9 tests and any concurrent run cannot collide.
-fn staging_test_base(tag: &str) -> TempBase {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or_default();
-    let base = std::env::temp_dir().join(format!("req-f9-{}-{tag}-{nanos}", std::process::id()));
-    std::fs::create_dir_all(&base).expect("test base");
-    TempBase(base)
-}
-
 /// F9: the staging directory must be *created*, never reused. A path that already exists —
 /// left behind by an earlier run, or a symlink planted at a predictable name — is an error,
 /// not a directory whose contents we then write the trusted inputs into.
 #[test]
 fn creating_the_same_staging_dir_twice_is_already_exists() {
-    let base = staging_test_base("exclusive");
+    let base = Fixture::unique("req-f9-exclusive");
     let name = staging_dir_name(0);
     let created = create_staging_dir(base.path(), &name).expect("the first creation succeeds");
     assert_eq!(created, base.path().join(&name));
@@ -1104,7 +1087,7 @@ fn creating_the_same_staging_dir_twice_is_already_exists() {
 #[test]
 fn the_staging_dir_is_owner_only() {
     use std::os::unix::fs::PermissionsExt;
-    let base = staging_test_base("mode");
+    let base = Fixture::unique("req-f9-mode");
     let dir = create_staging_dir(base.path(), &staging_dir_name(0)).expect("created");
     let mode = std::fs::metadata(&dir)
         .expect("metadata")
@@ -1139,7 +1122,7 @@ fn dropping_the_staging_guard_removes_its_directory() {
 fn a_panicking_test_still_removes_its_base_directory() {
     let mut observed = None;
     let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let base = staging_test_base("panicking");
+        let base = Fixture::unique("req-f9-panicking");
         observed = Some(base.path().to_path_buf());
         panic!("a failing assertion unwinds through the fixture");
     }));
