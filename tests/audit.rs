@@ -18,6 +18,8 @@ fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
             Vec::new()
         },
         relations: Vec::new(),
+        relations_hash: "relations-hash".to_string(),
+        rationale_hash: "rationale-hash".to_string(),
         stored: req::fill::StoredState::Verified,
         rationale_source: rationale.to_string(),
         rationale_date: if rationale.is_empty() {

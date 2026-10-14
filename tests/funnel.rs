@@ -20,6 +20,8 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
         applies: Applies::Yes,
         selectors: Vec::new(),
         relations: Vec::new(),
+        relations_hash: "relations-hash".to_string(),
+        rationale_hash: "rationale-hash".to_string(),
         stored: req::fill::StoredState::Verified,
         rationale_source: "docs/adr/0004-model-proposes-human-disposes.md".to_string(),
         rationale_date: "2026-10-07".to_string(),

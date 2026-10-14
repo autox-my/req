@@ -18,16 +18,22 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// The manifest format's own version — distinct from `RULES_V`, because the *envelope* and
 /// the *rules* move independently.
-pub const BASELINE_VERSION: u32 = 1;
+/// The manifest schema this build writes and verifies. v2 attests the audit surface
+/// (ADR 0013); a v1 manifest is stale and must be re-issued and re-signed by the human.
+pub const BASELINE_VERSION: u32 = 2;
 
 /// Where the committed trust anchor lives. Data, reviewed like a corpus (ADR 0010).
 pub const TRUST_PATH: &str = "baselines/trust.yml";
 
-/// One ratified claim: its identity, and the address that identity is.
+/// One ratified claim: its identity, and the audit surface attested beside it. Identity
+/// stays meaning-only (ADR 0007) — the hashes cover what an auditor relies on that the
+/// address deliberately does not (ADR 0013).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ManifestClaim {
     pub claim_id: String,
     pub address: String,
+    pub relations_hash: String,
+    pub rationale_hash: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -48,6 +54,8 @@ pub fn manifest(rows: &[Row], rules_v: u32, selection: &Context) -> Manifest {
         .map(|row| ManifestClaim {
             claim_id: row.claim_id.clone(),
             address: row.address.clone(),
+            relations_hash: row.relations_hash.clone(),
+            rationale_hash: row.rationale_hash.clone(),
         })
         .collect();
     claims.sort_by(|a, b| a.claim_id.cmp(&b.claim_id));
@@ -75,9 +83,11 @@ pub fn canonical_bytes(manifest: &Manifest) -> String {
         .iter()
         .map(|claim| {
             format!(
-                "{{\"claim_id\":{},\"address\":{}}}",
+                "{{\"claim_id\":{},\"address\":{},\"relations_hash\":{},\"rationale_hash\":{}}}",
                 json_string(&claim.claim_id),
-                json_string(&claim.address)
+                json_string(&claim.address),
+                json_string(&claim.relations_hash),
+                json_string(&claim.rationale_hash)
             )
         })
         .collect::<Vec<_>>()
@@ -111,7 +121,16 @@ fn json_string(value: &str) -> String {
 /// Parse a manifest back. Reading is not the address path, so the ordinary JSON reader is
 /// fine here — only the *emitted* bytes have to be canonical.
 pub fn from_json(text: &str) -> Result<Manifest, String> {
-    serde_json::from_str(text).map_err(|e| format!("manifest is not readable: {e}"))
+    serde_json::from_str(text).map_err(|e| {
+        let detail = e.to_string();
+        if detail.contains("missing field") {
+            // A manifest without the attested hashes is a v1 Baseline: stale, not corrupt.
+            format!("manifest is not readable: {detail} — a manifest without the attested \
+                     hashes is a v1 Baseline: re-issue and re-sign (ADR 0013)")
+        } else {
+            format!("manifest is not readable: {detail}")
+        }
+    })
 }
 
 /// What the working tree says about a signed manifest.
@@ -119,6 +138,9 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
 pub struct Drift {
     /// In the manifest, applying now, but at a different address — an edited claim.
     pub changed: Vec<String>,
+    /// In the manifest at the same address, but the attested audit surface (relations or
+    /// rationale, ADR 0013) no longer recomputes — edited after signing.
+    pub attested_changed: Vec<String>,
     /// In the manifest, no longer applying at all.
     pub missing: Vec<String>,
     /// Applying now and not in the manifest — a claim added after signing.
@@ -127,7 +149,10 @@ pub struct Drift {
 
 impl Drift {
     pub fn is_clean(&self) -> bool {
-        self.changed.is_empty() && self.missing.is_empty() && self.added.is_empty()
+        self.changed.is_empty()
+            && self.attested_changed.is_empty()
+            && self.missing.is_empty()
+            && self.added.is_empty()
     }
 
     pub fn reasons(&self) -> Vec<String> {
@@ -135,6 +160,12 @@ impl Drift {
         for id in &self.changed {
             out.push(format!(
                 "{id}: the address no longer recomputes — edited after signing"
+            ));
+        }
+        for id in &self.attested_changed {
+            out.push(format!(
+                "{id}: the relations or rationale no longer recompute — edited after \
+                 signing (ADR 0013)"
             ));
         }
         for id in &self.missing {
@@ -148,16 +179,33 @@ impl Drift {
 }
 
 pub fn drift(rows: &[Row], manifest: &Manifest) -> Drift {
-    let current: BTreeMap<&str, &str> = rows
+    let current: BTreeMap<&str, (&str, &str, &str)> = rows
         .iter()
         .filter(|row| row.applies == Applies::Yes)
-        .map(|row| (row.claim_id.as_str(), row.address.as_str()))
+        .map(|row| {
+            (
+                row.claim_id.as_str(),
+                (
+                    row.address.as_str(),
+                    row.relations_hash.as_str(),
+                    row.rationale_hash.as_str(),
+                ),
+            )
+        })
         .collect();
     let mut out = Drift::default();
     for claim in &manifest.claims {
         match current.get(claim.claim_id.as_str()) {
-            Some(address) if *address == claim.address => {}
-            Some(_) => out.changed.push(claim.claim_id.clone()),
+            // Identity first; the audit surface only attests when the identity still matches.
+            Some((address, _, _)) if *address != claim.address => {
+                out.changed.push(claim.claim_id.clone())
+            }
+            Some((_, relations, rationale))
+                if *relations != claim.relations_hash || *rationale != claim.rationale_hash =>
+            {
+                out.attested_changed.push(claim.claim_id.clone())
+            }
+            Some(_) => {}
             None => out.missing.push(claim.claim_id.clone()),
         }
     }
@@ -334,7 +382,8 @@ pub fn verify(
 
     if manifest.version != BASELINE_VERSION {
         open.push(format!(
-            "manifest version {} is not the version this build writes ({BASELINE_VERSION})",
+            "manifest version {} is not the version this build writes ({BASELINE_VERSION}) — \
+             re-issue and re-sign (ADR 0013)",
             manifest.version
         ));
     }

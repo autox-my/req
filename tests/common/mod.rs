@@ -25,6 +25,8 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
             .iter()
             .map(|(k, t)| (k.to_string(), t.to_string()))
             .collect(),
+        relations_hash: "relations-hash".to_string(),
+        rationale_hash: "rationale-hash".to_string(),
         stored: StoredState::Verified,
         rationale_source: "docs/adr/0007-tier1-collapses-only-on-meaning-preserving-rules.md"
             .to_string(),

@@ -4,6 +4,7 @@ use req::baseline::{
     BASELINE_VERSION, Manifest, MinisignCli, Outcome, SignatureOutcome, SignatureVerifier,
     TrustFile, canonical_bytes, drift, from_json, manifest, verify,
 };
+use req::model::{Relation, Rationale, rationale_digest, relations_digest};
 use req::select::{Applies, Context};
 use req::view::Row;
 
@@ -16,6 +17,8 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
         applies,
         selectors: Vec::new(),
         relations: Vec::new(),
+        relations_hash: "relations-hash".to_string(),
+        rationale_hash: "rationale-hash".to_string(),
         stored: req::fill::StoredState::Verified,
         rationale_source: "docs/adr/0010-baseline-signing-and-trust.md".to_string(),
         rationale_date: "2026-10-07".to_string(),
@@ -88,9 +91,9 @@ fn canonical_bytes_do_not_depend_on_input_order() {
     // Selection keys sorted, non-applying claims absent, and one trailing newline.
     assert_eq!(
         canonical_bytes(&forward),
-        "{\"version\":1,\"rules_v\":5,\"selection\":{\"a\":\"1\",\"b\":\"2\"},\
-         \"claims\":[{\"claim_id\":\"REQ-A\",\"address\":\"aaa\"},\
-         {\"claim_id\":\"REQ-B\",\"address\":\"bbb\"}]}\n"
+        "{\"version\":2,\"rules_v\":5,\"selection\":{\"a\":\"1\",\"b\":\"2\"},\
+         \"claims\":[{\"claim_id\":\"REQ-A\",\"address\":\"aaa\",\"relations_hash\":\"relations-hash\",\"rationale_hash\":\"rationale-hash\"},\
+         {\"claim_id\":\"REQ-B\",\"address\":\"bbb\",\"relations_hash\":\"relations-hash\",\"rationale_hash\":\"rationale-hash\"}]}\n"
     );
 }
 
@@ -147,6 +150,132 @@ fn a_claim_added_after_signing_fails_verification() {
     );
     assert_eq!(outcome.exit_code(), 1);
     assert!(outcome.reasons().join(" ").contains("REQ-D"));
+}
+
+/// ADR 0013: identity stays meaning-only; the audit surface is attested *beside* the
+/// address — in the struct, in the signed bytes, and through the round-trip.
+#[test]
+fn the_manifest_carries_the_attested_hashes() {
+    let (rows, manifest) = signed_manifest();
+    for claim in &manifest.claims {
+        let row = rows
+            .iter()
+            .find(|r| r.claim_id == claim.claim_id)
+            .expect("manifest claims come from rows");
+        assert_eq!(claim.relations_hash, row.relations_hash, "{}", claim.claim_id);
+        assert_eq!(claim.rationale_hash, row.rationale_hash, "{}", claim.claim_id);
+    }
+    let bytes = canonical_bytes(&manifest);
+    assert!(bytes.contains("\"relations_hash\""), "{bytes}");
+    assert!(bytes.contains("\"rationale_hash\""), "{bytes}");
+    let parsed = from_json(&bytes).expect("parses its own output");
+    assert_eq!(parsed, manifest);
+}
+
+/// ADR 0013: the audit surface is attested — editing a relation after signing is detected
+/// even when the meaning (and so the address) is untouched.
+#[test]
+fn an_edited_relation_after_signing_fails_verification() {
+    let (rows, manifest) = signed_manifest();
+    let edited: Vec<Row> = rows
+        .iter()
+        .map(|r| {
+            let mut r = r.clone();
+            if r.claim_id == "REQ-B" {
+                r.relations_hash = format!("{}-edited", r.relations_hash);
+            }
+            r
+        })
+        .collect();
+    let outcome = verify(
+        &edited,
+        &manifest,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        "2026-10-07",
+    );
+    assert_eq!(outcome.exit_code(), 1);
+    let reasons = outcome.reasons().join(" ");
+    assert!(reasons.contains("REQ-B"), "{reasons}");
+    assert!(reasons.contains("relations or rationale"), "{reasons}");
+}
+
+/// Same attestation, other surface: the rationale is provenance, and provenance is part of
+/// what was signed.
+#[test]
+fn an_edited_rationale_after_signing_fails_verification() {
+    let (rows, manifest) = signed_manifest();
+    let edited: Vec<Row> = rows
+        .iter()
+        .map(|r| {
+            let mut r = r.clone();
+            if r.claim_id == "REQ-A" {
+                r.rationale_hash = format!("{}-edited", r.rationale_hash);
+            }
+            r
+        })
+        .collect();
+    let outcome = verify(
+        &edited,
+        &manifest,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        "2026-10-07",
+    );
+    assert_eq!(outcome.exit_code(), 1);
+    let reasons = outcome.reasons().join(" ");
+    assert!(reasons.contains("REQ-A"), "{reasons}");
+    assert!(reasons.contains("relations or rationale"), "{reasons}");
+}
+
+/// A v1 manifest carries no attested hashes: it is stale, and the error must say what to do
+/// about it rather than naming a serde field.
+#[test]
+fn a_v1_manifest_names_the_reissue() {
+    let err = from_json(
+        "{\"version\":1,\"rules_v\":5,\"selection\":{},\"claims\":[{\"claim_id\":\"REQ-A\",\"address\":\"aaa\"}]}",
+    )
+    .expect_err("a v1 manifest has no attested hashes");
+    assert!(err.contains("re-issue"), "{err}");
+    assert!(err.contains("ADR 0013"), "{err}");
+}
+
+/// The audit hashes are over the parsed values, canonically serialized: deterministic for
+/// identical values, distinct across surfaces, moved by an edit, and defined for the empty
+/// list — an empty `relations:` still attests.
+#[test]
+fn the_audit_hashes_are_deterministic_and_separate() {
+    let relations = vec![Relation {
+        kind: "derives-from".to_string(),
+        to: "REQ-0007".to_string(),
+    }];
+    let rationale = Rationale {
+        source: "docs/design.md".to_string(),
+        date: "2026-10-07".to_string(),
+        rejected_alternatives: vec!["a cloud provider".to_string()],
+        assumptions: vec!["local models suffice".to_string()],
+    };
+    let a = relations_digest(&relations);
+    assert_eq!(a, relations_digest(&relations), "same values, same hash");
+    assert_ne!(
+        a,
+        rationale_digest(&rationale),
+        "different surfaces, different hashes"
+    );
+    let edited = vec![Relation {
+        kind: "derives-from".to_string(),
+        to: "REQ-0008".to_string(),
+    }];
+    assert_ne!(a, relations_digest(&edited), "an edit must move the hash");
+    assert_eq!(
+        relations_digest(&[]),
+        relations_digest(&[]),
+        "an empty list still attests"
+    );
 }
 
 #[test]

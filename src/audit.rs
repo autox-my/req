@@ -24,9 +24,10 @@ use crate::view::Row;
 /// Which claims a signed Baseline covers, and how well. Derived from [`baseline::drift`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Coverage {
-    /// In the Baseline and still at the same address.
+    /// In the Baseline and still matching — address *and* the attested audit surface.
     pub signed: Vec<String>,
-    /// In the Baseline at a different address — edited after signing.
+    /// In the Baseline but changed: the address, or the attested audit surface
+    /// (relations/rationale, ADR 0013) — edited after signing.
     pub drifted: Vec<String>,
     /// Applying now and not in the Baseline.
     pub uncovered: Vec<String>,
@@ -41,9 +42,17 @@ pub fn coverage(rows: &[Row], manifest: &Manifest) -> Coverage {
             .claims
             .iter()
             .map(|claim| claim.claim_id.clone())
-            .filter(|id| !drift.changed.contains(id) && !drift.missing.contains(id))
+            .filter(|id| {
+                !drift.changed.contains(id)
+                    && !drift.attested_changed.contains(id)
+                    && !drift.missing.contains(id)
+            })
             .collect(),
-        drifted: drift.changed,
+        drifted: {
+            let mut drifted = drift.changed;
+            drifted.extend(drift.attested_changed);
+            drifted
+        },
         uncovered: drift.added,
         missing: drift.missing,
     }
