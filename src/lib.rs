@@ -11,6 +11,10 @@ pub mod bench;
 pub mod canon;
 pub mod compare;
 pub mod decision;
+// Internal plumbing: every caller is in-crate (canon, decision, bench, model), and the raw
+// encoder is not the surface a re-implementation reads — the audit-surface contract is
+// `model::relations_digest` / `rationale_digest` and ADR 0013's formula.
+pub(crate) mod digest;
 pub mod fill;
 pub mod funnel;
 pub mod gate;

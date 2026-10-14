@@ -1,13 +1,38 @@
 //! The Baseline: canonical bytes, drift, and the three-state verdict.
 
+mod common;
+
 use req::baseline::{
     BASELINE_VERSION, Manifest, MinisignCli, Outcome, SignatureOutcome, SignatureVerifier,
     TrustFile, canonical_bytes, drift, from_json, manifest, verify,
 };
+use req::model::{Rationale, Relation, rationale_digest, relations_digest};
 use req::select::{Applies, Context};
 use req::view::Row;
 
+/// Pinned oracles, computed independently of the code under test and named once so the pinned
+/// bytes below cannot carry a stale hand-copy. Asserting a digest against itself recomputed
+/// would pin nothing, because it could not fail; never regenerate these from the implementation.
+///
+/// `printf 'req.relations.v1\0[]' | shasum -a 256` (the `\0` is a literal NUL byte):
+const EMPTY_RELATIONS_DIGEST: &str =
+    "479fcec2cd9b2af0bc13fa4054307413459ae1ad7ca6344435530570226dc1af";
+/// `printf 'req.rationale.v1\0{"source":"docs/adr/0010-baseline-signing-and-trust.md","date":"2026-10-07","rejected_alternatives":[],"assumptions":[]}' | shasum -a 256` — the fixture rationale every row in this file carries:
+const FIXTURE_RATIONALE_DIGEST: &str =
+    "bd57ad973193c6a0537045b60db5890f854b15616391b6ffe0e661c5709185c5";
+
 fn row(id: &str, address: &str, applies: Applies) -> Row {
+    // One idiom with every other row fixture (`common::rationale_columns`): the displayed
+    // provenance and its attested digest are derived together. The pinned canonical bytes below
+    // were computed over exactly this rationale.
+    let provenance = common::rationale_columns(
+        "docs/adr/0010-baseline-signing-and-trust.md",
+        common::FIXTURE_DATE,
+    );
+    // One idiom with every other row fixture (`common::relation_columns`): the columns and
+    // their digest are derived together, so the empty case is a single expression, not two
+    // that must be kept in step.
+    let (relations, relations_hash) = common::relation_columns(&[]);
     Row {
         claim_id: id.to_string(),
         statement: format!("{id} shall log each command."),
@@ -15,10 +40,12 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
         address: address.to_string(),
         applies,
         selectors: Vec::new(),
-        relations: Vec::new(),
+        relations,
+        relations_hash,
+        rationale_hash: provenance.hash,
         stored: req::fill::StoredState::Verified,
-        rationale_source: "docs/adr/0010-baseline-signing-and-trust.md".to_string(),
-        rationale_date: "2026-10-07".to_string(),
+        rationale_source: provenance.source,
+        rationale_date: provenance.date,
     }
 }
 
@@ -85,12 +112,20 @@ fn canonical_bytes_do_not_depend_on_input_order() {
         &context,
     );
     assert_eq!(canonical_bytes(&forward), canonical_bytes(&backward));
-    // Selection keys sorted, non-applying claims absent, and one trailing newline.
+    // Selection keys sorted, non-applying claims absent, one trailing newline, and the
+    // fixture's real digests in the bytes — both interpolated from the named oracles at the top
+    // of this file, so the pin has one home rather than a hand-copy per claim.
     assert_eq!(
         canonical_bytes(&forward),
-        "{\"version\":1,\"rules_v\":5,\"selection\":{\"a\":\"1\",\"b\":\"2\"},\
-         \"claims\":[{\"claim_id\":\"REQ-A\",\"address\":\"aaa\"},\
-         {\"claim_id\":\"REQ-B\",\"address\":\"bbb\"}]}\n"
+        format!(
+            "{{\"version\":2,\"rules_v\":5,\"selection\":{{\"a\":\"1\",\"b\":\"2\"}},\
+             \"claims\":[{{\"claim_id\":\"REQ-A\",\"address\":\"aaa\",\
+             \"relations_hash\":\"{EMPTY_RELATIONS_DIGEST}\",\
+             \"rationale_hash\":\"{FIXTURE_RATIONALE_DIGEST}\"}},\
+             {{\"claim_id\":\"REQ-B\",\"address\":\"bbb\",\
+             \"relations_hash\":\"{EMPTY_RELATIONS_DIGEST}\",\
+             \"rationale_hash\":\"{FIXTURE_RATIONALE_DIGEST}\"}}]}}\n"
+        )
     );
 }
 
@@ -147,6 +182,241 @@ fn a_claim_added_after_signing_fails_verification() {
     );
     assert_eq!(outcome.exit_code(), 1);
     assert!(outcome.reasons().join(" ").contains("REQ-D"));
+}
+
+/// ADR 0013: identity stays meaning-only; the audit surface is attested *beside* the
+/// address — in the struct, in the signed bytes, and through the round-trip.
+#[test]
+fn the_manifest_carries_the_attested_hashes() {
+    let (rows, manifest) = signed_manifest();
+    for claim in &manifest.claims {
+        let row = rows
+            .iter()
+            .find(|r| r.claim_id == claim.claim_id)
+            .expect("manifest claims come from rows");
+        assert_eq!(
+            claim.relations_hash, row.relations_hash,
+            "{}",
+            claim.claim_id
+        );
+        assert_eq!(
+            claim.rationale_hash, row.rationale_hash,
+            "{}",
+            claim.claim_id
+        );
+    }
+    let bytes = canonical_bytes(&manifest);
+    assert!(bytes.contains("\"relations_hash\""), "{bytes}");
+    assert!(bytes.contains("\"rationale_hash\""), "{bytes}");
+    let parsed = from_json(&bytes).expect("parses its own output");
+    assert_eq!(parsed, manifest);
+}
+
+/// ADR 0013: the audit surface is attested — a post-signing relation edit is detected even
+/// when the meaning (and so the address) is untouched. The test simulates that edit by
+/// changing the attested hash, because `load_rows` computes the hash *from* the content:
+/// the edit happens in a claim file, the loader re-derives the hash from it, and a Row is
+/// what arrives here — so overriding the hash is exactly the state an edited relation
+/// produces at this seam. (The address, computed only from meaning, is untouched.)
+#[test]
+fn an_edited_relation_after_signing_fails_verification() {
+    let (rows, manifest) = signed_manifest();
+    let edited: Vec<Row> = rows
+        .iter()
+        .map(|r| {
+            let mut r = r.clone();
+            if r.claim_id == "REQ-B" {
+                r.relations_hash = format!("{}-edited", r.relations_hash);
+            }
+            r
+        })
+        .collect();
+    let outcome = verify(
+        &edited,
+        &manifest,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        "2026-10-07",
+    );
+    assert_eq!(outcome.exit_code(), 1);
+    let reasons = outcome.reasons().join(" ");
+    assert!(reasons.contains("REQ-B"), "{reasons}");
+    assert!(reasons.contains("relations or rationale"), "{reasons}");
+}
+
+/// Same attestation, other surface: the rationale is provenance, and provenance is part of
+/// what was signed.
+#[test]
+fn an_edited_rationale_after_signing_fails_verification() {
+    let (rows, manifest) = signed_manifest();
+    let edited: Vec<Row> = rows
+        .iter()
+        .map(|r| {
+            let mut r = r.clone();
+            if r.claim_id == "REQ-A" {
+                r.rationale_hash = format!("{}-edited", r.rationale_hash);
+            }
+            r
+        })
+        .collect();
+    let outcome = verify(
+        &edited,
+        &manifest,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        "2026-10-07",
+    );
+    assert_eq!(outcome.exit_code(), 1);
+    let reasons = outcome.reasons().join(" ");
+    assert!(reasons.contains("REQ-A"), "{reasons}");
+    assert!(reasons.contains("relations or rationale"), "{reasons}");
+}
+
+/// A v1 manifest carries no attested hashes: it is stale, and the error must say what to do
+/// about it rather than naming a serde field.
+#[test]
+fn a_v1_manifest_names_the_reissue() {
+    let err = from_json(
+        "{\"version\":1,\"rules_v\":5,\"selection\":{},\"claims\":[{\"claim_id\":\"REQ-A\",\"address\":\"aaa\"}]}",
+    )
+    .expect_err("a v1 manifest has no attested hashes");
+    assert!(err.contains("re-issue"), "{err}");
+    assert!(err.contains("ADR 0013"), "{err}");
+}
+
+/// Ordinary corruption — here a manifest missing `claim_id`, not the attested hashes —
+/// must get the plain unreadable message. The v1 advice ("re-issue and re-sign", ADR 0013)
+/// is for a manifest *without the attested hashes*; a corrupt manifest is not a version of
+/// anything, and sending its reader off to re-sign would re-issue over a defect that was
+/// never a stale envelope.
+#[test]
+fn a_manifest_missing_claim_id_gets_the_plain_unreadable_message() {
+    let err = from_json(
+        "{\"version\":2,\"rules_v\":5,\"selection\":{},\"claims\":[{\"address\":\"aaa\",\"relations_hash\":\"r\",\"rationale_hash\":\"q\"}]}",
+    )
+    .expect_err("a manifest without claim_id is unreadable");
+    // Only the code-owned parts of the message are asserted: the serde detail is forwarded
+    // verbatim but is serde's text, not a contract — the same reason the code does not branch
+    // on it.
+    assert!(err.contains("manifest is not readable"), "{err}");
+    assert!(!err.contains("re-issue"), "{err}");
+    assert!(!err.contains("ADR 0013"), "{err}");
+}
+
+/// A v2 manifest that lost exactly one attested hash — a bad merge dropping the
+/// `rationale_hash` line while keeping `relations_hash` — is corrupt, not stale: it declares
+/// the current version, so it gets the plain unreadable message rather than v1 re-issue advice.
+/// A stale v1 is missing *both* hashes and serde names only the first, so the field name alone
+/// cannot tell them apart; the declared envelope version can.
+#[test]
+fn a_v2_manifest_missing_one_attested_hash_is_corrupt_not_v1() {
+    let err = from_json(
+        "{\"version\":2,\"rules_v\":5,\"selection\":{},\"claims\":[{\"claim_id\":\"REQ-A\",\"address\":\"aaa\",\"relations_hash\":\"r\"}]}",
+    )
+    .expect_err("a v2 manifest missing rationale_hash is unreadable");
+    // Code-owned parts only; the serde detail is forwarded, not a contract (see above).
+    assert!(err.contains("manifest is not readable"), "{err}");
+    assert!(!err.contains("re-issue"), "{err}");
+    assert!(!err.contains("ADR 0013"), "{err}");
+}
+
+/// The lenient recovery that decides v1 advice fires only on a *declared* version 1. A manifest
+/// with no version field at all is ordinary corruption with nothing to recover, so it gets the
+/// plain unreadable message — pinned so a widened recovery cannot start advising on it.
+#[test]
+fn a_manifest_with_no_version_field_gets_the_plain_message() {
+    let err = from_json("{\"rules_v\":5,\"selection\":{},\"claims\":[]}")
+        .expect_err("a manifest without a version field is unreadable");
+    // Code-owned parts only; the serde detail is forwarded, not a contract.
+    assert!(err.contains("manifest is not readable"), "{err}");
+    assert!(!err.contains("re-issue"), "{err}");
+    assert!(!err.contains("ADR 0013"), "{err}");
+}
+
+/// The stale-envelope contract is *any declared version below this build's* — derived from
+/// BASELINE_VERSION, not hardcoded to 1 — so the next envelope bump cannot silently turn a
+/// current-version manifest missing the then-new fields into an unreadable-manifest message
+/// with no advice. BASELINE_VERSION cannot move in a test, so the generalization is pinned with
+/// a version-0 declaration: below this build's whatever else it is, and the stale branch fires
+/// exactly as it would for a v2 manifest at a v3 bump.
+#[test]
+fn a_manifest_declaring_any_older_version_is_stale() {
+    let err = from_json(
+        "{\"version\":0,\"rules_v\":5,\"selection\":{},\"claims\":[{\"claim_id\":\"REQ-A\",\"address\":\"aaa\"}]}",
+    )
+    .expect_err("a manifest declaring a version below this build's is stale, not corrupt");
+    assert!(err.contains("re-issue"), "{err}");
+    assert!(err.contains("ADR 0013"), "{err}");
+}
+
+/// A manifest written by a *newer* build must not be told to re-issue and re-sign with this
+/// (older) binary: that would downgrade the attested surface instead of upgrading the reader.
+/// The re-issue advice is for a stale (older) envelope only.
+#[test]
+fn a_newer_manifest_is_not_told_to_downgrade() {
+    let (rows, mut manifest) = signed_manifest();
+    let verify_at = |manifest: &Manifest| {
+        verify(
+            &rows,
+            manifest,
+            Some("sig"),
+            &trust(false, None),
+            "req-baseline-1",
+            &Stub(SignatureOutcome::Valid),
+            "2026-10-07",
+        )
+    };
+    manifest.version = BASELINE_VERSION + 1;
+    let newer = verify_at(&manifest);
+    assert_eq!(newer.exit_code(), 3, "{newer:?}");
+    let reasons = newer.reasons().join(" ");
+    assert!(reasons.contains("newer"), "{reasons}");
+    assert!(!reasons.contains("re-issue"), "{reasons}");
+
+    // ...and the stale direction keeps the advice: an older envelope is exactly the case
+    // ADR 0013's re-issue is for.
+    manifest.version = BASELINE_VERSION - 1;
+    let stale = verify_at(&manifest);
+    assert_eq!(stale.exit_code(), 3, "{stale:?}");
+    assert!(stale.reasons().join(" ").contains("re-issue"));
+}
+
+/// The audit hashes are over the parsed values, canonically serialized: deterministic for
+/// identical values, distinct across surfaces, moved by an edit, and defined for the empty
+/// list — an empty `relations:` still attests.
+#[test]
+fn the_audit_hashes_are_deterministic_and_separate() {
+    let relations = vec![Relation {
+        kind: "derives-from".to_string(),
+        to: "REQ-0007".to_string(),
+    }];
+    let rationale = Rationale {
+        source: "docs/design.md".to_string(),
+        date: "2026-10-07".to_string(),
+        rejected_alternatives: vec!["a cloud provider".to_string()],
+        assumptions: vec!["local models suffice".to_string()],
+    };
+    let a = relations_digest(&relations);
+    assert_eq!(a, relations_digest(&relations), "same values, same hash");
+    assert_ne!(
+        a,
+        rationale_digest(&rationale),
+        "different surfaces, different hashes"
+    );
+    let edited = vec![Relation {
+        kind: "derives-from".to_string(),
+        to: "REQ-0008".to_string(),
+    }];
+    assert_ne!(a, relations_digest(&edited), "an edit must move the hash");
+    assert_eq!(
+        relations_digest(&[]),
+        EMPTY_RELATIONS_DIGEST,
+        "an empty list still attests — against the shasum oracle, not against itself"
+    );
 }
 
 #[test]
@@ -285,6 +555,47 @@ fn drift_names_changed_missing_and_added_separately() {
     assert_eq!(drift.changed, vec!["REQ-B".to_string()]);
     assert_eq!(drift.added, vec!["REQ-D".to_string()]);
     assert!(!drift.is_clean());
+}
+
+/// The invariant `audit::coverage`'s merge relies on: the drift categories are mutually
+/// exclusive by precedence. A claim whose address **and** attested surface both moved is
+/// recorded in `changed` alone — never in `attested_changed` too — so merging the two lists
+/// cannot double-count an id, and `reasons()` names the address without also claiming the audit
+/// surface moved. Pinned because inverting the nesting — checking the attested surface before
+/// identity — would break it silently: verification would still fail, but the packet would
+/// count the claim twice.
+#[test]
+fn a_claim_whose_address_and_attested_surface_both_moved_is_changed_alone() {
+    // The columns and their digest derived together by the shared helper: a real digest, not a
+    // placeholder — the row is the state `load_rows` produces from the edited file.
+    let (relations, relations_hash) = common::relation_columns(&[("refines", "REQ-B")]);
+    let (rows, manifest) = signed_manifest();
+    let edited: Vec<Row> = rows
+        .iter()
+        .map(|r| {
+            let mut r = r.clone();
+            if r.claim_id == "REQ-B" {
+                // Both surfaces move: a reworded statement (a new address) and a relation
+                // added after signing (a new attested hash).
+                r.address = "bbb-changed".to_string();
+                r.relations = relations.clone();
+                r.relations_hash = relations_hash.clone();
+            }
+            r
+        })
+        .collect();
+    let drift = drift(&edited, &manifest);
+    assert_eq!(drift.changed, vec!["REQ-B".to_string()]);
+    assert!(
+        drift.attested_changed.is_empty(),
+        "an address change subsumes the attested one; the categories are exclusive: {drift:?}"
+    );
+    let reasons = drift.reasons().join(" ");
+    assert!(reasons.contains("no longer recomputes"), "{reasons}");
+    assert!(
+        !reasons.contains("relations or rationale"),
+        "precedence states only the address change: {reasons}"
+    );
 }
 
 /// The manifest defines the variant, so verifying with no context must resolve to the selection

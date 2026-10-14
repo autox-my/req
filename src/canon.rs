@@ -20,7 +20,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use rust_decimal::Decimal;
-use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 
 use crate::model::Registry;
@@ -240,29 +239,9 @@ pub fn canonical_json(f: &CanonicalForm) -> String {
     )
 }
 
-/// sha256 of raw bytes, lowercase hex — used for the engine's report fields.
-pub fn sha256_hex_raw(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let digest = hasher.finalize();
-    let mut hex = String::with_capacity(64);
-    for b in digest.iter() {
-        hex.push_str(&format!("{:02x}", b));
-    }
-    hex
-}
-
 /// `sha256("req.claim.v1\0" || canonical_form_bytes)` — the Tier-1 identity.
 pub fn address_hex(canonical_form: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(ADDRESS_TAG);
-    hasher.update(canonical_form.as_bytes());
-    let digest = hasher.finalize();
-    let mut hex = String::with_capacity(64);
-    for b in digest.iter() {
-        hex.push_str(&format!("{:02x}", b));
-    }
-    hex
+    crate::digest::sha256_hex_prefixed(ADDRESS_TAG, canonical_form.as_bytes())
 }
 
 // ---------------------------------------------------------------------------

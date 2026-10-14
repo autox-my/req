@@ -1,11 +1,29 @@
 //! The audit packet: coverage of a signed Baseline, provenance, and the undecided.
 
+mod common;
+
 use req::audit::{coverage, findings, packet};
 use req::baseline::{canonical_bytes, from_json, manifest};
 use req::select::{Applies, Context};
 use req::view::Row;
 
 fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
+    // One idiom with every other row fixture (`common::rationale_columns`): the displayed
+    // provenance and its attested digest are derived together, so the two cannot be edited
+    // apart. A claim with no source is the packet's MISSING-provenance case, and it has no
+    // date either.
+    let provenance = common::rationale_columns(
+        rationale,
+        if rationale.is_empty() {
+            ""
+        } else {
+            common::FIXTURE_DATE
+        },
+    );
+    // One idiom with every other row fixture (`common::relation_columns`): the columns and
+    // their digest are derived together, so the empty case is a single expression, not two
+    // that must be kept in step.
+    let (relations, relations_hash) = common::relation_columns(&[]);
     Row {
         claim_id: id.to_string(),
         statement: format!("{id} shall log each command."),
@@ -17,14 +35,12 @@ fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
         } else {
             Vec::new()
         },
-        relations: Vec::new(),
+        relations,
+        relations_hash,
+        rationale_hash: provenance.hash,
         stored: req::fill::StoredState::Verified,
-        rationale_source: rationale.to_string(),
-        rationale_date: if rationale.is_empty() {
-            String::new()
-        } else {
-            "2026-10-07".to_string()
-        },
+        rationale_source: provenance.source,
+        rationale_date: provenance.date,
     }
 }
 
@@ -105,6 +121,40 @@ fn an_edited_claim_is_reported_drifted_and_fails() {
     assert!(text.contains("DRIFTED"), "{text}");
     let (failed, open) = findings(&edited, Some(&manifest), Some(&coverage));
     assert_eq!(failed.len(), 1);
+    assert!(open.is_empty(), "{open:?}");
+}
+
+/// ADR 0013 at the audit layer: a claim whose address (meaning) still matches but whose
+/// attested audit surface moved — here, a relation added after signing — is drifted, not
+/// signed, and fails. `tests/baseline.rs` covers this at the `verify`/`Drift::reasons` level;
+/// this is `coverage`'s own merge of `attested_changed` into `drifted` and its exclusion from
+/// `signed`, which exist only here.
+#[test]
+fn an_edited_attested_surface_is_reported_drifted_and_fails() {
+    let signed_rows = vec![row("REQ-A", "aaa", Applies::Yes, "docs/adr/0001.md")];
+    let manifest = baseline_for(&signed_rows);
+
+    // Same address — the statement's meaning is untouched — with a relation added, so the
+    // attested surface is what moved. A real digest over that relation — the state `load_rows`
+    // produces from the edited file, not a placeholder — derived together with the columns by
+    // the shared helper, the same idiom the fixtures use.
+    let (relations, relations_hash) = common::relation_columns(&[("refines", "REQ-B")]);
+    let mut edited = row("REQ-A", "aaa", Applies::Yes, "docs/adr/0001.md");
+    edited.relations = relations;
+    edited.relations_hash = relations_hash;
+    let edited = vec![edited];
+
+    let coverage = coverage(&edited, &manifest);
+    assert_eq!(coverage.drifted, vec!["REQ-A".to_string()]);
+    assert!(
+        coverage.signed.is_empty(),
+        "an attested change is not coverage: {coverage:?}"
+    );
+
+    let text = packet(&edited, &ctx(), Some(&manifest));
+    assert!(text.contains("DRIFTED"), "{text}");
+    let (failed, open) = findings(&edited, Some(&manifest), Some(&coverage));
+    assert_eq!(failed.len(), 1, "{failed:?}");
     assert!(open.is_empty(), "{open:?}");
 }
 

@@ -20,13 +20,15 @@
 use crate::baseline::{self, Manifest};
 use crate::select::{Applies, Context};
 use crate::view::Row;
+use std::collections::BTreeSet;
 
 /// Which claims a signed Baseline covers, and how well. Derived from [`baseline::drift`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Coverage {
-    /// In the Baseline and still at the same address.
+    /// In the Baseline and still matching — address *and* the attested audit surface.
     pub signed: Vec<String>,
-    /// In the Baseline at a different address — edited after signing.
+    /// In the Baseline but changed: the address, or the attested audit surface
+    /// (relations/rationale, ADR 0013) — edited after signing.
     pub drifted: Vec<String>,
     /// Applying now and not in the Baseline.
     pub uncovered: Vec<String>,
@@ -36,14 +38,41 @@ pub struct Coverage {
 
 pub fn coverage(rows: &[Row], manifest: &Manifest) -> Coverage {
     let drift = baseline::drift(rows, manifest);
-    Coverage {
-        signed: manifest
+
+    // `signed` asks membership against all three drift lists for every claim in the manifest.
+    // The id sets are built once, so that is three set lookups per claim rather than three
+    // linear scans of the same lists. They are scoped to this block so their borrows of `drift`
+    // provably end before its fields are moved out below: a set kept alive to the end of the
+    // function is the shape that reads as a borrow error to a reviewer even though the compiler
+    // accepts it, and the returned ids are built first for the same reason.
+    let signed: Vec<String> = {
+        let changed: BTreeSet<&str> = drift.changed.iter().map(String::as_str).collect();
+        let attested: BTreeSet<&str> = drift.attested_changed.iter().map(String::as_str).collect();
+        let missing: BTreeSet<&str> = drift.missing.iter().map(String::as_str).collect();
+        manifest
             .claims
             .iter()
+            // Filter on the borrowed id first, so a claim that turns out drifted, attested or
+            // missing is never cloned only to be dropped.
+            .filter(|claim| {
+                !changed.contains(claim.claim_id.as_str())
+                    && !attested.contains(claim.claim_id.as_str())
+                    && !missing.contains(claim.claim_id.as_str())
+            })
             .map(|claim| claim.claim_id.clone())
-            .filter(|id| !drift.changed.contains(id) && !drift.missing.contains(id))
-            .collect(),
-        drifted: drift.changed,
+            .collect()
+    };
+
+    // `changed ++ attested_changed` is exactly `drifted`: the merge takes the ids whose
+    // address or attested surface moved, and `signed` above has already excluded them all.
+    // Sorted after the merge: each half is in manifest-claims order, but their concatenation
+    // is not, and the packet's findings are read in id order.
+    let mut drifted = drift.changed;
+    drifted.extend(drift.attested_changed);
+    drifted.sort();
+    Coverage {
+        signed,
+        drifted,
         uncovered: drift.added,
         missing: drift.missing,
     }
@@ -214,8 +243,12 @@ pub fn findings(
         ),
         (Some(_), Some(coverage)) => {
             for id in &coverage.drifted {
+                // `drifted` merges the two drift classes (the address, and the attested
+                // relations/rationale), so the wording covers both: for an attested-only edit
+                // the ratified *text* is untouched — what no longer recomputes is the claim as
+                // it was ratified.
                 failed.push(format!(
-                    "{id}: edited after signing — the ratified text is gone"
+                    "{id}: edited after signing — the ratified claim no longer recomputes"
                 ));
             }
             for id in &coverage.missing {

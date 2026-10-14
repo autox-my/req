@@ -18,16 +18,22 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// The manifest format's own version — distinct from `RULES_V`, because the *envelope* and
 /// the *rules* move independently.
-pub const BASELINE_VERSION: u32 = 1;
+/// The manifest schema this build writes and verifies. v2 attests the audit surface
+/// (ADR 0013); a v1 manifest is stale and must be re-issued and re-signed by the human.
+pub const BASELINE_VERSION: u32 = 2;
 
 /// Where the committed trust anchor lives. Data, reviewed like a corpus (ADR 0010).
 pub const TRUST_PATH: &str = "baselines/trust.yml";
 
-/// One ratified claim: its identity, and the address that identity is.
+/// One ratified claim: its identity, and the audit surface attested beside it. Identity
+/// stays meaning-only (ADR 0007) — the hashes cover what an auditor relies on that the
+/// address deliberately does not (ADR 0013).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ManifestClaim {
     pub claim_id: String,
     pub address: String,
+    pub relations_hash: String,
+    pub rationale_hash: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -48,6 +54,8 @@ pub fn manifest(rows: &[Row], rules_v: u32, selection: &Context) -> Manifest {
         .map(|row| ManifestClaim {
             claim_id: row.claim_id.clone(),
             address: row.address.clone(),
+            relations_hash: row.relations_hash.clone(),
+            rationale_hash: row.rationale_hash.clone(),
         })
         .collect();
     claims.sort_by(|a, b| a.claim_id.cmp(&b.claim_id));
@@ -75,9 +83,11 @@ pub fn canonical_bytes(manifest: &Manifest) -> String {
         .iter()
         .map(|claim| {
             format!(
-                "{{\"claim_id\":{},\"address\":{}}}",
+                "{{\"claim_id\":{},\"address\":{},\"relations_hash\":{},\"rationale_hash\":{}}}",
                 json_string(&claim.claim_id),
-                json_string(&claim.address)
+                json_string(&claim.address),
+                json_string(&claim.relations_hash),
+                json_string(&claim.rationale_hash)
             )
         })
         .collect::<Vec<_>>()
@@ -108,17 +118,68 @@ fn json_string(value: &str) -> String {
     out
 }
 
+/// The one field a parse error leaves readable: the envelope version the manifest declares.
+/// Recovered leniently — `Option` defaults, everything else ignored — because the error itself
+/// is about the very fields a stale manifest does not carry.
+#[derive(Deserialize)]
+struct EnvelopeVersion {
+    version: Option<u32>,
+}
+
+/// The advice a stale envelope's reader is given, shared by the parse path and [`verify`] so
+/// the wording cannot drift between the two places it is printed.
+const REISSUE_ADVICE: &str = "re-issue and re-sign (ADR 0013)";
+
 /// Parse a manifest back. Reading is not the address path, so the ordinary JSON reader is
 /// fine here — only the *emitted* bytes have to be canonical.
 pub fn from_json(text: &str) -> Result<Manifest, String> {
-    serde_json::from_str(text).map_err(|e| format!("manifest is not readable: {e}"))
+    serde_json::from_str(text).map_err(|e| {
+        let detail = e.to_string();
+        // Branch on the *declared envelope version*, recovered by a lenient parse that
+        // survives the missing fields serde is complaining about. Not on serde's message text,
+        // which is not a stable contract; and not on the field name alone, because a stale
+        // manifest is missing *both* attested hashes while serde names only the first — a
+        // current-version manifest that lost exactly one hash would otherwise be told it is
+        // stale. The stale test is *any declared version below this build's*, derived from
+        // BASELINE_VERSION rather than hardcoded, so the next envelope bump cannot silently
+        // drop the advice; a manifest declaring the current version (or newer) is corrupt, and
+        // re-issue advice would send its reader off to re-sign over a defect that was never a
+        // stale envelope (ADR 0013).
+        let declared = serde_json::from_str::<EnvelopeVersion>(text)
+            .ok()
+            .and_then(|envelope| envelope.version);
+        // Binding the recovered version keeps the invariant local: the stale branch runs only
+        // when a declared version below this build's was observed, so the message cannot print
+        // a fabricated fallback.
+        if let Some(version) = declared.filter(|version| *version < BASELINE_VERSION) {
+            format!(
+                "manifest is not readable: {detail} — this manifest declares version {version}, \
+                     which predates the version this build writes ({BASELINE_VERSION}): \
+                     {REISSUE_ADVICE}"
+            )
+        } else {
+            format!("manifest is not readable: {detail}")
+        }
+    })
 }
 
 /// What the working tree says about a signed manifest.
+///
+/// The categories are **mutually exclusive, by precedence**: a claim whose address no longer
+/// recomputes is recorded in `changed` alone, even when its attested surface moved too —
+/// identity first, as in [`drift`]. Consumers merge the lists (`audit::coverage` extends
+/// `drifted` with `attested_changed`) and rely on that exclusivity to avoid double-counting an
+/// id, so a claim whose address *and* attested surface both moved is reported as `changed`
+/// only; `reasons()` says the address no longer recomputes and does not separately name the
+/// audit surface. Reporting both would mean pushing to both lists and de-duplicating at every
+/// merge site.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Drift {
     /// In the manifest, applying now, but at a different address — an edited claim.
     pub changed: Vec<String>,
+    /// In the manifest at the same address, but the attested audit surface (relations or
+    /// rationale, ADR 0013) no longer recomputes — edited after signing.
+    pub attested_changed: Vec<String>,
     /// In the manifest, no longer applying at all.
     pub missing: Vec<String>,
     /// Applying now and not in the manifest — a claim added after signing.
@@ -127,7 +188,10 @@ pub struct Drift {
 
 impl Drift {
     pub fn is_clean(&self) -> bool {
-        self.changed.is_empty() && self.missing.is_empty() && self.added.is_empty()
+        self.changed.is_empty()
+            && self.attested_changed.is_empty()
+            && self.missing.is_empty()
+            && self.added.is_empty()
     }
 
     pub fn reasons(&self) -> Vec<String> {
@@ -135,6 +199,12 @@ impl Drift {
         for id in &self.changed {
             out.push(format!(
                 "{id}: the address no longer recomputes — edited after signing"
+            ));
+        }
+        for id in &self.attested_changed {
+            out.push(format!(
+                "{id}: the relations or rationale no longer recompute — edited after \
+                 signing (ADR 0013)"
             ));
         }
         for id in &self.missing {
@@ -148,16 +218,34 @@ impl Drift {
 }
 
 pub fn drift(rows: &[Row], manifest: &Manifest) -> Drift {
-    let current: BTreeMap<&str, &str> = rows
+    let current: BTreeMap<&str, (&str, &str, &str)> = rows
         .iter()
         .filter(|row| row.applies == Applies::Yes)
-        .map(|row| (row.claim_id.as_str(), row.address.as_str()))
+        .map(|row| {
+            (
+                row.claim_id.as_str(),
+                (
+                    row.address.as_str(),
+                    row.relations_hash.as_str(),
+                    row.rationale_hash.as_str(),
+                ),
+            )
+        })
         .collect();
     let mut out = Drift::default();
     for claim in &manifest.claims {
         match current.get(claim.claim_id.as_str()) {
-            Some(address) if *address == claim.address => {}
-            Some(_) => out.changed.push(claim.claim_id.clone()),
+            // Identity first; the audit surface only attests when the identity still matches.
+            // The precedence is **structural** — nested, not match-arm order — so the
+            // exclusivity the categories are documented to have (and `audit::coverage`'s merge
+            // relies on) does not depend on which arm happens to come first.
+            Some((address, relations, rationale)) => {
+                if *address != claim.address {
+                    out.changed.push(claim.claim_id.clone())
+                } else if *relations != claim.relations_hash || *rationale != claim.rationale_hash {
+                    out.attested_changed.push(claim.claim_id.clone())
+                }
+            }
             None => out.missing.push(claim.claim_id.clone()),
         }
     }
@@ -332,9 +420,20 @@ pub fn verify(
     let mut failed: Vec<String> = Vec::new();
     let mut open: Vec<String> = Vec::new();
 
-    if manifest.version != BASELINE_VERSION {
+    // The direction of the mismatch decides the advice: a *stale* envelope is exactly the case
+    // ADR 0013's re-issue is for, but a manifest written by a *newer* build must not be told to
+    // re-sign with this binary — that would downgrade the attested surface instead of upgrading
+    // the reader.
+    if manifest.version < BASELINE_VERSION {
         open.push(format!(
-            "manifest version {} is not the version this build writes ({BASELINE_VERSION})",
+            "manifest version {} predates the version this build writes ({BASELINE_VERSION}) — \
+             {REISSUE_ADVICE}",
+            manifest.version
+        ));
+    } else if manifest.version > BASELINE_VERSION {
+        open.push(format!(
+            "manifest version {} is newer than the version this build writes \
+             ({BASELINE_VERSION}) — verify with a build that writes it",
             manifest.version
         ));
     }

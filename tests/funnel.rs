@@ -3,6 +3,8 @@
 //! The recall property is measured against the corpus's own labels — the same independent
 //! oracle the identity gates use, and the only reason the number means anything.
 
+mod common;
+
 use req::funnel::{
     Adjudication, Candidate, MAX_PAIRS_PER_RUN, MIN_SHARED_TERMS, NO_CAP, NoProvider, Proposed,
     Provider, blocking_misses, candidate_pairs, content_terms, naive_pairs, propose, shared_terms,
@@ -12,6 +14,17 @@ use req::select::Applies;
 use req::view::Row;
 
 fn row(id: &str, statement: &str, address: &str) -> Row {
+    // One idiom with every other row fixture (`common::rationale_columns`): the displayed
+    // provenance and its attested digest are derived together, so the two cannot be edited
+    // apart.
+    let provenance = common::rationale_columns(
+        "docs/adr/0004-model-proposes-human-disposes.md",
+        common::FIXTURE_DATE,
+    );
+    // One idiom with every other row fixture (`common::relation_columns`): the columns and
+    // their digest are derived together, so the empty case is a single expression, not two
+    // that must be kept in step.
+    let (relations, relations_hash) = common::relation_columns(&[]);
     Row {
         claim_id: id.to_string(),
         statement: statement.to_string(),
@@ -19,10 +32,12 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
         address: address.to_string(),
         applies: Applies::Yes,
         selectors: Vec::new(),
-        relations: Vec::new(),
+        relations,
+        relations_hash,
+        rationale_hash: provenance.hash,
         stored: req::fill::StoredState::Verified,
-        rationale_source: "docs/adr/0004-model-proposes-human-disposes.md".to_string(),
-        rationale_date: "2026-10-07".to_string(),
+        rationale_source: provenance.source,
+        rationale_date: provenance.date,
     }
 }
 

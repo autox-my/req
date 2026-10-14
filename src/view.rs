@@ -31,6 +31,10 @@ pub struct Row {
     pub selectors: Vec<String>,
     /// `(kind, to)` — the outgoing side only (REQ-0020).
     pub relations: Vec<(String, String)>,
+    /// ADR 0013: the attested audit surface, hashed from the **parsed** claim at load time,
+    /// so emit and verify compare like with like. Identity (the address) stays meaning-only.
+    pub relations_hash: String,
+    pub rationale_hash: String,
     /// What the *stored* derived fields say, checked against a fresh parse: a release gate
     /// has to know whether the address on disk is the one the current rules produce.
     pub stored: crate::fill::StoredState,
@@ -304,6 +308,8 @@ pub fn load_rows(context: &Context) -> Result<Vec<Row>, String> {
                 .iter()
                 .map(|r| (r.kind.clone(), r.to.clone()))
                 .collect(),
+            relations_hash: crate::model::relations_digest(&claim.relations),
+            rationale_hash: crate::model::rationale_digest(&claim.rationale),
             // The same check `req canon --verify` runs, so the view and the gate cannot
             // disagree about whether a stored address is current.
             stored: crate::fill::verify_text(text, &form_json, crate::canon::RULES_V),

@@ -12,6 +12,11 @@ use serde::{Deserialize, Serialize};
 /// defaulted list, because the rationale sits outside the canonical form: a dropped
 /// or misspelled `rejected_alternatives:` would leave the address untouched and lose
 /// the record, and nothing in the tooling reads the field to notice.
+///
+/// Its serialized bytes are attested in signed manifests (ADR 0013), so its fields must remain
+/// serde_json-encodable: `String` and `Vec<String>` encode infallibly, and
+/// [`rationale_digest`] `expect`s on that — a future field type serde cannot encode would turn
+/// an attestation call into a panic rather than a typed error.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rationale {
@@ -21,12 +26,53 @@ pub struct Rationale {
     pub assumptions: Vec<String>,
 }
 
+/// Its serialized bytes are attested in signed manifests (ADR 0013), so its fields must remain
+/// serde_json-encodable — the same invariant [`Rationale`] carries; [`relations_digest`]
+/// `expect`s on it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Relation {
     #[serde(rename = "type")]
     pub kind: String,
     pub to: String,
+}
+
+// ---------------------------------------------------------------------------
+// The audit-surface hashes (ADR 0013)
+// ---------------------------------------------------------------------------
+
+/// The domain prefix that keeps the relations digest from ever trading hashes with another
+/// surface — a named constant, like [`crate::canon::ADDRESS_TAG`] and [`crate::decision::DOMAIN`],
+/// so the domain-separation registry stays greppable in one style and a future surface cannot
+/// misspell or omit a prefix.
+pub const RELATIONS_TAG: &[u8] = b"req.relations.v1\0";
+
+/// The rationale's domain prefix, for the same reason.
+pub const RATIONALE_TAG: &[u8] = b"req.rationale.v1\0";
+
+/// The relations as the manifest attests them: `sha256(RELATIONS_TAG ‖ serde_json::to_string(
+/// relations))` — **plain serde JSON** of the typed struct, fields in declaration order. Not
+/// `canon::canonical_json`, which normalizes numbers and strings and produces different bytes;
+/// naming the writer here is what makes the byte format unambiguous to a re-implementation.
+/// Serialization of a typed struct is deterministic, so no hand-ordered writer is needed.
+pub fn relations_digest(relations: &[Relation]) -> String {
+    crate::digest::sha256_hex_prefixed(
+        RELATIONS_TAG,
+        serde_json::to_string(relations)
+            .expect("Relation serializes infallibly")
+            .as_bytes(),
+    )
+}
+
+/// The rationale as the manifest attests them: `sha256(RATIONALE_TAG ‖ serde_json::to_string(
+/// rationale))`, the same plain serde JSON — provenance is part of what was signed.
+pub fn rationale_digest(rationale: &Rationale) -> String {
+    crate::digest::sha256_hex_prefixed(
+        RATIONALE_TAG,
+        serde_json::to_string(rationale)
+            .expect("Rationale serializes infallibly")
+            .as_bytes(),
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
