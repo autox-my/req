@@ -20,7 +20,6 @@
 //! that passes on no evidence is the failure this whole project is organised against.
 
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 
 /// Bumped when the canonical bytes of a decision change, so old records never silently re-hash.
 pub const DECISION_VERSION: u32 = 1;
@@ -76,19 +75,13 @@ pub fn canonical_bytes(decision: &Decision) -> String {
 
 /// The hash of one decision in its chain position: `sha256(domain ‖ 0 ‖ prev_hash ‖ content)`.
 pub fn compute_hash(prev: Option<&str>, decision: &Decision) -> String {
-    let mut payload = String::new();
-    payload.push_str(prev.unwrap_or(GENESIS));
-    payload.push('\n');
-    payload.push_str(&canonical_bytes(decision));
-    let mut hasher = Sha256::new();
-    hasher.update(DOMAIN.as_bytes());
-    hasher.update([0u8]);
-    hasher.update(payload.as_bytes());
-    hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    let mut input = Vec::new();
+    input.extend_from_slice(DOMAIN.as_bytes());
+    input.push(0u8);
+    input.extend_from_slice(prev.unwrap_or(GENESIS).as_bytes());
+    input.push(b'\n');
+    input.extend_from_slice(canonical_bytes(decision).as_bytes());
+    crate::digest::sha256_hex(&input)
 }
 
 /// Fill `prev_hash` and `hash` in chain order, in memory. The caller writes the files; nothing here

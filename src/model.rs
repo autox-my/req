@@ -38,31 +38,23 @@ pub struct Relation {
 /// (fields in declaration order), so no hand-ordered writer is needed here; the domain
 /// prefix keeps the two surfaces from ever trading hashes.
 pub fn relations_digest(relations: &[Relation]) -> String {
-    digest_with_prefix(
+    crate::digest::sha256_hex_prefixed(
         b"req.relations.v1\0",
-        &serde_json::to_string(relations).expect("Relation serializes infallibly"),
+        serde_json::to_string(relations)
+            .expect("Relation serializes infallibly")
+            .as_bytes(),
     )
 }
 
 /// The rationale as the manifest attests it: `sha256("req.rationale.v1\0" ‖ canonical JSON
 /// of the parsed rationale)`. Provenance is part of what was signed.
 pub fn rationale_digest(rationale: &Rationale) -> String {
-    digest_with_prefix(
+    crate::digest::sha256_hex_prefixed(
         b"req.rationale.v1\0",
-        &serde_json::to_string(rationale).expect("Rationale serializes infallibly"),
+        serde_json::to_string(rationale)
+            .expect("Rationale serializes infallibly")
+            .as_bytes(),
     )
-}
-
-fn digest_with_prefix(prefix: &[u8], body: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(prefix);
-    hasher.update(body.as_bytes());
-    hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

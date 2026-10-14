@@ -25,8 +25,9 @@ fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
         },
     );
     // Bound once, then used for both the row's relations and their digest: two independent
-    // expressions can be edited apart, which is the drift this fixture exists to avoid.
-    let relations: Vec<Relation> = Vec::new();
+    // expressions can be edited apart, which is the drift this fixture exists to avoid. One
+    // idiom with every other row fixture (`common::relation_columns`).
+    let (relations, relations_hash) = common::relation_columns(Vec::new());
     Row {
         claim_id: id.to_string(),
         statement: format!("{id} shall log each command."),
@@ -38,13 +39,10 @@ fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
         } else {
             Vec::new()
         },
-        relations: relations
-            .iter()
-            .map(|relation| (relation.kind.clone(), relation.to.clone()))
-            .collect(),
+        relations,
         // A real digest over this row's own content — a placeholder hash beside empty
         // relations is a Row state `load_rows` can never produce.
-        relations_hash: relations_digest(&relations),
+        relations_hash,
         rationale_hash: rationale_digest(&provenance),
         stored: req::fill::StoredState::Verified,
         rationale_source: provenance.source.clone(),

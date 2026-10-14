@@ -17,9 +17,7 @@ use req::view::Row;
 /// `printf 'req.relations.v1\0[]' | shasum -a 256` (the `\0` is a literal NUL byte):
 const EMPTY_RELATIONS_DIGEST: &str =
     "479fcec2cd9b2af0bc13fa4054307413459ae1ad7ca6344435530570226dc1af";
-/// `printf 'req.rationale.v1\0{"source":"docs/adr/0010-baseline-signing-and-trust.md",
-/// "date":"2026-10-07","rejected_alternatives":[],"assumptions":[]}' | shasum -a 256` — the
-/// fixture rationale every row in this file carries:
+/// `printf 'req.rationale.v1\0{"source":"docs/adr/0010-baseline-signing-and-trust.md","date":"2026-10-07","rejected_alternatives":[],"assumptions":[]}' | shasum -a 256` — the fixture rationale every row in this file carries:
 const FIXTURE_RATIONALE_DIGEST: &str =
     "bd57ad973193c6a0537045b60db5890f854b15616391b6ffe0e661c5709185c5";
 
@@ -29,6 +27,10 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
     // edited apart. The pinned canonical bytes below were computed over exactly this rationale.
     let rationale =
         common::rationale_of("docs/adr/0010-baseline-signing-and-trust.md", "2026-10-07");
+    // One idiom with every other row fixture (`common::relation_columns`): the columns and
+    // their digest are derived together, so the empty case is a single expression, not two
+    // that must be kept in step.
+    let (relations, relations_hash) = common::relation_columns(Vec::new());
     Row {
         claim_id: id.to_string(),
         statement: format!("{id} shall log each command."),
@@ -36,11 +38,11 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
         address: address.to_string(),
         applies,
         selectors: Vec::new(),
-        relations: Vec::new(),
-        // Real digests over the fixture's own content: a placeholder hash beside empty
+        relations,
+        relations_hash,
+        // A real digest over the fixture's own content: a placeholder hash beside empty
         // relations is a Row state `load_rows` can never produce, so a test passing on it
         // would prove nothing about the emit/verify round trip.
-        relations_hash: relations_digest(&[]),
         rationale_hash: rationale_digest(&rationale),
         stored: req::fill::StoredState::Verified,
         rationale_source: rationale.source.clone(),
@@ -300,6 +302,23 @@ fn a_manifest_missing_claim_id_gets_the_plain_unreadable_message() {
     .expect_err("a manifest without claim_id is unreadable");
     assert!(err.contains("manifest is not readable"), "{err}");
     assert!(err.contains("claim_id"), "{err}");
+    assert!(!err.contains("re-issue"), "{err}");
+    assert!(!err.contains("ADR 0013"), "{err}");
+}
+
+/// A v2 manifest that lost exactly one attested hash — a bad merge dropping the
+/// `rationale_hash` line while keeping `relations_hash` — is corrupt, not stale: it declares
+/// the current version, so it gets the plain unreadable message rather than v1 re-issue advice.
+/// A stale v1 is missing *both* hashes and serde names only the first, so the field name alone
+/// cannot tell them apart; the declared envelope version can.
+#[test]
+fn a_v2_manifest_missing_one_attested_hash_is_corrupt_not_v1() {
+    let err = from_json(
+        "{\"version\":2,\"rules_v\":5,\"selection\":{},\"claims\":[{\"claim_id\":\"REQ-A\",\"address\":\"aaa\",\"relations_hash\":\"r\"}]}",
+    )
+    .expect_err("a v2 manifest missing rationale_hash is unreadable");
+    assert!(err.contains("manifest is not readable"), "{err}");
+    assert!(err.contains("rationale_hash"), "{err}");
     assert!(!err.contains("re-issue"), "{err}");
     assert!(!err.contains("ADR 0013"), "{err}");
 }

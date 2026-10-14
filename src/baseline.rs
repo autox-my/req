@@ -118,22 +118,34 @@ fn json_string(value: &str) -> String {
     out
 }
 
+/// The one field a parse error leaves readable: the envelope version the manifest declares.
+/// Recovered leniently — `Option` defaults, everything else ignored — because the error itself
+/// is about the very fields a v1 manifest does not carry.
+#[derive(Deserialize)]
+struct EnvelopeVersion {
+    version: Option<u32>,
+}
+
 /// Parse a manifest back. Reading is not the address path, so the ordinary JSON reader is
 /// fine here — only the *emitted* bytes have to be canonical.
 pub fn from_json(text: &str) -> Result<Manifest, String> {
     serde_json::from_str(text).map_err(|e| {
         let detail = e.to_string();
-        // Branch on WHICH field serde names — the message carries it in backticks — not on
-        // "missing" in general. Only a manifest missing the *attested hashes* is a v1
-        // Baseline: stale, and the reader should be told to re-issue and re-sign (ADR 0013).
-        // Any other missing field is ordinary corruption, and v1 advice would send them off
-        // to re-sign over a defect that was never a stale envelope.
-        let v1_shape = detail.contains("missing field `relations_hash`")
-            || detail.contains("missing field `rationale_hash`");
-        if v1_shape {
+        // Branch on the *declared envelope version*, recovered by a lenient parse that
+        // survives the missing fields serde is complaining about. Not on serde's message text,
+        // which is not a stable contract; and not on the field name alone, because a stale v1
+        // is missing *both* attested hashes while serde names only the first — a v2 manifest
+        // that lost exactly one hash would otherwise be told it is a v1 Baseline. A manifest
+        // declaring the current version is corrupt, and re-issue advice would send its reader
+        // off to re-sign over a defect that was never a stale envelope (ADR 0013).
+        let declared_v1 = serde_json::from_str::<EnvelopeVersion>(text)
+            .ok()
+            .and_then(|envelope| envelope.version)
+            == Some(1);
+        if declared_v1 {
             format!(
-                "manifest is not readable: {detail} — a manifest without the attested \
-                     hashes is a v1 Baseline: re-issue and re-sign (ADR 0013)"
+                "manifest is not readable: {detail} — this manifest declares version 1, which \
+                     predates the attested hashes: re-issue and re-sign (ADR 0013)"
             )
         } else {
             format!("manifest is not readable: {detail}")

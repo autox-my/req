@@ -338,7 +338,7 @@ pub fn run(corpus_path: Option<&str>) -> i32 {
         ev.direction_correct as f64 / ev.direction_checked as f64
     };
     let corpus_sha =
-        crate::canon::sha256_hex_raw(&std::fs::read(path.to_str().unwrap()).unwrap_or_default());
+        crate::digest::sha256_hex(&std::fs::read(path.to_str().unwrap()).unwrap_or_default());
     let pair_total = corpus.equivalent.len() + corpus.not_equivalent.len();
     let degraded_run = !degraded.is_empty();
     let verdict = reported_verdict(ev.verdict, degraded_run);

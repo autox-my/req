@@ -27,18 +27,29 @@ pub fn rationale_of(source: &str, date: &str) -> Rationale {
     }
 }
 
+/// A Row's relation columns and the digest over the same typed relations, derived together so
+/// the two cannot be edited apart. One definition, so the empty case and the non-empty case
+/// have a single idiom across every row fixture: the columns and their hash can never disagree
+/// about which relations they describe.
+pub fn relation_columns(relations: Vec<Relation>) -> (Vec<(String, String)>, String) {
+    let digest = relations_digest(&relations);
+    let columns = relations.into_iter().map(|r| (r.kind, r.to)).collect();
+    (columns, digest)
+}
+
 /// A settled, verified, fully-provenanced claim with the given outgoing relations.
 pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
     // Real digests over this row's own content: a placeholder hash beside real relations
     // is a Row state `load_rows` can never produce, and a fixture that could not exist
     // proves nothing about the layers above it.
-    let relations: Vec<Relation> = rels
-        .iter()
-        .map(|(kind, to)| Relation {
-            kind: kind.to_string(),
-            to: to.to_string(),
-        })
-        .collect();
+    let (relations, relations_hash) = relation_columns(
+        rels.iter()
+            .map(|(kind, to)| Relation {
+                kind: kind.to_string(),
+                to: to.to_string(),
+            })
+            .collect(),
+    );
     // Bound once and read for both the digest and the displayed provenance, so the two cannot
     // be edited apart.
     let provenance = rationale_of(
@@ -52,15 +63,12 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
         address: format!("{id:0>12}"),
         applies,
         selectors: Vec::new(),
-        relations: relations
-            .iter()
-            .map(|r| (r.kind.clone(), r.to.clone()))
-            .collect(),
-        relations_hash: relations_digest(&relations),
+        relations,
+        relations_hash,
         rationale_hash: rationale_digest(&provenance),
         stored: StoredState::Verified,
-        rationale_source: provenance.source.clone(),
-        rationale_date: provenance.date.clone(),
+        rationale_source: provenance.source,
+        rationale_date: provenance.date,
     }
 }
 
