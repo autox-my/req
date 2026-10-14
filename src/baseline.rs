@@ -418,6 +418,7 @@ fn staging_dir_builder() -> std::fs::DirBuilder {
 /// makes removal happen on *every* way out of the verifier: an early return after staging,
 /// a write failure, an unrunnable verifier, a non-zero exit and a parse failure alike.
 #[doc(hidden)]
+#[must_use = "dropping the guard removes the staging directory it owns"]
 pub struct StagingDir(PathBuf);
 
 impl StagingDir {
@@ -434,7 +435,11 @@ impl StagingDir {
 impl Drop for StagingDir {
     fn drop(&mut self) {
         // Best effort: the verifier's verdict is the outcome that matters, and a directory
-        // that outlives it is a smaller problem than a panic while unwinding.
+        // that outlives it is a smaller problem than a panic while unwinding. A failure here —
+        // or a SIGKILL, which skips the drop entirely — leaks one uniquely-named directory per
+        // run under the base. There is no logger in a core crate with no I/O surface, and a
+        // retry on a later run would target a different name, so the leak is left to the
+        // platform's temp reaper and recorded here rather than quietly implied.
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
@@ -449,14 +454,16 @@ impl Drop for StagingDir {
 /// The temp dir itself must be one only its owner may write, or one that is sticky and owned by
 /// you or root, as `/tmp` (1777, root-owned) is. That is the operator contract, and it is
 /// checked rather than assumed: another local user who may write the base could unlink the 0700
-/// staging directory and put a symlink in its place, so such a base is refused, which surfaces
-/// as `Unverifiable`, and the reason names the directory to fix. A base that does not exist yet
-/// is created 0700 and satisfies the same contract.
+/// staging directory and put a symlink in its place, so such a base is never staged into. A
+/// base that does not exist yet is created 0700 and satisfies the same contract.
 ///
 /// When the temp dir cannot be used, the user's own cache directory is tried before refusing,
-/// so a hardened environment does not become one where no verification can run at all; the
-/// refusal is still the last word when no candidate is safe. `pub` for the integration tests,
-/// which pin this contract through the real interface — the verifier's own surface is
+/// so a hardened environment does not become one where no verification can run at all. The
+/// temp dir's refusal is therefore only *reported* — as `Unverifiable`, naming the directory to
+/// fix — when no candidate is safe; a run that falls back says nothing, because the verifier
+/// reports through its outcome vocabulary and a warning on stderr is not part of it. `pub` for
+/// the integration tests, which pin this contract through the real interface — the verifier's
+/// own surface is
 /// `MinisignCli::verify`.
 #[doc(hidden)]
 pub fn staging_dir() -> std::io::Result<StagingDir> {
