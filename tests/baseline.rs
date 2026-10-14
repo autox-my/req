@@ -469,6 +469,52 @@ fn drift_names_changed_missing_and_added_separately() {
     assert!(!drift.is_clean());
 }
 
+/// The invariant `audit::coverage`'s merge relies on: the drift categories are mutually
+/// exclusive by precedence. A claim whose address **and** attested surface both moved is
+/// recorded in `changed` alone — never in `attested_changed` too — so merging the two lists
+/// cannot double-count an id, and `reasons()` names the address without also claiming the audit
+/// surface moved. Pinned because a reordered match arm would break it silently: verification
+/// would still fail, but the packet would count the claim twice.
+#[test]
+fn a_claim_whose_address_and_attested_surface_both_moved_is_changed_alone() {
+    // A real relation digest, not a placeholder: the row is the state `load_rows` produces
+    // from the edited file.
+    let relations = vec![Relation {
+        kind: "refines".to_string(),
+        to: "REQ-B".to_string(),
+    }];
+    let (rows, manifest) = signed_manifest();
+    let edited: Vec<Row> = rows
+        .iter()
+        .map(|r| {
+            let mut r = r.clone();
+            if r.claim_id == "REQ-B" {
+                // Both surfaces move: a reworded statement (a new address) and a relation
+                // added after signing (a new attested hash).
+                r.address = "bbb-changed".to_string();
+                r.relations = relations
+                    .iter()
+                    .map(|relation| (relation.kind.clone(), relation.to.clone()))
+                    .collect();
+                r.relations_hash = relations_digest(&relations);
+            }
+            r
+        })
+        .collect();
+    let drift = drift(&edited, &manifest);
+    assert_eq!(drift.changed, vec!["REQ-B".to_string()]);
+    assert!(
+        drift.attested_changed.is_empty(),
+        "an address change subsumes the attested one; the categories are exclusive: {drift:?}"
+    );
+    let reasons = drift.reasons().join(" ");
+    assert!(reasons.contains("no longer recomputes"), "{reasons}");
+    assert!(
+        !reasons.contains("relations or rationale"),
+        "precedence states only the address change: {reasons}"
+    );
+}
+
 /// The manifest defines the variant, so verifying with no context must resolve to the selection
 /// the Baseline records. Verifying under an empty context is what produced the phantom
 /// `REQ-0012: in the Baseline but no longer applies` on the first signed Baseline.
