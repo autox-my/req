@@ -491,12 +491,17 @@ pub fn staging_dir() -> std::io::Result<StagingDir> {
 fn staging_dir_first_safe(bases: &[PathBuf]) -> std::io::Result<StagingDir> {
     let mut refusal = None;
     for base in bases {
-        match staging_dir_in(base) {
-            Ok(dir) => return Ok(dir),
-            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+        // Only a chain refusal moves on to the next candidate, and the chain is asked directly:
+        // an unwritable directory yields the very same `PermissionDenied` from `mkdir`, but that
+        // is the filesystem's answer for this base, and relocating staging into the persistent
+        // cache tree would hide it from the operator. The first candidate that passes the chain
+        // is used, and its own errors are reported rather than second-guessed. On platforms with
+        // no mode or owner to check there is no refusal, so the first candidate is the only one.
+        match require_safe_base(base, None) {
+            Ok(()) => return staging_dir_in(base),
+            Err(e) => {
                 refusal.get_or_insert(e);
             }
-            Err(e) => return Err(e),
         }
     }
     Err(refusal.unwrap_or_else(|| {
@@ -535,10 +540,18 @@ fn staging_dir_in(base: &Path) -> std::io::Result<StagingDir> {
     // pre-F9 `create_dir_all` covered that; `ensure_base` keeps that behaviour while choosing
     // the mode rather than inheriting it from the umask.
     //
-    // The chain is validated *before* anything is created, so a refusal cannot leave a
-    // directory behind inside a location it has just called untrustworthy. A component that
-    // does not exist yet is skipped by the check and created 0700 by `ensure_base`, which
+    // The first pass validates the chain *before* anything is created, so a refusal here cannot
+    // leave a directory behind inside a location it has just called untrustworthy. A component
+    // that does not exist yet is skipped by the check and created 0700 by `ensure_base`, which
     // cannot be group- or other-writable.
+    //
+    // The second pass needs our effective uid, so it can only run once the staging directory
+    // exists. If it refuses — a sticky component owned by someone else — the base `ensure_base`
+    // created is left in place: undoing it would mean knowing which components were ours and
+    // which were already there, and `remove_dir` on a pre-existing empty base would delete a
+    // directory we did not create. That leak is accepted and recorded here rather than papered
+    // over, and it is one empty directory on a path that requires an attacker-owned sticky
+    // ancestor.
     require_safe_base(base, None)?;
     ensure_base(base)?;
     let mut attempt = 0;
