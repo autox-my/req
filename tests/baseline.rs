@@ -553,6 +553,11 @@ fn the_real_verifier_never_calls_a_bogus_signature_valid() {
 // missing tool fails the suite loudly; skipping would drop the Baseline check silently,
 // and a skipped check is never a pass. The gate tests are `#[cfg(unix)]` because they
 // spawn a shell script.
+//
+// Fixtures live under `CARGO_TARGET_TMPDIR`, the repo's pattern (tests/loader.rs), and the
+// gate tests hand the step the binary this test run already built through `REQ_GATE_BIN`:
+// the Baseline step is then exercised without nesting a second cargo invocation — and a
+// second build-dir lock — inside `cargo test`.
 
 /// The absolute path of the compiled binary, so CLI tests do not depend on $PATH.
 fn req_bin() -> std::path::PathBuf {
@@ -566,11 +571,11 @@ fn req_bin() -> std::path::PathBuf {
 struct Fixture(std::path::PathBuf);
 
 impl Fixture {
-    /// A fresh directory for one fixture, unique per test name. A leftover from an
-    /// earlier crashed run on the same pid is removed first, so "fresh" holds.
+    /// A fresh directory for one fixture, under the build tree Cargo guarantees is
+    /// writable. A leftover from an earlier crashed run is removed first, so "fresh"
+    /// holds.
     fn new(name: &str) -> Self {
-        let dir =
-            std::env::temp_dir().join(format!("req-gate-baseline-{}-{name}", std::process::id()));
+        let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("creates the fixture directory");
         Fixture(dir)
@@ -663,28 +668,21 @@ fn a_tampered_baseline_does_not_verify() {
     assert!(stdout.contains("[FAIL]"), "{stdout}");
 }
 
-/// These tests run scripts/check.sh, and scripts/check.sh runs `cargo test`: an inner
-/// run must answer immediately, or a check.sh that has lost its step mode would
-/// recurse into this suite forever. The outermost run is the real measurement.
+/// Runs `scripts/check.sh` with `args` from the tree under test. Two things are wired up:
+/// the pinned toolchain's HOME — check.sh resolves it under `$HOME/.rustup/toolchains`, and
+/// this workspace keeps it in .tools/home instead (gitignored; see .tools/README.md),
+/// shared through the git common dir so a feature worktree finds the main checkout's — and
+/// `REQ_GATE_BIN`, which points the Baseline step at the binary this test run already built
+/// rather than nesting a second cargo inside `cargo test`.
 #[cfg(unix)]
-fn gate_outer_run() -> bool {
-    std::env::var_os("REQ_GATE_INNER").is_none()
-}
-
-/// Runs `scripts/check.sh baseline [file]` — the gate's Baseline step — from the tree
-/// under test. check.sh resolves the pinned toolchain under `$HOME/.rustup/toolchains`;
-/// where this workspace keeps it instead (.tools/home, gitignored — see
-/// .tools/README.md), point HOME there, through the git common dir so a feature
-/// worktree finds the main checkout's toolchain.
-#[cfg(unix)]
-fn check_sh(baseline: Option<&std::path::Path>) -> std::process::Output {
+fn check_sh_args(args: &[&std::ffi::OsStr]) -> std::process::Output {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut command = std::process::Command::new("bash");
-    command.arg(root.join("scripts/check.sh")).arg("baseline");
-    if let Some(path) = baseline {
-        command.arg(path);
-    }
-    command.current_dir(&root).env("REQ_GATE_INNER", "1");
+    command
+        .arg(root.join("scripts/check.sh"))
+        .args(args)
+        .current_dir(&root)
+        .env("REQ_GATE_BIN", req_bin());
     let home_has_rustup = std::env::var_os("HOME")
         .is_some_and(|h| std::path::Path::new(&h).join(".rustup/toolchains").exists());
     if !home_has_rustup {
@@ -708,15 +706,51 @@ fn check_sh(baseline: Option<&std::path::Path>) -> std::process::Output {
     command.output().expect("runs scripts/check.sh")
 }
 
+/// The Baseline step, with an optional fixture in place of the committed Baseline.
+#[cfg(unix)]
+fn check_sh(baseline: Option<&std::path::Path>) -> std::process::Output {
+    match baseline {
+        Some(path) => check_sh_args(&["baseline".as_ref(), path.as_os_str()]),
+        None => check_sh_args(&["baseline".as_ref()]),
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn the_gate_rejects_an_unknown_step_and_stray_arguments() {
+    let unknown = check_sh_args(&["nonsense".as_ref()]);
+    assert_eq!(
+        unknown.status.code(),
+        Some(2),
+        "an unknown step must be a usage error:\n{}",
+        String::from_utf8_lossy(&unknown.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&unknown.stderr).contains("usage:"),
+        "{}",
+        String::from_utf8_lossy(&unknown.stderr)
+    );
+
+    let stray = check_sh_args(&["baseline".as_ref(), "a".as_ref(), "b".as_ref()]);
+    assert_eq!(
+        stray.status.code(),
+        Some(2),
+        "a stray argument must be a usage error:\n{}",
+        String::from_utf8_lossy(&stray.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&stray.stderr).contains("unexpected argument: b"),
+        "{}",
+        String::from_utf8_lossy(&stray.stderr)
+    );
+}
+
 /// The red test of the wiring: the gate runs the Baseline step, and a Baseline that
 /// does not verify fails it. Before the step existed the gate stayed green while the
 /// committed Baseline no longer verified — the exact blind spot F5 files.
 #[cfg(unix)]
 #[test]
 fn the_gate_fails_when_the_baseline_does_not_verify() {
-    if !gate_outer_run() {
-        return;
-    }
     let fixture = Fixture::new("gate-tampered");
     let manifest = tampered_fixture(fixture.path());
     let output = check_sh(Some(&manifest));
@@ -737,9 +771,6 @@ fn the_gate_fails_when_the_baseline_does_not_verify() {
 #[cfg(unix)]
 #[test]
 fn the_gate_blocks_an_unverifiable_baseline() {
-    if !gate_outer_run() {
-        return;
-    }
     let fixture = Fixture::new("gate-unsigned");
     let manifest = unsigned_fixture(fixture.path());
     let output = check_sh(Some(&manifest));
@@ -758,9 +789,6 @@ fn the_gate_blocks_an_unverifiable_baseline() {
 #[cfg(unix)]
 #[test]
 fn the_gate_verifies_the_committed_baseline() {
-    if !gate_outer_run() {
-        return;
-    }
     let output = check_sh(None);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(

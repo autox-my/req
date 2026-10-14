@@ -106,8 +106,17 @@ fi
 # "we could not tell" must never be a pass — a skipped check is never a pass. A dev
 # machine without it installs it first: `brew install minisign` (Debian:
 # `apt-get install minisign`; the CI runner image already ships minisign 0.12).
+#
+# The step drives the req binary: normally `cargo run -q --` like every other step here.
+# tests/baseline.rs sets REQ_GATE_BIN to the binary the test run already built, so the
+# step is exercised without nesting a second cargo invocation — and a second build-dir
+# lock — inside `cargo test`. Ordinary and CI invocations never set it.
 verify_baseline() {
-  run cargo run -q -- baseline --verify "$1"
+  if [ -n "${REQ_GATE_BIN:-}" ]; then
+    run "$REQ_GATE_BIN" baseline --verify "$1"
+  else
+    run cargo run -q -- baseline --verify "$1"
+  fi
 }
 
 finish() {
