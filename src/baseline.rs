@@ -15,6 +15,7 @@ use crate::select::{Applies, Context};
 use crate::view::Row;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 /// The manifest format's own version — distinct from `RULES_V`, because the *envelope* and
 /// the *rules* move independently.
@@ -331,6 +332,53 @@ pub trait SignatureVerifier {
     fn verify(&self, message: &[u8], signature: &str, public_key: &str) -> SignatureOutcome;
 }
 
+/// The name of one staging attempt: `req-baseline-<pid>-<nanos-since-epoch>-<attempt>`.
+///
+/// The process id alone is a name another local process can guess and pre-create; the clock
+/// and the attempt counter are what make guessing it fail rather than pay off.
+pub fn staging_dir_name(attempt: u32) -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    format!("req-baseline-{}-{nanos}-{attempt}", std::process::id())
+}
+
+/// Create the staging directory under `base` exclusively, mode 0700.
+///
+/// `DirBuilder::create` — never `create_dir_all` — so a path that already exists, whether a
+/// directory left behind by an earlier run or a symlink planted at the name, is an
+/// `AlreadyExists` error instead of a directory we then write the trusted inputs into. 0700
+/// keeps another local user out of the staged manifest between writing it and minisign
+/// reading it.
+pub fn create_staging_dir(base: &Path, name: &str) -> std::io::Result<PathBuf> {
+    let dir = base.join(name);
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(&dir)?;
+    Ok(dir)
+}
+
+/// One staging directory for this verification, retrying on a name collision (a retry that a
+/// predictable name could not make safe, but a fresh name plus exclusive creation does).
+fn staging_dir() -> std::io::Result<PathBuf> {
+    let base = std::env::temp_dir();
+    let mut attempt = 0;
+    loop {
+        match create_staging_dir(&base, &staging_dir_name(attempt)) {
+            Ok(dir) => return Ok(dir),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 16 => {
+                attempt += 1;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
 /// The pinned `minisign` CLI. Absent in this development environment, which the outcome
 /// reports rather than guesses around.
 pub struct MinisignCli;
@@ -341,10 +389,12 @@ impl SignatureVerifier for MinisignCli {
     }
 
     fn verify(&self, message: &[u8], signature: &str, public_key: &str) -> SignatureOutcome {
-        let dir = std::env::temp_dir().join(format!("req-baseline-{}", std::process::id()));
-        if let Err(e) = std::fs::create_dir_all(&dir) {
-            return SignatureOutcome::Unverifiable(format!("no temporary directory: {e}"));
-        }
+        let dir = match staging_dir() {
+            Ok(dir) => dir,
+            Err(e) => {
+                return SignatureOutcome::Unverifiable(format!("no temporary directory: {e}"));
+            }
+        };
         let msg = dir.join("baseline.json");
         let sig = dir.join("baseline.json.minisig");
         let key = dir.join("req.pub");

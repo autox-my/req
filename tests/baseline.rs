@@ -4,7 +4,8 @@ mod common;
 
 use req::baseline::{
     BASELINE_VERSION, Manifest, MinisignCli, Outcome, SignatureOutcome, SignatureVerifier,
-    TrustFile, canonical_bytes, drift, from_json, manifest, verify,
+    TrustFile, canonical_bytes, create_staging_dir, drift, from_json, manifest, staging_dir_name,
+    verify,
 };
 use req::model::{Rationale, Relation, rationale_digest, relations_digest};
 use req::select::{Applies, Context};
@@ -1047,4 +1048,55 @@ fn a_contradicting_context_is_a_usage_error_not_a_finding() {
     assert!(error.contains("records selection"), "{error}");
     assert!(error.contains("air_gapped"), "{error}");
     assert!(error.contains("networked"), "{error}");
+}
+
+/// A private base directory per test, so the two F9 tests and any concurrent run cannot collide.
+fn staging_test_base(tag: &str) -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let base = std::env::temp_dir().join(format!("req-f9-{}-{tag}-{nanos}", std::process::id()));
+    std::fs::create_dir_all(&base).expect("test base");
+    base
+}
+
+/// F9: the staging directory must be *created*, never reused. A path that already exists —
+/// left behind by an earlier run, or a symlink planted at a predictable name — is an error,
+/// not a directory whose contents we then write the trusted inputs into.
+#[test]
+fn creating_the_same_staging_dir_twice_is_already_exists() {
+    let base = staging_test_base("exclusive");
+    let name = staging_dir_name(0);
+    let created = create_staging_dir(&base, &name).expect("the first creation succeeds");
+    assert_eq!(created, base.join(&name));
+    let second = create_staging_dir(&base, &name);
+    assert!(
+        second.is_err(),
+        "a second creation must not reuse the existing directory: {second:?}"
+    );
+    assert_eq!(
+        second.unwrap_err().kind(),
+        std::io::ErrorKind::AlreadyExists
+    );
+    std::fs::remove_dir_all(&base).expect("cleanup");
+}
+
+/// F9: mode 0700, so another local user cannot read the staged manifest — or, worse, replace
+/// the files between staging and the verifier process reading them.
+#[test]
+fn the_staging_dir_is_owner_only() {
+    use std::os::unix::fs::PermissionsExt;
+    let base = staging_test_base("mode");
+    let dir = create_staging_dir(&base, &staging_dir_name(0)).expect("created");
+    let mode = std::fs::metadata(&dir)
+        .expect("metadata")
+        .permissions()
+        .mode();
+    assert_eq!(
+        mode & 0o777,
+        0o700,
+        "the staging directory is private to its owner"
+    );
+    std::fs::remove_dir_all(&base).expect("cleanup");
 }
