@@ -460,7 +460,13 @@ impl Drop for StagingDir {
 /// `MinisignCli::verify`.
 #[doc(hidden)]
 pub fn staging_dir() -> std::io::Result<StagingDir> {
-    let mut bases = vec![std::env::temp_dir()];
+    let mut bases = Vec::new();
+    // `temp_dir()` returns TMPDIR/TMP/TEMP verbatim on Unix, so it can be relative; the chain
+    // check needs an absolute base, or `ancestors()` would stop at the empty component and skip
+    // every directory above the working directory — the ones a rename attack would use.
+    if let Ok(temp) = std::path::absolute(std::env::temp_dir()) {
+        bases.push(temp);
+    }
     if let Some(root) = private_staging_root() {
         bases.push(root);
     }
@@ -1031,7 +1037,9 @@ mod tests {
     /// temp dir sits under a group/other-writable, non-sticky ancestor the production refusal
     /// is correct, but a test that needs a *successful* staging run has nothing to assert.
     fn ambient_temp_dir_is_usable() -> bool {
-        require_safe_base(&std::env::temp_dir(), None).is_ok()
+        std::path::absolute(std::env::temp_dir())
+            .map(|temp| require_safe_base(&temp, None).is_ok())
+            .unwrap_or(false)
     }
 
     /// A base that does not exist yet — an unusual `TMPDIR` — must be created rather than
@@ -1216,5 +1224,15 @@ mod tests {
         assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The chain check refuses a relative base: its `ancestors()` stops at the empty component,
+    /// skipping every directory above the working directory. `staging_dir` absolutizes
+    /// `temp_dir()` before this point, so this fires only if that is ever bypassed.
+    #[cfg(unix)]
+    #[test]
+    #[should_panic(expected = "absolute base")]
+    fn a_relative_base_is_rejected_by_the_chain_check() {
+        let _ = require_safe_base(Path::new("relative/staging"), None);
     }
 }

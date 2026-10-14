@@ -1116,7 +1116,9 @@ fn a_symlink_at_the_staging_name_is_not_followed() {
 }
 
 /// F9: mode 0700, so another local user cannot read the staged manifest — or, worse, replace
-/// the files between staging and the verifier process reading them.
+/// the files between staging and the verifier process reading them. The kernel masks the
+/// requested mode with the umask, which can only remove bits, so the property asserted is the
+/// privacy itself — no group or other bit — rather than exact equality with 0700.
 #[cfg(unix)]
 #[test]
 fn the_staging_dir_is_owner_only() {
@@ -1128,15 +1130,15 @@ fn the_staging_dir_is_owner_only() {
         .permissions()
         .mode();
     assert_eq!(
-        mode & 0o777,
-        0o700,
-        "the staging directory is private to its owner"
+        mode & 0o077,
+        0,
+        "no group or other bit is set on the staging directory: {mode:o}"
     );
 }
 
-/// F9: the guard owns the directory, so *every* way out of verification removes it — a failed
-/// write, an unrunnable verifier, a non-zero exit, and a parse failure all drop the guard
-/// rather than leaving a uniquely-named directory orphaned in the temp dir.
+/// F9: the guard owns the directory. The verifier holds the guard for the whole call, so an
+/// early return, a failed write, an unrunnable verifier or a parse failure drops it on the way
+/// out; this pins the drop itself, which is the mechanism every one of those paths relies on.
 #[test]
 fn dropping_the_staging_guard_removes_its_directory() {
     let guard = staging_dir().expect("a fresh staging directory under the temp dir");
