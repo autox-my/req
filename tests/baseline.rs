@@ -4,7 +4,7 @@ mod common;
 
 use req::baseline::{
     BASELINE_VERSION, Manifest, MinisignCli, Outcome, SignatureOutcome, SignatureVerifier,
-    StagingDir, TrustFile, canonical_bytes, create_staging_dir, drift, from_json, manifest,
+    TrustFile, canonical_bytes, create_staging_dir, drift, from_json, manifest, staging_dir,
     staging_dir_name, verify,
 };
 use req::model::{Rationale, Relation, rationale_digest, relations_digest};
@@ -1050,15 +1050,32 @@ fn a_contradicting_context_is_a_usage_error_not_a_finding() {
     assert!(error.contains("networked"), "{error}");
 }
 
+/// A private base directory per test, removed on *every* exit path — including the panic a
+/// failing assertion unwinds through, which a trailing `remove_dir_all` never reaches.
+struct TempBase(std::path::PathBuf);
+
+impl TempBase {
+    /// The directory, for building the paths a test stages into.
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempBase {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 /// A private base directory per test, so the two F9 tests and any concurrent run cannot collide.
-fn staging_test_base(tag: &str) -> std::path::PathBuf {
+fn staging_test_base(tag: &str) -> TempBase {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or_default();
     let base = std::env::temp_dir().join(format!("req-f9-{}-{tag}-{nanos}", std::process::id()));
     std::fs::create_dir_all(&base).expect("test base");
-    base
+    TempBase(base)
 }
 
 /// F9: the staging directory must be *created*, never reused. A path that already exists —
@@ -1068,9 +1085,9 @@ fn staging_test_base(tag: &str) -> std::path::PathBuf {
 fn creating_the_same_staging_dir_twice_is_already_exists() {
     let base = staging_test_base("exclusive");
     let name = staging_dir_name(0);
-    let created = create_staging_dir(&base, &name).expect("the first creation succeeds");
-    assert_eq!(created, base.join(&name));
-    let second = create_staging_dir(&base, &name);
+    let created = create_staging_dir(base.path(), &name).expect("the first creation succeeds");
+    assert_eq!(created, base.path().join(&name));
+    let second = create_staging_dir(base.path(), &name);
     assert!(
         second.is_err(),
         "a second creation must not reuse the existing directory: {second:?}"
@@ -1079,7 +1096,6 @@ fn creating_the_same_staging_dir_twice_is_already_exists() {
         second.unwrap_err().kind(),
         std::io::ErrorKind::AlreadyExists
     );
-    std::fs::remove_dir_all(&base).expect("cleanup");
 }
 
 /// F9: mode 0700, so another local user cannot read the staged manifest — or, worse, replace
@@ -1089,7 +1105,7 @@ fn creating_the_same_staging_dir_twice_is_already_exists() {
 fn the_staging_dir_is_owner_only() {
     use std::os::unix::fs::PermissionsExt;
     let base = staging_test_base("mode");
-    let dir = create_staging_dir(&base, &staging_dir_name(0)).expect("created");
+    let dir = create_staging_dir(base.path(), &staging_dir_name(0)).expect("created");
     let mode = std::fs::metadata(&dir)
         .expect("metadata")
         .permissions()
@@ -1099,7 +1115,6 @@ fn the_staging_dir_is_owner_only() {
         0o700,
         "the staging directory is private to its owner"
     );
-    std::fs::remove_dir_all(&base).expect("cleanup");
 }
 
 /// F9: the guard owns the directory, so *every* way out of verification removes it — a failed
@@ -1107,14 +1122,31 @@ fn the_staging_dir_is_owner_only() {
 /// rather than leaving a uniquely-named directory orphaned in the temp dir.
 #[test]
 fn dropping_the_staging_guard_removes_its_directory() {
-    let base = staging_test_base("guard");
-    let dir = create_staging_dir(&base, &staging_dir_name(0)).expect("created");
-    assert!(dir.exists(), "the fixture directory exists before the drop");
-    let guard = StagingDir::from_path(dir.clone());
+    let guard = staging_dir().expect("a fresh staging directory under the temp dir");
+    let dir = guard.path().to_path_buf();
+    assert!(dir.exists(), "the staged directory exists before the drop");
     drop(guard);
     assert!(
         !dir.exists(),
         "dropping the guard removes the staging directory: {dir:?}"
     );
-    std::fs::remove_dir_all(&base).expect("cleanup");
+}
+
+/// The cleanup a failing assertion actually needs. A trailing `remove_dir_all` is never
+/// reached when an `assert!` panics, so the base of a *failing* run is the one that leaks.
+/// Hold the fixture across a panic and prove the directory is gone anyway.
+#[test]
+fn a_panicking_test_still_removes_its_base_directory() {
+    let mut observed = None;
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let base = staging_test_base("panicking");
+        observed = Some(base.path().to_path_buf());
+        panic!("a failing assertion unwinds through the fixture");
+    }));
+    assert!(panicked.is_err(), "catch_unwind observes the panic");
+    let leaked = observed.expect("the closure records its base before panicking");
+    assert!(
+        !leaked.exists(),
+        "a panicking test must not leak its base directory: {leaked:?}"
+    );
 }

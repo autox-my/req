@@ -344,13 +344,14 @@ pub fn staging_dir_name(attempt: u32) -> String {
     format!("req-baseline-{}-{nanos}-{attempt}", std::process::id())
 }
 
-/// Create the staging directory under `base` exclusively, mode 0700.
+/// Create the staging directory under `base` exclusively, mode 0700 on Unix.
 ///
 /// `DirBuilder::create` — never `create_dir_all` — so a path that already exists, whether a
 /// directory left behind by an earlier run or a symlink planted at the name, is an
-/// `AlreadyExists` error instead of a directory we then write the trusted inputs into. 0700
-/// keeps another local user out of the staged manifest between writing it and minisign
-/// reading it.
+/// `AlreadyExists` error instead of a directory we then write the trusted inputs into. On
+/// Unix the directory is created 0700, which keeps another local user out of the staged
+/// manifest between writing it and minisign reading it; other platforms get the platform
+/// default, so that privacy is a Unix property and not a portable one.
 pub fn create_staging_dir(base: &Path, name: &str) -> std::io::Result<PathBuf> {
     let dir = base.join(name);
     staging_dir_builder().create(&dir)?;
@@ -384,12 +385,11 @@ fn staging_dir_builder() -> std::fs::DirBuilder {
 pub struct StagingDir(PathBuf);
 
 impl StagingDir {
-    /// Take ownership of a staging directory that already exists on disk.
-    pub fn from_path(path: PathBuf) -> Self {
-        StagingDir(path)
-    }
-
     /// The directory itself, for building the paths handed to the verifier.
+    ///
+    /// There is deliberately no constructor from an arbitrary path: the field is private and
+    /// [`staging_dir`] is the only way to obtain a guard, so `Drop` can only ever remove a
+    /// directory this module just created under the temp dir.
     pub fn path(&self) -> &Path {
         &self.0
     }
@@ -405,12 +405,16 @@ impl Drop for StagingDir {
 
 /// One staging directory for this verification, retrying on a name collision (a retry that a
 /// predictable name could not make safe, but a fresh name plus exclusive creation does).
-fn staging_dir() -> std::io::Result<StagingDir> {
+///
+/// The only way to obtain a [`StagingDir`]: it always creates a fresh, exclusively-created
+/// directory under the temp dir, so the guard's `Drop` removes only what this call made and
+/// no caller can hand it an arbitrary path to delete.
+pub fn staging_dir() -> std::io::Result<StagingDir> {
     let base = std::env::temp_dir();
     let mut attempt = 0;
     loop {
         match create_staging_dir(&base, &staging_dir_name(attempt)) {
-            Ok(dir) => return Ok(StagingDir::from_path(dir)),
+            Ok(dir) => return Ok(StagingDir(dir)),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 16 => {
                 attempt += 1;
             }
