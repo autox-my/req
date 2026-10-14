@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted — the manifest is extended by 0013 to attest the audit surface
 ---
 
 # A Baseline is signed with minisign, over a committed trust file
