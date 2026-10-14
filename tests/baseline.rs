@@ -686,14 +686,21 @@ fn check_sh_args(args: &[&std::ffi::OsStr]) -> std::process::Output {
     let home_has_rustup = std::env::var_os("HOME")
         .is_some_and(|h| std::path::Path::new(&h).join(".rustup/toolchains").exists());
     if !home_has_rustup {
+        // git is a hard requirement of these tests (documented above): its failure is
+        // reported here, with git's own message, rather than swallowed into an empty path
+        // that would surface later as check.sh's generic "no rust toolchain".
         let common = std::process::Command::new("git")
             .arg("-C")
             .arg(&root)
             .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
             .output()
-            .ok()
-            .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
-            .unwrap_or_default();
+            .expect("git is required to locate the shared toolchain home");
+        assert!(
+            common.status.success(),
+            "git rev-parse --git-common-dir failed: {}",
+            String::from_utf8_lossy(&common.stderr)
+        );
+        let common = String::from_utf8_lossy(&common.stdout).trim().to_string();
         let home = std::path::PathBuf::from(common)
             .parent()
             .map(|main| main.join(".tools/home"));
@@ -770,6 +777,23 @@ fn the_gate_rejects_an_unknown_step_and_stray_arguments() {
         "{}",
         String::from_utf8_lossy(&stray.stderr)
     );
+
+    // A path the step cannot mean is rejected here, not forwarded to req as a mystery:
+    // an empty value, or one req would read as its own flag.
+    for bad in ["", "-x"] {
+        let rejected = check_sh_args(&["baseline".as_ref(), bad.as_ref()]);
+        assert_eq!(
+            rejected.status.code(),
+            Some(2),
+            "{bad:?} must be a usage error:\n{}",
+            String::from_utf8_lossy(&rejected.stdout)
+        );
+        assert!(
+            String::from_utf8_lossy(&rejected.stderr).contains("baseline file must be a path"),
+            "{}",
+            String::from_utf8_lossy(&rejected.stderr)
+        );
+    }
 }
 
 /// The red test of the wiring: the gate runs the Baseline step, and a Baseline that
@@ -790,7 +814,7 @@ fn the_gate_fails_when_the_baseline_does_not_verify() {
         "a tampered Baseline must fail the gate (exit {:?}):\n{stdout}",
         output.status.code()
     );
-    assert!(stdout.contains("GATE: FAIL"), "{stdout}");
+    assert!(stdout.contains("BASELINE STEP: FAIL"), "{stdout}");
 }
 
 /// The decision the wiring records: exit 3 — UNVERIFIABLE, here an unsigned manifest —
@@ -808,11 +832,12 @@ fn the_gate_blocks_an_unverifiable_baseline() {
         "UNVERIFIABLE must block the gate (exit {:?}):\n{stdout}",
         output.status.code()
     );
-    assert!(stdout.contains("GATE: FAIL"), "{stdout}");
+    assert!(stdout.contains("BASELINE STEP: FAIL"), "{stdout}");
 }
 
 /// ...and the committed Baseline passes the step it is wired into: the step exists and
-/// is green on the tree it guards. Removing the step fails here, not silently.
+/// is green on the tree it guards. Removing the step fails here, not silently. The step
+/// reports its own verdict, so one check is never mistaken for the gate's pass.
 #[cfg(unix)]
 #[test]
 fn the_gate_verifies_the_committed_baseline() {
@@ -824,7 +849,11 @@ fn the_gate_verifies_the_committed_baseline() {
         output.status.code()
     );
     assert!(stdout.contains("[VERIFIED]"), "{stdout}");
-    assert!(stdout.contains("GATE: PASS"), "{stdout}");
+    assert!(stdout.contains("BASELINE STEP: PASS"), "{stdout}");
+    assert!(
+        !stdout.contains("GATE: PASS"),
+        "one check is not the gate:\n{stdout}"
+    );
 }
 
 #[test]

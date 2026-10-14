@@ -11,12 +11,16 @@
 #                      The step exists so its failure modes are testable —
 #                      tests/baseline.rs drives it against tampered and unsigned
 #                      fixtures — and so one check can be re-run alone. It must
-#                      never recurse into the full gate, which runs `cargo test`.
+#                      never recurse into the full gate, which runs `cargo test`,
+#                      and it reports its own verdict (`BASELINE STEP: PASS/FAIL`),
+#                      never the gate's banner: one check is not the gate.
 #   plan               print the command of every check the default run would execute,
-#                      from the same call sites, and execute none of them. Its verdict
-#                      is UNVERIFIABLE (exit 3): a plan is not a pass. tests/baseline.rs
-#                      uses it to pin that the default run still verifies the Baseline —
-#                      the step branch returns before that call site.
+#                      from the same call sites, and execute no check. The probes that
+#                      gate a check are not consulted, so the plan lists a check whose
+#                      tooling is missing now. Its verdict is UNVERIFIABLE (exit 3): a
+#                      plan is not a pass. tests/baseline.rs uses it to pin that the
+#                      default run still verifies the Baseline — the step branch returns
+#                      before that call site.
 #
 # Never read a status through a pipeline (`cmd | tail` reports tail's status, not
 # the command's). The sandbox denies writes to $HOME, so all tool state lives in
@@ -93,6 +97,16 @@ case $step in
     if [ $# -gt 0 ]; then
       baseline_file="$1"
       shift
+      # A path the step cannot mean is a usage error here, where it can be named, rather
+      # than a confusing downstream failure: an empty value, or one option-shaped enough
+      # that req would read it as its own flag.
+      case $baseline_file in
+        ""|-*)
+          printf 'baseline file must be a path, not %s\n' "'$baseline_file'" >&2
+          usage
+          exit 2
+          ;;
+      esac
     fi
     ;;
   plan) dry=1 ;;
@@ -135,9 +149,19 @@ verify_baseline() {
 finish() {
   printf '\n----------------------------------------\n'
   if [ "$dry" -eq 1 ]; then
-    # Nothing was executed, so nothing was checked: exit 3, and never a pass.
-    printf 'GATE: UNVERIFIABLE (plan only: nothing was executed)\n'
+    # No check was executed, so nothing was checked: exit 3, and never a pass.
+    printf 'GATE: UNVERIFIABLE (plan only: no check was executed)\n'
     exit 3
+  fi
+  if [ "$step" = baseline ]; then
+    # One check ran, not the gate. The banner says which, so a caller keying on the
+    # full gate's verdict cannot mistake this for one.
+    if [ $fail -eq 0 ]; then
+      printf 'BASELINE STEP: PASS (one check; the gate did not run)\n'
+    else
+      printf 'BASELINE STEP: FAIL\n'
+    fi
+    exit $fail
   fi
   if [ $fail -eq 0 ]; then
     printf 'GATE: PASS (skips above are not passes)\n'
@@ -153,14 +177,15 @@ if [ "$step" = baseline ]; then
 fi
 
 # Both components live in the pinned toolchain (resolved above); SKIP only if one
-# is genuinely missing, and never count a SKIP as a pass.
-if command -v rustfmt >/dev/null 2>&1; then
+# is genuinely missing, and never count a SKIP as a pass. A plan lists the check
+# regardless: the probe answers "can this run now", not "would the gate run it".
+if [ "$dry" -eq 1 ] || command -v rustfmt >/dev/null 2>&1; then
   run cargo fmt --all -- --check
 else
   skip "rustfmt not installed (rustup component add rustfmt)"
 fi
 
-if command -v cargo-clippy >/dev/null 2>&1; then
+if [ "$dry" -eq 1 ] || command -v cargo-clippy >/dev/null 2>&1; then
   run cargo clippy --all-targets -- -D warnings
 else
   skip "clippy not installed (rustup component add clippy)"
@@ -190,17 +215,21 @@ run cargo run -q -- bench bench/corpus/external-v3.yml
 # fails, exactly as a false merge does. See docs/canonical-hashing.md 6.3.
 run cargo run -q -- bench bench/corpus/direction-v1.yml
 
-# OCR is a review tool, not a gate: report the pin so version drift is visible.
-say "ocr (review tool, not a gate)"
-if command -v ocr >/dev/null 2>&1; then
-  ocr --version | head -1
-  pin="$(grep -o '"@alibaba-group/open-code-review": *"[^"]*"' \
-    "$CACHE_ROOT/tools/ocr/package.json" 2>/dev/null | cut -d'"' -f4)"
-  printf 'pinned: %s\n' "${pin:-unknown}"
+# OCR is a review tool, not a gate: report the pin so version drift is visible. A plan
+# reports the rule-check it would run, but probes nothing — so `plan` executes no command
+# at all beyond the environment setup above.
+if [ "$dry" -eq 1 ] || command -v ocr >/dev/null 2>&1; then
+  if [ "$dry" -eq 0 ]; then
+    say "ocr (review tool, not a gate)"
+    ocr --version | head -1
+    pin="$(grep -o '"@alibaba-group/open-code-review": *"[^"]*"' \
+      "$CACHE_ROOT/tools/ocr/package.json" 2>/dev/null | cut -d'"' -f4)"
+    printf 'pinned: %s\n' "${pin:-unknown}"
+  fi
   # The rule file is load-bearing for review, and this CLI ignores unknown keys and
   # silently falls back for a glob that matches nothing — so its *effect* is checked,
   # never its exit status.
-  if [ -f "$PWD/review/rule.json" ] && command -v python3 >/dev/null 2>&1; then
+  if [ "$dry" -eq 1 ] || { [ -f "$PWD/review/rule.json" ] && command -v python3 >/dev/null 2>&1; }; then
     # $PWD, not $CACHE_ROOT: this is repo content, and a worktree's copy is the one
     # under test. $CACHE_ROOT is for tool *state* (cargo home, node_modules) — a script
     # resolved there does not exist until the branch is merged, which the gate caught
