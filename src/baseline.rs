@@ -148,12 +148,14 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
         let declared = serde_json::from_str::<EnvelopeVersion>(text)
             .ok()
             .and_then(|envelope| envelope.version);
-        let stale = declared.is_some_and(|version| version < BASELINE_VERSION);
-        if stale {
+        // Binding the recovered version keeps the invariant local: the stale branch runs only
+        // when a declared version below this build's was observed, so the message cannot print
+        // a fabricated fallback.
+        if let Some(version) = declared.filter(|version| *version < BASELINE_VERSION) {
             format!(
-                "manifest is not readable: {detail} — this manifest declares version {}, which \
-                     predates the version this build writes ({BASELINE_VERSION}): {REISSUE_ADVICE}",
-                declared.unwrap_or(0)
+                "manifest is not readable: {detail} — this manifest declares version {version}, \
+                     which predates the version this build writes ({BASELINE_VERSION}): \
+                     {REISSUE_ADVICE}"
             )
         } else {
             format!("manifest is not readable: {detail}")

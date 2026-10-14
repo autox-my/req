@@ -65,8 +65,11 @@ pub fn coverage(rows: &[Row], manifest: &Manifest) -> Coverage {
 
     // `changed ++ attested_changed` is exactly `drifted`: the merge takes the ids whose
     // address or attested surface moved, and `signed` above has already excluded them all.
+    // Sorted after the merge: each half is in manifest-claims order, but their concatenation
+    // is not, and the packet's findings are read in id order.
     let mut drifted = drift.changed;
     drifted.extend(drift.attested_changed);
+    drifted.sort();
     Coverage {
         signed,
         drifted,
