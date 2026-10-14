@@ -480,33 +480,47 @@ pub fn staging_dir() -> std::io::Result<StagingDir> {
     staging_dir_first_safe(&bases)
 }
 
-/// Try each candidate base in order and return the first staging directory that can be made.
+/// Why a candidate base could not be used, kept apart so the fallback can act on the *reason*.
+///
+/// A chain refusal and an ordinary permission error carry the same `io::ErrorKind`, and only the
+/// refusal — from either pass — justifies trying the next candidate.
+enum BaseRefusal {
+    /// The chain refused it: another local user could swap the staging directory out of it.
+    Unsafe(std::io::Error),
+    /// The filesystem's answer for this base.
+    Io(std::io::Error),
+}
+
+/// Take the first usable candidate, falling through on a refusal and stopping on anything else.
 ///
 /// The environment's temp dir is the first candidate and what every ordinary run uses; the
 /// user's own cache root is the fallback for a system whose temp dir is one another local user
-/// may write. Only a refusal moves on to the next candidate: a transient failure — a full or
-/// unwritable filesystem, an exhausted run of name collisions — is that base's answer, and
-/// relocating into the persistent cache tree would hide it. The first refusal is kept, so an
-/// operator is told about the temp dir they configured rather than only about the fallback.
-fn staging_dir_first_safe(bases: &[PathBuf]) -> std::io::Result<StagingDir> {
+/// may write, which the chain reports as `Unsafe` whether the provisional pass or the
+/// ownership pass is the one that catches it. Any other failure — a full or unwritable
+/// filesystem, an exhausted run of name collisions — is that base's answer, and relocating into
+/// the persistent cache tree would hide it. The first refusal is kept, so an operator is told
+/// about the temp dir they configured rather than only about the fallback.
+fn first_usable<T>(
+    results: impl IntoIterator<Item = Result<T, BaseRefusal>>,
+) -> std::io::Result<T> {
     let mut refusal = None;
-    for base in bases {
-        // Only a chain refusal moves on to the next candidate, and the chain is asked directly:
-        // an unwritable directory yields the very same `PermissionDenied` from `mkdir`, but that
-        // is the filesystem's answer for this base, and relocating staging into the persistent
-        // cache tree would hide it from the operator. The first candidate that passes the chain
-        // is used, and its own errors are reported rather than second-guessed. On platforms with
-        // no mode or owner to check there is no refusal, so the first candidate is the only one.
-        match require_safe_base(base, None) {
-            Ok(()) => return staging_dir_in(base),
-            Err(e) => {
+    for result in results {
+        match result {
+            Ok(value) => return Ok(value),
+            Err(BaseRefusal::Unsafe(e)) => {
                 refusal.get_or_insert(e);
             }
+            Err(BaseRefusal::Io(e)) => return Err(e),
         }
     }
     Err(refusal.unwrap_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::NotFound, "no staging base is available")
     }))
+}
+
+/// The same, over the candidate bases [`staging_dir`] chose.
+fn staging_dir_first_safe(bases: &[PathBuf]) -> std::io::Result<StagingDir> {
+    first_usable(bases.iter().map(|base| staging_dir_at(base)))
 }
 
 /// A private staging root under the user's own cache directory, for a system whose temp dir is
@@ -532,9 +546,17 @@ fn private_staging_root() -> Option<PathBuf> {
     Some(cache.join("req/staging"))
 }
 
-/// The staging attempt loop against an explicit base, so a test can drive it without mutating
-/// the process environment.
+/// The staging attempt loop against an explicit base, erasing the reason. The unit tests drive
+/// this seam; the fallback needs [`staging_dir_at`]'s reason, so nothing in the binary does.
+#[cfg(test)]
 fn staging_dir_in(base: &Path) -> std::io::Result<StagingDir> {
+    staging_dir_at(base).map_err(|refusal| match refusal {
+        BaseRefusal::Unsafe(e) | BaseRefusal::Io(e) => e,
+    })
+}
+
+/// The same, with the reason kept, so the fallback can tell a chain refusal from an I/O error.
+fn staging_dir_at(base: &Path) -> Result<StagingDir, BaseRefusal> {
     // `temp_dir()` is read from the environment (TMPDIR/TMP/TEMP) and may name a directory
     // that does not exist yet, and `create_staging_dir` makes only the final component. The
     // pre-F9 `create_dir_all` covered that; `ensure_base` keeps that behaviour while choosing
@@ -552,8 +574,8 @@ fn staging_dir_in(base: &Path) -> std::io::Result<StagingDir> {
     // directory we did not create. That leak is accepted and recorded here rather than papered
     // over, and it is one empty directory on a path that requires an attacker-owned sticky
     // ancestor.
-    require_safe_base(base, None)?;
-    ensure_base(base)?;
+    require_safe_base(base, None).map_err(BaseRefusal::Unsafe)?;
+    ensure_base(base).map_err(BaseRefusal::Io)?;
     let mut attempt = 0;
     loop {
         match create_staging_dir(base, &staging_dir_name(attempt)) {
@@ -566,8 +588,10 @@ fn staging_dir_in(base: &Path) -> std::io::Result<StagingDir> {
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::MetadataExt;
-                    let me = std::fs::metadata(guard.path())?.uid();
-                    require_safe_base(base, Some(me))?;
+                    let me = std::fs::metadata(guard.path())
+                        .map_err(BaseRefusal::Io)?
+                        .uid();
+                    require_safe_base(base, Some(me)).map_err(BaseRefusal::Unsafe)?;
                 }
                 return Ok(guard);
             }
@@ -579,7 +603,7 @@ fn staging_dir_in(base: &Path) -> std::io::Result<StagingDir> {
             {
                 attempt += 1;
             }
-            Err(e) => return Err(e),
+            Err(e) => return Err(BaseRefusal::Io(e)),
         }
     }
 }
@@ -1265,5 +1289,38 @@ mod tests {
     #[should_panic(expected = "absolute base")]
     fn a_relative_base_is_rejected_by_the_chain_check() {
         let _ = require_safe_base(Path::new("relative/staging"), None);
+    }
+
+    /// The fallback acts on the reason, not on the error kind: a chain refusal falls through to
+    /// the next candidate *whichever pass produced it* — the ownership pass reports the same
+    /// variant, which is the case this pins without needing a second uid — while an ordinary I/O
+    /// failure is that base's answer, and the first refusal is the one an operator is told.
+    #[test]
+    fn a_chain_refusal_falls_through_but_an_io_error_does_not() {
+        fn refusal() -> BaseRefusal {
+            BaseRefusal::Unsafe(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "refused",
+            ))
+        }
+        fn io_failure() -> BaseRefusal {
+            BaseRefusal::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "eacces",
+            ))
+        }
+
+        assert_eq!(
+            first_usable([Err(refusal()), Ok(7)]).expect("the second candidate is used"),
+            7
+        );
+
+        let error =
+            first_usable::<u8>([Err(io_failure()), Ok(7)]).expect_err("an I/O error is reported");
+        assert_eq!(error.to_string(), "eacces");
+
+        let error = first_usable::<u8>([Err(refusal()), Err(refusal())])
+            .expect_err("every candidate was refused");
+        assert_eq!(error.to_string(), "refused");
     }
 }
