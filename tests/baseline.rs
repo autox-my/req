@@ -4,8 +4,8 @@ mod common;
 
 use req::baseline::{
     BASELINE_VERSION, Manifest, MinisignCli, Outcome, SignatureOutcome, SignatureVerifier,
-    TrustFile, canonical_bytes, create_staging_dir, drift, from_json, manifest, staging_dir_name,
-    verify,
+    StagingDir, TrustFile, canonical_bytes, create_staging_dir, drift, from_json, manifest,
+    staging_dir_name, verify,
 };
 use req::model::{Rationale, Relation, rationale_digest, relations_digest};
 use req::select::{Applies, Context};
@@ -1084,6 +1084,7 @@ fn creating_the_same_staging_dir_twice_is_already_exists() {
 
 /// F9: mode 0700, so another local user cannot read the staged manifest — or, worse, replace
 /// the files between staging and the verifier process reading them.
+#[cfg(unix)]
 #[test]
 fn the_staging_dir_is_owner_only() {
     use std::os::unix::fs::PermissionsExt;
@@ -1097,6 +1098,23 @@ fn the_staging_dir_is_owner_only() {
         mode & 0o777,
         0o700,
         "the staging directory is private to its owner"
+    );
+    std::fs::remove_dir_all(&base).expect("cleanup");
+}
+
+/// F9: the guard owns the directory, so *every* way out of verification removes it — a failed
+/// write, an unrunnable verifier, a non-zero exit, and a parse failure all drop the guard
+/// rather than leaving a uniquely-named directory orphaned in the temp dir.
+#[test]
+fn dropping_the_staging_guard_removes_its_directory() {
+    let base = staging_test_base("guard");
+    let dir = create_staging_dir(&base, &staging_dir_name(0)).expect("created");
+    assert!(dir.exists(), "the fixture directory exists before the drop");
+    let guard = StagingDir::from_path(dir.clone());
+    drop(guard);
+    assert!(
+        !dir.exists(),
+        "dropping the guard removes the staging directory: {dir:?}"
     );
     std::fs::remove_dir_all(&base).expect("cleanup");
 }

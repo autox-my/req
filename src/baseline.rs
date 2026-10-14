@@ -353,24 +353,64 @@ pub fn staging_dir_name(attempt: u32) -> String {
 /// reading it.
 pub fn create_staging_dir(base: &Path, name: &str) -> std::io::Result<PathBuf> {
     let dir = base.join(name);
-    let mut builder = std::fs::DirBuilder::new();
+    staging_dir_builder().create(&dir)?;
+    Ok(dir)
+}
+
+/// The `DirBuilder` a staging directory is created through, configured for 0700 on Unix.
+///
+/// The builder is configured and returned rather than mutated in place, so a non-Unix build
+/// has no `mut` binding to warn about.
+fn staging_dir_builder() -> std::fs::DirBuilder {
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
+        let mut builder = std::fs::DirBuilder::new();
         builder.mode(0o700);
+        builder
     }
-    builder.create(&dir)?;
-    Ok(dir)
+    #[cfg(not(unix))]
+    {
+        std::fs::DirBuilder::new()
+    }
+}
+
+/// A staging directory that owns itself, so no exit path can orphan it.
+///
+/// The name is fresh on every call (pid + clock + attempt), so an early return leaves a
+/// directory behind that nothing will ever reuse — a leak per failed verification. A guard
+/// makes removal happen on *every* way out of the verifier: an early return after staging,
+/// a write failure, an unrunnable verifier, a non-zero exit and a parse failure alike.
+pub struct StagingDir(PathBuf);
+
+impl StagingDir {
+    /// Take ownership of a staging directory that already exists on disk.
+    pub fn from_path(path: PathBuf) -> Self {
+        StagingDir(path)
+    }
+
+    /// The directory itself, for building the paths handed to the verifier.
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for StagingDir {
+    fn drop(&mut self) {
+        // Best effort: the verifier's verdict is the outcome that matters, and a directory
+        // that outlives it is a smaller problem than a panic while unwinding.
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// One staging directory for this verification, retrying on a name collision (a retry that a
 /// predictable name could not make safe, but a fresh name plus exclusive creation does).
-fn staging_dir() -> std::io::Result<PathBuf> {
+fn staging_dir() -> std::io::Result<StagingDir> {
     let base = std::env::temp_dir();
     let mut attempt = 0;
     loop {
         match create_staging_dir(&base, &staging_dir_name(attempt)) {
-            Ok(dir) => return Ok(dir),
+            Ok(dir) => return Ok(StagingDir::from_path(dir)),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 16 => {
                 attempt += 1;
             }
@@ -392,12 +432,17 @@ impl SignatureVerifier for MinisignCli {
         let dir = match staging_dir() {
             Ok(dir) => dir,
             Err(e) => {
-                return SignatureOutcome::Unverifiable(format!("no temporary directory: {e}"));
+                // Names what failed: `staging_dir` fails on an exhausted run of
+                // `AlreadyExists` collisions as well as on a permission error or a full
+                // temp dir, so "no temporary directory" described only the last of those.
+                return SignatureOutcome::Unverifiable(format!(
+                    "could not create a staging directory: {e}"
+                ));
             }
         };
-        let msg = dir.join("baseline.json");
-        let sig = dir.join("baseline.json.minisig");
-        let key = dir.join("req.pub");
+        let msg = dir.path().join("baseline.json");
+        let sig = dir.path().join("baseline.json.minisig");
+        let key = dir.path().join("req.pub");
         let staged = std::fs::write(&msg, message)
             .and_then(|()| std::fs::write(&sig, signature))
             .and_then(|()| std::fs::write(&key, public_key));
@@ -413,7 +458,6 @@ impl SignatureVerifier for MinisignCli {
             .arg("-x")
             .arg(&sig)
             .output();
-        let _ = std::fs::remove_dir_all(&dir);
         match output {
             Err(e) => SignatureOutcome::Unverifiable(format!("minisign is not runnable: {e}")),
             Ok(output) if output.status.success() => SignatureOutcome::Valid,
