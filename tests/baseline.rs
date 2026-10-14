@@ -1104,12 +1104,14 @@ fn a_symlink_at_the_staging_name_is_not_followed() {
     let error = create_staging_dir(base.path(), &name)
         .expect_err("an existing entry, symlink included, is not reused");
     assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+    let planted = base.path().join(&name);
+    assert!(
+        planted.is_symlink(),
+        "the planted entry is still a symlink, not a directory that was followed: {planted:?}"
+    );
     assert_eq!(
-        std::fs::read_dir(elsewhere.path())
-            .expect("the target directory reads")
-            .count(),
-        0,
-        "nothing is staged through the planted symlink"
+        std::fs::read_link(&planted).expect("the planted symlink reads"),
+        elsewhere.path()
     );
 }
 
