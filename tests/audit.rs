@@ -12,7 +12,7 @@ fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
     // provenance and its attested digest are derived together, so the two cannot be edited
     // apart. A claim with no source is the packet's MISSING-provenance case, and it has no
     // date either.
-    let (rationale_source, rationale_date, rationale_hash) = common::rationale_columns(
+    let provenance = common::rationale_columns(
         rationale,
         if rationale.is_empty() {
             ""
@@ -37,10 +37,10 @@ fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
         },
         relations,
         relations_hash,
-        rationale_hash,
+        rationale_hash: provenance.hash,
         stored: req::fill::StoredState::Verified,
-        rationale_source,
-        rationale_date,
+        rationale_source: provenance.source,
+        rationale_date: provenance.date,
     }
 }
 
