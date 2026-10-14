@@ -558,6 +558,9 @@ fn the_real_verifier_never_calls_a_bogus_signature_valid() {
 // gate tests hand the step the binary this test run already built through `REQ_GATE_BIN`:
 // the Baseline step is then exercised without nesting a second cargo invocation — and a
 // second build-dir lock — inside `cargo test`.
+//
+// Only the `baseline` step and `plan` are driven from here. `all` is the gate's full run:
+// invoking it from a test would run `cargo test` inside `cargo test`, which recurses.
 
 /// The absolute path of the compiled binary, so CLI tests do not depend on $PATH.
 fn req_bin() -> std::path::PathBuf {

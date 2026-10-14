@@ -5,8 +5,9 @@
 # a check that cannot run is not a passing check, and the commit message must say
 # so. The first non-zero status fails the gate.
 #
-# Usage: scripts/check.sh [baseline [file]] | [plan]
-#   no argument        every check (the default; CI uses this)
+# Usage: scripts/check.sh [all] | [baseline [file]] | [plan]
+#   no argument, or `all`
+#                      every check (the default; CI uses the no-argument form)
 #   baseline [file]    only the Baseline step (file defaults to
 #                      baselines/air-gapped.json).
 #                      The step exists so its failure modes are testable —
@@ -80,7 +81,7 @@ run()  {
 # is a usage error (exit 2), never a quiet run of a different scope: an unknown step
 # name, an extra positional, or a second file are all rejected.
 usage() {
-  printf 'usage: scripts/check.sh [baseline [file]] | [plan]\n' >&2
+  printf 'usage: scripts/check.sh [all] | [baseline [file]] | [plan]\n' >&2
 }
 
 # One home for the committed Baseline the gate verifies: the full run and the standalone
