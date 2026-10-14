@@ -5,6 +5,14 @@
 # a check that cannot run is not a passing check, and the commit message must say
 # so. The first non-zero status fails the gate.
 #
+# Usage: scripts/check.sh [baseline [baseline.json]]
+#   no argument        every check (the default; CI uses this)
+#   baseline [file]    only the Baseline step (file defaults to the committed one).
+#                      The step exists so its failure modes are testable —
+#                      tests/baseline.rs drives it against tampered and unsigned
+#                      fixtures — and so one check can be re-run alone. It must
+#                      never recurse into the full gate, which runs `cargo test`.
+#
 # Never read a status through a pipeline (`cmd | tail` reports tail's status, not
 # the command's). The sandbox denies writes to $HOME, so all tool state lives in
 # the main checkout; a feature worktree shares it through git's common dir.
@@ -49,6 +57,55 @@ run()  {
   return 0
 }
 
+# Which checks run: everything by default; one step by name for tests and re-runs.
+# `baseline [file]` runs only the Baseline step (default: the committed one), so its
+# failure modes are testable — tests/baseline.rs drives it against tampered and
+# unsigned fixtures. An unknown name is a usage error (exit 2), never a quiet full run.
+step="all"
+if [ $# -gt 0 ]; then
+  step="$1"
+  shift
+fi
+case $step in
+  all) baseline_file="baselines/air-gapped.json" ;;
+  baseline) baseline_file="${1:-baselines/air-gapped.json}" ;;
+  *)
+    printf 'usage: scripts/check.sh [baseline [baseline.json]]\n' >&2
+    exit 2
+    ;;
+esac
+
+# [F5] The committed Baseline is part of the release, so the gate re-verifies it on
+# every run: a claim edited after signing fails here, not in an auditor's terminal.
+# The exit contract is req's, and what the gate does with it is the decision this
+# wiring records:
+#   0  VERIFIED      pass
+#   1  FAIL          blocks — drift, a signature that does not verify, a revoked key
+#   3  UNVERIFIABLE  blocks — no verifier installed, an unknown key, no signature
+# There is deliberately no SKIP on this step, and a missing minisign is a hard
+# requirement, not missing tooling: with no verifier req answers UNVERIFIABLE, and
+# "we could not tell" must never be a pass — a skipped check is never a pass. A dev
+# machine without it installs it first: `brew install minisign` (Debian:
+# `apt-get install minisign`; the CI runner image already ships minisign 0.12).
+verify_baseline() {
+  run cargo run -q -- baseline --verify "$1"
+}
+
+finish() {
+  printf '\n----------------------------------------\n'
+  if [ $fail -eq 0 ]; then
+    printf 'GATE: PASS (skips above are not passes)\n'
+  else
+    printf 'GATE: FAIL\n'
+  fi
+  exit $fail
+}
+
+if [ "$step" = baseline ]; then
+  verify_baseline "$baseline_file"
+  finish
+fi
+
 # Both components live in the pinned toolchain (resolved above); SKIP only if one
 # is genuinely missing, and never count a SKIP as a pass.
 if command -v rustfmt >/dev/null 2>&1; then
@@ -69,6 +126,9 @@ run cargo run -q -- canon   # exit 3 = UNVERIFIABLE (never a pass)
 # bytes: a rules bump without a re-fill exits 3 (candidates), a hand-edited digest
 # exits 1 (mismatch). This is REQ-0017 enforced, not asserted.
 run cargo run -q -- canon --verify
+# The committed Baseline (F5): the gate re-checks what a human signed. See
+# verify_baseline above for what each exit means — 1 and 3 both block.
+verify_baseline "$baseline_file"
 run cargo run -q -- bench   # seed parity corpus: 0 PASS / 1 FAIL / 3 UNVERIFIABLE
 # External corpora (other projects' real requirement prose, labelled by
 # construction). Same hard gate; see docs/canonical-hashing.md 6.3. v2 adds the
@@ -107,10 +167,4 @@ else
   skip "ocr not installed: npm --prefix tools/ocr install --cache .npm-cache"
 fi
 
-printf '\n----------------------------------------\n'
-if [ $fail -eq 0 ]; then
-  printf 'GATE: PASS (skips above are not passes)\n'
-else
-  printf 'GATE: FAIL\n'
-fi
-exit $fail
+finish

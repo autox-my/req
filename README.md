@@ -66,7 +66,7 @@ Git-native storage is table stakes, not the moat.
 ```bash
 cargo build --release
 cargo run -q -- bench     # the gate: zero false merges, or the build is red
-./scripts/check.sh        # fmt, clippy, tests, canon verification, every corpus
+./scripts/check.sh        # fmt, clippy, tests, canon + Baseline verification, every corpus
 ```
 
 Changes go through a feature branch and a pull request. CI runs the same gate that runs
