@@ -58,22 +58,41 @@ run()  {
 }
 
 # Which checks run: everything by default; one step by name for tests and re-runs.
-# `baseline [file]` runs only the Baseline step (default: the committed one), so its
-# failure modes are testable — tests/baseline.rs drives it against tampered and
-# unsigned fixtures. An unknown name is a usage error (exit 2), never a quiet full run.
+# `baseline [file]` runs only the Baseline step, so its failure modes are testable —
+# tests/baseline.rs drives it against tampered and unsigned fixtures. A stray argument
+# is a usage error (exit 2), never a quiet run of a different scope: an unknown step
+# name, an extra positional, or a second file are all rejected.
+usage() {
+  printf 'usage: scripts/check.sh [baseline [baseline.json]]\n' >&2
+}
+
+# One home for the committed Baseline the gate verifies: the full run and the standalone
+# step both default to it, so the two can never drift apart.
+baseline_default="baselines/air-gapped.json"
+baseline_file="$baseline_default"
 step="all"
 if [ $# -gt 0 ]; then
   step="$1"
   shift
 fi
 case $step in
-  all) baseline_file="baselines/air-gapped.json" ;;
-  baseline) baseline_file="${1:-baselines/air-gapped.json}" ;;
+  all) ;;
+  baseline)
+    if [ $# -gt 0 ]; then
+      baseline_file="$1"
+      shift
+    fi
+    ;;
   *)
-    printf 'usage: scripts/check.sh [baseline [baseline.json]]\n' >&2
+    usage
     exit 2
     ;;
 esac
+if [ $# -gt 0 ]; then
+  printf 'unexpected argument: %s\n' "$1" >&2
+  usage
+  exit 2
+fi
 
 # [F5] The committed Baseline is part of the release, so the gate re-verifies it on
 # every run: a claim edited after signing fails here, not in an auditor's terminal.

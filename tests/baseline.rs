@@ -545,6 +545,14 @@ fn the_real_verifier_never_calls_a_bogus_signature_valid() {
 }
 
 // --- The gate (scripts/check.sh, review finding F5): the committed Baseline is wired in.
+//
+// Tooling these tests require, deliberately with no skip path: a working `minisign` — a
+// hard requirement recorded in the gate itself (`brew install minisign`), because a run
+// without a verifier answers UNVERIFIABLE rather than passing — and, for the gate tests,
+// `bash`, `git`, and the `$HOME/.rustup/toolchains` layout scripts/check.sh resolves. A
+// missing tool fails the suite loudly; skipping would drop the Baseline check silently,
+// and a skipped check is never a pass. The gate tests are `#[cfg(unix)]` because they
+// spawn a shell script.
 
 /// The absolute path of the compiled binary, so CLI tests do not depend on $PATH.
 fn req_bin() -> std::path::PathBuf {
@@ -553,11 +561,30 @@ fn req_bin() -> std::path::PathBuf {
         .expect("integration tests run with CARGO_BIN_EXE_req set")
 }
 
-/// A throwaway directory for one fixture, unique per test name.
-fn fixture_dir(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("req-gate-baseline-{}-{name}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("creates the fixture directory");
-    dir
+/// A fixture directory that removes itself when the test ends — including when an
+/// assertion panics, which a trailing cleanup call would skip.
+struct Fixture(std::path::PathBuf);
+
+impl Fixture {
+    /// A fresh directory for one fixture, unique per test name. A leftover from an
+    /// earlier crashed run on the same pid is removed first, so "fresh" holds.
+    fn new(name: &str) -> Self {
+        let dir =
+            std::env::temp_dir().join(format!("req-gate-baseline-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("creates the fixture directory");
+        Fixture(dir)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// A copy of the committed Baseline with one hex digit of one address flipped, the
@@ -570,7 +597,10 @@ fn tampered_fixture(dir: &std::path::Path) -> std::path::PathBuf {
     let marker = "\"address\":\"";
     let at = text.find(marker).expect("the manifest records an address") + marker.len();
     let mut bytes = text.into_bytes();
-    bytes[at] = if bytes[at] == b'a' { b'b' } else { b'a' };
+    let byte = bytes
+        .get_mut(at)
+        .expect("a hex address follows the \"address\":\" marker");
+    *byte = if *byte == b'a' { b'b' } else { b'a' };
     let path = dir.join("air-gapped.json");
     std::fs::write(&path, bytes).expect("writes the tampered manifest");
     std::fs::copy(
@@ -581,13 +611,15 @@ fn tampered_fixture(dir: &std::path::Path) -> std::path::PathBuf {
     path
 }
 
-/// The committed manifest verbatim, but with no signature beside it: nothing is
-/// ratified, so verification must answer UNVERIFIABLE (exit 3) — never a pass.
+/// The committed manifest verbatim, into a freshly created directory: with no signature
+/// beside it nothing is ratified, so verification must answer UNVERIFIABLE (exit 3) —
+/// never a pass. That no signature exists is guaranteed by `Fixture::new`, not cleaned
+/// up after the fact.
+#[cfg(unix)]
 fn unsigned_fixture(dir: &std::path::Path) -> std::path::PathBuf {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = dir.join("air-gapped.json");
     std::fs::copy(root.join("baselines/air-gapped.json"), &path).expect("copies the manifest");
-    let _ = std::fs::remove_file(dir.join("air-gapped.json.minisig"));
     path
 }
 
@@ -615,8 +647,8 @@ fn the_committed_baseline_verifies_against_the_working_tree() {
 /// signature no longer matches and the address no longer recomputes.
 #[test]
 fn a_tampered_baseline_does_not_verify() {
-    let dir = fixture_dir("cli-tampered");
-    let manifest = tampered_fixture(&dir);
+    let fixture = Fixture::new("cli-tampered");
+    let manifest = tampered_fixture(fixture.path());
     let output = std::process::Command::new(req_bin())
         .args(["baseline", "--verify"])
         .arg(&manifest)
@@ -629,12 +661,12 @@ fn a_tampered_baseline_does_not_verify() {
         "tamper must FAIL (exit 1), not UNVERIFIABLE:\n{stdout}"
     );
     assert!(stdout.contains("[FAIL]"), "{stdout}");
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// These tests run scripts/check.sh, and scripts/check.sh runs `cargo test`: an inner
 /// run must answer immediately, or a check.sh that has lost its step mode would
 /// recurse into this suite forever. The outermost run is the real measurement.
+#[cfg(unix)]
 fn gate_outer_run() -> bool {
     std::env::var_os("REQ_GATE_INNER").is_none()
 }
@@ -644,6 +676,7 @@ fn gate_outer_run() -> bool {
 /// where this workspace keeps it instead (.tools/home, gitignored — see
 /// .tools/README.md), point HOME there, through the git common dir so a feature
 /// worktree finds the main checkout's toolchain.
+#[cfg(unix)]
 fn check_sh(baseline: Option<&std::path::Path>) -> std::process::Output {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut command = std::process::Command::new("bash");
@@ -678,13 +711,14 @@ fn check_sh(baseline: Option<&std::path::Path>) -> std::process::Output {
 /// The red test of the wiring: the gate runs the Baseline step, and a Baseline that
 /// does not verify fails it. Before the step existed the gate stayed green while the
 /// committed Baseline no longer verified — the exact blind spot F5 files.
+#[cfg(unix)]
 #[test]
 fn the_gate_fails_when_the_baseline_does_not_verify() {
     if !gate_outer_run() {
         return;
     }
-    let dir = fixture_dir("gate-tampered");
-    let manifest = tampered_fixture(&dir);
+    let fixture = Fixture::new("gate-tampered");
+    let manifest = tampered_fixture(fixture.path());
     let output = check_sh(Some(&manifest));
     let stdout = String::from_utf8_lossy(&output.stdout);
     // The verdict line, not just a non-zero exit: the gate must fail *about the
@@ -696,18 +730,18 @@ fn the_gate_fails_when_the_baseline_does_not_verify() {
         output.status.code()
     );
     assert!(stdout.contains("GATE: FAIL"), "{stdout}");
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// The decision the wiring records: exit 3 — UNVERIFIABLE, here an unsigned manifest —
 /// blocks. "We could not tell" is not a pass; a skipped check is never a pass.
+#[cfg(unix)]
 #[test]
 fn the_gate_blocks_an_unverifiable_baseline() {
     if !gate_outer_run() {
         return;
     }
-    let dir = fixture_dir("gate-unsigned");
-    let manifest = unsigned_fixture(&dir);
+    let fixture = Fixture::new("gate-unsigned");
+    let manifest = unsigned_fixture(fixture.path());
     let output = check_sh(Some(&manifest));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("[UNVERIFIABLE]"), "{stdout}");
@@ -717,11 +751,11 @@ fn the_gate_blocks_an_unverifiable_baseline() {
         output.status.code()
     );
     assert!(stdout.contains("GATE: FAIL"), "{stdout}");
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// ...and the committed Baseline passes the step it is wired into: the step exists and
 /// is green on the tree it guards. Removing the step fails here, not silently.
+#[cfg(unix)]
 #[test]
 fn the_gate_verifies_the_committed_baseline() {
     if !gate_outer_run() {
