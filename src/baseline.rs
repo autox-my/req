@@ -337,16 +337,36 @@ pub trait SignatureVerifier {
 /// so a pathological filesystem cannot make the loop run forever.
 const STAGING_ATTEMPTS: u32 = 16;
 
-/// The name of one staging attempt: `req-baseline-<pid>-<nanos-since-epoch>-<attempt>`.
+// The four `pub` items from here to `staging_dir` are public for one reason: tests/baseline.rs
+// pins this contract through the real interface (exclusive creation, 0700, the planted-symlink
+// case, the guard's drop). The verifier's own surface is `MinisignCli::verify`; nothing outside
+// this crate is meant to call these. Moving those tests into this module was weighed and
+// rejected — they would need a directory fixture of their own, and this suite's stated failure
+// mode is fixture copies drifting apart (`tests/common/mod.rs`).
+/// The name of one staging attempt:
+/// `req-baseline-<pid>-<nanos-since-epoch>-<attempt>-<serial>-<salt>`.
 ///
-/// The process id alone is a name another local process can guess and pre-create; the clock
-/// and the attempt counter are what make guessing it fail rather than pay off.
+/// The process id alone is a name another local process can guess and pre-create; the clock, a
+/// per-call counter and a process-local `RandomState` seed are what make guessing it fail
+/// rather than pay off. The seed carries the guarantee the clock cannot: a pre-epoch or
+/// unreadable clock would otherwise collapse the name to `req-baseline-<pid>-0-<attempt>`, the
+/// one string an attacker could pre-create to make every verification `Unverifiable`.
 pub fn staging_dir_name(attempt: u32) -> String {
+    use std::hash::{BuildHasher, Hasher};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or_default();
-    format!("req-baseline-{}-{nanos}-{attempt}", std::process::id())
+    let serial = NEXT.fetch_add(1, Ordering::Relaxed);
+    let salt = std::collections::hash_map::RandomState::new()
+        .build_hasher()
+        .finish();
+    format!(
+        "req-baseline-{}-{nanos}-{attempt}-{serial}-{salt:016x}",
+        std::process::id()
+    )
 }
 
 /// Create the staging directory under `base` exclusively, mode 0700 on Unix.
@@ -423,8 +443,51 @@ impl Drop for StagingDir {
 /// a symlink in its place, so such a base is refused, which surfaces as `Unverifiable`, and
 /// the reason names the directory to fix. A base that does not exist yet is created 0700 and
 /// satisfies the same contract.
+///
+/// When the temp dir cannot be used, the user's own cache directory is tried before refusing,
+/// so a hardened environment does not become one where no verification can run at all; the
+/// refusal is still the last word when no candidate is safe. `pub` for the integration tests,
+/// which pin this contract through the real interface — the verifier's own surface is
+/// `MinisignCli::verify`.
 pub fn staging_dir() -> std::io::Result<StagingDir> {
-    staging_dir_in(&std::env::temp_dir())
+    let mut bases = vec![std::env::temp_dir()];
+    if let Some(root) = private_staging_root() {
+        bases.push(root);
+    }
+    staging_dir_first_safe(&bases)
+}
+
+/// Try each candidate base in order and return the first staging directory that can be made.
+///
+/// The environment's temp dir is the first candidate and what every ordinary run uses; the
+/// user's own cache root is the fallback for a system whose temp dir is one another local user
+/// may write. Validation still runs per candidate, so a refusal stays the last word when no
+/// candidate is safe.
+fn staging_dir_first_safe(bases: &[PathBuf]) -> std::io::Result<StagingDir> {
+    let mut last =
+        std::io::Error::new(std::io::ErrorKind::NotFound, "no staging base is available");
+    for base in bases {
+        match staging_dir_in(base) {
+            Ok(dir) => return Ok(dir),
+            Err(e) => last = e,
+        }
+    }
+    Err(last)
+}
+
+/// A private staging root under the user's own cache directory, for a system whose temp dir is
+/// not one only its owner may write. `None` when the environment names no home to put it in, in
+/// which case the temp dir's own refusal is what the caller reports.
+fn private_staging_root() -> Option<PathBuf> {
+    let cache = std::env::var_os("XDG_CACHE_HOME")
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .filter(|dir| !dir.is_empty())
+                .map(|home| PathBuf::from(home).join(".cache"))
+        })?;
+    Some(cache.join("req/staging"))
 }
 
 /// The staging attempt loop against an explicit base, so a test can drive it without mutating
@@ -999,6 +1062,31 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&outer);
+    }
+
+    /// A temp dir another local user may write must not become a verification that cannot run
+    /// at all: the next candidate base is used, and only when none is safe does it refuse.
+    #[cfg(unix)]
+    #[test]
+    fn an_unsafe_base_falls_back_to_a_safe_one() {
+        use std::os::unix::fs::PermissionsExt;
+        let unsafe_base = unique_base("req-fallback-unsafe");
+        std::fs::create_dir_all(&unsafe_base).expect("the fixture unsafe base");
+        std::fs::set_permissions(&unsafe_base, std::fs::Permissions::from_mode(0o777))
+            .expect("the unsafe base is made world-writable");
+        let safe_base = unique_base("req-fallback-safe");
+
+        let guard = staging_dir_first_safe(&[unsafe_base.clone(), safe_base.clone()])
+            .expect("the safe candidate is used when the temp dir is not");
+        let dir = guard.path().to_path_buf();
+        assert!(
+            dir.starts_with(&safe_base),
+            "the staging directory is under the safe base: {dir:?}"
+        );
+        drop(guard);
+
+        let _ = std::fs::remove_dir_all(&unsafe_base);
+        let _ = std::fs::remove_dir_all(&safe_base);
     }
 
     /// `/tmp` itself is 1777: writable by everyone, but the sticky bit means only an entry's
