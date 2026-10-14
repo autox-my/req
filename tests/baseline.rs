@@ -544,6 +544,429 @@ fn the_real_verifier_never_calls_a_bogus_signature_valid() {
     );
 }
 
+// --- The gate (scripts/check.sh, review finding F5): the committed Baseline is wired in.
+//
+// Tooling these tests require, deliberately with no skip path: a working `minisign` — a
+// hard requirement recorded in the gate itself (`brew install minisign`), because a run
+// without a verifier answers UNVERIFIABLE rather than passing — and, for the gate tests,
+// `bash`, `git`, and a `$HOME/.rustup/toolchains` layout scripts/check.sh resolves. A
+// missing tool fails the suite loudly; skipping would drop the Baseline check silently,
+// and a skipped check is never a pass. `cargo test` therefore needs `minisign` installed,
+// exactly as `scripts/check.sh` does. The gate tests are `#[cfg(unix)]` because they
+// spawn a shell script.
+//
+// Fixtures live under `CARGO_TARGET_TMPDIR`, the repo's pattern (tests/loader.rs), and the
+// gate tests hand the step the binary this test run already built through `REQ_GATE_BIN`:
+// the Baseline step is then exercised without nesting a second cargo invocation — and a
+// second build-dir lock — inside `cargo test`.
+//
+// Only the `baseline` step and `plan` are driven from here. `all` is the gate's full run:
+// invoking it from a test would run `cargo test` inside `cargo test`, which recurses.
+
+/// The absolute path of the compiled binary, so CLI tests do not depend on $PATH.
+fn req_bin() -> std::path::PathBuf {
+    std::env::var_os("CARGO_BIN_EXE_req")
+        .map(std::path::PathBuf::from)
+        .expect("integration tests run with CARGO_BIN_EXE_req set")
+}
+
+/// The verifier the Baseline tests need, asserted up front so a machine without it fails
+/// naming the tool and its install line, rather than as a puzzling `[UNVERIFIABLE]` where a
+/// test expected `[VERIFIED]`.
+///
+/// This is a deliberate prerequisite of the suite: `cargo test` needs `minisign` on the host.
+/// The alternative — skipping the Baseline assertions when the tool is absent — would leave the
+/// verification untested and green, the same failure the gate refuses by carrying no SKIP on its
+/// Baseline step (AGENTS.md). It is a different question from
+/// `the_real_verifier_never_calls_a_bogus_signature_valid` above: that test asserts a property
+/// which must hold whether or not the tool is installed (a bogus signature is never `Valid`),
+/// while these assert the outcome of a real verification, which exists only with the tool.
+fn require_minisign() {
+    let installed = std::process::Command::new("minisign")
+        .arg("-v")
+        .output()
+        .is_ok_and(|out| out.status.success());
+    assert!(
+        installed,
+        "minisign is required — install it first: `brew install minisign` \
+         (Debian: `apt-get install minisign`)"
+    );
+}
+
+/// A fixture directory that removes itself when the test ends — including when an
+/// assertion panics, which a trailing cleanup call would skip.
+struct Fixture(std::path::PathBuf);
+
+impl Fixture {
+    /// A fresh directory for one fixture, under the build tree Cargo guarantees is
+    /// writable. A leftover from an earlier crashed run is removed first, so "fresh"
+    /// holds.
+    fn new(name: &str) -> Self {
+        let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("creates the fixture directory");
+        Fixture(dir)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// A copy of the committed Baseline with one hex digit of one address flipped, the
+/// signature still beside it: the bytes no longer match what was signed and the address no
+/// longer recomputes — both definite findings, so exit 1.
+///
+/// The manifest is read and written through the library's own parser and canonical writer,
+/// so the tamper depends on the manifest *schema* rather than on the exact byte formatting
+/// of the committed file (a pretty-printed re-emit would otherwise break the fixture
+/// instead of exercising the FAIL path).
+fn tampered_fixture(dir: &std::path::Path) -> std::path::PathBuf {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let text = std::fs::read_to_string(root.join("baselines/air-gapped.json"))
+        .expect("the committed manifest reads");
+    let mut parsed = from_json(&text).expect("the committed manifest parses");
+    let entry = parsed
+        .claims
+        .first_mut()
+        .expect("the manifest records at least one claim");
+    let mut address = entry.address.clone().into_bytes();
+    let byte = address
+        .first_mut()
+        .expect("an address is a non-empty hex string");
+    *byte = if *byte == b'a' { b'b' } else { b'a' };
+    entry.address = String::from_utf8(address).expect("hex is ASCII");
+    let path = dir.join("air-gapped.json");
+    std::fs::write(&path, canonical_bytes(&parsed)).expect("writes the tampered manifest");
+    std::fs::copy(
+        root.join("baselines/air-gapped.json.minisig"),
+        dir.join("air-gapped.json.minisig"),
+    )
+    .expect("copies the signature beside it");
+    path
+}
+
+/// The committed manifest verbatim, into a freshly created directory: with no signature
+/// beside it nothing is ratified, so verification must answer UNVERIFIABLE (exit 3) —
+/// never a pass. That no signature exists is guaranteed by `Fixture::new`, not cleaned
+/// up after the fact.
+#[cfg(unix)]
+fn unsigned_fixture(dir: &std::path::Path) -> std::path::PathBuf {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = dir.join("air-gapped.json");
+    std::fs::copy(root.join("baselines/air-gapped.json"), &path).expect("copies the manifest");
+    path
+}
+
+/// The gate runs exactly this against the committed artifacts, and the review's gap
+/// asked for it by name: the committed Baseline must verify against the working tree —
+/// here, before an audit ever has to.
+#[test]
+fn the_committed_baseline_verifies_against_the_working_tree() {
+    require_minisign();
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output = std::process::Command::new(req_bin())
+        .args(["baseline", "--verify"])
+        .arg(root.join("baselines/air-gapped.json"))
+        .output()
+        .expect("runs the compiled binary");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "exit {:?}:\n{stdout}",
+        output.status.code()
+    );
+    assert!(stdout.contains("[VERIFIED]"), "{stdout}");
+}
+
+/// Any byte changed after signing is a definite finding, not an open question: the
+/// signature no longer matches and the address no longer recomputes.
+#[test]
+fn a_tampered_baseline_does_not_verify() {
+    require_minisign();
+    let fixture = Fixture::new("cli-tampered");
+    let manifest = tampered_fixture(fixture.path());
+    let output = std::process::Command::new(req_bin())
+        .args(["baseline", "--verify"])
+        .arg(&manifest)
+        .output()
+        .expect("runs the compiled binary");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "tamper must FAIL (exit 1), not UNVERIFIABLE:\n{stdout}"
+    );
+    assert!(stdout.contains("[FAIL]"), "{stdout}");
+}
+
+/// Runs `scripts/check.sh` with `args` from the tree under test, handing the Baseline step
+/// the binary this test run already built.
+#[cfg(unix)]
+fn check_sh_args(args: &[&std::ffi::OsStr]) -> std::process::Output {
+    check_sh_env(args, &req_bin())
+}
+
+/// ...with an explicit `REQ_GATE_BIN` value, so the seam's own validation is testable.
+/// Two things are wired up: HOME, so `scripts/check.sh` finds the same toolchain this
+/// workspace's own gate runs under, and `REQ_GATE_BIN`, which points the Baseline step at a
+/// binary instead of nesting a second cargo inside `cargo test`.
+#[cfg(unix)]
+fn check_sh_env(args: &[&std::ffi::OsStr], req_gate_bin: &std::path::Path) -> std::process::Output {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut command = std::process::Command::new("bash");
+    command
+        .arg(root.join("scripts/check.sh"))
+        .args(args)
+        .current_dir(&root)
+        .env("REQ_GATE_BIN", req_gate_bin);
+    // The checkout's own toolchain home wins when it has one — that is how the gate is run by
+    // hand in this workspace (.tools/README.md) — so the test drives the toolchain the gate is
+    // meant to use rather than whatever the ambient HOME happens to hold. Where there is none,
+    // HOME is left exactly as the developer or CI set it (CI installs the pinned channel into
+    // $HOME/.rustup and means it). Neither present is a failure named here, not check.sh's
+    // generic exit 2.
+    let home_has_rustup = std::env::var_os("HOME")
+        .is_some_and(|h| std::path::Path::new(&h).join(".rustup/toolchains").exists());
+    match workspace_toolchain_home(&root) {
+        Some(workspace) => {
+            command.env("HOME", workspace);
+        }
+        None if home_has_rustup => {}
+        None => panic!(
+            "no toolchain home for check.sh: this checkout has no .tools/home/.rustup/toolchains \
+             and $HOME/.rustup/toolchains does not exist either (see .tools/README.md)"
+        ),
+    }
+    command.output().expect("runs scripts/check.sh")
+}
+
+/// The toolchain home this checkout keeps for `scripts/check.sh`, when it has one: `.tools/home`
+/// beside the git common dir (.tools/README.md), which a feature worktree shares with the main
+/// checkout. `git` is a hard requirement of these tests: its failure is reported here, with
+/// git's own message, rather than swallowed into an empty path.
+#[cfg(unix)]
+fn workspace_toolchain_home(root: &std::path::Path) -> Option<std::path::PathBuf> {
+    let common = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .output()
+        .expect("git is required to locate the shared toolchain home");
+    assert!(
+        common.status.success(),
+        "git rev-parse --git-common-dir failed: {}",
+        String::from_utf8_lossy(&common.stderr)
+    );
+    let common = String::from_utf8_lossy(&common.stdout).trim().to_string();
+    std::path::PathBuf::from(common)
+        .parent()
+        .map(|main| main.join(".tools/home"))
+        .filter(|home| home.is_absolute() && home.join(".rustup/toolchains").exists())
+}
+
+/// The Baseline step, with an optional fixture in place of the committed Baseline.
+#[cfg(unix)]
+fn check_sh(baseline: Option<&std::path::Path>) -> std::process::Output {
+    match baseline {
+        Some(path) => check_sh_args(&["baseline".as_ref(), path.as_os_str()]),
+        None => check_sh_args(&["baseline".as_ref()]),
+    }
+}
+
+/// The default run's own call site — the F5 wiring that re-verifies the committed
+/// Baseline on every gate invocation. The step tests above cannot reach it: `baseline`
+/// takes the standalone branch and returns before the default flow. The `plan` step
+/// prints the default run's commands from the same call sites and executes none, so this
+/// pins the wiring without running the gate. It is UNVERIFIABLE (exit 3): a plan is not a
+/// pass.
+#[cfg(unix)]
+#[test]
+fn the_default_gate_run_verifies_the_committed_baseline() {
+    let plan = check_sh_args(&["plan".as_ref()]);
+    let stdout = String::from_utf8_lossy(&plan.stdout);
+    assert_eq!(
+        plan.status.code(),
+        Some(3),
+        "a plan executes nothing, so it is UNVERIFIABLE, never a pass:\n{stdout}"
+    );
+    // Compared on normalized lines: the plan's content is the contract, its column padding is
+    // not, so a cosmetic reformat of check.sh must not fail this test.
+    let planned: Vec<String> = stdout
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect();
+    assert!(
+        planned.iter().any(|line| line.starts_with("PLAN ")
+            && line.contains("baseline --verify baselines/air-gapped.json")),
+        "the default run must verify the committed Baseline:\n{stdout}"
+    );
+    // ...and it is the default run being planned, not the single step.
+    assert!(
+        planned
+            .iter()
+            .any(|line| line.starts_with("PLAN ") && line.contains("cargo test")),
+        "{stdout}"
+    );
+    assert!(stdout.contains("GATE: UNVERIFIABLE"), "{stdout}");
+}
+
+/// The step-name contract fails fast: an unknown step, or an argument the contract does
+/// not define, exits 2 with usage on stderr — never a quiet run of a different scope.
+#[cfg(unix)]
+#[test]
+fn the_gate_rejects_an_unknown_step_and_stray_arguments() {
+    let unknown = check_sh_args(&["nonsense".as_ref()]);
+    assert_eq!(
+        unknown.status.code(),
+        Some(2),
+        "an unknown step must be a usage error:\n{}",
+        String::from_utf8_lossy(&unknown.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&unknown.stderr).contains("usage:"),
+        "{}",
+        String::from_utf8_lossy(&unknown.stderr)
+    );
+
+    let stray = check_sh_args(&["baseline".as_ref(), "a".as_ref(), "b".as_ref()]);
+    assert_eq!(
+        stray.status.code(),
+        Some(2),
+        "a stray argument must be a usage error:\n{}",
+        String::from_utf8_lossy(&stray.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&stray.stderr).contains("unexpected argument: b"),
+        "{}",
+        String::from_utf8_lossy(&stray.stderr)
+    );
+
+    // A path the step cannot mean is rejected here, not forwarded to req as a mystery:
+    // an empty value, or one req would read as its own flag.
+    for bad in ["", "-x"] {
+        let rejected = check_sh_args(&["baseline".as_ref(), bad.as_ref()]);
+        assert_eq!(
+            rejected.status.code(),
+            Some(2),
+            "{bad:?} must be a usage error:\n{}",
+            String::from_utf8_lossy(&rejected.stdout)
+        );
+        assert!(
+            String::from_utf8_lossy(&rejected.stderr).contains("baseline file must be a path"),
+            "{}",
+            String::from_utf8_lossy(&rejected.stderr)
+        );
+    }
+}
+
+/// The binary seam refuses what it cannot mean, by name and with exit 2: a value that is not
+/// a regular executable file. A directory is the interesting case — `-x` is true for it, so
+/// testing only executability would send it to a generic gate failure instead.
+#[cfg(unix)]
+#[test]
+fn the_gate_refuses_a_binary_override_that_is_not_an_executable_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // A regular file with the execute bit cleared is the only value that reaches the second
+    // half of the guard: a directory and a missing path already fail its regular-file test.
+    let fixture = Fixture::new("binary-override");
+    let plain = fixture.path().join("not-executable");
+    std::fs::write(&plain, b"#!/bin/sh\nexit 0\n").expect("writes a plain file");
+    std::fs::set_permissions(&plain, std::fs::Permissions::from_mode(0o644))
+        .expect("clears the execute bit");
+
+    for bad in [root.clone(), root.join("nowhere-at-all"), plain.clone()] {
+        let refused = check_sh_env(&["baseline".as_ref()], &bad);
+        assert_eq!(
+            refused.status.code(),
+            Some(2),
+            "{} must be refused as a usage error:\n{}",
+            bad.display(),
+            String::from_utf8_lossy(&refused.stdout)
+        );
+        assert!(
+            String::from_utf8_lossy(&refused.stderr)
+                .contains("REQ_GATE_BIN is not an executable file"),
+            "{}",
+            String::from_utf8_lossy(&refused.stderr)
+        );
+    }
+}
+
+/// The red test of the wiring: the gate runs the Baseline step, and a Baseline that
+/// does not verify fails it. Before the step existed the gate stayed green while the
+/// committed Baseline no longer verified — the exact blind spot F5 files.
+#[cfg(unix)]
+#[test]
+fn the_gate_fails_when_the_baseline_does_not_verify() {
+    require_minisign();
+    let fixture = Fixture::new("gate-tampered");
+    let manifest = tampered_fixture(fixture.path());
+    let output = check_sh(Some(&manifest));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // The verdict line, not just a non-zero exit: the gate must fail *about the
+    // Baseline*, not about some unrelated check that happens to be red.
+    assert!(stdout.contains("[FAIL]"), "{stdout}");
+    assert!(
+        !output.status.success(),
+        "a tampered Baseline must fail the gate (exit {:?}):\n{stdout}",
+        output.status.code()
+    );
+    assert!(stdout.contains("BASELINE STEP: FAIL"), "{stdout}");
+}
+
+/// The decision the wiring records: exit 3 — UNVERIFIABLE, here an unsigned manifest —
+/// blocks. "We could not tell" is not a pass; a skipped check is never a pass.
+#[cfg(unix)]
+#[test]
+fn the_gate_blocks_an_unverifiable_baseline() {
+    // Without the verifier this test would pass for the wrong reason: a missing minisign
+    // answers [UNVERIFIABLE] just as a missing signature does, so the unsigned-manifest path
+    // it claims to prove would never be exercised.
+    require_minisign();
+    let fixture = Fixture::new("gate-unsigned");
+    let manifest = unsigned_fixture(fixture.path());
+    let output = check_sh(Some(&manifest));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("[UNVERIFIABLE]"), "{stdout}");
+    assert!(
+        !output.status.success(),
+        "UNVERIFIABLE must block the gate (exit {:?}):\n{stdout}",
+        output.status.code()
+    );
+    assert!(stdout.contains("BASELINE STEP: FAIL"), "{stdout}");
+}
+
+/// ...and the committed Baseline passes the step it is wired into: the step exists and
+/// is green on the tree it guards. Removing the step fails here, not silently. The step
+/// reports its own verdict, so one check is never mistaken for the gate's pass.
+#[cfg(unix)]
+#[test]
+fn the_gate_verifies_the_committed_baseline() {
+    require_minisign();
+    let output = check_sh(None);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "the committed Baseline must pass the gate (exit {:?}):\n{stdout}",
+        output.status.code()
+    );
+    assert!(stdout.contains("[VERIFIED]"), "{stdout}");
+    assert!(stdout.contains("BASELINE STEP: PASS"), "{stdout}");
+    assert!(
+        !stdout.contains("GATE: PASS"),
+        "one check is not the gate:\n{stdout}"
+    );
+}
+
 #[test]
 fn drift_names_changed_missing_and_added_separately() {
     let (mut rows, manifest) = signed_manifest();

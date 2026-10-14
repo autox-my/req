@@ -90,7 +90,9 @@ export OCR_NO_UPDATE=1
   never a pass.**
 - Single local gate: `scripts/check.sh` — runs every check whose tooling exists,
   prints `SKIP` (never `PASS`) for missing tooling, and fails on the first
-  non-zero status. Green before every commit and merge.
+  non-zero status. The Baseline step is the exception: it has no SKIP, because
+  with minisign missing the verify is UNVERIFIABLE (exit 3), and UNVERIFIABLE
+  blocks — `brew install minisign` first. Green before every commit and merge.
 - Review-rule coverage: `python3 tools/review/check_rules.py` (part of `check.sh` when
   `ocr` is present) — asserts every `review/rule.json` entry still matches a tracked
   file. The CLI **silently** falls back to the built-in rubric for a glob that matches
