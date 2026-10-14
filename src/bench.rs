@@ -638,7 +638,7 @@ mod tests {
     }
 
     #[test]
-    fn claim_files_round_trip_stably() {
+    fn claim_file_parses_stably() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         for id in ["REQ-0001", "REQ-0015"] {
             let path = root.join(format!("claims/{id}.yml"));
