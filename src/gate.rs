@@ -9,13 +9,17 @@
 //! * **Fail** — a defect in a claim the variant includes: an address that does not
 //!   recompute, a digest that disagrees with the stored form, no provenance.
 //! * **Unverifiable** — nothing is known to be wrong, but nothing can be confirmed either:
-//!   an unfilled claim, a relation that does not resolve, a dependency left undecided.
+//!   an unfilled claim, a relation that does not resolve, a dependency left undecided, a
+//!   context the corpus cannot confirm.
 //! * **Pass** — every policy settled in the affirmative.
+//!
+//! One policy judges the **invocation** rather than a claim: what the `key=value` context
+//! selected, and whether the corpus's own selector predicates confirm it.
 
 use crate::fill::StoredState;
-use crate::select::{Applies, Context};
+use crate::select::{Applies, Context, Predicate, parse_predicate};
 use crate::view::Row;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -68,8 +72,125 @@ impl PolicyResult {
     }
 }
 
-/// Evaluate every policy over a selection's applying claims.
-pub fn evaluate(rows: &[Row]) -> Vec<PolicyResult> {
+/// What the corpus declares: the values its `Eq` predicates enumerate, plus every selector
+/// outside the tiny grammar, **kept verbatim**.
+///
+/// A key *present with an empty set* is mentioned only by `Ge` predicates, which decide a value
+/// by comparison rather than enumerating legal ones. A key *absent from the map* is mentioned by
+/// no `Eq` or `Ge` predicate — but an unparsed selector may still name it, so a message about
+/// such a key must quote those rather than assert an absence the gate cannot see.
+///
+/// Collected over **every** row, not only the applying ones: a claim this variant excludes
+/// still declares a legal value for the key, and the question answered here is what the
+/// *corpus* describes, not what this selection happened to include.
+#[derive(Default)]
+struct Vocabulary {
+    /// Key → the values its `Eq` predicates declare; an empty set means `Ge`-only.
+    eq_values: BTreeMap<String, BTreeSet<String>>,
+    /// Selectors the grammar does not cover, verbatim, deduplicated and ordered (`BTreeSet`).
+    /// They decide nothing, and `select.rs` shows their text rather than guessing at it.
+    unparsed: BTreeSet<String>,
+}
+
+/// The corpus's selector vocabulary, keyed by predicate key.
+fn declared_vocabulary(rows: &[Row]) -> Vocabulary {
+    let mut vocabulary = Vocabulary::default();
+    for row in rows {
+        for text in &row.selectors {
+            match parse_predicate(text) {
+                Predicate::Eq { key, value } => {
+                    vocabulary.eq_values.entry(key).or_default().insert(value);
+                }
+                // Mentioned, so the key enters the vocabulary with nothing enumerated for it.
+                Predicate::Ge { key, .. } => {
+                    vocabulary.eq_values.entry(key).or_default();
+                }
+                Predicate::Unsupported { text } => {
+                    vocabulary.unparsed.insert(text);
+                }
+            }
+        }
+    }
+    vocabulary
+}
+
+/// The invocation's own facts: did this variant select anything at all, and does the corpus
+/// confirm the context the selection was made against?
+///
+/// Deliberately a policy like the rest, so `exit_code` and the report format need no new path —
+/// but it judges the **invocation**, which is why it is named for a fact about the call rather
+/// than a property of a claim.
+fn selectors_confirmed(rows: &[Row], context: &Context) -> PolicyResult {
+    let mut unverifiable = Vec::new();
+
+    // A gate that clears a release over zero applying claims verified nothing, however
+    // well-formed the invocation and however green the four claim policies look over an empty
+    // set. Unreachable in the dogfood corpus — 15 of its 21 claims carry no predicate and so
+    // always apply — which is why it is tested against a fixture.
+    if rows.iter().all(|row| row.applies != Applies::Yes) {
+        unverifiable.push(format!(
+            "no claim applies in this variant ({} claim(s) in the corpus): the gate verified nothing",
+            rows.len()
+        ));
+    }
+
+    let vocabulary = declared_vocabulary(rows);
+    for (key, value) in context {
+        // A key no readable predicate mentions decided nothing at all: it selected nothing and
+        // excluded nothing. Naming it is honest — but a selector outside the grammar is not
+        // read, so its keys are unknown, and the two cases are worded differently rather than
+        // asserting an absence the gate cannot check.
+        let Some(declared) = vocabulary.eq_values.get(key) else {
+            if vocabulary.unparsed.is_empty() {
+                unverifiable.push(format!(
+                    "{key}={value}: nothing in the corpus decides `{key}`, so this entry decided nothing"
+                ));
+            } else {
+                let unparsed: Vec<&str> = vocabulary.unparsed.iter().map(String::as_str).collect();
+                unverifiable.push(format!(
+                    "{key}={value}: nothing in the corpus decides `{key}`; it also carries \
+                     selector(s) outside the `==`/`>=` grammar, whose keys are not read — {} — so a \
+                     selector naming `{key}` cannot be ruled out",
+                    unparsed.join("; ")
+                ));
+            }
+            continue;
+        };
+        // Mentioned only by `Ge` predicates: the value is decided by comparison, so there is no
+        // enumerated vocabulary to check it against and nothing to flag. `runs=100` is legitimate
+        // here; `runs=abc` parses as no decimal, and that honest `Unknown` shows up in the
+        // undecided count rather than as a second finding.
+        if declared.is_empty() {
+            continue;
+        }
+        // The `Eq` predicates enumerate a **closed** vocabulary for the key, so a value outside
+        // it was never declared and the entry silently narrows the selection: `field=val` drops
+        // REQ-0018 from the variant. A `Ge` predicate on the same key does not rescue such a
+        // value — letting the comparison decide legality would re-open the silent narrowing for
+        // exactly the keys that carry both. No key in the dogfood corpus is mixed;
+        // `tests/release_gate.rs` pins the choice with a fixture.
+        if !declared.contains(value) {
+            let declared_values: Vec<String> = declared
+                .iter()
+                .map(|declared| format!("{key} == {declared}"))
+                .collect();
+            unverifiable.push(format!(
+                "{key}={value}: the corpus does not confirm this value for `{key}` — it declares {}",
+                declared_values.join(", ")
+            ));
+        }
+    }
+
+    PolicyResult::new(
+        "selectors_confirmed",
+        "every context entry is confirmed by the corpus's own selector predicates, and the variant selects at least one claim",
+        Vec::new(),
+        unverifiable,
+    )
+}
+
+/// Evaluate every policy over a selection's applying claims, and the invocation that made it.
+pub fn evaluate(rows: &[Row], context: &Context) -> Vec<PolicyResult> {
     let known: BTreeSet<&str> = rows.iter().map(|r| r.claim_id.as_str()).collect();
     let state_of = |id: &str| rows.iter().find(|r| r.claim_id == id).map(|r| r.applies);
     let applying: Vec<&Row> = rows.iter().filter(|r| r.applies == Applies::Yes).collect();
@@ -140,7 +261,12 @@ pub fn evaluate(rows: &[Row]) -> Vec<PolicyResult> {
         Vec::new(),
     );
 
-    vec![addresses, relations, decided, rationale]
+    // 5. The invocation itself. Appended rather than prepended so the four claim policies keep
+    //    the order the docs and the tests already name; the verdict does not depend on position,
+    //    and `Fail` still outranks `Unverifiable` across the whole list.
+    let selectors = selectors_confirmed(rows, context);
+
+    vec![addresses, relations, decided, rationale, selectors]
 }
 
 /// The overall verdict of a set of policy results, as an exit code.
@@ -187,7 +313,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         "# Release gate: {applying} applying claim(s), {undecided} undecided \
          (an undecided claim is never treated as absent)"
     );
-    let results = evaluate(&rows);
+    let results = evaluate(&rows, &context);
     for result in &results {
         println!("\n[{}] {}", result.outcome.as_str(), result.name);
         println!("  {}", result.detail);
