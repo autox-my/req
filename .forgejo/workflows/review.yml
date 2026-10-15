@@ -100,8 +100,7 @@ jobs:
             echo "== review attempt ${attempt}/3 =="
             # A congested endpoint can return transient errors for minutes; three attempts
             # with a pause ride out a bad window without failing the whole review.
-            # Excluded: CI plumbing (human-reviewed by definition) and the generated corpora
-            # and their records, which this repository reviews through their generators.
+            # .forgejo diffs are reviewed in this job (the rule file's trust-material checklist applies); the bench exclusions are for generated corpora reviewed through their generator.
             if ocr review \
                  --from origin/main \
                  --to "$HEAD_SHA" \
@@ -110,7 +109,7 @@ jobs:
                  --rule "$RULE" \
                  --effort low \
                  --timeout 20 \
-                 --exclude '.forgejo/**,bench/corpus/**,bench/results/**'; then
+                 --exclude 'bench/corpus/**,bench/results/**'; then
               exit 0
             fi
             if [ "$attempt" -lt 3 ]; then
