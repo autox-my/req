@@ -325,7 +325,10 @@ pub fn findings(
 /// `req audit [--baseline <file>] [key=value ...]`
 ///
 /// Exit: **0** every applying claim signed and provable, **1** a defect (drift, or no
-/// provenance), **3** nothing ratified or something uncovered, **2** usage.
+/// provenance), **2** usage; **3** when nothing is ratified, when something ratified is
+/// uncovered, or when the Baseline's declared `rules_v` disagrees with this build's — the last
+/// answered as coverage NOT JUDGED, because a comparison across two rule sets is void, and no
+/// claim was compared rather than something found uncovered.
 pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut context = Context::new();
     let mut baseline_path: Option<String> = None;

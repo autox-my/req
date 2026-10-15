@@ -597,6 +597,10 @@ fn a_rules_version_edited_after_signing_still_fails_through_the_cli() {
     let output = std::process::Command::new(req_bin())
         .args(["baseline", "--verify"])
         .arg(&manifest)
+        // Explicit, not inherited: `baseline::run` reads the trust anchor from the resolved
+        // corpus root, so a run from any other cwd would find no anchor and answer
+        // UNVERIFIABLE (exit 3) — this test would pass for the wrong reason.
+        .current_dir(&root)
         .output()
         .expect("runs the compiled binary");
     let stdout = String::from_utf8_lossy(&output.stdout);
