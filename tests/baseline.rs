@@ -7,6 +7,7 @@ use req::baseline::{
     TrustFile, canonical_bytes, create_staging_dir, drift, from_json, manifest, staging_dir,
     staging_dir_name, verify,
 };
+use req::canon::RULES_V;
 use req::model::{Rationale, Relation, rationale_digest, relations_digest};
 use req::select::{Applies, Context};
 use req::view::Row;
@@ -79,15 +80,33 @@ impl SignatureVerifier for Stub {
     }
 }
 
-fn signed_manifest() -> (Vec<Row>, Manifest) {
+/// The variant the fixtures sign under. Named once: the manifest records the selection, so a
+/// second hand-written copy of it is a second thing to keep in step.
+fn air_gapped() -> Context {
     let mut context = Context::new();
     context.insert("deployment_mode".to_string(), "air_gapped".to_string());
+    context
+}
+
+/// The manifest a test signs, as the CLI reads one: through the library's own canonical writer
+/// and parser, so the declared `rules_v` under test survives exactly the bytes a signature
+/// covers.
+fn manifest_declaring(rules_v: u32, rows: &[Row], selection: &Context) -> Manifest {
+    from_json(&canonical_bytes(&manifest(rows, rules_v, selection)))
+        .expect("a fixture manifest round-trips through its own bytes")
+}
+
+fn signed_manifest() -> (Vec<Row>, Manifest) {
+    let context = air_gapped();
     let rows = vec![
         row("REQ-A", "aaa", Applies::Yes),
         row("REQ-B", "bbb", Applies::Yes),
         row("REQ-C", "ccc", Applies::No),
     ];
-    let manifest = manifest(&rows, 5, &context);
+    // `RULES_V`, not a literal: the rules version is now *read* by verification, so a fixture
+    // pinning a hand-copied number would silently become a mismatch fixture — and every test
+    // built on it would change meaning — the moment the constant moves.
+    let manifest = manifest(&rows, RULES_V, &context);
     (rows, manifest)
 }
 
@@ -384,6 +403,254 @@ fn a_newer_manifest_is_not_told_to_downgrade() {
     let stale = verify_at(&manifest);
     assert_eq!(stale.exit_code(), 3, "{stale:?}");
     assert!(stale.reasons().join(" ").contains("re-issue"));
+}
+
+// --- The canonical rules version, judged before drift -----------------------------------------
+//
+// The seam is `baseline --verify <file>`: the exit class and the printed reasons. The genuine
+// case — the manifest's bytes untouched and correctly signed while the *build* writes a
+// different canonical rules version — cannot be produced through the CLI in this repository
+// without either moving `RULES_V` (forbidden by the pack: it would move every address) or
+// signing with the secret key (the signing act is the human's), so the first four tests drive
+// the same `verify` the CLI calls, with the signature oracle answering `Valid` for a manifest
+// that is in fact untouched. The two CLI tests below cover what *can* be observed end to end: a
+// post-signing `rules_v` edit, which is a definite finding, and `audit --baseline`.
+
+/// Case (i), red before this change: a real rules bump. The manifest was signed under the
+/// previous rules version, so *every* address in the working tree has moved. The old `verify`
+/// exits 1 and blames every claim for "being edited after signing", sending an auditor hunting
+/// for a tampering that never happened instead of re-signing. The rules version is not a question
+/// drift can answer: a claim's address is *derived from* it, so the comparison across two rule
+/// sets is void, not inconclusive.
+#[test]
+fn a_rules_version_bump_is_unverifiable_and_blames_no_claim() {
+    let context = air_gapped();
+    let signed = vec![
+        row("REQ-A", "addr-signed-a", Applies::Yes),
+        row("REQ-B", "addr-signed-b", Applies::Yes),
+        row("REQ-C", "addr-signed-c", Applies::No),
+    ];
+    let manifest = manifest_declaring(RULES_V - 1, &signed, &context);
+    // The working tree after the bump: the same claims, every address recomputed under the
+    // current rules.
+    let bumped = vec![
+        row("REQ-A", "addr-current-a", Applies::Yes),
+        row("REQ-B", "addr-current-b", Applies::Yes),
+        row("REQ-C", "addr-signed-c", Applies::No),
+    ];
+    let outcome = verify(
+        &bumped,
+        &manifest,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        "2026-10-07",
+    );
+    // An unanswerable question is 3, never 1 — the exit class comes from the tri-state contract,
+    // not from what the implementation happens to print.
+    assert_eq!(outcome.exit_code(), 3, "{outcome:?}");
+    let reasons = outcome.reasons().join(" ");
+    assert!(reasons.contains(&format!("v{}", RULES_V - 1)), "{reasons}");
+    assert!(reasons.contains(&format!("v{RULES_V}")), "{reasons}");
+    assert!(reasons.contains("drift was NOT judged"), "{reasons}");
+    assert!(reasons.contains("re-issue"), "{reasons}");
+    // THE DEFECT IS THE MISDIAGNOSIS, not only the exit code: no per-claim drift reason may
+    // appear *anywhere* in the output. Asserting exit 3 alone would pass with the claim-by-claim
+    // blame still printed underneath it.
+    for id in ["REQ-A", "REQ-B"] {
+        assert!(
+            !reasons.contains(id),
+            "no per-claim blame under a rules mismatch: {reasons}"
+        );
+    }
+    assert!(!reasons.contains("no longer recomputes"), "{reasons}");
+    assert!(!reasons.contains("edited after signing"), "{reasons}");
+}
+
+/// Case (ii), the mirror image and the same guard: a manifest that misdeclares an older rules
+/// version while its addresses are current under this build's rules. Nothing has moved and the
+/// signature is valid, so the old `verify` answers **Verified, exit 0** — silently accepting a
+/// manifest whose own declared provenance is wrong.
+#[test]
+fn a_manifest_misdeclaring_an_older_rules_version_is_not_verified() {
+    let context = air_gapped();
+    let rows = vec![
+        row("REQ-A", "aaa", Applies::Yes),
+        row("REQ-B", "bbb", Applies::Yes),
+    ];
+    let manifest = manifest_declaring(RULES_V - 1, &rows, &context);
+    let outcome = verify(
+        &rows,
+        &manifest,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        "2026-10-07",
+    );
+    assert_eq!(
+        outcome.exit_code(),
+        3,
+        "a misdeclared rules version is not a pass: {outcome:?}"
+    );
+    let reasons = outcome.reasons().join(" ");
+    assert!(reasons.contains(&format!("v{}", RULES_V - 1)), "{reasons}");
+    assert!(reasons.contains(&format!("v{RULES_V}")), "{reasons}");
+    assert!(reasons.contains("drift was NOT judged"), "{reasons}");
+}
+
+/// The remedy follows the direction of the mismatch, exactly as the envelope's does: a manifest
+/// written by a *newer* rules version must be verified with a build that writes it. Telling it to
+/// re-sign under this binary's rules would downgrade what the manifest attests.
+#[test]
+fn a_newer_rules_version_is_not_told_to_re_sign_with_this_binary() {
+    let context = air_gapped();
+    let rows = vec![row("REQ-A", "aaa", Applies::Yes)];
+    let manifest = manifest_declaring(RULES_V + 1, &rows, &context);
+    let outcome = verify(
+        &rows,
+        &manifest,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        "2026-10-07",
+    );
+    assert_eq!(outcome.exit_code(), 3, "{outcome:?}");
+    let reasons = outcome.reasons().join(" ");
+    assert!(reasons.contains("drift was NOT judged"), "{reasons}");
+    assert!(reasons.contains("build that writes"), "{reasons}");
+    assert!(
+        !reasons.contains("re-issue"),
+        "a newer manifest must not be told to re-issue with this binary: {reasons}"
+    );
+}
+
+/// The guard is a precedence change, not a blanket suppression of drift: a manifest whose rules
+/// version **matches** and whose addresses have moved is still FAIL (exit 1), with its per-claim
+/// reason — the same class as a hand-edited digest. This is the test that would fail if the guard
+/// were widened into "a rules version is present, so skip drift".
+#[test]
+fn a_matching_rules_version_with_a_moved_address_still_fails() {
+    let context = air_gapped();
+    let rows = vec![
+        row("REQ-A", "aaa", Applies::Yes),
+        row("REQ-B", "bbb", Applies::Yes),
+    ];
+    let manifest = manifest_declaring(RULES_V, &rows, &context);
+    assert_eq!(manifest.rules_v, RULES_V, "this is the matching case");
+    let edited: Vec<Row> = rows
+        .iter()
+        .map(|r| {
+            if r.claim_id == "REQ-B" {
+                row("REQ-B", "bbb-changed", Applies::Yes)
+            } else {
+                r.clone()
+            }
+        })
+        .collect();
+    let outcome = verify(
+        &edited,
+        &manifest,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        "2026-10-07",
+    );
+    assert_eq!(outcome.exit_code(), 1, "{outcome:?}");
+    let reasons = outcome.reasons().join(" ");
+    assert!(reasons.contains("REQ-B"), "{reasons}");
+    assert!(reasons.contains("no longer recomputes"), "{reasons}");
+    assert!(
+        !reasons.contains("REQ-A"),
+        "only the moved claim is named: {reasons}"
+    );
+}
+
+/// The other half of the precedence decision: the guard judges the rules version the manifest
+/// *declares*, and a definite finding about the manifest's own signed bytes still outranks it.
+/// Editing `rules_v` after signing changes the signed bytes, so through the CLI this is FAIL —
+/// never the guard's UNVERIFIABLE, which would hide a real tamper behind an open question.
+#[test]
+fn a_rules_version_edited_after_signing_still_fails_through_the_cli() {
+    require_minisign();
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fixture = Fixture::new("cli-rules-v-tampered");
+    let text = std::fs::read_to_string(root.join("baselines/air-gapped.json"))
+        .expect("the committed manifest reads");
+    let mut parsed = from_json(&text).expect("the committed manifest parses");
+    assert_eq!(
+        parsed.rules_v, RULES_V,
+        "the fixture is the committed manifest, whose declared rules version matches this build"
+    );
+    parsed.rules_v = RULES_V - 1;
+    let manifest = fixture.path().join("air-gapped.json");
+    std::fs::write(&manifest, canonical_bytes(&parsed)).expect("writes the edited manifest");
+    std::fs::copy(
+        root.join("baselines/air-gapped.json.minisig"),
+        fixture.path().join("air-gapped.json.minisig"),
+    )
+    .expect("copies the signature, which no longer covers these bytes");
+
+    let output = std::process::Command::new(req_bin())
+        .args(["baseline", "--verify"])
+        .arg(&manifest)
+        .output()
+        .expect("runs the compiled binary");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "a post-signing rules_v edit is a definite finding, not an open question:\n{stdout}"
+    );
+    assert!(stdout.contains("[FAIL]"), "{stdout}");
+    assert!(
+        !stdout.contains("[UNVERIFIABLE]"),
+        "the mismatch must not swallow a signature failure:\n{stdout}"
+    );
+}
+
+/// The audit decision (pack option (a)): `audit --baseline` shares the guard rather than judging
+/// drift beneath a mismatched rules version. The manifest here is the committed one with only its
+/// declared `rules_v` moved, so every address still matches and the old packet is a clean
+/// `VERIFIED` — exactly the false comfort this removes. Audit's contract is not rewritten: a
+/// coverage question that was not answered is UNVERIFIABLE (exit 3) and says so, and its
+/// provenance policies, which do not depend on the rules version, still run.
+#[test]
+fn an_audit_under_a_misdeclared_rules_version_reports_coverage_not_judged() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fixture = Fixture::new("cli-audit-rules-v");
+    let text = std::fs::read_to_string(root.join("baselines/air-gapped.json"))
+        .expect("the committed manifest reads");
+    let mut parsed = from_json(&text).expect("the committed manifest parses");
+    parsed.rules_v = RULES_V - 1;
+    let manifest = fixture.path().join("air-gapped.json");
+    std::fs::write(&manifest, canonical_bytes(&parsed)).expect("writes the edited manifest");
+
+    let output = std::process::Command::new(req_bin())
+        .args(["audit", "--baseline"])
+        .arg(&manifest)
+        .current_dir(&root)
+        .output()
+        .expect("runs the compiled binary");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "coverage that was not judged is UNVERIFIABLE, never a pass:\n{stdout}"
+    );
+    assert!(stdout.contains("NOT JUDGED"), "{stdout}");
+    assert!(stdout.contains("drift was NOT judged"), "{stdout}");
+    assert!(
+        !stdout.contains("edited after signing"),
+        "no claim is blamed for a comparison that never happened:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("[covered]"),
+        "nothing is reported as covered when nothing was compared:\n{stdout}"
+    );
 }
 
 /// The audit hashes are over the parsed values, canonically serialized: deterministic for
