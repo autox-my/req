@@ -434,6 +434,58 @@ fn a_stale_prev_hash_refuses_and_is_left_alone() {
     );
 }
 
+/// The row only the "as the write would leave it" judgement can see: `--verify` stops at the
+/// unfilled record and can judge nothing after it, but `--fill` would chain a fresh hash into
+/// position 0 — and the successor declares a predecessor that no longer follows from it. Refuse,
+/// write nothing.
+#[test]
+fn a_successor_chained_from_a_hash_that_no_longer_exists_refuses() {
+    let fx = cli::Fixture::new("stale-successor");
+    fx.put("DEC-0001.yml", "DEC-0001", '1');
+    fx.put("DEC-0002.yml", "DEC-0002", '2');
+    let _ = fx.decision(&["--fill"]);
+    assert_eq!(fx.decision(&["--verify"]).code, 0, "the log starts clean");
+
+    // The first record's content moves and its derived lines go: the chain cannot be walked past
+    // it, and the second record still points at the hash position 0 used to have.
+    let edited =
+        cli::strip_derived(&fx.read("DEC-0001.yml")).replace(&"1".repeat(64), &"3".repeat(64));
+    assert!(edited.contains(&"3".repeat(64)), "the fixture edit applied");
+    fx.write("DEC-0001.yml", &edited);
+    let before_first = fx.bytes("DEC-0001.yml");
+    let before_second = fx.bytes("DEC-0002.yml");
+
+    // The stored log alone cannot settle it: the walk stops at the unfilled record.
+    assert_eq!(
+        fx.decision(&["--verify"]).code,
+        3,
+        "--verify reaches only the unfilled record"
+    );
+
+    let outcome = fx.decision(&["--fill"]);
+    assert_eq!(outcome.code, 1, "{}", outcome.text);
+    assert_eq!(
+        fx.bytes("DEC-0001.yml"),
+        before_first,
+        "the unfilled record was not filled"
+    );
+    assert_eq!(
+        fx.bytes("DEC-0002.yml"),
+        before_second,
+        "the successor was not rewritten"
+    );
+    assert!(
+        !outcome.text.contains("filled DEC-0001"),
+        "{}",
+        outcome.text
+    );
+    assert!(
+        outcome.text.contains("DEC-0002") && outcome.text.contains("chains from"),
+        "the finding names the successor, which --verify cannot reach:\n{}",
+        outcome.text
+    );
+}
+
 /// The log does not begin at the anchor. A truncated history and a forged first entry look the
 /// same from the file set alone, so the question is open — exit 3, never VALID — and `--fill` must
 /// not settle it by writing.
