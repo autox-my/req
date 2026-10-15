@@ -254,6 +254,10 @@ if [ "$dry" -eq 1 ] || command -v ocr >/dev/null 2>&1; then
     # checklist whose paths are filtered out upstream looks exactly like one that fired,
     # so the workflow's own exclude is driven here and what reached the model is asserted.
     run python3 "$PWD/tools/review/check_review_scope.py"
+    # The same check reads review/rule.json by hand, and `rule` is optional to JSON: a
+    # matched entry carrying no usable text must be *reported*, never raised into a
+    # traceback and an exit code nobody chose. Table-driven, and it runs no review.
+    run python3 "$PWD/tools/review/check_review_scope.py" --self-check
   else
     skip "python3 or review/rule.json missing: cannot verify rule globs"
   fi

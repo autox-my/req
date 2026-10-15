@@ -24,7 +24,11 @@ probe, tested there); what is under test here is the branch's own rules reaching
 Exit codes: 0 the `.forgejo` path reached the model under the custom checklist, the bench
 corpus did not, and the control file did; 1 a defect; 3 could not answer (no `ocr`, or the
 review never reached the stub).
+
+`--self-check` table-drives the rule-entry reader alone and runs no review, so the handling
+of a malformed entry is exercised without a provider.
 """
+import argparse
 import http.server
 import json
 import os
@@ -32,7 +36,6 @@ import pathlib
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import threading
 
@@ -40,15 +43,23 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".forgejo" / "workflows" / "review.yml"
 RULE_FILE = ROOT / "review" / "rule.json"
 
+FORGEJO_GLOB = ".forgejo/**"
 FORGEJO_PATH = ".forgejo/workflows/review.yml"
 BENCH_PATH = "bench/corpus/scope-fixture.yml"
+# Derived, never restated: the bench assertion guards the fixture above, so a rename
+# must move both or neither rather than leave the assertion quietly guarding nothing.
+BENCH_PREFIX = os.path.dirname(BENCH_PATH) + "/"
 CONTROL_PATH = "src/scope_fixture.rs"
 
 
 class Stub(http.server.BaseHTTPRequestHandler):
     """Records request bodies and answers `task_done`, so the review ends in one round."""
 
-    protocol_version = "HTTP/1.1"
+    # HTTP/1.0, not 1.1: the server below is a plain single-threaded HTTPServer, and a
+    # 1.1 client that keeps a pooled connection open would hold its one thread — the
+    # check would hang instead of failing. This stub has nothing to keep alive for, so
+    # closing after each response is the whole fix and needs no thread per connection.
+    protocol_version = "HTTP/1.0"
     bodies: list = []
 
     def _read(self) -> bytes:
@@ -178,22 +189,118 @@ def workflow_invocation() -> tuple[str, str, str]:
     return values["exclude"], values["effort"], values["timeout"]
 
 
+def read_forgejo_rule(
+    rules_path: pathlib.Path, label: str | None = None
+) -> tuple[str | None, str | None]:
+    """The `'.forgejo/**'` checklist text, or `(None, why it cannot be used)`.
+
+    Never raises. A matched entry that carries no usable `rule` is a defect in a file this
+    repository owns, not a crash: it is reported as this check's failure. `rule` is
+    optional to `json`, so indexing it would turn a hand-edited rule file into a traceback
+    and an exit code nobody chose.
+    """
+    name = label or str(rules_path)
+    try:
+        document = json.loads(rules_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return None, f"cannot read {name}: {exc}"
+    rules = document.get("rules") if isinstance(document, dict) else None
+    if not isinstance(rules, list):
+        return None, f"{name} has no 'rules' list"
+    entry = next(
+        (r for r in rules if isinstance(r, dict) and r.get("path") == FORGEJO_GLOB), None
+    )
+    if entry is None:
+        return None, (
+            f"{name} has no '{FORGEJO_GLOB}' entry, so the trust-material checklist for "
+            "workflow changes cannot reach the reviewer"
+        )
+    rule = entry.get("rule")
+    if not isinstance(rule, str) or not rule.strip():
+        return None, (
+            f"{name}'s '{FORGEJO_GLOB}' entry carries no usable 'rule' text, so the "
+            "checklist cannot be compared against what reached the model"
+        )
+    return rule, None
+
+
+def _one_rule_case(label: str, path: pathlib.Path, expect_rule: bool) -> int:
+    """One row of the self-check table: 0 when the reader obeyed its contract."""
+    raised = None
+    try:
+        rule, reason = read_forgejo_rule(path, str(path))
+    except Exception as exc:  # the regression this table exists to catch
+        rule, reason, raised = None, None, exc
+    ok = raised is None and (rule is not None) == expect_rule and (expect_rule or bool(reason))
+    detail = f"raised {raised!r}" if raised is not None else (reason or "resolved")
+    print(f"  {'ok  ' if ok else 'FAIL'} {label:<50} {detail}")
+    return 0 if ok else 1
+
+
+def self_check() -> int:
+    """Table-drive the rule-entry reader. Finding 4's regression is the second row.
+
+    The reader is handed hand-authored files, so every malformed shape it can meet is a
+    case here: a matched entry without `rule` must come back as a report, never a
+    traceback and an exit code nobody chose.
+    """
+    cases = [
+        ("a well-formed entry resolves",
+         {"rules": [{"path": FORGEJO_GLOB, "rule": "the checklist"}]}, True),
+        ("an entry with no 'rule' key is reported",
+         {"rules": [{"path": FORGEJO_GLOB}]}, False),
+        ("an entry with a blank 'rule' is reported",
+         {"rules": [{"path": FORGEJO_GLOB, "rule": "   "}]}, False),
+        ("an entry whose 'rule' is not a string is reported",
+         {"rules": [{"path": FORGEJO_GLOB, "rule": 7}]}, False),
+        ("a missing '.forgejo/**' entry is reported",
+         {"rules": [{"path": "src/**/*.rs", "rule": "other"}]}, False),
+        ("a document with no 'rules' list is reported", {"rules": None}, False),
+        ("a non-object document is reported", ["not", "an", "object"], False),
+        ("a non-object entry is skipped, not raised",
+         {"rules": ["nonsense", {"path": FORGEJO_GLOB, "rule": "the checklist"}]}, True),
+    ]
+    failures = 0
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="review-scope-self-check-"))
+    try:
+        for index, (label, document, expect_rule) in enumerate(cases):
+            path = tmp / f"rule-{index}.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            failures += _one_rule_case(label, path, expect_rule)
+        broken = tmp / "broken.json"
+        broken.write_text("{not json", encoding="utf-8")
+        failures += _one_rule_case("a file that is not JSON is reported", broken, False)
+        failures += _one_rule_case(
+            "a file that does not exist is reported", tmp / "absent.json", False
+        )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print(f"  {len(cases) + 2} case(s), {failures} failure(s)")
+    return 1 if failures else 0
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="reconcile the reviewed scope with review/rule.json"
+    )
+    parser.add_argument(
+        "--self-check",
+        action="store_true",
+        help="table-drive the rule-entry reader; run no review",
+    )
+    args = parser.parse_args()
+    if args.self_check:
+        return self_check()
+
     if shutil.which("ocr") is None:
         print("SKIP  ocr not installed; cannot reconcile the review scope")
         return 3
-    try:
-        rules = json.loads(RULE_FILE.read_text(encoding="utf-8"))["rules"]
-    except Exception as exc:
-        print(f"FAIL  cannot read {RULE_FILE.relative_to(ROOT)}: {exc}")
-        return 1
 
-    entry = next((r for r in rules if r.get("path") == ".forgejo/**"), None)
-    if entry is None:
-        print(
-            "FAIL  review/rule.json has no '.forgejo/**' entry, so the trust-material "
-            "checklist for workflow changes cannot reach the reviewer"
-        )
+    rule_text, reason = read_forgejo_rule(
+        RULE_FILE, str(RULE_FILE.relative_to(ROOT)) if RULE_FILE.is_relative_to(ROOT) else None
+    )
+    if rule_text is None:
+        print(f"FAIL  {reason}")
         return 1
 
     try:
@@ -266,9 +373,9 @@ def main() -> int:
 
     seen = "\n".join(bodies)
     reached_forgejo = FORGEJO_PATH in seen
-    reached_bench = "bench/corpus/" in seen
+    reached_bench = BENCH_PREFIX in seen
     reached_control = CONTROL_PATH in seen
-    reached_checklist = entry["rule"] in seen
+    reached_checklist = rule_text in seen
 
     print(f"exclude from {WORKFLOW.relative_to(ROOT)}: '{exclude}'")
     print(f"provider requests: {len(bodies)}")
