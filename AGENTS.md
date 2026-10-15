@@ -247,7 +247,10 @@ export OCR_NO_UPDATE=1
   (zero-padded so file order is chronological), each committing to its predecessor by
   `sha256("req.decision.v1" ‖ prev_hash ‖ canonical content)`. `--fill` writes the derived
   `prev_hash`/`hash` **into** the record, preserving comments and the note a human wrote; it never
-  overwrites the file. `--verify` (the default) walks the chain. Exit **0** VALID, **1** TAMPERED,
+  overwrites the file, and it refuses — writing nothing at all, exit **1** — to change a derived
+  field already present that disagrees with the content, because recomputing over it would launder
+  the edit `--verify` reports as TAMPERED.
+  `--verify` (the default) walks the chain. Exit **0** VALID, **1** TAMPERED,
   **3** UNVERIFIABLE, **2** usage. The three outcomes are the point: a stored hash that does not
   recompute, or a `prev_hash` that disagrees with the entry before it, is **TAMPERED** — a definite
   finding — while an unfilled hash, an unparsable file, an **empty log**, or a log that does not

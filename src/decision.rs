@@ -18,6 +18,15 @@
 //!
 //! An empty log is UNVERIFIABLE, not VALID. A log with nothing in it verifies nothing, and a check
 //! that passes on no evidence is the failure this whole project is organised against.
+//!
+//! `--fill` is the only writer here, and it answers to the same judgement: it writes a derived field
+//! that is **absent**, and refuses — leaving every byte exactly as it was — to change one that is
+//! **present** and disagrees with its content. Recomputing over an edited record would write the
+//! edit's own hash over the evidence `--verify` reports, turning a definite finding into a clean
+//! bill of health. The judgement is therefore made *before* anything is written, so a log with one
+//! definite finding is untouched rather than half-filled. (A write that fails part-way can still
+//! leave a partially filled log — the records before it carry derived fields, the command exits 3,
+//! and `--verify` then reports UNVERIFIABLE rather than passing.)
 
 use serde::Deserialize;
 
@@ -86,6 +95,18 @@ pub fn compute_hash(prev: Option<&str>, decision: &Decision) -> String {
 
 /// Fill `prev_hash` and `hash` in chain order, in memory. The caller writes the files; nothing here
 /// touches the filesystem, so the derivation is testable without one.
+///
+/// This derivation chains from [`GENESIS`] **unconditionally** and overwrites every field: it
+/// ignores a record's stored `prev_hash`. Chaining over it therefore derives an absent `hash` from
+/// the genesis anchor while the record declares another one — reporting a stored hash that does not
+/// recompute where none was ever stored — and chains each successor to a hash that declared anchor
+/// never implied, blaming an untouched record for a break that is not its own.
+///
+/// `--fill` judges and writes through `as_filled`, the anchor-aware derivation, for exactly that
+/// reason; it does not call this function. The two agree byte for byte wherever every stored derived
+/// field is absent or already agrees with the derivation — the only path `--fill` writes on, since it
+/// writes nothing unless the judgement is Valid. Reach for this one only to derive a chain of records
+/// that carries no stored derived fields of its own.
 pub fn fill(log: &mut [Decision]) {
     let mut prev: Option<String> = None;
     for decision in log.iter_mut() {
@@ -221,10 +242,45 @@ pub fn upsert_line(text: &str, key: &str, value: &str) -> String {
     out
 }
 
+/// The log **as `--fill` would leave it**: every record carries both derived fields, and a stored
+/// one is kept verbatim. This is the derivation `--fill` judges and writes through, and on a Valid
+/// judgement it agrees with [`fill`].
+///
+/// Each record's **effective anchor** is its stored `prev_hash` when it has one, and otherwise the
+/// predecessor's effective hash — [`GENESIS`] at position 0. An absent `hash` is computed over that
+/// anchor. Deriving over a chain that ignored a stored anchor would make the proposed log contradict
+/// itself and report a finding against records nobody touched; a stored field is evidence, and
+/// `verify_chain` is the only judge of the result.
+fn as_filled(log: &[Decision]) -> Vec<Decision> {
+    let mut out = Vec::with_capacity(log.len());
+    // The effective hash of the previous record — what a record with no stored `prev_hash` chains
+    // from, so a stored anchor's successors follow *it* rather than a fresh genesis-anchored chain.
+    let mut prev: Option<String> = None;
+    for record in log {
+        let prev_hash = record
+            .prev_hash
+            .clone()
+            .unwrap_or_else(|| prev.clone().unwrap_or_else(|| GENESIS.to_string()));
+        let hash = record
+            .hash
+            .clone()
+            .unwrap_or_else(|| compute_hash(Some(&prev_hash), record));
+        prev = Some(hash.clone());
+        out.push(Decision {
+            prev_hash: Some(prev_hash),
+            hash: Some(hash),
+            ..record.clone()
+        });
+    }
+    out
+}
+
 /// `req decision [--fill] [--verify]`
 ///
-/// `--fill` writes the derived chain fields into every `decisions/DEC-*.yml`; `--verify` (the
-/// default) walks the chain. Exit: **0** VALID, **1** TAMPERED, **3** UNVERIFIABLE, **2** usage.
+/// `--fill` writes the derived chain fields into every `decisions/DEC-*.yml` that lacks them,
+/// judging the log **as the write would leave it** first: a stored field that disagrees with its
+/// content is a definite finding, so nothing is written and the verdict is the reason. `--verify`
+/// (the default) walks the chain. Exit: **0** VALID, **1** TAMPERED, **3** UNVERIFIABLE, **2** usage.
 pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut fill_files = false;
     for arg in args {
@@ -244,27 +300,51 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             return 3;
         }
     };
-    let mut log = Vec::new();
-    for path in &paths {
-        match std::fs::read_to_string(path) {
-            Ok(text) => match yaml_serde::from_str::<Decision>(&text) {
-                Ok(decision) => log.push((path.clone(), decision)),
-                Err(e) => {
-                    eprintln!("[UNVERIFIABLE] parse {}: {e}", path.display());
-                    return 3;
-                }
-            },
-            Err(e) => {
-                eprintln!("[UNVERIFIABLE] read {}: {e}", path.display());
-                return 3;
-            }
+    let mut log = match read_log(&paths) {
+        Ok(log) => log,
+        Err(e) => {
+            eprintln!("[UNVERIFIABLE] {e}");
+            return 3;
         }
-    }
+    };
     if fill_files {
-        let mut decisions: Vec<Decision> = log.iter().map(|(_, d)| d.clone()).collect();
-        fill(&mut decisions);
+        // Judge first, write second. The log as the write would leave it — a stored field kept, an
+        // absent one derived over the anchor the record actually carries — is what must verify, and
+        // only a Valid log is written at all.
+        let records: Vec<Decision> = log.iter().map(|(_, d)| d.clone()).collect();
+        let proposed = as_filled(&records);
+        let judgement = verify_chain(&proposed);
+        // An empty log is not a definite finding — there is nothing to fill, and the tail below
+        // reports it UNVERIFIABLE. Any other non-Valid judgement means writing nothing at all.
+        if !proposed.is_empty() && judgement != Chain::Valid {
+            let remedy = match &judgement {
+                Chain::Tampered(_) => {
+                    "a stored derived field disagrees with its record — the content was edited after \
+                     it was recorded, or the entry was moved — and re-filling it would write the \
+                     change's own hash over the evidence"
+                }
+                _ => {
+                    "the log does not verify, and filling it would settle a question the files \
+                     cannot answer"
+                }
+            };
+            // The refusal *is* this command's report, so it goes on stdout with the rest of it —
+            // the `filled …` lines, the listing and the verdict — exactly as `canon --fill` prints
+            // its `REFUSED` report. Only the read/parse failures above stay on stderr.
+            println!(
+                "[{}] refusing to fill: {remedy}; no file is written",
+                judgement.as_str()
+            );
+            println!(
+                "  re-filling is not the remedy — restore the record, or record a new decision that supersedes it"
+            );
+            for reason in judgement.reasons() {
+                println!("  - {reason}");
+            }
+            return judgement.exit_code();
+        }
         let mut written = 0;
-        for ((path, before), after) in log.iter().zip(decisions.iter()) {
+        for ((path, before), after) in log.iter().zip(proposed.iter()) {
             if before.hash == after.hash && before.prev_hash == after.prev_hash {
                 continue;
             }
@@ -289,9 +369,18 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         if written == 0 {
             println!(
                 "nothing to fill: {} decision(s) already carry derived fields",
-                decisions.len()
+                proposed.len()
             );
         }
+        // The verdict below describes the log **as it now stands on disk**, not the records read
+        // on the way in: a successful fill reports VALID and exits 0.
+        log = match read_log(&paths) {
+            Ok(log) => log,
+            Err(e) => {
+                eprintln!("[UNVERIFIABLE] {e}");
+                return 3;
+            }
+        };
     }
     let decisions: Vec<Decision> = log.into_iter().map(|(_, d)| d).collect();
     println!("# Decision log: {} record(s)", decisions.len());
@@ -312,6 +401,20 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         println!("  - {reason}");
     }
     chain.exit_code()
+}
+
+/// Read the log from disk, in chain order, keeping the path each record came from so a caller can
+/// re-read after writing and judge what is now on disk rather than what it read first.
+fn read_log(paths: &[std::path::PathBuf]) -> Result<Vec<(std::path::PathBuf, Decision)>, String> {
+    let mut log = Vec::with_capacity(paths.len());
+    for path in paths {
+        let text =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let decision = yaml_serde::from_str::<Decision>(&text)
+            .map_err(|e| format!("parse {}: {e}", path.display()))?;
+        log.push((path.clone(), decision));
+    }
+    Ok(log)
 }
 
 /// The log's files, in chain order. Zero-padded ids make lexicographic order chronological, so the
