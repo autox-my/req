@@ -232,8 +232,11 @@ if [ "$dry" -eq 1 ] || command -v ocr >/dev/null 2>&1; then
   if [ "$dry" -eq 0 ]; then
     say "ocr (review tool, not a gate)"
     ocr --version | head -1
+    # $PWD, not $CACHE_ROOT: the pin is repo content, and from a worktree $CACHE_ROOT is
+    # the main checkout — the 1.13.0 pin printed its own `ocr --version` 1.13.0 beside the
+    # main tree's `pinned: 1.12.12`. $CACHE_ROOT is for tool *state* (PATH above, cargo home).
     pin="$(grep -o '"@alibaba-group/open-code-review": *"[^"]*"' \
-      "$CACHE_ROOT/tools/ocr/package.json" 2>/dev/null | cut -d'"' -f4)"
+      "$PWD/tools/ocr/package.json" 2>/dev/null | cut -d'"' -f4)"
     printf 'pinned: %s\n' "${pin:-unknown}"
   fi
   # The rule file is load-bearing for review, and this CLI ignores unknown keys and
