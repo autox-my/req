@@ -226,6 +226,10 @@ export OCR_NO_UPDATE=1
   (exit 2), never drift in the claims — re-deriving under the wrong variant reports the variant's
   own claims as "no longer applies", which reads as a defect in the requirements instead of a
   mistake in the invocation.
+  **In CI the trust anchor is taken from origin/main, not from the pull request** — the same
+  trust boundary as the gate and the rule file: a change cannot supply the anchor that judges it.
+  Under that anchor, rotation is **two PRs**: add the new key beside the old (old-key signatures
+  still verify), then re-sign; revoke or expire the old key only after both have merged.
 - Audit packet: `cargo run -q -- audit [--baseline <file>] [key=value ...]` — the last compiled
   view: for every **applying** claim it prints the address, the coverage state, the provenance
   (rationale source and date) and the outgoing relations, then the **undecided** claims in their
@@ -337,7 +341,9 @@ matter:
 - `claims/REQ-*.yml` + `claims/README.md` — the dogfood corpus: req's own
   requirements, in req's own format.
 - `aliases/subjects.yml` — subject registry. Alias sets must be disjoint; an
-  unregistered surface stays literal (never silently collapsed).
+  unregistered surface stays literal (never silently collapsed). The registry rides the same
+  reviews; its edits are self-detecting through address recomputation — no origin/main pinning
+  is applied to it.
 - `bench/corpus/parity.yml` — the seed E/N pairs and adversarial traps, labels written
   from the spec. `bench/corpus/external-v{1,2,3}.yml` — other projects' real
   requirement prose, labelled by construction, built by
