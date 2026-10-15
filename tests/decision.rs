@@ -434,6 +434,90 @@ fn a_stale_prev_hash_refuses_and_is_left_alone() {
     );
 }
 
+/// The field being derived here is the `hash`, and the record already declares which anchor it
+/// chains from. Deriving the absent hash over the chain's genesis anchor instead of the anchor the
+/// record actually carries would make the *proposed* record self-inconsistent and then blame a
+/// stored hash that does not exist: the finding is the wrong anchor — an open question at position
+/// 0 — not a digest that fails to recompute.
+#[test]
+fn a_wrong_anchor_with_no_stored_hash_is_unverifiable_not_tampered() {
+    let fx = cli::Fixture::new("wrong-anchor");
+    fx.write(
+        "DEC-0001.yml",
+        &format!(
+            "{}prev_hash: \"{}\"\n",
+            cli::unfilled("DEC-0001", '1'),
+            "0".repeat(64)
+        ),
+    );
+    let before = fx.bytes("DEC-0001.yml");
+
+    let outcome = fx.decision(&["--fill"]);
+    assert_eq!(outcome.code, 3, "{}", outcome.text);
+    assert!(outcome.text.contains("genesis"), "{}", outcome.text);
+    assert!(
+        !outcome.text.contains("does not recompute"),
+        "no stored hash exists to fail to recompute:\n{}",
+        outcome.text
+    );
+    assert!(
+        !outcome.text.contains("filled DEC-0001"),
+        "{}",
+        outcome.text
+    );
+    assert_eq!(
+        fx.bytes("DEC-0001.yml"),
+        before,
+        "the refusal left the record byte-identical"
+    );
+}
+
+/// The same rule at position i>0: the record's wrong `prev_hash` is the one finding, reported as
+/// `chains from`. The absent `hash` must not be derived over the chain prev so that it then adds a
+/// second, manufactured `does not recompute` for evidence nobody stored.
+#[test]
+fn a_wrong_anchor_at_position_one_reports_the_chain_alone() {
+    let anchor = cli::Fixture::new("anchor-one");
+    anchor.put("DEC-0001.yml", "DEC-0001", '1');
+    let _ = anchor.decision(&["--fill"]);
+    assert_eq!(
+        anchor.decision(&["--verify"]).code,
+        0,
+        "the anchor is clean"
+    );
+
+    let fx = cli::Fixture::new("wrong-anchor-one");
+    fx.write("DEC-0001.yml", &anchor.read("DEC-0001.yml"));
+    fx.write(
+        "DEC-0002.yml",
+        &format!(
+            "{}prev_hash: \"{}\"\n",
+            cli::unfilled("DEC-0002", '2'),
+            "0".repeat(64)
+        ),
+    );
+    let before = fx.bytes("DEC-0002.yml");
+
+    let outcome = fx.decision(&["--fill"]);
+    assert_eq!(outcome.code, 1, "{}", outcome.text);
+    assert!(outcome.text.contains("chains from"), "{}", outcome.text);
+    assert!(
+        !outcome.text.contains("does not recompute"),
+        "the chain alone is the finding; no hash was stored to recompute:\n{}",
+        outcome.text
+    );
+    assert!(
+        !outcome.text.contains("filled DEC-0002"),
+        "{}",
+        outcome.text
+    );
+    assert_eq!(
+        fx.bytes("DEC-0002.yml"),
+        before,
+        "the refusal left the record byte-identical"
+    );
+}
+
 /// The row only the "as the write would leave it" judgement can see: `--verify` stops at the
 /// unfilled record and can judge nothing after it, but `--fill` would chain a fresh hash into
 /// position 0 — and the successor declares a predecessor that no longer follows from it. Refuse,
