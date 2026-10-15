@@ -302,15 +302,18 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                      cannot answer"
                 }
             };
-            eprintln!(
+            // The refusal *is* this command's report, so it goes on stdout with the rest of it —
+            // the `filled …` lines, the listing and the verdict — exactly as `canon --fill` prints
+            // its `REFUSED` report. Only the read/parse failures above stay on stderr.
+            println!(
                 "[{}] refusing to fill: {remedy}; no file is written",
                 judgement.as_str()
             );
-            eprintln!(
+            println!(
                 "  re-filling is not the remedy — restore the record, or record a new decision that supersedes it"
             );
             for reason in judgement.reasons() {
-                eprintln!("  - {reason}");
+                println!("  - {reason}");
             }
             return judgement.exit_code();
         }
