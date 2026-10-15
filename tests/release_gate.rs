@@ -5,7 +5,7 @@ mod common;
 use common::{rationale, row, stored};
 use req::fill::StoredState;
 use req::gate::{Outcome, evaluate, exit_code};
-use req::select::Applies;
+use req::select::{Applies, Context};
 
 #[test]
 fn a_clean_selection_passes_every_policy() {
@@ -13,7 +13,7 @@ fn a_clean_selection_passes_every_policy() {
         row("REQ-A", Applies::Yes, &[("refines", "REQ-B")]),
         row("REQ-B", Applies::Yes, &[]),
     ];
-    let results = evaluate(&rows);
+    let results = evaluate(&rows, &Context::new());
     assert_eq!(exit_code(&results), 0, "{results:?}");
     assert!(results.iter().all(|r| r.outcome == Outcome::Pass));
 }
@@ -30,7 +30,7 @@ fn claims_outside_the_selection_do_not_fail_the_gate() {
         ),
         rationale(row("REQ-C", Applies::No, &[]), ""),
     ];
-    let results = evaluate(&rows);
+    let results = evaluate(&rows, &Context::new());
     assert_eq!(exit_code(&results), 0, "{results:?}");
 }
 
@@ -40,7 +40,7 @@ fn a_hand_edited_digest_fails_and_an_unfilled_claim_does_not_pass() {
         row("REQ-A", Applies::Yes, &[]),
         StoredState::Mismatch("stored address does not recompute".to_string()),
     )];
-    let results = evaluate(&tampered);
+    let results = evaluate(&tampered, &Context::new());
     assert_eq!(exit_code(&results), 1);
     assert_eq!(results[0].outcome, Outcome::Fail);
     assert!(results[0].offenders[0].contains("does not recompute"));
@@ -49,7 +49,7 @@ fn a_hand_edited_digest_fails_and_an_unfilled_claim_does_not_pass() {
         row("REQ-A", Applies::Yes, &[]),
         StoredState::Candidate("unfilled".to_string()),
     )];
-    let results = evaluate(&unfilled);
+    let results = evaluate(&unfilled, &Context::new());
     assert_eq!(
         exit_code(&results),
         3,
@@ -64,7 +64,7 @@ fn a_defect_outranks_an_open_question() {
         rationale(row("REQ-A", Applies::Yes, &[]), ""),
         row("REQ-B", Applies::Yes, &[("refines", "REQ-GONE")]),
     ];
-    let results = evaluate(&rows);
+    let results = evaluate(&rows, &Context::new());
     assert_eq!(exit_code(&results), 1, "{results:?}");
 }
 
@@ -74,7 +74,7 @@ fn an_undecided_dependency_blocks_the_release() {
         row("REQ-A", Applies::Yes, &[("refines", "REQ-B")]),
         row("REQ-B", Applies::Unknown, &[]),
     ];
-    let results = evaluate(&rows);
+    let results = evaluate(&rows, &Context::new());
     assert_eq!(exit_code(&results), 3);
     let decided = results
         .iter()
@@ -82,4 +82,280 @@ fn an_undecided_dependency_blocks_the_release() {
         .expect("the policy exists");
     assert_eq!(decided.outcome, Outcome::Unverifiable);
     assert!(decided.offenders[0].contains("REQ-B"));
+}
+
+/// The invocation policy, at the library seam: a row set with nothing applying verified
+/// nothing, however well-formed the invocation. The CLI reaches the same guard through a
+/// fixture (`cli::a_variant_that_selects_no_claim_is_unverifiable_not_a_pass`); this pins the
+/// empty-corpus edge of it, which no corpus fixture can produce.
+#[test]
+fn a_selection_with_nothing_applying_verifies_nothing() {
+    let results = evaluate(&[], &Context::new());
+    let policy = results
+        .iter()
+        .find(|r| r.name == "selectors_confirmed")
+        .expect("the invocation is judged as a policy");
+    assert_eq!(policy.outcome, Outcome::Unverifiable, "{policy:?}");
+    assert_eq!(exit_code(&results), 3);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The public seam is the CLI: `req gate [key=value ...]` over a corpus root, observed through its
+// exit code and its printed lines. The rows above judge policies over hand-built rows; these judge
+// the *invocation*, which is where the defect lived — a context the corpus cannot confirm narrowed
+// the selection silently, and the gate still said PASS.
+// ---------------------------------------------------------------------------------------------
+
+mod cli {
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    /// The gate's exit code and everything it said — stdout and stderr in one string, because a
+    /// refusal is an outcome and the question is what the invocation reported either way.
+    pub struct Outcome {
+        pub code: i32,
+        pub text: String,
+    }
+
+    impl Outcome {
+        /// The `# Release gate: N applying claim(s), M undecided` line: the count the oracle
+        /// measured, printed by the gate itself.
+        pub fn headline(&self) -> &str {
+            self.text.lines().next().unwrap_or_default()
+        }
+
+        /// One policy's block, from its `[OUTCOME] name` header to the next one.
+        pub fn policy(&self, name: &str) -> String {
+            let marker = format!("] {name}\n");
+            let at = self
+                .text
+                .find(&marker)
+                .unwrap_or_else(|| panic!("no policy `{name}` in:\n{}", self.text));
+            let start = self.text[..at]
+                .rfind('[')
+                .expect("a policy header starts `[`");
+            let rest = &self.text[start..];
+            match rest.find("\n[") {
+                Some(end) => rest[..end].to_string(),
+                None => rest.to_string(),
+            }
+        }
+    }
+
+    /// The absolute path of the compiled binary, so the tests do not depend on `$PATH`.
+    pub fn req_bin() -> PathBuf {
+        std::env::var_os("CARGO_BIN_EXE_req")
+            .map(PathBuf::from)
+            .expect("integration tests run with CARGO_BIN_EXE_req set")
+    }
+
+    /// The dogfood corpus, whose selector vocabulary the oracle read: `deployment_mode ==
+    /// air_gapped`, `runs >= 20`, `corpus_set == parity` / `parity_and_adversarial`, `set ==
+    /// direction_gold_structural`, `field == value`.
+    fn dogfood(args: &[&str]) -> Outcome {
+        gate_at(&PathBuf::from(env!("CARGO_MANIFEST_DIR")), args)
+    }
+
+    fn gate_at(root: &Path, args: &[&str]) -> Outcome {
+        let output = Command::new(req_bin())
+            .arg("--root")
+            .arg(root)
+            .arg("gate")
+            .args(args)
+            .output()
+            .expect("runs the compiled binary");
+        Outcome {
+            code: output.status.code().unwrap_or(-1),
+            text: format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        }
+    }
+
+    /// A throwaway corpus root under the build tree Cargo guarantees is writable, removed when the
+    /// test ends — including when an assertion panics.
+    pub struct Fixture(PathBuf);
+
+    impl Fixture {
+        pub fn new(tag: &str) -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            // A process-local counter carries uniqueness rather than the clock, whose resolution
+            // is not one; the pid keeps two concurrent runs apart.
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default();
+            let serial = NEXT.fetch_add(1, Ordering::Relaxed);
+            let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!(
+                "gate-{tag}-{}-{nanos}-{serial}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            // `--root <dir>` is only accepted when the directory is a corpus root (ADR 0012), so
+            // every fixture carries `claims/` and the subject registry beside it.
+            std::fs::create_dir_all(dir.join("claims")).expect("creates claims/");
+            std::fs::create_dir_all(dir.join("aliases")).expect("creates aliases/");
+            std::fs::copy(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("aliases/subjects.yml"),
+                dir.join("aliases/subjects.yml"),
+            )
+            .expect("copies the subject registry");
+            Fixture(dir)
+        }
+
+        pub fn path(&self) -> &Path {
+            &self.0
+        }
+
+        /// Add one claim carrying the given `applicability` predicates. Its authored slots are a
+        /// parity-clean shape (they must be: `canon --fill` refuses a contradicted parse); the
+        /// derived fields are written by `canon --fill`, never by this fixture.
+        pub fn claim(&self, id: &str, applicability: &[&str]) {
+            std::fs::write(
+                self.0.join("claims").join(format!("{id}.yml")),
+                claim_text(id, applicability),
+            )
+            .expect("writes a claim");
+        }
+
+        /// `req canon --fill` — the only thing that may write an address or a canonical form.
+        pub fn fill(&self) {
+            let output = Command::new(req_bin())
+                .arg("--root")
+                .arg(self.path())
+                .arg("canon")
+                .arg("--fill")
+                .output()
+                .expect("runs the compiled binary");
+            assert!(
+                output.status.success(),
+                "the fixture must fill cleanly: {}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        pub fn gate(&self, args: &[&str]) -> Outcome {
+            gate_at(self.path(), args)
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// One authored claim. The `canonical`/`address` block is deliberately empty: it is the anchor
+    /// `canon --fill` writes into, and `Fixture::fill` asserts the fill succeeded before any test
+    /// observes the gate.
+    fn claim_text(id: &str, applicability: &[&str]) -> String {
+        let block = if applicability.is_empty() {
+            "applicability: []\n".to_string()
+        } else {
+            let mut block = String::from("applicability:\n");
+            for predicate in applicability {
+                block.push_str(&format!("  - {predicate}\n"));
+            }
+            block
+        };
+        format!(
+            r#"schema: req.claim/0
+claim_id: {id}
+statement: >-
+  The req tool shall require numeric claim fields to be serialized as exact
+  decimal strings.
+modality: SHALL
+subject: REQ_TOOL
+attribute: numeric_value_encoding
+operator: EQ
+value: exact_decimal_strings
+unit: none
+conditions: []
+{block}exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: 0
+  subject_registry: 0
+  form: |-
+    {{}}
+address: {zeros}
+rationale:
+  source: tests/release_gate.rs
+  date: 2026-10-07
+  rejected_alternatives: []
+  assumptions: []
+relations: []
+"#,
+            zeros = "0".repeat(64)
+        )
+    }
+
+    // ---- the invocation rows: nothing selected, and a key nothing mentions ---------------------
+
+    /// A variant in which nothing applies verified nothing, so it is UNVERIFIABLE — never PASS.
+    /// The dogfood corpus cannot reach this: 15 of its 21 claims carry no predicate and so always
+    /// apply, which is exactly why the guard needs a fixture.
+    #[test]
+    fn a_variant_that_selects_no_claim_is_unverifiable_not_a_pass() {
+        let fixture = Fixture::new("vacuous");
+        fixture.claim("REQ-9001", &["mode == beta", "region == eu"]);
+        fixture.fill();
+        let out = fixture.gate(&["mode=beta"]);
+        // `region` is absent from the context, so the only claim is undecided: 0 applying, and on
+        // `main` that printed `verdict: PASS` and exited 0.
+        assert!(
+            out.headline().contains("0 applying claim(s), 1 undecided"),
+            "{}",
+            out.headline()
+        );
+        assert_eq!(out.code, 3, "{}", out.text);
+        let block = out.policy("selectors_confirmed");
+        assert!(block.starts_with("[UNVERIFIABLE]"), "{block}");
+        assert!(
+            block.contains("no claim applies in this variant"),
+            "{block}"
+        );
+        // `mode=beta` IS declared, so the vacuity alone decided this: the four claim policies
+        // pass over the empty applying set.
+        for name in [
+            "addresses_current",
+            "relations_resolve",
+            "dependencies_decided",
+            "rationale_present",
+        ] {
+            assert!(
+                out.policy(name).starts_with("[PASS]"),
+                "{name}: {}",
+                out.policy(name)
+            );
+        }
+    }
+
+    /// A context key no predicate in the corpus mentions decided nothing at all: it selected
+    /// nothing and excluded nothing, so naming it is honest and cannot misfire.
+    #[test]
+    fn a_key_no_applicability_predicate_mentions_is_refused() {
+        let out = dogfood(&["nonsense=whatever"]);
+        // The oracle: 15 applying, 6 undecided — one claim MORE undecided than the 5 the
+        // context-free run has, because the entry decided nothing.
+        assert!(
+            out.headline().contains("15 applying claim(s), 6 undecided"),
+            "{}",
+            out.headline()
+        );
+        assert_eq!(out.code, 3, "{}", out.text);
+        let block = out.policy("selectors_confirmed");
+        assert!(block.starts_with("[UNVERIFIABLE]"), "{block}");
+        assert!(block.contains("nonsense=whatever"), "{block}");
+        assert!(
+            block.contains("no applicability predicate in the corpus mentions `nonsense`"),
+            "{block}"
+        );
+    }
 }

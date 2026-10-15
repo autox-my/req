@@ -136,16 +136,18 @@ export OCR_NO_UPDATE=1
   is `UNVERIFIABLE`, never ignored.
 - Impact and release gate: `cargo run -q -- impact <claim-id> [key=value ...]` walks the
   relations **backwards** (derived, REQ-0020) and reports every dependent nearest-first
-  with its selection state; `cargo run -q -- gate [key=value ...]` runs four policies over
-  the **applying** claims only — `addresses_current`, `relations_resolve`,
-  `dependencies_decided`, `rationale_present`. `gate` exits **0** all passed, **1** a
-  defect, **3** something that cannot be confirmed (an unfilled claim, a relation that does
-  not resolve, a dependency left undecided), **2** usage; a **Fail outranks** an
-  Unverifiable, because "we found a problem" is stronger than "we could not tell". Both
-  keep the tri-state honest: a claim the variant **excludes** is not the variant's problem,
-  and an **undecided** one is never treated as absent. An `impact` answer that a broken
-  relation could have made incomplete says so (exit 3) instead of quietly shortening the
-  list.
+  with its selection state; `cargo run -q -- gate [key=value ...]` runs five policies —
+  `addresses_current`, `relations_resolve`, `dependencies_decided` and `rationale_present`
+  over the **applying** claims, and `selectors_confirmed` over the **invocation**: a variant
+  in which nothing applies verified nothing, and a `key=value` entry no applicability
+  predicate in the corpus mentions decided nothing at all. `gate` exits **0** all passed,
+  **1** a defect, **3** something that cannot be confirmed (an unfilled claim, a relation
+  that does not resolve, a dependency left undecided, an empty selection, a context entry the
+  corpus cannot confirm), **2** usage; a **Fail outranks** an Unverifiable, because "we found
+  a problem" is stronger than "we could not tell". Both keep the tri-state honest: a claim
+  the variant **excludes** is not the variant's problem, and an **undecided** one is never
+  treated as absent. An `impact` answer that a broken relation could have made incomplete
+  says so (exit 3) instead of quietly shortening the list.
 - Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--max-pairs N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [--pairs] [key=value ...]` — the funnel's
   deterministic half. It skips pairs Tier-1 already resolved (equal address), **blocks** the
   rest on shared content terms (default 2), and hands only those to a provider. Exit **0**
@@ -213,13 +215,18 @@ export OCR_NO_UPDATE=1
   string a human signs; `cargo run -q -- baseline --verify <file> [--signature <file>]
   [--key <id>] [--now <date>]` verifies one. Exit **0** verified (or emitted), **1** FAIL, **3**
   UNVERIFIABLE, **2** usage. Verification re-derives every address, so a claim edited after
-  signing is **FAIL** — the same class as a hand-edited digest; and it consults the committed
-  trust anchor at `baselines/trust.yml` (ADR 0010): a **revoked** key is FAIL, an **expired**
-  one is UNVERIFIABLE (a Baseline is historical and no trusted signing time exists, so the
-  question is unanswerable rather than answered badly), an unknown key or a missing signature
-  is UNVERIFIABLE — a manifest is **not yet a Baseline** until a human signs it. The signature
-  check is a **process boundary** to a pinned verifier, so the core links no cryptography and
-  still no network; with no verifier installed the outcome is UNVERIFIABLE, never a pass.
+  signing is **FAIL** — the same class as a hand-edited digest; a manifest whose recorded
+  `rules_v` disagrees with this build's is **UNVERIFIABLE** with the re-sign remedy and drift is
+  **not judged** — an address is derived from the rules version, so the comparison is void
+  rather than inconclusive (an older manifest is re-signed under the current rules; a newer one
+  is verified with a build that writes it, never re-signed with this binary); and it consults
+  the committed trust anchor at `baselines/trust.yml` (ADR 0010): a **revoked** key is FAIL, an
+  **expired** one is UNVERIFIABLE (a Baseline is historical and no trusted signing time exists,
+  so the question is unanswerable rather than answered badly), an unknown key or a missing
+  signature is UNVERIFIABLE — a manifest is **not yet a Baseline** until a human signs it. The
+  signature check is a **process boundary** to a pinned verifier, so the core links no
+  cryptography and still no network; with no verifier installed the outcome is UNVERIFIABLE,
+  never a pass.
   **The signing act is the human's**: req emits and verifies, and a key this tool could reach
   would prove nothing. The **manifest records the variant**, so verification re-derives the
   addresses under *that* selection: an explicit context that contradicts it is a **usage error**
@@ -237,7 +244,9 @@ export OCR_NO_UPDATE=1
   **1** a defect (drift, or no provenance), **3** nothing ratified or something uncovered, **2**
   usage. The selection comes from the Baseline being audited, the same rule as `--verify`.
   Coverage is **derived from `baseline::drift`**, not recomputed, so the packet and
-  `req baseline --verify` cannot disagree about whether a claim still matches what was signed.
+  `req baseline --verify` cannot disagree about whether a claim still matches what was signed
+  — including when neither may judge it: a manifest whose `rules_v` disagrees with the build's
+  is reported coverage **NOT JUDGED**, with no claim covered or drifted.
   With no `--baseline` it still prints and says plainly that nothing is ratified — an audit that
   passed on an unsigned model would be worse than no audit. It reports **coverage**, and says
   so: whether a signature is *valid* belongs to `req baseline --verify`, and this packet never
