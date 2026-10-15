@@ -11,7 +11,9 @@
 //!   the undecided claims is an audit of a different system);
 //! * coverage is **derived from `baseline::drift`**, not recomputed. One comparison rule, one
 //!   place, so the packet and `req baseline --verify` can never disagree about whether a claim
-//!   still matches what was signed.
+//!   still matches what was signed — including the case where neither may judge it at all: a
+//!   manifest whose declared `rules_v` disagrees with this build's is NOT JUDGED by either,
+//!   because drift is itself derived from that version.
 //!
 //! With no Baseline at all the packet still prints — that is the point of an audit view — but
 //! it states that **nothing here is ratified**, and exits UNVERIFIABLE rather than reporting a
@@ -34,9 +36,26 @@ pub struct Coverage {
     pub uncovered: Vec<String>,
     /// In the Baseline and no longer applying — the variant moved after signing.
     pub missing: Vec<String>,
+    /// `Some(reason)` when the manifest declares a different canonical rules version than this
+    /// build writes: **drift was not judged**, so every list above is empty because nothing was
+    /// compared — never because everything matched. A reader must not mistake one for the other,
+    /// and this field is what makes the difference visible.
+    pub not_judged: Option<String>,
 }
 
 pub fn coverage(rows: &[Row], manifest: &Manifest) -> Coverage {
+    // Drift is *derived from* the rules version, so a manifest declaring a different one has no
+    // common basis with this build: the comparison is void, not inconclusive. Answer NOT JUDGED
+    // rather than a packet in which every claim reads as changed — and do not recompute an
+    // answer that `baseline --verify` refuses to give, which is why the guard is the shared
+    // `baseline::rules_mismatch` rather than a second comparison here.
+    if let Some(mismatch) = baseline::rules_mismatch(manifest) {
+        return Coverage {
+            not_judged: Some(mismatch.reason()),
+            ..Coverage::default()
+        };
+    }
+
     let drift = baseline::drift(rows, manifest);
 
     // `signed` asks membership against all three drift lists for every claim in the manifest.
@@ -75,6 +94,8 @@ pub fn coverage(rows: &[Row], manifest: &Manifest) -> Coverage {
         drifted,
         uncovered: drift.added,
         missing: drift.missing,
+        // Reached only under a matching rules version: a mismatch returned NOT JUDGED above.
+        not_judged: None,
     }
 }
 
@@ -122,6 +143,17 @@ pub fn packet(rows: &[Row], context: &Context, baseline: Option<&Manifest>) -> S
         rows.len() - applying.len() - undecided.len()
     ));
     match (baseline, &coverage) {
+        // A mismatched rules version is not a clean packet with zero of everything: the coverage
+        // question was not answered, and the line says so instead of reading as "0 drifted".
+        (Some(manifest), Some(coverage)) if coverage.not_judged.is_some() => {
+            out.push_str(&format!(
+                "baseline: {} claim(s), rules v{} — coverage NOT JUDGED: the manifest declares a \
+             different canonical rules version than this build writes (rules v{})\n",
+                manifest.claims.len(),
+                manifest.rules_v,
+                crate::canon::RULES_V
+            ))
+        }
         (Some(manifest), Some(coverage)) => out.push_str(&format!(
             "baseline: {} claim(s), rules v{} — {} covered, {} drifted, {} uncovered, {} gone\n",
             manifest.claims.len(),
@@ -137,7 +169,18 @@ pub fn packet(rows: &[Row], context: &Context, baseline: Option<&Manifest>) -> S
         ),
     }
 
-    if baseline.is_some() {
+    if coverage
+        .as_ref()
+        .is_some_and(|coverage| coverage.not_judged.is_some())
+    {
+        // The reason itself is printed once, in Findings, beside the same words
+        // `baseline --verify` uses; repeating it here would give one fact three homes.
+        out.push_str(
+            "coverage: NOT JUDGED — this packet and `req baseline --verify` both decline to \
+             compare a\n  manifest written under a different canonical rules version (see \
+             Findings). No claim was\n  compared, so none is reported covered or drifted.\n",
+        );
+    } else if baseline.is_some() {
         out.push_str(
             "coverage: which claims this Baseline's manifest contains and still matches. Whether the\n  \
              manifest's signature is valid is `req baseline --verify`'s answer, not this packet's —\n  \
@@ -152,6 +195,10 @@ pub fn packet(rows: &[Row], context: &Context, baseline: Option<&Manifest>) -> S
     for row in &applying {
         let status = match &coverage {
             None => "unratified",
+            // Neither covered nor uncovered: nothing was compared. Checked before the two states
+            // that a comparison would produce, so an empty `signed` list cannot read as the
+            // `uncovered` arm.
+            Some(coverage) if coverage.not_judged.is_some() => "NOT-JUDGED",
             Some(coverage) if coverage.signed.contains(&row.claim_id) => "covered",
             Some(coverage) if coverage.drifted.contains(&row.claim_id) => "DRIFTED",
             Some(_) => "uncovered",
@@ -241,6 +288,16 @@ pub fn findings(
              against it)"
                 .to_string(),
         ),
+        // The coverage question was not answered, so there is no drift to blame: listing the
+        // ids of a comparison that never happened would read as "every claim drifted" — the
+        // misdiagnosis this shares `baseline::rules_mismatch` to avoid. The provenance findings
+        // above are independent of the rules version and still stand, so a definite defect still
+        // outranks this open question.
+        (Some(_), Some(coverage)) if coverage.not_judged.is_some() => {
+            if let Some(reason) = &coverage.not_judged {
+                open.push(reason.clone());
+            }
+        }
         (Some(_), Some(coverage)) => {
             for id in &coverage.drifted {
                 // `drifted` merges the two drift classes (the address, and the attested
@@ -268,7 +325,10 @@ pub fn findings(
 /// `req audit [--baseline <file>] [key=value ...]`
 ///
 /// Exit: **0** every applying claim signed and provable, **1** a defect (drift, or no
-/// provenance), **3** nothing ratified or something uncovered, **2** usage.
+/// provenance), **2** usage; **3** when nothing is ratified, when something ratified is
+/// uncovered, or when the Baseline's declared `rules_v` disagrees with this build's — the last
+/// answered as coverage NOT JUDGED, because a comparison across two rule sets is void, and no
+/// claim was compared rather than something found uncovered.
 pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut context = Context::new();
     let mut baseline_path: Option<String> = None;
@@ -351,6 +411,16 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         match code {
             0 => "VERIFIED — every applying claim is covered by the Baseline and still matches",
             1 => "FAIL — a defect in what this packet reports",
+            // The third state has two distinct reasons and they are not interchangeable: "we
+            // could not judge coverage" is not "something is uncovered", and the packet must not
+            // blur them any more than the Baseline's message may.
+            _ if coverage
+                .as_ref()
+                .is_some_and(|coverage| coverage.not_judged.is_some()) =>
+            {
+                "UNVERIFIABLE — the Baseline's canonical rules version disagrees with this \
+                 build's, so coverage was not judged"
+            }
             _ => "UNVERIFIABLE — nothing here is ratified, or something ratified is uncovered",
         }
     );

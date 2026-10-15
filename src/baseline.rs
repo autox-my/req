@@ -6,6 +6,10 @@
 //! rather than quietly passing; and the signature check is a **process boundary** to a pinned
 //! verifier, so the core crate gains no cryptography and still no network.
 //!
+//! The rules version is judged **before** drift ([`rules_mismatch`]), because drift is derived
+//! from it: a manifest written under a different canonical rules version is UNVERIFIABLE, with
+//! the remedy in the direction of the mismatch, rather than a per-claim tampering report.
+//!
 //! Three outcomes, as everywhere else. **Revoked** trust is FAIL (a human withdrew trust);
 //! **expired** trust is UNVERIFIABLE (a Baseline is historical and no trusted signing time
 //! exists, so the question is unanswerable rather than answered badly); an unknown key or a
@@ -218,6 +222,69 @@ impl Drift {
     }
 }
 
+/// The manifest's declared canonical rules version, when it disagrees with the one this build
+/// writes. `None` from [`rules_mismatch`] is the only state in which [`drift`] has a common
+/// basis, because a claim's address is *derived from* the rules version.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RulesMismatch {
+    /// The canonical rules version the manifest declares.
+    pub manifest_rules_v: u32,
+    /// The canonical rules version this build writes ([`crate::canon::RULES_V`]).
+    pub build_rules_v: u32,
+}
+
+impl RulesMismatch {
+    /// What a reader must be told, in the direction of the mismatch.
+    ///
+    /// Two things are non-negotiable in the wording, and both are why this is one function
+    /// rather than a `format!` per call site: it says **drift was NOT judged** — otherwise a
+    /// reader sees no drift findings and concludes the claims match — and it gives the remedy the
+    /// mismatch calls for. A manifest older than the build is re-signed under the current rules
+    /// (the case ADR 0013's `REISSUE_ADVICE` is for); a manifest *newer* than the build must be
+    /// verified with a build that writes it, never re-signed with this binary, which would
+    /// downgrade what the manifest attests.
+    pub fn reason(&self) -> String {
+        let Self {
+            manifest_rules_v,
+            build_rules_v,
+        } = *self;
+        let head = format!(
+            "the manifest declares canonical rules v{manifest_rules_v} but this build writes \
+             v{build_rules_v}: drift was NOT judged — a claim's address is derived from the rules \
+             version, so a comparison across two rule sets is void, not merely inconclusive"
+        );
+        if manifest_rules_v < build_rules_v {
+            format!("{head}. Re-sign the manifest under the current rules: {REISSUE_ADVICE}")
+        } else {
+            format!(
+                "{head}. Verify with a build that writes rules v{manifest_rules_v}; this binary \
+                 cannot judge it, and re-signing under the current rules would downgrade what the \
+                 manifest attests"
+            )
+        }
+    }
+}
+
+/// Whether `manifest` was written under a different canonical rules version than this build's.
+///
+/// Consulted by both [`verify`] and `audit::coverage`, so the two cannot disagree about whether
+/// drift may be judged at all — the same reason the audit packet derives its coverage from
+/// [`drift`] rather than recomputing it.
+pub fn rules_mismatch(manifest: &Manifest) -> Option<RulesMismatch> {
+    let build_rules_v = crate::canon::RULES_V;
+    (manifest.rules_v != build_rules_v).then_some(RulesMismatch {
+        manifest_rules_v: manifest.rules_v,
+        build_rules_v,
+    })
+}
+
+/// The working tree against a signed manifest, claim by claim.
+///
+/// The comparison is only meaningful under a **matching rules version**: an address is derived
+/// from the rules, so under a mismatch every claim reads as changed and the per-claim verdicts
+/// are artefacts of comparing two different rule sets. Callers must consult [`rules_mismatch`]
+/// first — [`verify`] returns before it judges drift, and `audit::coverage` reports NOT JUDGED —
+/// rather than reading this alone.
 pub fn drift(rows: &[Row], manifest: &Manifest) -> Drift {
     let current: BTreeMap<&str, (&str, &str, &str)> = rows
         .iter()
@@ -832,11 +899,6 @@ pub fn verify(
             manifest.version
         ));
     }
-    let drift = drift(rows, manifest);
-    if !drift.is_clean() {
-        failed.extend(drift.reasons());
-    }
-
     match trust.state(key_id, now) {
         TrustState::Trusted => {}
         TrustState::Revoked(reason) => failed.push(format!("key {key_id} is {reason}")),
@@ -876,6 +938,38 @@ pub fn verify(
                 }
             }
         }
+    }
+
+    // **The rules version is judged before drift, and the comparison it invalidates is not
+    // merely inconclusive.** A claim's address is *derived from* the canonical rules version, so
+    // when the manifest's `rules_v` disagrees with this build's `RULES_V` the drift comparison
+    // has no common basis: any per-claim verdict it produced would be an artefact of comparing
+    // two different rule sets, and blaming each claim for "being edited after signing" sends an
+    // auditor hunting for a tampering that never happened.
+    //
+    // That is why this *returns* instead of pushing its reason onto `open` and carrying on: a
+    // real rules bump also makes `drift` report every claim as `changed`, those land in
+    // `failed`, and `Failed` would outrank this `Unverifiable` — exit 1, with the misdiagnosis
+    // printed underneath. Drift is **void** here, not open, and [`RulesMismatch::reason`] says
+    // so in those words because "we could not tell" and "the comparison does not apply" are
+    // different claims.
+    //
+    // Placed after the trust and signature checks deliberately: those judge the manifest's own
+    // signed bytes, which do not depend on the rules version, so a definite finding among them
+    // (a revoked key, a signature that does not verify) still outranks this open question
+    // exactly as `req gate`'s policies do. The guard is a precedence change about *drift*, not
+    // a blanket suppression of what verification found.
+    if let Some(mismatch) = rules_mismatch(manifest) {
+        if !failed.is_empty() {
+            return Outcome::Failed(failed);
+        }
+        open.push(mismatch.reason());
+        return Outcome::Unverifiable(open);
+    }
+
+    let drift = drift(rows, manifest);
+    if !drift.is_clean() {
+        failed.extend(drift.reasons());
     }
 
     if !failed.is_empty() {
