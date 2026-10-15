@@ -158,7 +158,7 @@ pub fn exit_code(results: &[PolicyResult]) -> i32 {
 ///
 /// Exit: **0** every policy passed, **1** a policy failed, **3** a policy could not be
 /// settled, **2** usage. Fail outranks unverifiable.
-pub fn run(args: &[String]) -> i32 {
+pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut context = Context::new();
     for arg in args {
         match arg.split_once('=') {
@@ -171,7 +171,7 @@ pub fn run(args: &[String]) -> i32 {
             }
         }
     }
-    let rows = match crate::view::load_rows(&context) {
+    let rows = match crate::view::load_rows(&context, root) {
         Ok(rows) => rows,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");

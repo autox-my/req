@@ -891,7 +891,7 @@ pub fn verify(
 ///
 /// With no `--verify`, prints the canonical manifest to stdout — the bytes a human signs.
 /// Exit: **0** verified (or emitted), **1** FAIL, **3** UNVERIFIABLE, **2** usage.
-pub fn run(args: &[String]) -> i32 {
+pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut context = Context::new();
     let mut verify_path: Option<String> = None;
     let mut signature_path: Option<String> = None;
@@ -935,9 +935,8 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
 
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let Some(path) = verify_path else {
-        let rows = match crate::view::load_rows(&context) {
+        let rows = match crate::view::load_rows(&context, root) {
             Ok(rows) => rows,
             Err(e) => {
                 eprintln!("[UNVERIFIABLE] {e}");
@@ -970,7 +969,7 @@ pub fn run(args: &[String]) -> i32 {
             return 2;
         }
     };
-    let rows = match crate::view::load_rows(&effective) {
+    let rows = match crate::view::load_rows(&effective, root) {
         Ok(rows) => rows,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");

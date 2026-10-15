@@ -20,5 +20,6 @@ pub mod funnel;
 pub mod gate;
 pub mod impact;
 pub mod model;
+pub mod root;
 pub mod select;
 pub mod view;

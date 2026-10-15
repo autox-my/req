@@ -59,6 +59,11 @@ false merges** on the parity + adversarial-trap corpora. It is *measured*
 This sandbox denies writes to `$HOME`, so both toolchains keep their state in-repo.
 Every command below assumes these exports (or `scripts/check.sh`, which sets them):
 
+Every subcommand reads its corpus from a **runtime-resolved root** (ADR 0012): `--root <dir>`,
+else `REQ_ROOT`, else the nearest ancestor of the working directory holding `claims/`. The
+chosen root is printed once to stderr; with no corpus the answer is `[UNVERIFIABLE]` and exit
+3 — never an empty result.
+
 ```bash
 # Toolchain pinned by rust-toolchain.toml; rustfmt/clippy live in that toolchain,
 # not in `stable`. scripts/check.sh resolves the directory — by hand:
@@ -381,7 +386,8 @@ matter:
   generator (`tools/corpus/`) and its label scheme, not line by line — the generator,
   the source pins and the sampling rule are the reviewable surface, and the review
   preview lists the corpus itself as a single item for that reason.
-- `src/` — `lib.rs` (the library surface), `main.rs` (thin CLI over it), `model.rs`
+- `src/` — `lib.rs` (the library surface), `main.rs` (thin CLI over it), `root.rs`
+  (the runtime corpus root: `--root`, `REQ_ROOT`, walk-up — ADR 0012), `model.rs`
   (claim/registry/corpus types), `canon.rs` (Tier-1 pipeline + diagnostics),
   `bench.rs` (the benchmark gate + its tests), `select.rs` (tri-state variant
   selection), `compare.rs` (change direction), `view.rs` (render/trace + the shared

@@ -247,15 +247,14 @@ fn prohibition(m: Option<Modality>) -> bool {
 /// Exit codes: **0** classified, **3** UNVERIFIABLE (a claim that will not load, or a
 /// pair with nothing structurally to compare). A classification is not an approval: the
 /// answer is for a human to ratify.
-pub fn run(path_a: &str, path_b: &str) -> i32 {
-    let registry =
-        match crate::canon::load_registry(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))) {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("[UNVERIFIABLE] {e}");
-                return 3;
-            }
-        };
+pub fn run(path_a: &str, path_b: &str, root: &std::path::Path) -> i32 {
+    let registry = match crate::canon::load_registry(root) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[UNVERIFIABLE] {e}");
+            return 3;
+        }
+    };
     let (a, b) = match (load_claim(path_a), load_claim(path_b)) {
         (Ok(a), Ok(b)) => (a, b),
         (Err(e), _) | (_, Err(e)) => {

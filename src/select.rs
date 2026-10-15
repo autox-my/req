@@ -138,7 +138,7 @@ pub fn applies(predicates: &[Predicate], context: &Context) -> Applies {
 ///
 /// Exit codes: **0** every claim decided, **2** usage, **3** at least one claim left
 /// undecided. Undecided is its own outcome and is never folded into "does not apply".
-pub fn run(args: &[String]) -> i32 {
+pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut context = Context::new();
     for arg in args {
         match arg.split_once('=') {
@@ -152,8 +152,7 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
 
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let claims = match crate::canon::load_claims(&root) {
+    let claims = match crate::canon::load_claims(root) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");

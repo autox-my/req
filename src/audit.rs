@@ -269,7 +269,7 @@ pub fn findings(
 ///
 /// Exit: **0** every applying claim signed and provable, **1** a defect (drift, or no
 /// provenance), **3** nothing ratified or something uncovered, **2** usage.
-pub fn run(args: &[String]) -> i32 {
+pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut context = Context::new();
     let mut baseline_path: Option<String> = None;
     let mut index = 0;
@@ -328,7 +328,7 @@ pub fn run(args: &[String]) -> i32 {
             }
         },
     };
-    let rows = match crate::view::load_rows(&effective) {
+    let rows = match crate::view::load_rows(&effective, root) {
         Ok(rows) => rows,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");

@@ -107,7 +107,7 @@ pub fn dependents(rows: &[Row], target: &str) -> (Vec<Dependent>, ImpactFindings
 ///
 /// Exit: **0** complete and settled, **2** usage, **3** UNVERIFIABLE (missing target, an
 /// undecided target or dependent, or a relation that does not resolve).
-pub fn run(args: &[String]) -> i32 {
+pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut target: Option<String> = None;
     let mut context = Context::new();
     for arg in args {
@@ -126,7 +126,7 @@ pub fn run(args: &[String]) -> i32 {
         eprintln!("usage: req impact <claim-id> [key=value ...]");
         return 2;
     };
-    let rows = match crate::view::load_rows(&context) {
+    let rows = match crate::view::load_rows(&context, root) {
         Ok(rows) => rows,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");

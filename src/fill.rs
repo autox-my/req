@@ -111,16 +111,15 @@ pub fn fill_text(
 ///
 /// Exit codes: **0** all filled (or already filled), **3** at least one claim was
 /// refused because its authored slots diverge from its parse.
-pub fn run_fill() -> i32 {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let registry = match load_registry(&root) {
+pub fn run_fill(root: &Path) -> i32 {
+    let registry = match load_registry(root) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
             return 3;
         }
     };
-    let claims = match load_claims(&root) {
+    let claims = match load_claims(root) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
@@ -228,16 +227,15 @@ pub fn verify_text(text: &str, expected_form_json: &str, rules_v: u32) -> Stored
 ///
 /// Exit: **0** all verified, **1** any mismatch, **3** any candidate (unfilled, or
 /// filled under other rules) or unreadable file.
-pub fn run_verify() -> i32 {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let registry = match load_registry(&root) {
+pub fn run_verify(root: &Path) -> i32 {
+    let registry = match load_registry(root) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
             return 3;
         }
     };
-    let claims = match load_claims(&root) {
+    let claims = match load_claims(root) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
@@ -282,11 +280,13 @@ pub fn run_verify() -> i32 {
     }
 }
 
-/// Fill one file path — used by tests and any caller with an explicit path.
-pub fn fill_path(path: &Path) -> Result<String, String> {
+/// Fill one file path — used by tests and any caller with an explicit path. The root is
+/// still explicit: the registry an address depends on is read from a resolved corpus root
+/// (ADR 0012), never from the path this binary happened to be built in.
+pub fn fill_path(path: &Path, root: &Path) -> Result<String, String> {
     let text =
         std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let registry = load_registry(Path::new(env!("CARGO_MANIFEST_DIR")))?;
+    let registry = load_registry(root)?;
     let claim: crate::model::ClaimFile =
         yaml_serde::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
     let verdict = evaluate_claim(&claim, &registry);
