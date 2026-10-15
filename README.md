@@ -39,6 +39,12 @@ relaxed to let a change land.
 Tri-state is a discipline here, not a garnish: PASS, FAIL and UNVERIFIABLE are kept apart,
 because "we could not tell" is a different answer from both "it passed" and "it is broken".
 
+The **corpus root** is resolved at *runtime* (ADR 0012), so req manages any repository's
+claims: `--root <dir>`, then `REQ_ROOT`, then the nearest ancestor of the working directory
+holding a `claims/` directory. Whichever root was chosen is printed to stderr — never stdout,
+which carries the exact bytes a human signs — and a root that yields no corpus is
+UNVERIFIABLE (exit 3), never an empty answer.
+
 ## The two differentiators
 
 1. **Semantic content-addressing.** Identity over canonical *meaning*: a rewording keeps its

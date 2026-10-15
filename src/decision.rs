@@ -225,7 +225,7 @@ pub fn upsert_line(text: &str, key: &str, value: &str) -> String {
 ///
 /// `--fill` writes the derived chain fields into every `decisions/DEC-*.yml`; `--verify` (the
 /// default) walks the chain. Exit: **0** VALID, **1** TAMPERED, **3** UNVERIFIABLE, **2** usage.
-pub fn run(args: &[String]) -> i32 {
+pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut fill_files = false;
     for arg in args {
         match arg.as_str() {
@@ -237,8 +237,7 @@ pub fn run(args: &[String]) -> i32 {
             }
         }
     }
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let paths = match log_paths(&root) {
+    let paths = match log_paths(root) {
         Ok(paths) => paths,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");

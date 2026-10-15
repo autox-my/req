@@ -290,12 +290,13 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
 }
 
 /// Run the gate over a corpus file — the seed parity corpus by default — and
-/// record the result under `bench/results/`.
+/// record the result under `bench/results/`. A relative corpus path is resolved against the
+/// corpus root, which is a runtime parameter like every other read path (ADR 0012).
+///
 /// Exit codes: 0 PASS / 1 FAIL / 3 UNVERIFIABLE. A run that found a defect is **1**
 /// even when it was degraded (`reported_verdict`); **3** covers a degraded run with
 /// nothing found and a vacuous FMR denominator.
-pub fn run(corpus_path: Option<&str>) -> i32 {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+pub fn run(corpus_path: Option<&str>, root: &std::path::Path) -> i32 {
     let rel = corpus_path.unwrap_or(CORPUS_REL);
     let path = if std::path::Path::new(rel).is_absolute() {
         std::path::PathBuf::from(rel)
@@ -550,14 +551,20 @@ mod tests {
     use crate::canon::canonicalize_statement;
     use crate::model::ClaimFile;
 
+    /// The package root at runtime. `cargo test` runs with the working directory set to the
+    /// package root, so the walk-up finds `claims/`: the tests exercise the same runtime
+    /// resolution the CLI uses, and no build path is baked into the test binary (ADR 0012).
+    fn repo_root() -> std::path::PathBuf {
+        crate::root::resolve_corpus_root(&std::env::current_dir().expect("cwd"), None, None)
+            .expect("the package root holds claims/")
+    }
+
     fn corpus() -> Corpus {
-        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        Corpus::load(root.join(CORPUS_REL).to_str().unwrap()).expect("corpus loads")
+        Corpus::load(repo_root().join(CORPUS_REL).to_str().unwrap()).expect("corpus loads")
     }
 
     fn registry() -> Registry {
-        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        Registry::load(root.join(REGISTRY_REL).to_str().unwrap()).expect("registry loads")
+        Registry::load(repo_root().join(REGISTRY_REL).to_str().unwrap()).expect("registry loads")
     }
 
     #[test]
@@ -647,7 +654,7 @@ mod tests {
 
     #[test]
     fn claim_file_parses_stably() {
-        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let root = repo_root();
         for id in ["REQ-0001", "REQ-0015"] {
             let path = root.join(format!("claims/{id}.yml"));
             let text = std::fs::read_to_string(&path).unwrap();

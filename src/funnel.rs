@@ -300,7 +300,7 @@ fn claims_provider(provider_cmd: Option<&str>) -> Box<dyn Provider> {
 /// The provider is wired to **this** pass, not only to the gold-set score: `--provider-cmd` spends
 /// the provider on our own claims, `--max-pairs` bounds how many, and `NoProvider` remains the
 /// default so an offline run still refuses to guess.
-pub fn run(args: &[String]) -> i32 {
+pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut context = Context::new();
     let mut min_shared = MIN_SHARED_TERMS;
     let mut max_pairs = MAX_PAIRS_PER_RUN;
@@ -412,7 +412,7 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
 
-    let rows = match load_rows(&context) {
+    let rows = match load_rows(&context, root) {
         Ok(rows) => rows,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");

@@ -220,12 +220,12 @@ fn stored_marker(stored: &crate::fill::StoredState) -> String {
 }
 
 /// `req render key=value ...`
-pub fn run_render(args: &[String]) -> i32 {
+pub fn run_render(args: &[String], root: &std::path::Path) -> i32 {
     let context = match context_from(args) {
         Ok(c) => c,
         Err(code) => return code,
     };
-    let rows = match load_rows(&context) {
+    let rows = match load_rows(&context, root) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
@@ -241,12 +241,12 @@ pub fn run_render(args: &[String]) -> i32 {
 }
 
 /// `req trace key=value ...`
-pub fn run_trace(args: &[String]) -> i32 {
+pub fn run_trace(args: &[String], root: &std::path::Path) -> i32 {
     let context = match context_from(args) {
         Ok(c) => c,
         Err(code) => return code,
     };
-    let rows = match load_rows(&context) {
+    let rows = match load_rows(&context, root) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
@@ -280,10 +280,11 @@ fn context_from(args: &[String]) -> Result<Context, i32> {
     Ok(context)
 }
 
-pub fn load_rows(context: &Context) -> Result<Vec<Row>, String> {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let registry = crate::canon::load_registry(&root)?;
-    let claims = crate::canon::load_claims(&root)?;
+/// The shared row set every view is a projection of. The root is explicit: the corpus a
+/// command reads is resolved once at the CLI boundary (ADR 0012), never from a build path.
+pub fn load_rows(context: &Context, root: &std::path::Path) -> Result<Vec<Row>, String> {
+    let registry = crate::canon::load_registry(root)?;
+    let claims = crate::canon::load_claims(root)?;
     let mut rows = Vec::new();
     for loaded in claims.iter() {
         let text = &loaded.text;

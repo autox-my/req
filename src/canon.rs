@@ -1444,15 +1444,10 @@ pub fn load_registry(root: &std::path::Path) -> Result<Registry, String> {
         .map_err(|e| format!("registry load failed: {e}"))
 }
 
-pub fn run_claim_diagnostics() -> i32 {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    run_claim_diagnostics_at(&root)
-}
-
-/// The diagnostics command over an explicit root. The repository's own corpus is
-/// what `run_claim_diagnostics` loads; the parameter exists so the strict loader can
-/// be exercised against a fixture corpus without writing into `claims/` (which root
-/// a command *uses* is F6's separate, undecided question).
+/// The diagnostics command over an explicit root: `claims/` and `aliases/` are read from
+/// it. The root is resolved once at the CLI boundary and threaded to every read path
+/// (ADR 0012), so this is also the seam the strict loader is exercised through against a
+/// fixture corpus — without writing into the repository's own `claims/`.
 pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
     let registry = match load_registry(root) {
         Ok(r) => r,
