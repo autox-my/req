@@ -33,9 +33,12 @@ false merges** on the parity + adversarial-trap corpora. It is *measured*
   ratification is a human act.
 - **Pins are provenance, not stragglers.** `rust-toolchain.toml`, `Cargo.lock`, and
   `tools/ocr/package-lock.json` are the pins. Verify a version at *pin time*; do not
-  bump opportunistically. Any rules/toolchain/crate/CLI bump is a Tier-1 rules bump:
-  bump `RULES_V`, regenerate goldens deliberately, record re-canonicalization
-  candidates (hashing spec §5).
+  bump opportunistically. `rust-toolchain.toml` and `Cargo.lock` are identity-path pins:
+  any bump is a Tier-1 rules bump — bump `RULES_V`, regenerate goldens deliberately, and
+  record re-canonicalization candidates (hashing spec §5). The review CLI pin
+  (`tools/ocr/package-lock.json`) is provenance for the review process, not the identity
+  path: bump it deliberately, verify `ocr --version` at pin time, and state it in the
+  commit — no `RULES_V` bump.
 - **Never change the git identity** and never pass `-c user.name=` / `user.email=`
   to impersonate an author. Commits are authored by the human; provenance feeds the
   decision record (ADR 0005).
