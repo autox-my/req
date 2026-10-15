@@ -248,6 +248,12 @@ if [ "$dry" -eq 1 ] || command -v ocr >/dev/null 2>&1; then
     # resolved there does not exist until the branch is merged, which the gate caught
     # the first time it ran.
     run python3 "$PWD/tools/review/check_rules.py"
+    # A rule that matches a path is not a rule that reaches the reviewer: the CLI also
+    # decides *which* files are selected, and review.yml's --exclude is the single string
+    # that wires review/rule.json's .forgejo/** checklist to the merge-blocking path. A
+    # checklist whose paths are filtered out upstream looks exactly like one that fired,
+    # so the workflow's own exclude is driven here and what reached the model is asserted.
+    run python3 "$PWD/tools/review/check_review_scope.py"
   else
     skip "python3 or review/rule.json missing: cannot verify rule globs"
   fi
