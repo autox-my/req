@@ -15,6 +15,7 @@ use crate::select::{Applies, Context};
 use crate::view::Row;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 /// The manifest format's own version — distinct from `RULES_V`, because the *envelope* and
 /// the *rules* move independently.
@@ -331,6 +332,394 @@ pub trait SignatureVerifier {
     fn verify(&self, message: &[u8], signature: &str, public_key: &str) -> SignatureOutcome;
 }
 
+/// How many fresh names one verification will try before giving up on a collision. The name
+/// already carries a clock reading, so a real collision is unreachable; the bound is here only
+/// so a pathological filesystem cannot make the loop run forever.
+const STAGING_ATTEMPTS: u32 = 16;
+
+// The four `pub` items from here to `staging_dir` are public for one reason: tests/baseline.rs
+// pins this contract through the real interface (exclusive creation, 0700, the planted-symlink
+// case, the guard's drop). The verifier's own surface is `MinisignCli::verify`; nothing outside
+// this crate is meant to call these. Moving those tests into this module was weighed and
+// rejected — they would need a directory fixture of their own, and this suite's stated failure
+// mode is fixture copies drifting apart (`tests/common/mod.rs`).
+/// The name of one staging attempt:
+/// `req-baseline-<pid>-<nanos-since-epoch>-<attempt>-<serial>-<salt>`.
+///
+/// The process id alone is a name another local process can guess and pre-create; the clock, a
+/// per-call counter and a process-local `RandomState` seed are what make guessing it fail
+/// rather than pay off. The seed carries the guarantee the clock cannot: a pre-epoch or
+/// unreadable clock would otherwise collapse the name to `req-baseline-<pid>-0-<attempt>`, the
+/// one string an attacker could pre-create to make every verification `Unverifiable`.
+///
+/// `RandomState` is documented only as *unpredictable*, not as a randomness API, so this leans
+/// on std's seeding rather than on a cryptographic guarantee. That assumption is explicit: it
+/// suffices because a wrong guess costs the attacker a failed pre-creation while a right one
+/// would cost every verification, and a stronger source would mean a new dependency
+/// (`Cargo.lock` is a pin).
+#[doc(hidden)]
+pub fn staging_dir_name(attempt: u32) -> String {
+    use std::hash::{BuildHasher, Hasher};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let serial = NEXT.fetch_add(1, Ordering::Relaxed);
+    let salt = std::collections::hash_map::RandomState::new()
+        .build_hasher()
+        .finish();
+    format!(
+        "req-baseline-{}-{nanos}-{attempt}-{serial}-{salt:016x}",
+        std::process::id()
+    )
+}
+
+/// Create the staging directory under `base` exclusively, mode 0700 on Unix.
+///
+/// `DirBuilder::create` — never `create_dir_all` — so a path that already exists, whether a
+/// directory left behind by an earlier run or a symlink planted at the name, is an
+/// `AlreadyExists` error instead of a directory we then write the trusted inputs into. On
+/// Unix the directory is created 0700, which keeps another local user out of the staged
+/// manifest between writing it and minisign reading it; other platforms get the platform
+/// default, so that privacy is a Unix property and not a portable one. `base` itself is the
+/// caller's to provide: this creates only the final component, and [`staging_dir`] creates a
+/// missing base before calling.
+#[doc(hidden)]
+pub fn create_staging_dir(base: &Path, name: &str) -> std::io::Result<PathBuf> {
+    let dir = base.join(name);
+    staging_dir_builder().create(&dir)?;
+    Ok(dir)
+}
+
+/// The `DirBuilder` a staging directory is created through, configured for 0700 on Unix.
+///
+/// The builder is configured and returned rather than mutated in place, so a non-Unix build
+/// has no `mut` binding to warn about.
+fn staging_dir_builder() -> std::fs::DirBuilder {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        let mut builder = std::fs::DirBuilder::new();
+        builder.mode(0o700);
+        builder
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::DirBuilder::new()
+    }
+}
+
+/// A staging directory that owns itself, so no exit path can orphan it.
+///
+/// The name is fresh on every call (pid + clock + attempt), so an early return leaves a
+/// directory behind that nothing will ever reuse — a leak per failed verification. A guard
+/// makes removal happen on *every* way out of the verifier: an early return after staging,
+/// a write failure, an unrunnable verifier, a non-zero exit and a parse failure alike.
+#[doc(hidden)]
+#[must_use = "dropping the guard removes the staging directory it owns"]
+pub struct StagingDir(PathBuf);
+
+impl StagingDir {
+    /// The directory itself, for building the paths handed to the verifier.
+    ///
+    /// There is deliberately no constructor from an arbitrary path: the field is private and
+    /// [`staging_dir`] is the only way to obtain a guard, so `Drop` can only ever remove a
+    /// directory this module just created under the temp dir.
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for StagingDir {
+    fn drop(&mut self) {
+        // Best effort: the verifier's verdict is the outcome that matters, and a directory
+        // that outlives it is a smaller problem than a panic while unwinding. A failure here —
+        // or a SIGKILL, which skips the drop entirely — leaks one uniquely-named directory per
+        // run under the base. There is no logger in a core crate with no I/O surface, and a
+        // retry on a later run would target a different name, so the leak is left to the
+        // platform's temp reaper and recorded here rather than quietly implied.
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// One staging directory for this verification, retrying on a name collision (a retry that a
+/// predictable name could not make safe, but a fresh name plus exclusive creation does).
+///
+/// The only way to obtain a [`StagingDir`]: it always creates a fresh, exclusively-created
+/// directory under the temp dir, so the guard's `Drop` removes only what this call made and
+/// no caller can hand it an arbitrary path to delete.
+///
+/// The temp dir itself must be one only its owner may write, or one that is sticky and owned by
+/// you or root, as `/tmp` (1777, root-owned) is. That is the operator contract, and it is
+/// checked rather than assumed: another local user who may write the base could unlink the 0700
+/// staging directory and put a symlink in its place, so such a base is never staged into. A
+/// base that does not exist yet is created 0700 and satisfies the same contract.
+///
+/// When the temp dir cannot be used, the user's own cache directory is tried before refusing,
+/// so a hardened environment does not become one where no verification can run at all. The
+/// temp dir's refusal is therefore only *reported* — as `Unverifiable`, naming the directory to
+/// fix — when no candidate is safe; a run that falls back says nothing, because the verifier
+/// reports through its outcome vocabulary and a warning on stderr is not part of it. `pub` for
+/// the integration tests, which pin this contract through the real interface — the verifier's
+/// own surface is
+/// `MinisignCli::verify`.
+#[doc(hidden)]
+pub fn staging_dir() -> std::io::Result<StagingDir> {
+    let mut bases = Vec::new();
+    // `temp_dir()` returns TMPDIR/TMP/TEMP verbatim on Unix, so it can be relative; the chain
+    // check needs an absolute base, or `ancestors()` would stop at the empty component and skip
+    // every directory above the working directory — the ones a rename attack would use.
+    if let Ok(temp) = std::path::absolute(std::env::temp_dir()) {
+        bases.push(temp);
+    }
+    if let Some(root) = private_staging_root() {
+        bases.push(root);
+    }
+    staging_dir_first_safe(&bases)
+}
+
+/// Why a candidate base could not be used, kept apart so the fallback can act on the *reason*.
+///
+/// A chain refusal and an ordinary permission error carry the same `io::ErrorKind`, and only the
+/// refusal — from either pass — justifies trying the next candidate.
+enum BaseRefusal {
+    /// The chain refused it: another local user could swap the staging directory out of it.
+    Unsafe(std::io::Error),
+    /// The filesystem's answer for this base.
+    Io(std::io::Error),
+}
+
+/// Take the first usable candidate, falling through on a refusal and stopping on anything else.
+///
+/// The environment's temp dir is the first candidate and what every ordinary run uses; the
+/// user's own cache root is the fallback for a system whose temp dir is one another local user
+/// may write, which the chain reports as `Unsafe` whether the provisional pass or the
+/// ownership pass is the one that catches it. Any other failure — a full or unwritable
+/// filesystem, an exhausted run of name collisions — is that base's answer, and relocating into
+/// the persistent cache tree would hide it. The first refusal is kept, so an operator is told
+/// about the temp dir they configured rather than only about the fallback.
+fn first_usable<T>(
+    results: impl IntoIterator<Item = Result<T, BaseRefusal>>,
+) -> std::io::Result<T> {
+    let mut refusal = None;
+    for result in results {
+        match result {
+            Ok(value) => return Ok(value),
+            Err(BaseRefusal::Unsafe(e)) => {
+                refusal.get_or_insert(e);
+            }
+            Err(BaseRefusal::Io(e)) => return Err(e),
+        }
+    }
+    Err(refusal.unwrap_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "no staging base is available")
+    }))
+}
+
+/// The same, over the candidate bases [`staging_dir`] chose.
+fn staging_dir_first_safe(bases: &[PathBuf]) -> std::io::Result<StagingDir> {
+    first_usable(bases.iter().map(|base| staging_dir_at(base)))
+}
+
+/// A private staging root under the user's own cache directory, for a system whose temp dir is
+/// not one only its owner may write. `None` when the environment names no home to put it in, in
+/// which case the temp dir's own refusal is what the caller reports.
+///
+/// Only absolute values are used: the XDG basedir spec requires an absolute `XDG_CACHE_HOME`,
+/// and a relative one would silently resolve against the process's working directory. The root
+/// is a cache directory and is meant to persist: the guard removes the staging directory inside
+/// it, and the empty parents stay, as a cache directory's do.
+fn private_staging_root() -> Option<PathBuf> {
+    fn absolute(dir: std::ffi::OsString) -> Option<PathBuf> {
+        let path = PathBuf::from(dir);
+        path.is_absolute().then_some(path)
+    }
+    let cache = std::env::var_os("XDG_CACHE_HOME")
+        .and_then(absolute)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .and_then(absolute)
+                .map(|home| home.join(".cache"))
+        })?;
+    Some(cache.join("req/staging"))
+}
+
+/// The staging attempt loop against an explicit base, erasing the reason. The unit tests drive
+/// this seam; the fallback needs [`staging_dir_at`]'s reason, so nothing in the binary does.
+#[cfg(test)]
+fn staging_dir_in(base: &Path) -> std::io::Result<StagingDir> {
+    staging_dir_at(base).map_err(|refusal| match refusal {
+        BaseRefusal::Unsafe(e) | BaseRefusal::Io(e) => e,
+    })
+}
+
+/// The same, with the reason kept, so the fallback can tell a chain refusal from an I/O error.
+fn staging_dir_at(base: &Path) -> Result<StagingDir, BaseRefusal> {
+    // `temp_dir()` is read from the environment (TMPDIR/TMP/TEMP) and may name a directory
+    // that does not exist yet, and `create_staging_dir` makes only the final component. The
+    // pre-F9 `create_dir_all` covered that; `ensure_base` keeps that behaviour while choosing
+    // the mode rather than inheriting it from the umask.
+    //
+    // The first pass validates the chain *before* anything is created, so a refusal here cannot
+    // leave a directory behind inside a location it has just called untrustworthy. A component
+    // that does not exist yet is skipped by the check and created 0700 by `ensure_base`, which
+    // cannot be group- or other-writable.
+    //
+    // The second pass needs our effective uid, so it can only run once the staging directory
+    // exists. If it refuses — a sticky component owned by someone else — the base `ensure_base`
+    // created is left in place: undoing it would mean knowing which components were ours and
+    // which were already there, and `remove_dir` on a pre-existing empty base would delete a
+    // directory we did not create. That leak is accepted and recorded here rather than papered
+    // over, and it is one empty directory on a path that requires an attacker-owned sticky
+    // ancestor.
+    require_safe_base(base, None)?;
+    ensure_base(base).map_err(BaseRefusal::Io)?;
+    let mut attempt = 0;
+    loop {
+        match create_staging_dir(base, &staging_dir_name(attempt)) {
+            Ok(dir) => {
+                let guard = StagingDir(dir);
+                // The directory just created is owned by our effective uid, which the standard
+                // library does not otherwise expose. With it, the sticky-and-writable components
+                // are re-checked for an owner who could unlink our entry; a refusal drops the
+                // guard, so the transient directory goes with it.
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::MetadataExt;
+                    let me = std::fs::metadata(guard.path())
+                        .map_err(BaseRefusal::Io)?
+                        .uid();
+                    require_safe_base(base, Some(me))?;
+                }
+                return Ok(guard);
+            }
+            // Advance only while another fresh name remains, so `STAGING_ATTEMPTS` names are
+            // tried — attempt 0 through `STAGING_ATTEMPTS - 1` — and not one more.
+            Err(e)
+                if e.kind() == std::io::ErrorKind::AlreadyExists
+                    && attempt + 1 < STAGING_ATTEMPTS =>
+            {
+                attempt += 1;
+            }
+            Err(e) => return Err(BaseRefusal::Io(e)),
+        }
+    }
+}
+
+/// Create `base` if it is missing — mode 0700 on Unix — and leave an existing directory's mode
+/// alone, since a `TMPDIR` someone else configured is not ours to chmod.
+fn ensure_base(base: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    // `recursive` makes an existing directory a success and leaves its mode alone, so a
+    // `TMPDIR` someone else configured is not chmodded; whether it is a safe place to stage
+    // into is `require_safe_base`'s question, not this call's. An existing *non*-directory is
+    // still an error.
+    builder.create(base)
+}
+
+/// Refuse a base another local user could swap the staging directory out of.
+///
+/// `create_staging_dir` makes the staging directory exclusively and 0700, but exclusivity says
+/// nothing about the directory holding it: removing an entry needs write permission on the
+/// *parent*, so in a group- or other-writable directory another local user can unlink the
+/// freshly created 0700 directory, plant a symlink at the same name, and have the trusted
+/// inputs written — and the guard's `remove_dir_all` aimed — where they choose.
+///
+/// The sticky bit narrows that but does not close it, because the restriction does not apply to
+/// the directory's own owner: a same-group attacker who owns a sticky, group-writable directory
+/// on the path can still unlink our entry. A writable component is therefore safe only when it
+/// is sticky *and* its owner is root or us — which is why `me` exists. The standard library
+/// exposes no `geteuid`, so the caller learns our uid from the directory it has just created
+/// and re-checks with `Some(me)`; the pre-creation pass runs with `None`, accepts a sticky
+/// component provisionally, and the second pass is what refuses it. `/tmp` (1777, root-owned)
+/// passes both.
+///
+/// The check walks the whole chain, and it is still a check followed by an act: the `mkdir` is
+/// a separate syscall, so a base that passes can be swapped in between. Closing that needs
+/// `openat`/`O_NOFOLLOW` semantics the standard library does not offer without a new
+/// dependency, so what remains is a race a local attacker has microseconds to win rather than
+/// the standing invitation of staging into a directory anyone may write. A base that no pass
+/// accepts makes the verification `Unverifiable`, which is the honest outcome when the inputs
+/// cannot be staged somewhere only we can reach them, and the reason names the directory so an
+/// operator can fix the mode rather than guess.
+///
+/// The caller passes an absolute path: `ancestors()` of a relative one stops at the empty
+/// component, which would silently skip every directory between the base and the working
+/// directory — the very components a rename attack would use.
+///
+/// The reason is part of the result: a component this refuses is [`BaseRefusal::Unsafe`], while
+/// a `stat` that fails for any other reason is [`BaseRefusal::Io`] — the filesystem's answer,
+/// which must not be relabelled as a refusal, or the fallback would move on and hide it.
+#[cfg(unix)]
+fn require_safe_base(base: &Path, me: Option<u32>) -> Result<(), BaseRefusal> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    // A real assert, not a debug one: the failure it guards is silent in release — a relative
+    // base would skip every component above the working directory — and the guard is cheap.
+    assert!(
+        base.is_absolute(),
+        "the chain check needs an absolute base, or it would skip the components above the base"
+    );
+    // Every directory on the way down, not just the leaf: renaming the leaf's parent is enough
+    // to move the leaf elsewhere, so a private base under a writable ancestor is no safer.
+    for dir in base.ancestors() {
+        if dir.as_os_str().is_empty() {
+            continue;
+        }
+        let meta = match std::fs::metadata(dir) {
+            Ok(meta) => meta,
+            // Not created yet: `ensure_base` makes it 0700 inside a chain already checked above
+            // it, so it cannot be the unsafe link.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            // A `stat` failure is the filesystem's answer, not a refusal: relabelling it would
+            // send the fallback to the next candidate instead of surfacing the real cause.
+            Err(e) => return Err(BaseRefusal::Io(e)),
+        };
+        let mode = meta.permissions().mode();
+        if mode & 0o022 == 0 {
+            continue; // only the owner may write here, so no one else can unlink our entry
+        }
+        let owner = meta.uid();
+        let owner_is_trusted = owner == 0 || me == Some(owner);
+        let sticky = mode & 0o1000 != 0;
+        // With `me` unknown — before anything is created — this is provisional; the second
+        // pass, once our uid is known, is what refuses a sticky directory owned by someone
+        // else, whose owner could unlink our entry regardless of the sticky bit.
+        if !sticky || (me.is_some() && !owner_is_trusted) {
+            return Err(BaseRefusal::Unsafe(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!(
+                    "the staging base {} runs through {}, which is group/other-writable {}: make \
+                     the temporary directory private (mode 0700), or sticky and owned by you or \
+                     root, or point TMPDIR at one that is",
+                    base.display(),
+                    dir.display(),
+                    if sticky {
+                        "and owned by another user"
+                    } else {
+                        "without the sticky bit"
+                    }
+                ),
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// No portable ownership or mode check exists; on other platforms this adds nothing and the
+/// staging directory keeps the platform default, as elsewhere in this module.
+#[cfg(not(unix))]
+fn require_safe_base(_base: &Path, _me: Option<u32>) -> Result<(), BaseRefusal> {
+    Ok(())
+}
+
 /// The pinned `minisign` CLI. Absent in this development environment, which the outcome
 /// reports rather than guesses around.
 pub struct MinisignCli;
@@ -341,13 +730,20 @@ impl SignatureVerifier for MinisignCli {
     }
 
     fn verify(&self, message: &[u8], signature: &str, public_key: &str) -> SignatureOutcome {
-        let dir = std::env::temp_dir().join(format!("req-baseline-{}", std::process::id()));
-        if let Err(e) = std::fs::create_dir_all(&dir) {
-            return SignatureOutcome::Unverifiable(format!("no temporary directory: {e}"));
-        }
-        let msg = dir.join("baseline.json");
-        let sig = dir.join("baseline.json.minisig");
-        let key = dir.join("req.pub");
+        let dir = match staging_dir() {
+            Ok(dir) => dir,
+            Err(e) => {
+                // Names what failed: `staging_dir` fails on an exhausted run of
+                // `AlreadyExists` collisions as well as on a permission error or a full
+                // temp dir, so "no temporary directory" described only the last of those.
+                return SignatureOutcome::Unverifiable(format!(
+                    "could not create a staging directory: {e}"
+                ));
+            }
+        };
+        let msg = dir.path().join("baseline.json");
+        let sig = dir.path().join("baseline.json.minisig");
+        let key = dir.path().join("req.pub");
         let staged = std::fs::write(&msg, message)
             .and_then(|()| std::fs::write(&sig, signature))
             .and_then(|()| std::fs::write(&key, public_key));
@@ -363,7 +759,6 @@ impl SignatureVerifier for MinisignCli {
             .arg("-x")
             .arg(&sig)
             .output();
-        let _ = std::fs::remove_dir_all(&dir);
         match output {
             Err(e) => SignatureOutcome::Unverifiable(format!("minisign is not runnable: {e}")),
             Ok(output) if output.status.success() => SignatureOutcome::Valid,
@@ -681,4 +1076,282 @@ fn civil_from_days(days: i64) -> String {
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = if month <= 2 { year + 1 } else { year };
     format!("{year:04}-{month:02}-{day:02}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A base under the real temp dir, unique to this process and moment. Absolutized for the
+    /// same reason `staging_dir` does it: `TMPDIR` is returned verbatim and may be relative.
+    fn unique_base(tag: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        std::path::absolute(std::env::temp_dir())
+            .expect("the temp dir resolves to an absolute path")
+            .join(format!("{tag}-{}-{nanos}", std::process::id()))
+    }
+
+    /// Whether the ambient temp dir's chain passes even the provisional check. On a host whose
+    /// temp dir sits under a group/other-writable, non-sticky ancestor the production refusal
+    /// is correct, but a test that needs a *successful* staging run has nothing to assert.
+    fn ambient_temp_dir_is_usable() -> bool {
+        std::path::absolute(std::env::temp_dir())
+            .map(|temp| require_safe_base(&temp, None).is_ok())
+            .unwrap_or(false)
+    }
+
+    /// A base that does not exist yet — an unusual `TMPDIR` — must be created rather than
+    /// failing the verification as `Unverifiable`, which the pre-F9 `create_dir_all` covered.
+    /// The staging name itself stays exclusively created, so this does not weaken the guard.
+    #[test]
+    fn a_missing_base_is_created_for_the_staging_directory() {
+        if !ambient_temp_dir_is_usable() {
+            eprintln!("skipping: the ambient temp dir chain is not private or root-sticky");
+            return;
+        }
+        let base = unique_base("req-missing-base");
+        assert!(!base.exists(), "the fixture base starts absent");
+
+        let guard = staging_dir_in(&base).expect("a missing base is created, not an error");
+        let dir = guard.path().to_path_buf();
+        assert!(
+            dir.exists(),
+            "the staging directory exists under the created base"
+        );
+        drop(guard);
+        assert!(
+            !dir.exists(),
+            "the guard still removes the staging directory"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Unlinking the 0700 staging directory needs write permission on the directory that
+    /// holds it, not on the staging directory itself. A base another local user may write,
+    /// without the sticky bit, therefore lets them replace the staging directory with a
+    /// symlink and aim the trusted inputs — and the guard's `remove_dir_all` — at a path they
+    /// chose.
+    #[cfg(unix)]
+    #[test]
+    fn a_base_another_user_could_write_is_refused() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = unique_base("req-unsafe-base");
+        std::fs::create_dir_all(&base).expect("the fixture base");
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o777))
+            .expect("the fixture base is made world-writable");
+
+        let error = match staging_dir_in(&base) {
+            Ok(_) => panic!("an unsafe base must be refused, not staged into"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A safe leaf under an unsafe parent is still a base another user can swap — renaming the
+    /// parent is enough — so the whole chain is checked, not just the leaf.
+    #[cfg(unix)]
+    #[test]
+    fn a_base_under_a_writable_ancestor_is_refused() {
+        use std::os::unix::fs::PermissionsExt;
+        let outer = unique_base("req-unsafe-ancestor");
+        std::fs::create_dir_all(&outer).expect("the fixture outer directory");
+        std::fs::set_permissions(&outer, std::fs::Permissions::from_mode(0o777))
+            .expect("the outer directory is made world-writable");
+        let base = outer.join("staging");
+        std::fs::create_dir_all(&base).expect("the fixture base");
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700))
+            .expect("the base itself is private");
+
+        let error = match staging_dir_in(&base) {
+            Ok(_) => panic!("a base under a writable ancestor must be refused"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+
+        let _ = std::fs::remove_dir_all(&outer);
+    }
+
+    /// A refusal must not leave a directory behind inside the location it has just called
+    /// untrustworthy, so the chain is checked before anything is created.
+    #[cfg(unix)]
+    #[test]
+    fn a_refused_base_is_not_created() {
+        use std::os::unix::fs::PermissionsExt;
+        let outer = unique_base("req-unsafe-parent-no-create");
+        std::fs::create_dir_all(&outer).expect("the fixture outer directory");
+        std::fs::set_permissions(&outer, std::fs::Permissions::from_mode(0o777))
+            .expect("the outer directory is made world-writable");
+        let base = outer.join("never-created");
+
+        assert!(
+            staging_dir_in(&base).is_err(),
+            "a chain through a writable ancestor is refused"
+        );
+        assert!(
+            !base.exists(),
+            "the refusal must not leave {} behind",
+            base.display()
+        );
+
+        let _ = std::fs::remove_dir_all(&outer);
+    }
+
+    /// A temp dir another local user may write must not become a verification that cannot run
+    /// at all: the next candidate base is used, and only when none is safe does it refuse.
+    #[cfg(unix)]
+    #[test]
+    fn an_unsafe_base_falls_back_to_a_safe_one() {
+        use std::os::unix::fs::PermissionsExt;
+        if !ambient_temp_dir_is_usable() {
+            eprintln!("skipping: the ambient temp dir chain is not private or root-sticky");
+            return;
+        }
+        let unsafe_base = unique_base("req-fallback-unsafe");
+        std::fs::create_dir_all(&unsafe_base).expect("the fixture unsafe base");
+        std::fs::set_permissions(&unsafe_base, std::fs::Permissions::from_mode(0o777))
+            .expect("the unsafe base is made world-writable");
+        let safe_base = unique_base("req-fallback-safe");
+
+        let guard = staging_dir_first_safe(&[unsafe_base.clone(), safe_base.clone()])
+            .expect("the safe candidate is used when the temp dir is not");
+        let dir = guard.path().to_path_buf();
+        assert!(
+            dir.starts_with(&safe_base),
+            "the staging directory is under the safe base: {dir:?}"
+        );
+        drop(guard);
+
+        let _ = std::fs::remove_dir_all(&unsafe_base);
+        let _ = std::fs::remove_dir_all(&safe_base);
+    }
+
+    /// `/tmp` itself is 1777: writable by everyone, but the sticky bit means only an entry's
+    /// owner may remove it, so it must not be refused — a check that rejected it would break
+    /// every verification on a system whose `TMPDIR` is `/tmp`.
+    #[cfg(unix)]
+    #[test]
+    fn a_sticky_base_writable_by_others_is_accepted() {
+        use std::os::unix::fs::PermissionsExt;
+        if !ambient_temp_dir_is_usable() {
+            eprintln!("skipping: the ambient temp dir chain is not private or root-sticky");
+            return;
+        }
+        let base = unique_base("req-sticky-base");
+        std::fs::create_dir_all(&base).expect("the fixture base");
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o1777))
+            .expect("the fixture base is made sticky and world-writable");
+
+        let guard = staging_dir_in(&base).expect("a sticky base is safe to stage in");
+        let dir = guard.path().to_path_buf();
+        drop(guard);
+        assert!(
+            !dir.exists(),
+            "the guard still removes the staging directory"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The sticky bit does not protect against the directory's *own owner*, who may unlink any
+    /// entry in it. A sticky component owned by someone other than us or root is refused, which
+    /// the second pass catches once our uid is known from the directory we just created.
+    #[cfg(unix)]
+    #[test]
+    fn a_sticky_component_owned_by_another_user_is_refused() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let base = unique_base("req-sticky-other-owner");
+        std::fs::create_dir_all(&base).expect("the fixture base");
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o1777))
+            .expect("the fixture base is made sticky and world-writable");
+        let ours = std::fs::metadata(&base).expect("metadata").uid();
+        // Owner 0 is trusted by construction, so when the suite itself runs as root there is no
+        // "another user" to name and the case cannot exist: skip it rather than assert it.
+        if ours == 0 {
+            let _ = std::fs::remove_dir_all(&base);
+            return;
+        }
+        let other = if ours == 1 { 2 } else { 1 };
+
+        let error = match require_safe_base(&base, Some(other)) {
+            Ok(()) => panic!("a sticky directory owned by another user must be refused"),
+            Err(BaseRefusal::Unsafe(error)) => error,
+            Err(BaseRefusal::Io(error)) => {
+                panic!("the refusal must be the chain's, not an I/O error: {error}")
+            }
+        };
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A `stat` failure that is not `NotFound` is the filesystem's answer, not a refusal, and it
+    /// has to stay `Io` or the fallback would quietly move to the next candidate. A symlink loop
+    /// produces one without needing a second uid.
+    #[cfg(unix)]
+    #[test]
+    fn a_stat_failure_is_an_io_error_not_a_refusal() {
+        let outer = unique_base("req-symlink-loop");
+        std::fs::create_dir_all(&outer).expect("the fixture outer directory");
+        let looped = outer.join("loop");
+        std::os::unix::fs::symlink(&looped, &looped).expect("the loop symlink");
+
+        match require_safe_base(&looped.join("staging"), None) {
+            Err(BaseRefusal::Io(error)) => {
+                assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
+            }
+            Err(BaseRefusal::Unsafe(_)) => panic!("a stat failure is not a refusal"),
+            Ok(()) => panic!("a looping path cannot be validated"),
+        }
+
+        let _ = std::fs::remove_dir_all(&outer);
+    }
+
+    /// The chain check refuses a relative base: its `ancestors()` stops at the empty component,
+    /// skipping every directory above the working directory. `staging_dir` absolutizes
+    /// `temp_dir()` before this point, so this fires only if that is ever bypassed.
+    #[cfg(unix)]
+    #[test]
+    #[should_panic(expected = "absolute base")]
+    fn a_relative_base_is_rejected_by_the_chain_check() {
+        let _ = require_safe_base(Path::new("relative/staging"), None);
+    }
+
+    /// The fallback acts on the reason, not on the error kind: a chain refusal falls through to
+    /// the next candidate *whichever pass produced it* — the ownership pass reports the same
+    /// variant, which is the case this pins without needing a second uid — while an ordinary I/O
+    /// failure is that base's answer, and the first refusal is the one an operator is told.
+    #[test]
+    fn a_chain_refusal_falls_through_but_an_io_error_does_not() {
+        fn refusal() -> BaseRefusal {
+            BaseRefusal::Unsafe(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "refused",
+            ))
+        }
+        fn io_failure() -> BaseRefusal {
+            BaseRefusal::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "eacces",
+            ))
+        }
+
+        assert_eq!(
+            first_usable([Err(refusal()), Ok(7)]).expect("the second candidate is used"),
+            7
+        );
+
+        let error =
+            first_usable::<u8>([Err(io_failure()), Ok(7)]).expect_err("an I/O error is reported");
+        assert_eq!(error.to_string(), "eacces");
+
+        let error = first_usable::<u8>([Err(refusal()), Err(refusal())])
+            .expect_err("every candidate was refused");
+        assert_eq!(error.to_string(), "refused");
+    }
 }

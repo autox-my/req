@@ -4,7 +4,8 @@ mod common;
 
 use req::baseline::{
     BASELINE_VERSION, Manifest, MinisignCli, Outcome, SignatureOutcome, SignatureVerifier,
-    TrustFile, canonical_bytes, drift, from_json, manifest, verify,
+    TrustFile, canonical_bytes, create_staging_dir, drift, from_json, manifest, staging_dir,
+    staging_dir_name, verify,
 };
 use req::model::{Rationale, Relation, rationale_digest, relations_digest};
 use req::select::{Applies, Context};
@@ -608,6 +609,24 @@ impl Fixture {
         Fixture(dir)
     }
 
+    /// A fixture whose name is unique to this process and moment, for a test that must not
+    /// collide with a concurrent run of itself. A process-local counter carries the guarantee
+    /// rather than the clock, whose resolution is not one. The cleanup is `Fixture`'s, not a
+    /// second copy's.
+    fn unique(tag: &str) -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        // `unwrap_or_default` collapses a pre-epoch clock error to zero and a coarse clock can
+        // repeat a value, and a repeated name would make `Fixture::new` delete a sibling
+        // fixture's live directory.
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        let serial = NEXT.fetch_add(1, Ordering::Relaxed);
+        Fixture::new(&format!("{tag}-{}-{nanos}-{serial}", std::process::id()))
+    }
+
     fn path(&self) -> &std::path::Path {
         &self.0
     }
@@ -1047,4 +1066,105 @@ fn a_contradicting_context_is_a_usage_error_not_a_finding() {
     assert!(error.contains("records selection"), "{error}");
     assert!(error.contains("air_gapped"), "{error}");
     assert!(error.contains("networked"), "{error}");
+}
+
+/// F9: the staging directory must be *created*, never reused. A path that already exists —
+/// left behind by an earlier run, or a symlink planted at a predictable name — is an error,
+/// not a directory whose contents we then write the trusted inputs into.
+#[test]
+fn creating_the_same_staging_dir_twice_is_already_exists() {
+    let base = Fixture::unique("req-f9-exclusive");
+    let name = staging_dir_name(0);
+    let created = create_staging_dir(base.path(), &name).expect("the first creation succeeds");
+    assert_eq!(created, base.path().join(&name));
+    let second = create_staging_dir(base.path(), &name);
+    assert!(
+        second.is_err(),
+        "a second creation must not reuse the existing directory: {second:?}"
+    );
+    assert_eq!(
+        second.unwrap_err().kind(),
+        std::io::ErrorKind::AlreadyExists
+    );
+}
+
+/// F9: the exclusive creation is what makes a *planted symlink* harmless — `mkdir` refuses any
+/// existing entry, so a symlink at the staging name is neither followed nor turned into a
+/// directory whose contents the trusted inputs are written through. This is the threat the
+/// explicit-creation comment names; the test above only re-creates a real directory.
+#[cfg(unix)]
+#[test]
+fn a_symlink_at_the_staging_name_is_not_followed() {
+    let base = Fixture::unique("req-f9-symlink");
+    let elsewhere = Fixture::unique("req-f9-symlink-target");
+    let name = staging_dir_name(0);
+    std::os::unix::fs::symlink(elsewhere.path(), base.path().join(&name))
+        .expect("the symlink is planted at the staging name");
+
+    let error = create_staging_dir(base.path(), &name)
+        .expect_err("an existing entry, symlink included, is not reused");
+    assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+    let planted = base.path().join(&name);
+    assert!(
+        planted.is_symlink(),
+        "the planted entry is still a symlink, not a directory that was followed: {planted:?}"
+    );
+    assert_eq!(
+        std::fs::read_link(&planted).expect("the planted symlink reads"),
+        elsewhere.path()
+    );
+}
+
+/// F9: mode 0700, so another local user cannot read the staged manifest — or, worse, replace
+/// the files between staging and the verifier process reading them. The kernel masks the
+/// requested mode with the umask, which can only remove bits, so the property asserted is the
+/// privacy itself — no group or other bit — rather than exact equality with 0700.
+#[cfg(unix)]
+#[test]
+fn the_staging_dir_is_owner_only() {
+    use std::os::unix::fs::PermissionsExt;
+    let base = Fixture::unique("req-f9-mode");
+    let dir = create_staging_dir(base.path(), &staging_dir_name(0)).expect("created");
+    let mode = std::fs::metadata(&dir)
+        .expect("metadata")
+        .permissions()
+        .mode();
+    assert_eq!(
+        mode & 0o077,
+        0,
+        "no group or other bit is set on the staging directory: {mode:o}"
+    );
+}
+
+/// F9: the guard owns the directory. The verifier holds the guard for the whole call, so an
+/// early return, a failed write, an unrunnable verifier or a parse failure drops it on the way
+/// out; this pins the drop itself, which is the mechanism every one of those paths relies on.
+#[test]
+fn dropping_the_staging_guard_removes_its_directory() {
+    let guard = staging_dir().expect("a fresh staging directory under the temp dir");
+    let dir = guard.path().to_path_buf();
+    assert!(dir.exists(), "the staged directory exists before the drop");
+    drop(guard);
+    assert!(
+        !dir.exists(),
+        "dropping the guard removes the staging directory: {dir:?}"
+    );
+}
+
+/// The cleanup a failing assertion relies on. The F9 tests used to carry a trailing
+/// `remove_dir_all`, which a panicking `assert!` never reaches, so the base of a *failing* run
+/// was the one that leaked. This pins the fixture's own drop without a deliberate panic: that
+/// `Drop` runs while unwinding is a language guarantee, whereas hiding a deliberate panic's
+/// output needs a process-global hook swap that would also mute a concurrent test's genuine
+/// failure.
+#[test]
+fn a_fixture_removes_its_directory_on_drop() {
+    let fixture = Fixture::unique("req-f9-cleanup");
+    let dir = fixture.path().to_path_buf();
+    assert!(dir.exists(), "the fixture directory exists before the drop");
+    drop(fixture);
+    assert!(
+        !dir.exists(),
+        "dropping the fixture removes its directory: {dir:?}"
+    );
 }
