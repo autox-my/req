@@ -229,16 +229,24 @@ pub fn upsert_line(text: &str, key: &str, value: &str) -> String {
 }
 
 /// The record **as `--fill` would leave it**: a derived field that is already present is kept, and
-/// an absent one takes its derived value. Nothing else changes — `fill` never touches the content —
-/// so a stale stored field survives into the judgement and is reported as the finding `--verify`
-/// reports, instead of being silently corrected.
+/// an absent one takes its derived value. An absent `hash` is derived over the anchor the record
+/// would actually carry: a stored `prev_hash` is kept, so deriving over the chain prev instead would
+/// make the proposed record disagree with itself and report a stored hash that does not exist. When
+/// `prev_hash` is absent too, the chain prev is the anchor to derive over. Nothing else changes —
+/// `fill` never touches the content — so a stale stored field survives into the judgement and is
+/// reported as the finding `--verify` reports, instead of being silently corrected.
 fn as_filled(before: &Decision, derived: &Decision) -> Decision {
+    let prev_hash = before
+        .prev_hash
+        .clone()
+        .or_else(|| derived.prev_hash.clone());
+    let hash = before.hash.clone().or_else(|| match &before.prev_hash {
+        Some(stored) => Some(compute_hash(Some(stored), before)),
+        None => derived.hash.clone(),
+    });
     Decision {
-        prev_hash: before
-            .prev_hash
-            .clone()
-            .or_else(|| derived.prev_hash.clone()),
-        hash: before.hash.clone().or_else(|| derived.hash.clone()),
+        prev_hash,
+        hash,
         ..derived.clone()
     }
 }
