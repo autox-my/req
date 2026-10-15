@@ -129,9 +129,33 @@ fn selectors_confirmed(rows: &[Row], context: &Context) -> PolicyResult {
         // A key no predicate anywhere mentions decided nothing at all: it selected nothing and
         // excluded nothing. Naming it is honest, and it cannot misfire — such an entry provably
         // changed no claim's applicability.
-        if !vocabulary.contains_key(key) {
+        let Some(declared) = vocabulary.get(key) else {
             unverifiable.push(format!(
                 "{key}={value}: no applicability predicate in the corpus mentions `{key}`, so this entry decided nothing"
+            ));
+            continue;
+        };
+        // Mentioned only by `Ge` predicates: the value is decided by comparison, so there is no
+        // enumerated vocabulary to check it against and nothing to flag. `runs=100` is legitimate
+        // here; `runs=abc` parses as no decimal, and that honest `Unknown` shows up in the
+        // undecided count rather than as a second finding.
+        if declared.is_empty() {
+            continue;
+        }
+        // The `Eq` predicates enumerate a **closed** vocabulary for the key, so a value outside
+        // it was never declared and the entry silently narrows the selection: `field=val` drops
+        // REQ-0018 from the variant. A `Ge` predicate on the same key does not rescue such a
+        // value — letting the comparison decide legality would re-open the silent narrowing for
+        // exactly the keys that carry both. No key in the dogfood corpus is mixed;
+        // `tests/release_gate.rs` pins the choice with a fixture.
+        if !declared.contains(value) {
+            let declared_values: Vec<String> = declared
+                .iter()
+                .map(|declared| format!("{key} == {declared}"))
+                .collect();
+            unverifiable.push(format!(
+                "{key}={value}: the corpus does not confirm this value for `{key}` — it declares {}",
+                declared_values.join(", ")
             ));
         }
     }

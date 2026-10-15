@@ -296,6 +296,37 @@ relations: []
         )
     }
 
+    // ---- the context the corpus confirms: still a PASS ---------------------------------------
+
+    /// The declared value, on the corpus that declares it: the fix refuses typo'd values, not the
+    /// vocabulary the corpus actually has.
+    #[test]
+    fn the_value_the_corpus_declares_still_passes() {
+        let out = dogfood(&["field=value"]);
+        assert_eq!(out.code, 0, "{}", out.text);
+        assert!(
+            out.headline().contains("16 applying claim(s), 5 undecided"),
+            "{}",
+            out.headline()
+        );
+        assert!(
+            out.policy("selectors_confirmed").starts_with("[PASS]"),
+            "{}",
+            out.policy("selectors_confirmed")
+        );
+    }
+
+    #[test]
+    fn the_declared_air_gapped_value_still_passes() {
+        let out = dogfood(&["deployment_mode=air_gapped"]);
+        assert_eq!(out.code, 0, "{}", out.text);
+        assert!(
+            out.headline().contains("16 applying claim(s), 5 undecided"),
+            "{}",
+            out.headline()
+        );
+    }
+
     // ---- the invocation rows: nothing selected, and a key nothing mentions ---------------------
 
     /// A variant in which nothing applies verified nothing, so it is UNVERIFIABLE — never PASS.
@@ -356,6 +387,154 @@ relations: []
         assert!(
             block.contains("no applicability predicate in the corpus mentions `nonsense`"),
             "{block}"
+        );
+    }
+
+    // ---- the commit-2 rows: the Eq vocabulary ------------------------------------------------
+
+    /// The defect, on the corpus the oracle measured: `field=val` is a typo, so REQ-0018 drops
+    /// out of the selection — silently, at exit 0. The refusal must name the value the corpus
+    /// declares, so the near miss is a two-second fix.
+    #[test]
+    fn a_typoed_eq_value_is_refused_and_names_the_declared_one() {
+        let out = dogfood(&["field=val"]);
+        assert_eq!(out.code, 3, "{}", out.text);
+        assert!(
+            out.headline().contains("15 applying claim(s), 5 undecided"),
+            "the silently narrower selection: {}",
+            out.headline()
+        );
+        let block = out.policy("selectors_confirmed");
+        assert!(block.starts_with("[UNVERIFIABLE]"), "{block}");
+        assert!(block.contains("field=val"), "{block}");
+        assert!(
+            block.contains("field == value"),
+            "the declared alternative must be named: {block}"
+        );
+        // Nothing else is wrong with this corpus, so the refusal is the whole reason for the 3.
+        for name in [
+            "addresses_current",
+            "relations_resolve",
+            "dependencies_decided",
+            "rationale_present",
+        ] {
+            assert!(
+                out.policy(name).starts_with("[PASS]"),
+                "{name}: {}",
+                out.policy(name)
+            );
+        }
+    }
+
+    /// The same rule on the other declared key, whose near miss is one underscore: `airgapped`
+    /// against `air_gapped`.
+    #[test]
+    fn the_air_gapped_typo_is_refused_and_names_the_declared_value() {
+        let out = dogfood(&["deployment_mode=airgapped"]);
+        assert_eq!(out.code, 3, "{}", out.text);
+        assert!(
+            out.headline().contains("15 applying claim(s), 5 undecided"),
+            "{}",
+            out.headline()
+        );
+        let block = out.policy("selectors_confirmed");
+        assert!(block.contains("deployment_mode=airgapped"), "{block}");
+        assert!(block.contains("deployment_mode == air_gapped"), "{block}");
+    }
+
+    /// A legitimate variant the corpus does not describe is refused **on purpose** (pack F1;
+    /// ADR 0006 — the friction belongs at the decision boundary). It is not a bug, and a future
+    /// reader must re-make the decision in the open rather than "fix" this test.
+    #[test]
+    fn a_legitimate_variant_outside_the_vocabulary_is_refused_on_purpose() {
+        let out = dogfood(&["deployment_mode=cloud"]);
+        assert_eq!(out.code, 3, "{}", out.text);
+        let block = out.policy("selectors_confirmed");
+        assert!(block.contains("deployment_mode=cloud"), "{block}");
+        assert!(block.contains("deployment_mode == air_gapped"), "{block}");
+    }
+
+    /// The `Ge` exemption is not optional: `runs=100` matches no predicate literally, yet
+    /// `runs >= 20` decides it Yes. It already exits 3 — for the unrelated reason asserted below —
+    /// so a bare `assert_eq!(code, 3)` would pass with the exemption missing entirely.
+    #[test]
+    fn a_ge_value_is_confirmed_by_comparison_and_never_flagged() {
+        let out = dogfood(&["runs=100"]);
+        assert_eq!(out.code, 3, "{}", out.text);
+        assert!(
+            out.policy("selectors_confirmed").starts_with("[PASS]"),
+            "100 is decided by comparison, not by enumeration: {}",
+            out.policy("selectors_confirmed")
+        );
+        assert!(
+            !out.text.contains("runs"),
+            "no finding may name the `runs` key:\n{}",
+            out.text
+        );
+        // The reason this run is UNVERIFIABLE at all, and it predates this change.
+        let decided = out.policy("dependencies_decided");
+        assert!(decided.starts_with("[UNVERIFIABLE]"), "{decided}");
+        assert!(
+            decided.contains("REQ-0011 -refines-> REQ-0008"),
+            "{decided}"
+        );
+    }
+
+    /// A non-decimal value for a `Ge` key is not guessed and not refused: the predicate decides
+    /// nothing, so REQ-0011 lands in the undecided count (6 here against the 5 of a decided
+    /// `runs`), while the entry itself stays confirmed — a `Ge` key enumerates no legal values to
+    /// check it against. The gate reports the undecided count rather than inventing a finding.
+    #[test]
+    fn a_non_numeric_ge_value_is_confirmed_and_surfaces_as_undecided() {
+        let out = dogfood(&["runs=abc"]);
+        assert_eq!(out.code, 0, "{}", out.text);
+        assert!(
+            out.headline().contains("15 applying claim(s), 6 undecided"),
+            "{}",
+            out.headline()
+        );
+        assert!(
+            out.policy("selectors_confirmed").starts_with("[PASS]"),
+            "{}",
+            out.policy("selectors_confirmed")
+        );
+        assert!(
+            !out.text.contains("runs"),
+            "the entry is confirmed, so no finding may name it:\n{}",
+            out.text
+        );
+    }
+
+    /// The sub-case the corpus cannot settle, pinned: `revision` is declared by both an `Eq` and a
+    /// `Ge` predicate. The choice, recorded — the `Eq` predicates enumerate a closed vocabulary,
+    /// so a value outside it is unconfirmed even though the `Ge` predicate would compare it.
+    /// Letting the comparison rescue such a value would re-open the silent narrowing for exactly
+    /// the keys that carry both.
+    #[test]
+    fn an_eq_vocabulary_governs_a_key_that_also_carries_a_ge_predicate() {
+        let fixture = Fixture::new("mixed");
+        fixture.claim("REQ-9001", &["revision == 3"]);
+        fixture.claim("REQ-9002", &["revision >= 3"]);
+        fixture.fill();
+
+        // Declared: confirmed, both claims apply, nothing to refuse.
+        let declared = fixture.gate(&["revision=3"]);
+        assert_eq!(declared.code, 0, "{}", declared.text);
+        assert!(
+            declared.policy("selectors_confirmed").starts_with("[PASS]"),
+            "{}",
+            declared.policy("selectors_confirmed")
+        );
+
+        // Undeclared, and comparable by the `Ge` predicate: still refused.
+        let undeclared = fixture.gate(&["revision=4"]);
+        assert_eq!(undeclared.code, 3, "{}", undeclared.text);
+        let block = undeclared.policy("selectors_confirmed");
+        assert!(block.starts_with("[UNVERIFIABLE]"), "{block}");
+        assert!(block.contains("revision=4"), "{block}");
+        assert!(
+            block.contains("revision == 3"),
+            "the declared value is named: {block}"
         );
     }
 }

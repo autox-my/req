@@ -139,15 +139,21 @@ export OCR_NO_UPDATE=1
   with its selection state; `cargo run -q -- gate [key=value ...]` runs five policies —
   `addresses_current`, `relations_resolve`, `dependencies_decided` and `rationale_present`
   over the **applying** claims, and `selectors_confirmed` over the **invocation**: a variant
-  in which nothing applies verified nothing, and a `key=value` entry no applicability
-  predicate in the corpus mentions decided nothing at all. `gate` exits **0** all passed,
-  **1** a defect, **3** something that cannot be confirmed (an unfilled claim, a relation
-  that does not resolve, a dependency left undecided, an empty selection, a context entry the
-  corpus cannot confirm), **2** usage; a **Fail outranks** an Unverifiable, because "we found
-  a problem" is stronger than "we could not tell". Both keep the tri-state honest: a claim
-  the variant **excludes** is not the variant's problem, and an **undecided** one is never
-  treated as absent. An `impact` answer that a broken relation could have made incomplete
-  says so (exit 3) instead of quietly shortening the list.
+  in which nothing applies verified nothing; a `key=value` entry no applicability predicate
+  in the corpus mentions decided nothing at all; and an `Eq` entry whose value the corpus
+  never declares is refused, naming the values it does — `gate field=val` prints
+  `field == value`, because the entry silently dropped REQ-0018 out of the release. The rule
+  is predicate-aware: a `Ge` key is confirmed by comparison (`runs=100` is legitimate), and a
+  real variant the corpus does not describe (`deployment_mode=cloud`) is refused **on
+  purpose** — the gate clears only what the model describes, and the friction belongs at the
+  decision boundary (ADR 0006). `gate` exits **0** all passed, **1** a defect, **3** something
+  that cannot be confirmed (an unfilled claim, a relation that does not resolve, a dependency
+  left undecided, an entry the corpus cannot confirm, an empty selection), **2** usage; a
+  **Fail outranks** an Unverifiable, because "we found a problem" is stronger than "we could
+  not tell". Both keep the tri-state honest: a claim the variant **excludes** is not the
+  variant's problem, and an **undecided** one is never treated as absent. An `impact` answer
+  that a broken relation could have made incomplete says so (exit 3) instead of quietly
+  shortening the list.
 - Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--max-pairs N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [--pairs] [key=value ...]` — the funnel's
   deterministic half. It skips pairs Tier-1 already resolved (equal address), **blocks** the
   rest on shared content terms (default 2), and hands only those to a provider. Exit **0**
