@@ -1,0 +1,26 @@
+# DEC-0001 — the first record in the decision log (ADR 0005).
+#
+# `prev_hash` and `hash` are deliberately ABSENT: both are derived, and only
+# `req decision --fill` may write them. A hand-written digest is a critical finding.
+#
+# Ratification order matters: agree the `note` FIRST, then run `--fill`. The hash covers the note,
+# so editing it after filling does not silently re-chain — it becomes TAMPERED, by design (F4).
+id: DEC-0001
+kind: accept
+claim_id: REQ-0016
+address: 04836a98d468416483e5c0d714e3e190c76c6142208cea5fdb7b129cfddf8bda
+actor: fdx
+role: maintainer
+date: 2026-10-15
+note: >-
+  I accept REQ-0016 as written at this address: an undecided applicability resolves to UNKNOWN,
+  never to a silent exclusion. The rule is the guarantee the rest of the model leans on — a variant
+  that cannot decide a claim must not be able to drop it, because a silently excluded safety claim
+  is indistinguishable from one that was never written.
+  Ratification is of the claim as it stands. This record asserts nothing about any other surface.
+  Rejected alternatives considered at ratification: (1) leaving it unratified, which leaves the
+  guarantee resting on git history alone; (2) ratifying a narrowed statement, which would be a change
+  to the claim — and so a different address — and belongs in an edit to the claim, not in this record.
+  No dissent recorded.
+prev_hash: "req.genesis.v1"
+hash: "b30031d3ad30ca497eb2c1e165bce7da0e1054f3cb11a8372f3e582e20fd1e41"
