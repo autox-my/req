@@ -93,6 +93,18 @@ pub fn compute_hash(prev: Option<&str>, decision: &Decision) -> String {
 
 /// Fill `prev_hash` and `hash` in chain order, in memory. The caller writes the files; nothing here
 /// touches the filesystem, so the derivation is testable without one.
+///
+/// This derivation chains from [`GENESIS`] **unconditionally** and overwrites every field: it
+/// ignores a record's stored `prev_hash`. Chaining over it therefore derives an absent `hash` from
+/// the genesis anchor while the record declares another one — reporting a stored hash that does not
+/// recompute where none was ever stored — and chains each successor to a hash that declared anchor
+/// never implied, blaming an untouched record for a break that is not its own.
+///
+/// `--fill` judges and writes through `as_filled`, the anchor-aware derivation, for exactly that
+/// reason; it does not call this function. The two agree byte for byte wherever every stored derived
+/// field is absent or already agrees with the derivation — the only path `--fill` writes on, since it
+/// writes nothing unless the judgement is Valid. Reach for this one only to derive a chain of records
+/// that carries no stored derived fields of its own.
 pub fn fill(log: &mut [Decision]) {
     let mut prev: Option<String> = None;
     for decision in log.iter_mut() {
@@ -229,7 +241,8 @@ pub fn upsert_line(text: &str, key: &str, value: &str) -> String {
 }
 
 /// The log **as `--fill` would leave it**: every record carries both derived fields, and a stored
-/// one is kept verbatim.
+/// one is kept verbatim. This is the derivation `--fill` judges and writes through, and on a Valid
+/// judgement it agrees with [`fill`].
 ///
 /// Each record's **effective anchor** is its stored `prev_hash` when it has one, and otherwise the
 /// predecessor's effective hash — [`GENESIS`] at position 0. An absent `hash` is computed over that
