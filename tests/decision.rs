@@ -518,6 +518,246 @@ fn a_wrong_anchor_at_position_one_reports_the_chain_alone() {
     );
 }
 
+/// The `  - reason` lines of a report: one finding each, which is what "exactly one reason" counts.
+fn reasons(text: &str) -> Vec<&str> {
+    text.lines()
+        .filter(|line| line.starts_with("  - "))
+        .collect()
+}
+
+/// F2a: a wrong anchor at position 0 followed by an unfilled record. The successor is innocent — it
+/// did not move — so the judgement must not chain it from a genesis-anchored derivation that ignores
+/// the anchor the first record actually carries. The open question at position 0 is the whole
+/// finding, exactly as `--verify` classes it.
+#[test]
+fn a_wrong_anchor_before_an_unfilled_record_is_not_blamed_on_the_successor() {
+    let fx = cli::Fixture::new("f2a");
+    fx.write(
+        "DEC-0001.yml",
+        &format!(
+            "{}prev_hash: \"{}\"\n",
+            cli::unfilled("DEC-0001", '1'),
+            "0".repeat(64)
+        ),
+    );
+    fx.put("DEC-0002.yml", "DEC-0002", '2');
+    let before_first = fx.bytes("DEC-0001.yml");
+    let before_second = fx.bytes("DEC-0002.yml");
+
+    let outcome = fx.decision(&["--fill"]);
+    assert_eq!(outcome.code, 3, "{}", outcome.text);
+    assert!(outcome.text.contains("genesis"), "{}", outcome.text);
+    assert!(
+        !outcome.text.contains("chains from"),
+        "no entry was moved:\n{}",
+        outcome.text
+    );
+    assert!(
+        !outcome.text.contains("DEC-0002"),
+        "the unfilled successor is not the finding:\n{}",
+        outcome.text
+    );
+    assert!(
+        !outcome.text.contains("filled DEC-0001"),
+        "{}",
+        outcome.text
+    );
+    assert_eq!(
+        fx.bytes("DEC-0001.yml"),
+        before_first,
+        "the refusal wrote nothing"
+    );
+    assert_eq!(
+        fx.bytes("DEC-0002.yml"),
+        before_second,
+        "the refusal wrote nothing"
+    );
+}
+
+/// F2c: the truncated-log shape — a *self-consistent* record whose anchor is not GENESIS, followed
+/// by an unfilled record. `--verify` classes the log open; `--fill` must too, rather than blaming the
+/// unfilled record for an anchor that position 0 already declares.
+#[test]
+fn a_truncated_log_before_an_unfilled_record_is_not_blamed_on_the_successor() {
+    let fx = cli::Fixture::new("f2c");
+    fx.put("DEC-0001.yml", "DEC-0001", '1');
+    fx.put("DEC-0002.yml", "DEC-0002", '2');
+    let _ = fx.decision(&["--fill"]);
+    assert_eq!(
+        fx.decision(&["--verify"]).code,
+        0,
+        "the two-record log is clean"
+    );
+
+    // Truncate: drop the first entry, and an unfilled successor arrives afterwards.
+    std::fs::remove_file(fx.path().join("decisions/DEC-0001.yml"))
+        .expect("removes the first entry");
+    fx.put("DEC-0003.yml", "DEC-0003", '3');
+    let before_second = fx.bytes("DEC-0002.yml");
+    let before_third = fx.bytes("DEC-0003.yml");
+
+    let outcome = fx.decision(&["--fill"]);
+    assert_eq!(outcome.code, 3, "{}", outcome.text);
+    assert!(outcome.text.contains("genesis"), "{}", outcome.text);
+    assert!(
+        !outcome.text.contains("chains from"),
+        "no entry was moved:\n{}",
+        outcome.text
+    );
+    assert!(
+        !outcome.text.contains("DEC-0003"),
+        "the unfilled record is not the finding:\n{}",
+        outcome.text
+    );
+    assert_eq!(
+        fx.bytes("DEC-0002.yml"),
+        before_second,
+        "the refusal wrote nothing"
+    );
+    assert_eq!(
+        fx.bytes("DEC-0003.yml"),
+        before_third,
+        "the refusal wrote nothing"
+    );
+}
+
+/// F2b: a wrong anchor at position i>0 followed by an unfilled record. The wrong anchor is the
+/// finding — one reason, naming DEC-0002 — not two, the second blaming the unfilled DEC-0003 for a
+/// chain it was never part of.
+#[test]
+fn a_wrong_anchor_before_an_unfilled_record_gives_one_reason() {
+    let anchor = cli::Fixture::new("f2b-anchor");
+    anchor.put("DEC-0001.yml", "DEC-0001", '1');
+    let _ = anchor.decision(&["--fill"]);
+    assert_eq!(
+        anchor.decision(&["--verify"]).code,
+        0,
+        "the anchor is clean"
+    );
+
+    let fx = cli::Fixture::new("f2b");
+    fx.write("DEC-0001.yml", &anchor.read("DEC-0001.yml"));
+    fx.write(
+        "DEC-0002.yml",
+        &format!(
+            "{}prev_hash: \"{}\"\n",
+            cli::unfilled("DEC-0002", '2'),
+            "0".repeat(64)
+        ),
+    );
+    fx.put("DEC-0003.yml", "DEC-0003", '3');
+    let before_first = fx.bytes("DEC-0001.yml");
+    let before_second = fx.bytes("DEC-0002.yml");
+    let before_third = fx.bytes("DEC-0003.yml");
+
+    let outcome = fx.decision(&["--fill"]);
+    assert_eq!(outcome.code, 1, "{}", outcome.text);
+    assert_eq!(
+        reasons(&outcome.text).len(),
+        1,
+        "exactly one finding:\n{}",
+        outcome.text
+    );
+    assert!(
+        outcome.text.contains("DEC-0002") && outcome.text.contains("chains from"),
+        "{}",
+        outcome.text
+    );
+    assert!(
+        !outcome.text.contains("DEC-0003"),
+        "the unfilled successor is not the finding:\n{}",
+        outcome.text
+    );
+    assert!(
+        !outcome.text.contains("does not recompute"),
+        "no hash was stored to recompute:\n{}",
+        outcome.text
+    );
+    assert_eq!(
+        fx.bytes("DEC-0001.yml"),
+        before_first,
+        "the refusal wrote nothing"
+    );
+    assert_eq!(
+        fx.bytes("DEC-0002.yml"),
+        before_second,
+        "the refusal wrote nothing"
+    );
+    assert_eq!(
+        fx.bytes("DEC-0003.yml"),
+        before_third,
+        "the refusal wrote nothing"
+    );
+}
+
+/// F2d, the control: a wrong anchor mid-chain whose successor is fully filled. `--verify` and
+/// `--fill` must agree — same exit code, the same single reason — because the filled successor pins
+/// the chain and the wrong anchor is the only finding.
+#[test]
+fn a_wrong_anchor_with_a_filled_successor_agrees_with_verify() {
+    // DEC-0002 filled at position 0 is GENESIS-anchored: self-consistent, but in the wrong place...
+    let twins = cli::Fixture::new("f2d-twins");
+    twins.put("DEC-0002.yml", "DEC-0002", '2');
+    let _ = twins.decision(&["--fill"]);
+    assert_eq!(
+        twins.decision(&["--verify"]).code,
+        0,
+        "a one-record log is clean at position 0"
+    );
+    // ...and a fully filled successor that chains from it.
+    twins.put("DEC-0003.yml", "DEC-0003", '3');
+    let _ = twins.decision(&["--fill"]);
+    assert_eq!(
+        twins.decision(&["--verify"]).code,
+        0,
+        "the pair is clean at those positions"
+    );
+
+    let first = cli::Fixture::new("f2d-first");
+    first.put("DEC-0001.yml", "DEC-0001", '1');
+    let _ = first.decision(&["--fill"]);
+    assert_eq!(first.decision(&["--verify"]).code, 0);
+
+    let fx = cli::Fixture::new("f2d");
+    fx.write("DEC-0001.yml", &first.read("DEC-0001.yml"));
+    fx.write("DEC-0002.yml", &twins.read("DEC-0002.yml"));
+    fx.write("DEC-0003.yml", &twins.read("DEC-0003.yml"));
+    let before_first = fx.bytes("DEC-0001.yml");
+    let before_second = fx.bytes("DEC-0002.yml");
+    let before_third = fx.bytes("DEC-0003.yml");
+
+    let verify = fx.decision(&["--verify"]);
+    let fill = fx.decision(&["--fill"]);
+    assert_eq!(verify.code, 1, "{}", verify.text);
+    assert_eq!(fill.code, 1, "{}", fill.text);
+    assert_eq!(
+        reasons(&verify.text),
+        reasons(&fill.text),
+        "the same finding either way"
+    );
+    assert_eq!(reasons(&verify.text).len(), 1, "{}", verify.text);
+    assert!(
+        verify.text.contains("DEC-0002") && verify.text.contains("chains from"),
+        "{}",
+        verify.text
+    );
+    assert_eq!(
+        fx.bytes("DEC-0001.yml"),
+        before_first,
+        "the control wrote nothing"
+    );
+    assert_eq!(
+        fx.bytes("DEC-0002.yml"),
+        before_second,
+        "the control wrote nothing"
+    );
+    assert_eq!(
+        fx.bytes("DEC-0003.yml"),
+        before_third,
+        "the control wrote nothing"
+    );
+}
+
 /// The row only the "as the write would leave it" judgement can see: `--verify` stops at the
 /// unfilled record and can judge nothing after it, but `--fill` would chain a fresh hash into
 /// position 0 — and the successor declares a predecessor that no longer follows from it. Refuse,
