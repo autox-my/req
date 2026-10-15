@@ -72,32 +72,42 @@ impl PolicyResult {
     }
 }
 
-/// The corpus's selector vocabulary, keyed by predicate key: the values its `Eq` predicates
-/// enumerate. A key **present with an empty set** is mentioned only by `Ge` predicates, which
-/// decide a value by comparison rather than enumerating legal ones; a key absent entirely is
-/// mentioned by no predicate, so a `key=value` entry for it decided nothing.
+/// What the corpus declares: the values its `Eq` predicates enumerate, plus every selector
+/// outside the tiny grammar, **kept verbatim**.
+///
+/// A key *present with an empty set* is mentioned only by `Ge` predicates, which decide a value
+/// by comparison rather than enumerating legal ones. A key *absent from the map* is mentioned by
+/// no `Eq` or `Ge` predicate — but an unparsed selector may still name it, so a message about
+/// such a key must quote those rather than assert an absence the gate cannot see.
 ///
 /// Collected over **every** row, not only the applying ones: a claim this variant excludes
 /// still declares a legal value for the key, and the question answered here is what the
 /// *corpus* describes, not what this selection happened to include.
-type Vocabulary = BTreeMap<String, BTreeSet<String>>;
+#[derive(Default)]
+struct Vocabulary {
+    /// Key → the values its `Eq` predicates declare; an empty set means `Ge`-only.
+    eq_values: BTreeMap<String, BTreeSet<String>>,
+    /// Selectors the grammar does not cover, verbatim, deduplicated and ordered (`BTreeSet`).
+    /// They decide nothing, and `select.rs` shows their text rather than guessing at it.
+    unparsed: BTreeSet<String>,
+}
 
 /// The corpus's selector vocabulary, keyed by predicate key.
 fn declared_vocabulary(rows: &[Row]) -> Vocabulary {
-    let mut vocabulary = Vocabulary::new();
+    let mut vocabulary = Vocabulary::default();
     for row in rows {
         for text in &row.selectors {
             match parse_predicate(text) {
                 Predicate::Eq { key, value } => {
-                    vocabulary.entry(key).or_default().insert(value);
+                    vocabulary.eq_values.entry(key).or_default().insert(value);
                 }
                 // Mentioned, so the key enters the vocabulary with nothing enumerated for it.
                 Predicate::Ge { key, .. } => {
-                    vocabulary.entry(key).or_default();
+                    vocabulary.eq_values.entry(key).or_default();
                 }
-                // Syntax outside the tiny grammar declares nothing: it decides nothing, and
-                // `select.rs` shows its text verbatim rather than guessing at it.
-                Predicate::Unsupported { .. } => {}
+                Predicate::Unsupported { text } => {
+                    vocabulary.unparsed.insert(text);
+                }
             }
         }
     }
@@ -126,13 +136,24 @@ fn selectors_confirmed(rows: &[Row], context: &Context) -> PolicyResult {
 
     let vocabulary = declared_vocabulary(rows);
     for (key, value) in context {
-        // A key no predicate anywhere mentions decided nothing at all: it selected nothing and
-        // excluded nothing. Naming it is honest, and it cannot misfire — such an entry provably
-        // changed no claim's applicability.
-        let Some(declared) = vocabulary.get(key) else {
-            unverifiable.push(format!(
-                "{key}={value}: no applicability predicate in the corpus mentions `{key}`, so this entry decided nothing"
-            ));
+        // A key no readable predicate mentions decided nothing at all: it selected nothing and
+        // excluded nothing. Naming it is honest — but a selector outside the grammar is not
+        // read, so its keys are unknown, and the two cases are worded differently rather than
+        // asserting an absence the gate cannot check.
+        let Some(declared) = vocabulary.eq_values.get(key) else {
+            if vocabulary.unparsed.is_empty() {
+                unverifiable.push(format!(
+                    "{key}={value}: nothing in the corpus decides `{key}`, so this entry decided nothing"
+                ));
+            } else {
+                let unparsed: Vec<&str> = vocabulary.unparsed.iter().map(String::as_str).collect();
+                unverifiable.push(format!(
+                    "{key}={value}: nothing in the corpus decides `{key}`; it also carries \
+                     selector(s) outside the `==`/`>=` grammar, whose keys are not read — {} — so a \
+                     selector naming `{key}` cannot be ruled out",
+                    unparsed.join("; ")
+                ));
+            }
             continue;
         };
         // Mentioned only by `Ge` predicates: the value is decided by comparison, so there is no

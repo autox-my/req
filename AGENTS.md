@@ -247,8 +247,10 @@ export OCR_NO_UPDATE=1
   view: for every **applying** claim it prints the address, the coverage state, the provenance
   (rationale source and date) and the outgoing relations, then the **undecided** claims in their
   own section, then its findings. Exit **0** every applying claim covered and still matching,
-  **1** a defect (drift, or no provenance), **3** nothing ratified or something uncovered, **2**
-  usage. The selection comes from the Baseline being audited, the same rule as `--verify`.
+  **1** a defect (drift, or no provenance), **3** nothing ratified, something uncovered, or
+  coverage the build cannot judge because the manifest's `rules_v` disagrees with it — reported
+  **NOT JUDGED**, with no claim covered or drifted — **2** usage. The selection comes from the
+  Baseline being audited, the same rule as `--verify`.
   Coverage is **derived from `baseline::drift`**, not recomputed, so the packet and
   `req baseline --verify` cannot disagree about whether a claim still matches what was signed
   — including when neither may judge it: a manifest whose `rules_v` disagrees with the build's

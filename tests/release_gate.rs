@@ -140,6 +140,17 @@ mod cli {
                 None => rest.to_string(),
             }
         }
+
+        /// Whether any word inside one policy's block is `key`. Scoped deliberately: the merged
+        /// stdout+stderr carries the resolved `corpus root:` path and every other policy's
+        /// offenders, none of which can name a context key *for this policy*, so a substring scan
+        /// over all of it would redden for a reason that has nothing to do with the rule under
+        /// test — a checkout path containing `/runs/` is enough.
+        pub fn policy_names(&self, name: &str, key: &str) -> bool {
+            self.policy(name)
+                .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .any(|word| word == key)
+        }
     }
 
     /// The absolute path of the compiled binary, so the tests do not depend on `$PATH`.
@@ -240,6 +251,27 @@ mod cli {
 
         pub fn gate(&self, args: &[&str]) -> Outcome {
             gate_at(self.path(), args)
+        }
+
+        /// Overwrite the `address:` line `canon --fill` already wrote. The fixture does this on
+        /// purpose, and only here: it is the hand-edited digest `addresses_current` exists to
+        /// catch. Authoring an address into the template instead would be that defect, not a test
+        /// of it — which is why the template's anchor is only ever a placeholder.
+        pub fn tamper_address(&self, id: &str) {
+            let path = self.0.join("claims").join(format!("{id}.yml"));
+            let text = std::fs::read_to_string(&path).expect("reads the filled claim");
+            let corrupted: Vec<String> = text
+                .lines()
+                .map(|line| {
+                    if line.starts_with("address: ") {
+                        format!("address: {}", "f".repeat(64))
+                    } else {
+                        line.to_string()
+                    }
+                })
+                .collect();
+            std::fs::write(&path, format!("{}\n", corrupted.join("\n")))
+                .expect("writes the corrupted claim");
         }
     }
 
@@ -369,7 +401,9 @@ relations: []
     }
 
     /// A context key no predicate in the corpus mentions decided nothing at all: it selected
-    /// nothing and excluded nothing, so naming it is honest and cannot misfire.
+    /// nothing and excluded nothing, so naming it is honest. This corpus carries no selector
+    /// outside the grammar, so the message states what the corpus decides and claims nothing
+    /// about unread selectors (the fixture below pins the case where it does).
     #[test]
     fn a_key_no_applicability_predicate_mentions_is_refused() {
         let out = dogfood(&["nonsense=whatever"]);
@@ -385,8 +419,12 @@ relations: []
         assert!(block.starts_with("[UNVERIFIABLE]"), "{block}");
         assert!(block.contains("nonsense=whatever"), "{block}");
         assert!(
-            block.contains("no applicability predicate in the corpus mentions `nonsense`"),
+            block.contains("nothing in the corpus decides `nonsense`"),
             "{block}"
+        );
+        assert!(
+            !block.contains("outside the `==`/`>=` grammar"),
+            "no unparsed selector exists here, so the message must not claim one: {block}"
         );
     }
 
@@ -467,9 +505,9 @@ relations: []
             out.policy("selectors_confirmed")
         );
         assert!(
-            !out.text.contains("runs"),
-            "no finding may name the `runs` key:\n{}",
-            out.text
+            !out.policy_names("selectors_confirmed", "runs"),
+            "no finding in this policy may name the `runs` key: {}",
+            out.policy("selectors_confirmed")
         );
         // The reason this run is UNVERIFIABLE at all, and it predates this change.
         let decided = out.policy("dependencies_decided");
@@ -499,9 +537,9 @@ relations: []
             out.policy("selectors_confirmed")
         );
         assert!(
-            !out.text.contains("runs"),
-            "the entry is confirmed, so no finding may name it:\n{}",
-            out.text
+            !out.policy_names("selectors_confirmed", "runs"),
+            "the entry is confirmed, so no finding in this policy may name it: {}",
+            out.policy("selectors_confirmed")
         );
     }
 
@@ -536,5 +574,61 @@ relations: []
             block.contains("revision == 3"),
             "the declared value is named: {block}"
         );
+    }
+
+    /// A selector outside the tiny grammar is not read, so its keys are unknown — therefore the
+    /// refusal must not assert that the corpus never mentions the key. It quotes the unparsed
+    /// selectors verbatim instead, and the claim they live on surfaces as undecided, which is why
+    /// `1 applying` sits beside `1 undecided` rather than the vacuity guard firing.
+    #[test]
+    fn an_unparsed_selector_is_quoted_rather_than_asserted_absent() {
+        let fixture = Fixture::new("unparsed");
+        fixture.claim("REQ-9001", &[]);
+        fixture.claim("REQ-9002", &["field = value"]);
+        fixture.fill();
+        let out = fixture.gate(&["field=value"]);
+        assert_eq!(out.code, 3, "{}", out.text);
+        assert!(
+            out.headline().contains("1 applying claim(s), 1 undecided"),
+            "the unread selector leaves its claim undecided, never excluded: {}",
+            out.headline()
+        );
+        let block = out.policy("selectors_confirmed");
+        assert!(block.starts_with("[UNVERIFIABLE]"), "{block}");
+        assert!(block.contains("field=value"), "{block}");
+        assert!(
+            block.contains("field = value"),
+            "the unparsed selector is quoted, not guessed at: {block}"
+        );
+        assert!(
+            !block.contains("no applicability predicate in the corpus mentions"),
+            "the gate must not assert absence of a key an unread selector may carry: {block}"
+        );
+    }
+
+    // ---- all three outcomes through the public seam ------------------------------------------
+
+    /// The third outcome, end to end: an address that does not recompute is a **defect** — FAIL,
+    /// exit 1 — not an open question. `canon --fill` wrote the address and the fixture then
+    /// corrupted it, which is exactly the hand-edited digest `addresses_current` exists to catch;
+    /// with PASS and UNVERIFIABLE pinned above, the whole tri-state is reachable from the CLI.
+    #[test]
+    fn a_hand_edited_address_fails_the_gate() {
+        let fixture = Fixture::new("tampered");
+        fixture.claim("REQ-9001", &[]);
+        fixture.fill();
+        fixture.tamper_address("REQ-9001");
+
+        let out = fixture.gate(&[]);
+        assert_eq!(out.code, 1, "{}", out.text);
+        let block = out.policy("addresses_current");
+        assert!(block.starts_with("[FAIL]"), "{block}");
+        assert!(block.contains("REQ-9001"), "{block}");
+        assert!(
+            out.policy("selectors_confirmed").starts_with("[PASS]"),
+            "the context is empty, so the invocation raises nothing: {}",
+            out.policy("selectors_confirmed")
+        );
+        assert!(out.text.contains("verdict: FAIL"), "{}", out.text);
     }
 }
