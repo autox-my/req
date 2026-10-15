@@ -23,8 +23,10 @@
 //! that is **absent**, and refuses — leaving every byte exactly as it was — to change one that is
 //! **present** and disagrees with its content. Recomputing over an edited record would write the
 //! edit's own hash over the evidence `--verify` reports, turning a definite finding into a clean
-//! bill of health. The judgement is therefore made *before* anything is written, and a partial fill
-//! is never left behind: a log with one definite finding is not half-filled, it is untouched.
+//! bill of health. The judgement is therefore made *before* anything is written, so a log with one
+//! definite finding is untouched rather than half-filled. (A write that fails part-way can still
+//! leave a partially filled log — the records before it carry derived fields, the command exits 3,
+//! and `--verify` then reports UNVERIFIABLE rather than passing.)
 
 use serde::Deserialize;
 

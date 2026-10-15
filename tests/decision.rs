@@ -307,6 +307,13 @@ fn filling_refuses_to_launder_an_edited_record() {
         "nothing was filled, so nothing may be announced:\n{}",
         filled.text
     );
+    // The positive pin for the three `!contains("does not recompute")` guards: this *is* the
+    // content-edit case, so the phrase must be there for their absence elsewhere to mean anything.
+    assert!(
+        filled.text.contains("does not recompute"),
+        "the content edit is reported as a hash that no longer recomputes:\n{}",
+        filled.text
+    );
 
     let after = fx.decision(&["--verify"]);
     assert_eq!(
@@ -432,6 +439,11 @@ fn a_stale_prev_hash_refuses_and_is_left_alone() {
         "{}",
         outcome.text
     );
+    assert!(
+        !outcome.text.contains("does not recompute"),
+        "the chain alone is the finding; no hash was stored to recompute:\n{}",
+        outcome.text
+    );
 }
 
 /// The field being derived here is the `hash`, and the record already declares which anchor it
@@ -467,52 +479,6 @@ fn a_wrong_anchor_with_no_stored_hash_is_unverifiable_not_tampered() {
     );
     assert_eq!(
         fx.bytes("DEC-0001.yml"),
-        before,
-        "the refusal left the record byte-identical"
-    );
-}
-
-/// The same rule at position i>0: the record's wrong `prev_hash` is the one finding, reported as
-/// `chains from`. The absent `hash` must not be derived over the chain prev so that it then adds a
-/// second, manufactured `does not recompute` for evidence nobody stored.
-#[test]
-fn a_wrong_anchor_at_position_one_reports_the_chain_alone() {
-    let anchor = cli::Fixture::new("anchor-one");
-    anchor.put("DEC-0001.yml", "DEC-0001", '1');
-    let _ = anchor.decision(&["--fill"]);
-    assert_eq!(
-        anchor.decision(&["--verify"]).code,
-        0,
-        "the anchor is clean"
-    );
-
-    let fx = cli::Fixture::new("wrong-anchor-one");
-    fx.write("DEC-0001.yml", &anchor.read("DEC-0001.yml"));
-    fx.write(
-        "DEC-0002.yml",
-        &format!(
-            "{}prev_hash: \"{}\"\n",
-            cli::unfilled("DEC-0002", '2'),
-            "0".repeat(64)
-        ),
-    );
-    let before = fx.bytes("DEC-0002.yml");
-
-    let outcome = fx.decision(&["--fill"]);
-    assert_eq!(outcome.code, 1, "{}", outcome.text);
-    assert!(outcome.text.contains("chains from"), "{}", outcome.text);
-    assert!(
-        !outcome.text.contains("does not recompute"),
-        "the chain alone is the finding; no hash was stored to recompute:\n{}",
-        outcome.text
-    );
-    assert!(
-        !outcome.text.contains("filled DEC-0002"),
-        "{}",
-        outcome.text
-    );
-    assert_eq!(
-        fx.bytes("DEC-0002.yml"),
         before,
         "the refusal left the record byte-identical"
     );
@@ -913,7 +879,9 @@ fn a_clean_filled_log_reports_nothing_to_fill_and_writes_nothing() {
     let fx = cli::Fixture::new("clean");
     fx.put("DEC-0001.yml", "DEC-0001", '1');
     fx.put("DEC-0002.yml", "DEC-0002", '2');
-    let _ = fx.decision(&["--fill"]);
+    // Setup: the first fill derives the chain, and its verdict is asserted rather than discarded.
+    let setup = fx.decision(&["--fill"]);
+    assert_eq!(setup.code, 0, "setup: the first fill:\n{}", setup.text);
     let before_first = fx.bytes("DEC-0001.yml");
     let before_second = fx.bytes("DEC-0002.yml");
 
@@ -931,7 +899,10 @@ fn an_unfilled_record_appended_after_a_clean_prefix_is_filled_alone() {
     let fx = cli::Fixture::new("appended");
     fx.put("DEC-0001.yml", "DEC-0001", '1');
     fx.put("DEC-0002.yml", "DEC-0002", '2');
-    let _ = fx.decision(&["--fill"]);
+    // Setup: the prefix is filled and clean, and the setup's verdict is asserted rather than
+    // discarded.
+    let setup = fx.decision(&["--fill"]);
+    assert_eq!(setup.code, 0, "setup: the clean prefix:\n{}", setup.text);
     let before_first = fx.bytes("DEC-0001.yml");
     let before_second = fx.bytes("DEC-0002.yml");
     fx.put("DEC-0003.yml", "DEC-0003", '3');
