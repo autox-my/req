@@ -258,7 +258,9 @@ finding. Its verdict comes from `tools/review/ocr_gate.py`, which the workflow t
 `origin/main` and never from the pull request under review, so a change cannot supply the gate
 that judges it — which is why the adoption pull request fails that check by design, and a human
 merges it. The gate carries a `--self-check`, and it treats a review that did not complete as a
-failure rather than a clean run.
+failure rather than a clean run. The review is judged by `--rule review/rule.json`, and that file
+is taken from `origin/main` as well — the same trust boundary — so this repository's invariants
+apply to the review that blocks merges, and a change cannot supply the rules that judge it either.
 
 CI review does send the diff to the configured provider. REQ-0012 governs the product's runtime,
 not the review of this repository's own changes: req itself still requires no network.

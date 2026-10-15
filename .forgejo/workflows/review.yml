@@ -82,6 +82,20 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          # The rules that judge this diff come from origin/main too — the same trust
+          # boundary as the gate below. A pull request runs *its own* workflow file, so a
+          # rule file read from this checkout would let the change under review weaken or
+          # empty the checklist that reviews it. Resolved once, before the first attempt,
+          # so a missing rule file fails the job without spending a provider call.
+          RULE_PATH=review/rule.json
+          if git cat-file -e "origin/main:$RULE_PATH" 2>/dev/null; then
+            RULE="$RUNNER_TEMP/ocr_rule_trusted.json"
+            git show "origin/main:$RULE_PATH" > "$RULE"
+            echo "judging with rules from $RULE_PATH at origin/main"
+          else
+            echo "::error::origin/main has no $RULE_PATH — fail closed, never fall back to this checkout (a pull request could then weaken or empty the checklist that reviews it)"
+            exit 1
+          fi
           for attempt in 1 2 3; do
             echo "== review attempt ${attempt}/3 =="
             # A congested endpoint can return transient errors for minutes; three attempts
@@ -93,6 +107,7 @@ jobs:
                  --to "$HEAD_SHA" \
                  --format json \
                  --output ocr-result.json \
+                 --rule "$RULE" \
                  --effort low \
                  --timeout 20 \
                  --exclude '.forgejo/**,bench/corpus/**,bench/results/**'; then
