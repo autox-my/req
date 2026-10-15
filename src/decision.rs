@@ -228,27 +228,36 @@ pub fn upsert_line(text: &str, key: &str, value: &str) -> String {
     out
 }
 
-/// The record **as `--fill` would leave it**: a derived field that is already present is kept, and
-/// an absent one takes its derived value. An absent `hash` is derived over the anchor the record
-/// would actually carry: a stored `prev_hash` is kept, so deriving over the chain prev instead would
-/// make the proposed record disagree with itself and report a stored hash that does not exist. When
-/// `prev_hash` is absent too, the chain prev is the anchor to derive over. Nothing else changes —
-/// `fill` never touches the content — so a stale stored field survives into the judgement and is
-/// reported as the finding `--verify` reports, instead of being silently corrected.
-fn as_filled(before: &Decision, derived: &Decision) -> Decision {
-    let prev_hash = before
-        .prev_hash
-        .clone()
-        .or_else(|| derived.prev_hash.clone());
-    let hash = before.hash.clone().or_else(|| match &before.prev_hash {
-        Some(stored) => Some(compute_hash(Some(stored), before)),
-        None => derived.hash.clone(),
-    });
-    Decision {
-        prev_hash,
-        hash,
-        ..derived.clone()
+/// The log **as `--fill` would leave it**: every record carries both derived fields, and a stored
+/// one is kept verbatim.
+///
+/// Each record's **effective anchor** is its stored `prev_hash` when it has one, and otherwise the
+/// predecessor's effective hash — [`GENESIS`] at position 0. An absent `hash` is computed over that
+/// anchor. Deriving over a chain that ignored a stored anchor would make the proposed log contradict
+/// itself and report a finding against records nobody touched; a stored field is evidence, and
+/// `verify_chain` is the only judge of the result.
+fn as_filled(log: &[Decision]) -> Vec<Decision> {
+    let mut out = Vec::with_capacity(log.len());
+    // The effective hash of the previous record — what a record with no stored `prev_hash` chains
+    // from, so a stored anchor's successors follow *it* rather than a fresh genesis-anchored chain.
+    let mut prev: Option<String> = None;
+    for record in log {
+        let prev_hash = record
+            .prev_hash
+            .clone()
+            .unwrap_or_else(|| prev.clone().unwrap_or_else(|| GENESIS.to_string()));
+        let hash = record
+            .hash
+            .clone()
+            .unwrap_or_else(|| compute_hash(Some(&prev_hash), record));
+        prev = Some(hash.clone());
+        out.push(Decision {
+            prev_hash: Some(prev_hash),
+            hash: Some(hash),
+            ..record.clone()
+        });
     }
+    out
 }
 
 /// `req decision [--fill] [--verify]`
@@ -284,17 +293,11 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         }
     };
     if fill_files {
-        // Judge first, write second. `fill` derives the chain over the content as it now stands, so
-        // recomputing over an edited record would write the edit's own hash over the evidence
-        // `--verify` reports. The record as the write would leave it — a present field kept, an
-        // absent one derived — is what must verify, and only a Valid log is written at all.
-        let mut derived: Vec<Decision> = log.iter().map(|(_, d)| d.clone()).collect();
-        fill(&mut derived);
-        let proposed: Vec<Decision> = log
-            .iter()
-            .zip(derived.iter())
-            .map(|((_, before), after)| as_filled(before, after))
-            .collect();
+        // Judge first, write second. The log as the write would leave it — a stored field kept, an
+        // absent one derived over the anchor the record actually carries — is what must verify, and
+        // only a Valid log is written at all.
+        let records: Vec<Decision> = log.iter().map(|(_, d)| d.clone()).collect();
+        let proposed = as_filled(&records);
         let judgement = verify_chain(&proposed);
         // An empty log is not a definite finding — there is nothing to fill, and the tail below
         // reports it UNVERIFIABLE. Any other non-Valid judgement means writing nothing at all.
