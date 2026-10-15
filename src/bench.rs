@@ -555,7 +555,7 @@ mod tests {
     /// package root, so the walk-up finds `claims/`: the tests exercise the same runtime
     /// resolution the CLI uses, and no build path is baked into the test binary (ADR 0012).
     fn repo_root() -> std::path::PathBuf {
-        crate::root::resolve_corpus_root(&std::env::current_dir().expect("cwd"), None, None)
+        crate::root::resolve_corpus_root(std::env::current_dir, None, None)
             .expect("the package root holds claims/")
     }
 

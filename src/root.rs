@@ -55,31 +55,45 @@ pub fn take_root_arg(args: &[String]) -> Result<(Option<PathBuf>, Vec<String>), 
 }
 
 /// Resolve the corpus root, in ADR 0012's order: `cli`, then `env_req_root`, then the
-/// nearest ancestor of `start` containing a `claims/` directory.
+/// nearest ancestor of `start()` containing a `claims/` directory.
 ///
-/// Pure: the working directory and the environment are parameters, never read here.
+/// Pure: the working directory and the environment are parameters, never read here. `start`
+/// is a **thunk**, not a path, because the walk-up is the only branch that needs it: a root
+/// that was named must resolve without a readable working directory, and reading it eagerly
+/// made an unusable CWD fatal before `--root` or `REQ_ROOT` had been consulted at all.
 ///
 /// A root that was *named* (`--root` or `REQ_ROOT`) and holds no `claims/` is an error,
 /// never a silent fallback to the walk-up: a root that was asked for and cannot serve the
 /// corpus must fail loudly, which is the failure mode this ADR exists to remove.
 pub fn resolve_corpus_root(
-    start: &Path,
+    start: impl FnOnce() -> std::io::Result<PathBuf>,
     cli: Option<&Path>,
     env_req_root: Option<&str>,
 ) -> Result<PathBuf, String> {
     if let Some(cli) = cli {
         return validated(cli, &format!("--root {}", cli.display()));
     }
-    if let Some(value) = env_req_root {
+    // An empty `REQ_ROOT` is *unset*, not a root: `Path::new("").join("claims")` collapses to
+    // a bare `claims/`, which is a path against whatever the working directory happens to be —
+    // a corpus nobody asked for, and an empty `corpus root:` line. Unset falls through to the
+    // walk-up, which is what an absent value does.
+    if let Some(value) = env_req_root.filter(|value| !value.is_empty()) {
         return validated(Path::new(value), &format!("REQ_ROOT={value}"));
     }
-    if let Some(found) = start.ancestors().find(|dir| is_corpus_root(dir)) {
-        return Ok(found.to_path_buf());
+    match start() {
+        Ok(start) => match start.ancestors().find(|dir| is_corpus_root(dir)) {
+            Some(found) => Ok(found.to_path_buf()),
+            None => Err(format!(
+                "no claims/ directory at or above {} — {REMEDY}",
+                start.display()
+            )),
+        },
+        // Nothing named a root and there is no working directory to walk up from: the
+        // question is unanswerable, and the remedy is the one every failure names.
+        Err(e) => Err(format!(
+            "cannot read the working directory to search for claims/: {e} — {REMEDY}"
+        )),
     }
-    Err(format!(
-        "no claims/ directory at or above {} — {REMEDY}",
-        start.display()
-    ))
 }
 
 /// Whether `dir` is a corpus root: it holds a `claims/` directory.
