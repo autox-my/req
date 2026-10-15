@@ -40,6 +40,18 @@
       "rule": "One gate, and a skipped check is never a pass: print SKIP for missing tooling and fail loudly rather than reporting success. Never pipe a check through tail/grep — the pipeline's status is not the command's. Exit codes are three-state (0 PASS / 1 FAIL / 3 UNVERIFIABLE), and the gate must not be relaxed to let a change land."
     },
     {
+      "path": "baselines/**",
+      "rule": "A change to the trust anchor, a signed Baseline or its signature is trust-material: verify the key statement, the rotation window and that the manifest still re-derives from the committed claims before accepting any of it. A key swap without a recorded rotation story is a finding."
+    },
+    {
+      "path": "aliases/subjects.yml",
+      "rule": "The subject registry feeds the addresses: an alias edit changes identity claims. Every entry must resolve; a silent alias drop is a finding."
+    },
+    {
+      "path": ".forgejo/**",
+      "rule": "Workflow and runner changes alter what CI can enforce. A relaxation of the gate, a removal of a fail-closed check or a new untethered provider input is a finding."
+    },
+    {
       "path": "Cargo.toml",
       "rule": "Pins are provenance, not stragglers: rust-toolchain.toml, Cargo.lock and tools/ocr/package-lock.json are the pins. Verify a version at pin time; never bump opportunistically. Any rules/toolchain/crate/CLI bump is a Tier-1 rules bump: RULES_V must change in the same commit, and every stored claim address becomes a re-canonicalization candidate (`req canon --verify` exits 3 until the corpus is re-filled) — never a silent rehash."
     },
