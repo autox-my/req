@@ -68,7 +68,7 @@ chosen root is printed once to stderr; with no corpus the answer is `[UNVERIFIAB
 # Toolchain pinned by rust-toolchain.toml; rustfmt/clippy live in that toolchain,
 # not in `stable`. scripts/check.sh resolves the directory — by hand:
 CHANNEL="$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)"
-TC="$HOME/.rustup/toolchains/${CHANNEL}-x86_64-unknown-linux-gnu/bin"
+TC="$(ls -d "$HOME/.rustup/toolchains/${CHANNEL}-"*/bin 2>/dev/null | head -1)"
 export PATH="$TC:$PWD/tools/ocr/node_modules/.bin:$PATH"
 export CARGO_HOME="$PWD/.cargo-home"
 export OCR_NO_UPDATE=1
@@ -464,8 +464,13 @@ matter:
   to every `ocr` invocation. Its shape and the two CLI behaviours worth knowing are
   documented under **Review** above.
 - `.scratch/` — session scratch, gitignored; never a deliverable.
-- Path facts: the workspace directory is `/home/dsh/understand`; `/home/dsh/req`
-  exists but is **read-only** — never write there. The DSH workspace *name* is `req`.
+- Path facts: there are none to pin, and that is the design. Every subcommand resolves its corpus
+  at runtime (ADR 0012) — `--root <dir>`, else `REQ_ROOT`, else the nearest ancestor of the working
+  directory holding `claims/` — so **ask the shell** (`pwd`, `git rev-parse --show-toplevel`)
+  instead of trusting a path written down here: a hardcoded path describes the deployment it was
+  written for and misleads every other. The workspace *name* follows the checkout directory; it is
+  not a fixed label. A read-only mount is a condition the reader checks before writing (`test -w
+  <dir>`), never a path the reader is told exists.
 - Data flow: claim file → typed parse (`yaml_serde`) → Tier-1 canonical form →
   canonical bytes → `sha256("req.claim.v1\0" ‖ bytes)` = address. Only `req bench`
   (results) and `req canon --fill` (derived fields) write anything — and `--fill`
