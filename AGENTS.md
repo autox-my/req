@@ -99,9 +99,10 @@ export OCR_NO_UPDATE=1
   `claim_schema`): the file's parse is **NOT JUDGED** — an older schema is a migration candidate
   (a format bump moves no address), a newer one is a question for a build that writes it (the
   file is not wrong, the reader is old), and a value of no `req.claim/<n>` shape at all is a
-  broken file, not a version question. The judgement lives in the loader, so no command can
-  ignore the declaration, and `--fill` refuses to write derived fields into a format it does not
-  write.
+  broken file, not a version question. The judgement lives in `claim_schema_reason`
+  (`src/canon.rs`), called by the loader and by every reader that reads a claim by path
+  (`compare`, the fill path), so no command can ignore the declaration, and `--fill` refuses to
+  write derived fields into a format it does not write.
 - Derived fields: `cargo run -q -- canon --fill` writes `canonical.form` + `address`,
   and **refuses any claim whose parse disagrees with its authored slots** (exit 3) —
   an address over a contradicted parse would enshrine the contradiction.
@@ -127,7 +128,10 @@ export OCR_NO_UPDATE=1
   zero; the script checks the effect (`source: custom`) instead of the exit status.
 - Direction: `cargo run -q -- compare <a.yml> <b.yml>` — classifies the change
   (`modality_weakening`, `numeric_tightening`, `polarity_flip`, `scope_divergence`, …),
-  exit **3** when a side has no structured form to compare. A classification is for a
+  exit **3** when a side has no structured form to compare, and when a side declares a
+  file format this build does not write — a claim whose parse is therefore **NOT JUDGED**,
+  the same class and the same loader contract `req canon --verify` refuses, never a
+  classification over a declaration the build cannot establish. A classification is for a
   human to ratify, never an approval. The **direction gold set** (`req bench
   bench/corpus/direction-v1.yml`) scores these: the hard gate is **dangerous
   confusions = 0** (a loosening reported as no change, or as the opposite direction —

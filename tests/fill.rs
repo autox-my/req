@@ -148,3 +148,29 @@ fn verify_accepts_a_filled_file_and_catches_tampering() {
         StoredState::Mismatch(_)
     ));
 }
+
+/// A file declaring a format this build does not write is **NOT JUDGED** by this reader too:
+/// nothing inside it was compared to anything, so the answer is the exit-3 class — never
+/// `Mismatch`, because exit 1 is a *definite* finding (a hand-edited digest) and "this build
+/// cannot establish the format" is not one.
+///
+/// The guard is defensive on the CLI path (`view::load_rows` loads through `load_claims` first),
+/// which is exactly why it is pinned here rather than left to a caller that may never exercise
+/// it: a public reader that parses a file itself must not be free to skip the declaration.
+#[test]
+fn verify_text_refuses_a_format_this_build_does_not_write() {
+    let (json, _) = derived();
+    let foreign = SAMPLE.replace("schema: req.claim/0", "schema: req.claim/1");
+    assert_ne!(foreign, SAMPLE, "the fixture's declaration moved");
+
+    match verify_text(&foreign, &json, 3) {
+        StoredState::Candidate(why) => {
+            assert!(why.contains("NOT JUDGED"), "{why}");
+            assert!(
+                why.contains("req.claim/1"),
+                "the declared value is named: {why}"
+            );
+        }
+        other => panic!("a format this build cannot establish is not {other:?}"),
+    }
+}

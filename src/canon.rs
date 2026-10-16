@@ -138,6 +138,17 @@ impl ClaimSchema {
     }
 }
 
+/// The one call a reader makes to judge a file's declared format: the reason its parse cannot be
+/// established by this build, or `None` when the file declares the schema this build writes.
+///
+/// One home for the judgement, so a reader cannot re-decide it — or forget to look. The corpus
+/// loader calls it, and so does every non-test reader that parses a claim file itself (the CLI's
+/// `compare`, and the fill path): two spellings of "is this the format I write" is exactly how
+/// one of them ends up silently accepting a declaration it cannot judge.
+pub fn claim_schema_reason(claim: &crate::model::ClaimFile) -> Option<String> {
+    classify_claim_schema(&claim.schema).reason(&claim.schema)
+}
+
 /// Versioned domain tag — a rules bump never silently re-hashes ratified history
 /// (hashing spec §5 freeze policy).
 pub const ADDRESS_TAG: &[u8] = b"req.claim.v1\0";
@@ -1418,7 +1429,9 @@ fn looks_like_claim_file(name: &str) -> bool {
 ///   [`crate::baseline::rules_mismatch`] judges `rules_v`: older is a migration candidate, newer
 ///   is a question this build cannot answer, and a value of no `req.claim/<n>` shape is a broken
 ///   file. All three are NOT JUDGED, and refusing here means no command — `canon`, `--verify`,
-///   `--fill`, the views, the gate — can quietly ignore the declaration;
+///   `--fill`, the views, the gate, `compare` — can quietly ignore the declaration. `compare`
+///   reads its two sides by path rather than through this loader, and calls
+///   [`claim_schema_reason`] itself so the judgement still has one home;
 /// - two files declaring one `claim_id` — their **content** is compared, so an
 ///   identical copy and a divergent rewrite are named differently;
 /// - a claim-shaped file that is not `REQ-<digits>.yml` (`req-0008.yml`,
@@ -1494,7 +1507,7 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
         // command inherits the check rather than each one re-deciding whether to look, and so
         // `--fill` refuses to write derived fields into a format this build does not write.
         // `reason` is `None` only for the schema this build writes.
-        if let Some(reason) = classify_claim_schema(&claim.schema).reason(&claim.schema) {
+        if let Some(reason) = claim_schema_reason(&claim) {
             return Err(format!("{}: {reason}", path.display()));
         }
         loaded.push(LoadedClaim {

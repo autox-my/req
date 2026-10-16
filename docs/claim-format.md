@@ -31,7 +31,9 @@ cannot answer, because the file is not wrong — the reader is old; and a value 
 `req.claim/<n>` shape at all is a broken file, not a version question. All three are **NOT
 JUDGED** (exit 3), never `verified`: nothing inside the file was compared to anything, and the
 declared format is what makes the rest of it readable as a claim of this build's contract. The
-judgement lives in the loader, so no command can ignore the declaration.
+judgement lives in `claim_schema_reason` (`src/canon.rs`), which the loader calls and so does
+every reader that reads a claim by path (`compare`, the fill path) — one home, so no command can
+ignore the declaration.
 
 ## Field reference
 

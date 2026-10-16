@@ -15,7 +15,8 @@
 //! serializer would rewrite all of them.
 
 use crate::canon::{
-    RULES_V, address_hex, canonical_json, evaluate_claim, load_claims, load_registry,
+    RULES_V, address_hex, canonical_json, claim_schema_reason, evaluate_claim, load_claims,
+    load_registry,
 };
 use std::path::Path;
 
@@ -180,8 +181,11 @@ pub enum StoredState {
     /// The stored bytes are what the current parse produces, and the stored address
     /// recomputes from them (REQ-0017).
     Verified,
-    /// Unfilled, or filled under different rules: a re-canonicalization candidate.
-    /// Never a failure, and never a pass.
+    /// Unfilled, or filled under different rules: a re-canonicalization candidate. Also a file
+    /// declaring a format this build does not write — an older one is a migration, a newer one is
+    /// a question for a build that writes it — because nothing inside it was compared to anything
+    /// (`[crate::canon::claim_schema_reason]`). Never a failure and never a pass: exit 1 is a
+    /// *definite* finding, and a format this build cannot establish is not one.
     Candidate(String),
     /// Stored form and/or address disagree with the parse. AGENTS.md: a hand-written
     /// `address`/`canonical.form` is a critical finding — this is what detects it.
@@ -194,6 +198,14 @@ pub fn verify_text(text: &str, expected_form_json: &str, rules_v: u32) -> Stored
         Ok(c) => c,
         Err(e) => return StoredState::Mismatch(format!("unparsable: {e}")),
     };
+    // A declared format this build does not write is judged first, and as a candidate: nothing
+    // inside the file was compared to anything, so `Candidate` (exit 3) is the class, never the
+    // `Mismatch` (exit 1) a definite finding gets. Defensive here — this text arrived through
+    // `load_claims` in `view::load_rows` — but a reader that parses a file itself must not be
+    // free to skip the declaration, and the guard is one call.
+    if let Some(reason) = claim_schema_reason(&claim) {
+        return StoredState::Candidate(reason);
+    }
     let Some(stored_form) = claim.canonical.form.clone() else {
         return StoredState::Candidate("unfilled".to_string());
     };
@@ -283,12 +295,20 @@ pub fn run_verify(root: &Path) -> i32 {
 /// Fill one file path — used by tests and any caller with an explicit path. The root is
 /// still explicit: the registry an address depends on is read from a resolved corpus root
 /// (ADR 0012), never from the path this binary happened to be built in.
+///
+/// No caller in `src/` or `tests/` today (`run_fill` walks the corpus through `load_claims`, which
+/// already refuses the same files): the guard below is symmetry, so a future caller with an
+/// explicit path cannot be the reader that writes derived fields into a format this build does
+/// not write. Recorded rather than assumed — dead `pub` code, kept for the contract it holds.
 pub fn fill_path(path: &Path, root: &Path) -> Result<String, String> {
     let text =
         std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let registry = load_registry(root)?;
     let claim: crate::model::ClaimFile =
         yaml_serde::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
+    if let Some(reason) = claim_schema_reason(&claim) {
+        return Err(format!("{}: {reason}", path.display()));
+    }
     let verdict = evaluate_claim(&claim, &registry);
     if verdict.flags() > 0 {
         return Err(format!("{}: {} flags", claim.claim_id, verdict.flags()));
