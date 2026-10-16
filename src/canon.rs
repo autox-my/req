@@ -34,6 +34,23 @@ use crate::model::Registry;
 /// computed under older rules are re-canonicalization candidates, never silently
 /// rewritten (hashing spec §5).
 pub const RULES_V: u32 = 5;
+/// The claim **file format's** own version (`docs/claim-format.md`), an axis that moves
+/// independently of the normalization rules: a schema bump is a migration and moves no
+/// address, while a rules bump re-derives every address. Named here, beside the other
+/// identity-path versions, because two callers need one value — `--version` reports it and
+/// the loader judges the value a file declares — and a literal at either site would be a
+/// second home, free to drift from the contract the doc states.
+pub const CLAIM_SCHEMA_V: u32 = 0;
+/// The `schema:` identifier's prefix: the value is `req.claim/<version>`. Split from the
+/// version so the version is stated once, as a number, and the identifier is derived.
+pub const CLAIM_SCHEMA_PREFIX: &str = "req.claim/";
+
+/// The `schema:` value this build reads and writes — `req.claim/<CLAIM_SCHEMA_V>`, derived
+/// rather than re-typed so no site can name a different one.
+pub fn claim_schema() -> String {
+    format!("{CLAIM_SCHEMA_PREFIX}{CLAIM_SCHEMA_V}")
+}
+
 /// Versioned domain tag — a rules bump never silently re-hashes ratified history
 /// (hashing spec §5 freeze policy).
 pub const ADDRESS_TAG: &[u8] = b"req.claim.v1\0";

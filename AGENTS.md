@@ -74,6 +74,17 @@ export CARGO_HOME="$PWD/.cargo-home"
 export OCR_NO_UPDATE=1
 ```
 
+- What this binary is: `cargo run -q -- --version` (`-V`) prints the versions that decide a
+  verdict — the crate, `rules_v`, the Baseline envelope, the decision chain and the claim file
+  schema — and the build identity. The first line stays single-line and greppable; `--help`
+  (`-h`) prints `USAGE`. Both are answered where the subcommand is looked up, **before** the
+  corpus root is resolved, so they work in any directory, print no `corpus root:` line, and exit
+  **0** — while bare `req`, an unknown subcommand and an unknown flag stay **2**. `rules_v` is
+  the axis that makes a stored address current, so it is the first thing to check when a verdict
+  surprises you; `built from` is the short git SHA the binary was built from, `-dirty` when a
+  tracked file was modified and `unknown` when git cannot answer. **Rebuild before probing a
+  branch** — a worktree's `target/debug/req` can lag its own branch head — and compare that line
+  with `git rev-parse --short HEAD` rather than remembering to.
 - Test suite: `cargo test` — check `EXIT=$?` on the *cargo* command.
   **Never pipe a check through `tail`/`grep`**: the pipeline's status is not the
   command's, and `EXIT=$?` after a pipe reports the wrong program.
