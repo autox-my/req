@@ -13,7 +13,7 @@
     },
     {
       "path": "tests/**/*.rs",
-      "rule": "Tests must verify behaviour through public interfaces and survive refactors. Expected values come from an independent oracle (corpus labels, a hand-computed decimal) — never recomputed the way the implementation computes them; a test whose expectation is produced by the code under test proves nothing. A test that cannot fail is a finding: mutation-check a load-bearing rule by removing the rule and confirming a test fails. Cover the failure direction, not only the happy path, and keep the three outcomes distinct (PASS / FAIL / UNVERIFIABLE)."
+      "rule": "Tests must verify behaviour through public interfaces and survive refactors. Expected values come from an independent oracle (corpus labels, a hand-computed decimal) — never recomputed the way the implementation computes them; a test whose expectation is produced by the code under test proves nothing. A test that cannot fail is a finding: mutation-check a load-bearing rule by removing the rule and confirming a test fails. Cover the failure direction, not only the happy path, and keep the three outcomes distinct (PASS / FAIL / UNVERIFIABLE).\n\nAlso apply the built-in system rubric for Rust (typos, ownership and lifetimes, error handling and panics, unsafe boundaries, allocations): a custom rule REPLACES the system rubric for matched paths. Run `ocr delegate rule --format json tests/init.rs` without --rule to see the built-in checklist."
     },
     {
       "path": "claims/*.yml",
@@ -37,7 +37,7 @@
     },
     {
       "path": "tools/**/*.py",
-      "rule": "Tooling must not be able to fake a pass. A corpus builder labels pairs by construction (the transformation applied), never by asking the canonicalizer; sources are pinned by commit SHA and recorded in the output, so the generated corpus is reproducible and the bench itself stays offline (the corpus is committed, not fetched at test time). Fail loudly on an unexpected source shape rather than emitting a smaller corpus."
+      "rule": "Tooling must not be able to fake a pass. A corpus builder labels pairs by construction (the transformation applied), never by asking the canonicalizer; sources are pinned by commit SHA and recorded in the output, so the generated corpus is reproducible and the bench itself stays offline (the corpus is committed, not fetched at test time). Fail loudly on an unexpected source shape rather than emitting a smaller corpus.\n\nAlso apply the built-in system rubric for Python (typos, dead code, mutable default arguments, boundary cases, exception handling, resource management, concurrency): a custom rule REPLACES the system rubric for matched paths. Run `ocr delegate rule --format json tools/review/check_rules.py` without --rule to see the built-in checklist."
     },
     {
       "path": "**/*.sh",
@@ -61,7 +61,7 @@
     },
     {
       "path": "Cargo.toml",
-      "rule": "Pins are provenance, not stragglers: rust-toolchain.toml, Cargo.lock and tools/ocr/package-lock.json are the pins. Verify a version at pin time; never bump opportunistically. Any rules/toolchain/crate/CLI bump is a Tier-1 rules bump: RULES_V must change in the same commit, and every stored claim address becomes a re-canonicalization candidate (`req canon --verify` exits 3 until the corpus is re-filled) — never a silent rehash."
+      "rule": "Pins are provenance, not stragglers: rust-toolchain.toml, Cargo.lock and tools/ocr/package-lock.json are the pins. Verify a version at pin time; never bump opportunistically. Any rules/toolchain/crate/CLI bump is a Tier-1 rules bump: RULES_V must change in the same commit, and every stored claim address becomes a re-canonicalization candidate (`req canon --verify` exits 3 until the corpus is re-filled) — never a silent rehash.\n\nAlso apply the built-in system rubric for Cargo manifests (wildcard versions, edition/MSRV/resolver, feature flags, release metadata): a custom rule REPLACES the system rubric for matched paths. Run `ocr delegate rule --format json Cargo.toml` without --rule to see the built-in checklist."
     },
     {
       "path": "rust-toolchain.toml",
