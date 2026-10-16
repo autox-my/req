@@ -9,12 +9,16 @@ Status: `req.claim/0`. Implements docs/adr/0002-git-is-transport-not-identity.md
 claims/REQ-0001.yml        # one claim, one file — filename = claim_id
 aliases/subjects.yml       # the subject registry (T1.7 of the hashing spec)
 bench/corpus/parity.yml    # labeled Equivalent / Not-equivalent pairs
-baselines/                 # signed Baselines — deferred to build step 8
+baselines/                 # the trust anchor, and one signed manifest per variant
 decisions/DEC-*.yml        # one YAML file per Decision — build step 8, landed
 ```
 
-Baselines are **not** defined here yet. Claims never store approval
-state: it is always derived from `decisions/DEC-*.yml`, never copied into claim files.
+The Baseline has landed too, so neither line is a deferral now: `baselines/trust.yml` is the
+committed trust anchor (ADR 0010), `baselines/<variant>.json` is the canonical manifest a
+human signs with its `.minisig` beside it, and `req baseline --verify` re-derives every
+address under the variant that manifest records. Claims never store approval
+state: it is derived from `decisions/DEC-*.yml` and from the signed Baseline, never copied
+into claim files.
 
 The Decision log itself landed at build step 8 (ADR 0005), so its shape is no longer a
 deferral: **one YAML file per Decision** under `decisions/`, named `DEC-<zero-padded>.yml`
@@ -175,7 +179,10 @@ genuine paraphrases).
 ## Deliberately deferred
 
 - Formal predicate syntax for `applicability` (v0: informal strings).
-- `baselines/` signing format — build step 8.
+- A third Baseline envelope (`signed_at`, the Decision-log head). The manifest's `version`
+  axis is separate from `rules_v` (`src/baseline.rs`), and today's envelope is v2; with the
+  Decision log now ratified and gated, this remainder is a live decision rather than a
+  silent default.
 - A lint rule comparing a claim's statement against its `rationale.source` ADR
   narrative — the human keeps them consistent for now; the check is proposal-tier
   work.
