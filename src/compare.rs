@@ -244,9 +244,10 @@ fn prohibition(m: Option<Modality>) -> bool {
 
 /// `req compare <a.yml> <b.yml>` — what kind of change is this?
 ///
-/// Exit codes: **0** classified, **3** UNVERIFIABLE (a claim that will not load, or a
-/// pair with nothing structurally to compare). A classification is not an approval: the
-/// answer is for a human to ratify.
+/// Exit codes: **0** classified, **3** UNVERIFIABLE (a claim that will not load — unparsable, or
+/// declaring a file format this build does not write, whose parse is therefore NOT JUDGED — or a
+/// pair with nothing structurally to compare). A classification is not an approval: the answer is
+/// for a human to ratify.
 pub fn run(path_a: &str, path_b: &str, root: &std::path::Path) -> i32 {
     let registry = match crate::canon::load_registry(root) {
         Ok(r) => r,
@@ -293,7 +294,16 @@ pub fn run(path_a: &str, path_b: &str, root: &std::path::Path) -> i32 {
 
 fn load_claim(path: &str) -> Result<crate::model::ClaimFile, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("read {path}: {e}"))?;
-    yaml_serde::from_str(&text).map_err(|e| format!("parse {path}: {e}"))
+    let claim: crate::model::ClaimFile =
+        yaml_serde::from_str(&text).map_err(|e| format!("parse {path}: {e}"))?;
+    // A side declaring a format this build does not write is a claim that will not load, exactly
+    // as the docstring above says: classifying it would report a direction over a parse nothing
+    // judged, and the loader (which this path does not go through) refuses the same file. Same
+    // class, same home: `claim_schema_reason`, never a second opinion.
+    if let Some(reason) = crate::canon::claim_schema_reason(&claim) {
+        return Err(format!("{path}: {reason}"));
+    }
+    Ok(claim)
 }
 
 fn rank(m: Option<Modality>) -> Option<u8> {

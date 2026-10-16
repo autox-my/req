@@ -6,7 +6,10 @@
 //! confuse. Every expectation is built by construction — the mutation applied to a
 //! corpus statement — never read off the classifier.
 
-use req::canon::canonicalize_statement;
+use std::path::PathBuf;
+use std::process::Command;
+
+use req::canon::{canonicalize_statement, claim_schema};
 use req::compare::{Direction, compare};
 use req::model::Registry;
 
@@ -227,4 +230,150 @@ fn the_dangerous_confusion_gate_names_the_dangerous_pairs() {
         Direction::Unclassifiable,
         Identical
     ));
+}
+
+// ---------------------------------------------------------------------------
+// A declared format this build cannot establish is NOT JUDGED — the loader's class
+// ---------------------------------------------------------------------------
+
+/// A minimal but *valid* registry: `compare` loads it before either side, and a fixture that
+/// failed here would exit 3 for the wrong reason.
+const REGISTRY: &str = "\
+schema: req.subject_registry/0
+version: 1
+subjects:
+  REQ_TOOL:
+    label: The req tool
+    aliases:
+      - the req tool
+";
+
+/// The claim shape `compare` is asked about, parameterized by the declared `schema:` so the
+/// two-sided test differs in the declaration and in nothing else.
+fn claim_text(claim_id: &str, schema: &str) -> String {
+    format!(
+        "\
+schema: {schema}
+claim_id: {claim_id}
+statement: >-
+  The req tool shall treat a single claim as the unit of requirements authorship,
+  review, and merge.
+modality: SHALL
+subject: REQ_TOOL
+attribute: unit_of_work
+operator: EQ
+value: claim
+unit: none
+conditions: []
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+canonical:
+  rules_v: null
+  subject_registry: 1
+  form: null
+address: null
+rationale:
+  source: docs/adr/0001-the-unit-is-a-claim.md
+  date: 2026-10-07
+  rejected_alternatives: []
+  assumptions: []
+relations: []
+"
+    )
+}
+
+/// A throwaway corpus root: `claims/` (what `--root` validates) plus the registry `compare`
+/// needs. The two sides are read by path, so the claim files also live here.
+struct Fixture {
+    root: PathBuf,
+}
+
+impl Fixture {
+    fn new(name: &str) -> Self {
+        let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("claims")).expect("claims dir");
+        std::fs::create_dir_all(root.join("aliases")).expect("aliases dir");
+        std::fs::write(root.join("aliases/subjects.yml"), REGISTRY).expect("registry");
+        Fixture { root }
+    }
+
+    fn claim(self, file: &str, text: &str) -> Self {
+        std::fs::write(self.root.join("claims").join(file), text).expect("claim file");
+        self
+    }
+
+    /// Run the compiled binary — the class is a CLI contract (exit code and printed verdict),
+    /// so it is read here rather than inferred from a library return value.
+    fn compare(&self, a: &str, b: &str) -> (i32, String) {
+        let output = Command::new(env!("CARGO_BIN_EXE_req"))
+            .arg("--root")
+            .arg(&self.root)
+            .arg("compare")
+            .arg(self.root.join("claims").join(a))
+            .arg(self.root.join("claims").join(b))
+            .output()
+            .expect("runs the compiled binary");
+        (
+            output.status.code().unwrap_or(-1),
+            format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        )
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+/// `compare`'s own docstring promises exit 3 for "a claim that will not load". A side whose
+/// declared format this build does not write is exactly that: nothing inside it was compared to
+/// anything, so classifying it would report a direction over a parse that was never judged —
+/// and `req canon --verify` on the same file already exits 3.
+#[test]
+fn a_side_declaring_a_format_this_build_cannot_establish_is_not_judged() {
+    let f = Fixture::new("a2-foreign-schema")
+        .claim("REQ-0001.yml", &claim_text("REQ-0001", "req.claim/1"))
+        .claim("REQ-0002.yml", &claim_text("REQ-0002", &claim_schema()));
+
+    let (code, out) = f.compare("REQ-0001.yml", "REQ-0002.yml");
+    assert_eq!(
+        code, 3,
+        "a side this build cannot establish is UNVERIFIABLE, never a classification:\n{out}"
+    );
+    assert!(
+        out.contains("NOT JUDGED"),
+        "the verdict must say nothing inside the file was judged:\n{out}"
+    );
+    assert!(
+        out.contains("req.claim/1"),
+        "the verdict must name the declared format:\n{out}"
+    );
+}
+
+/// The control: a file declaring the schema this build writes must classify exactly as it does
+/// today. A guard that also refuses valid files is not the fix.
+#[test]
+fn a_side_declaring_the_current_schema_is_still_classified() {
+    let f = Fixture::new("a2-current-schema")
+        .claim("REQ-0001.yml", &claim_text("REQ-0001", &claim_schema()))
+        .claim("REQ-0002.yml", &claim_text("REQ-0002", &claim_schema()));
+
+    let (code, out) = f.compare("REQ-0001.yml", "REQ-0002.yml");
+    assert_eq!(
+        code, 0,
+        "the current format is established by this build, so the pair is classified:\n{out}"
+    );
+    assert!(
+        out.contains("identical"),
+        "two identical statements are `identical`, and the exit code is 0:\n{out}"
+    );
 }

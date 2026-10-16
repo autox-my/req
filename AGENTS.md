@@ -127,7 +127,10 @@ export OCR_NO_UPDATE=1
   zero; the script checks the effect (`source: custom`) instead of the exit status.
 - Direction: `cargo run -q -- compare <a.yml> <b.yml>` — classifies the change
   (`modality_weakening`, `numeric_tightening`, `polarity_flip`, `scope_divergence`, …),
-  exit **3** when a side has no structured form to compare. A classification is for a
+  exit **3** when a side has no structured form to compare, and when a side declares a
+  file format this build does not write — a claim whose parse is therefore **NOT JUDGED**,
+  the same class and the same loader contract `req canon --verify` refuses, never a
+  classification over a declaration the build cannot establish. A classification is for a
   human to ratify, never an approval. The **direction gold set** (`req bench
   bench/corpus/direction-v1.yml`) scores these: the hard gate is **dangerous
   confusions = 0** (a loosening reported as no change, or as the opposite direction —
