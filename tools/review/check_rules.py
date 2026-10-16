@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check both directions between review/rule.json and the tracked tree.
+"""Check both directions between review/rule.json and the tracked tree, and the text itself.
 
 Why this exists: the review CLI **silently ignores** a rule whose field names it does
 not recognise, and equally silently falls back to the built-in rubric for a `path` glob
@@ -7,12 +7,21 @@ that matches nothing. A renamed directory would therefore turn an entry into a n
 that still "loads" — the review would quietly lose that checklist, and every exit code
 would stay zero. So the *effect* is checked here, not the exit status.
 
-Two directions, because only one of them was ever checked. **Rules → files**: every
+Three things are checked, because only the first was ever checked. **Rules → files**: every
 entry in the rule file must still match at least one tracked file, or it is a silent
 no-op. **Files → rules**: every tracked file must resolve to `source: custom`, or be
 named in ALLOW_LIST below with its reason — otherwise the vendor rubric judges it by
 accident, which is exactly how `build.rs`, `decisions/DEC-0001.yml` and `tools/req-d1.sh`
-sat on the generic checklist while every exit code stayed zero.
+sat on the generic checklist while every exit code stayed zero. **The text**: `rule` is
+optional to `json`, and the CLI answers `source: "custom"` with whatever text it was
+handed — measured, a whitespace-only `rule` on `src/**/*.rs` came back `source: custom,
+rule: "   "`, so both directions above stayed green while the reviewer would have run an
+empty checklist for the engine's own files. The declared side is therefore checked for a
+usable `path` and `rule` and for a duplicated `path` (the CLI resolves one entry per path,
+so every other entry's checklist reaches nobody), and the resolved text must equal the
+declared text verbatim. `.forgejo/**` is the one entry whose text is followed all the way
+into the provider request, by `tools/review/check_review_scope.py`; this file covers the
+other sixteen.
 
 The matcher is deliberately **not** re-implemented here. `fnmatch` does not implement
 gitignore `**` (an attempt reported 58 uncovered paths where the CLI resolves 16), and a
@@ -21,18 +30,23 @@ second implementation is free to drift from the one that decides — the defect
 `ocr delegate rule`, the same CLI the review uses.
 
 This is a check of a file we own, so a missing `ocr` is UNVERIFIABLE (exit 3), never a
-pass: the same three-state rule as the rest of the gate.
+pass: the same three-state rule as the rest of the gate. `--self-check` table-drives the
+pure half — the tree listing, the membership rule, the entry reader — and runs no review,
+so it is testable with no `ocr` and no git, which is exactly where the rest of this script
+can only SKIP.
 
-Exit codes: 0 every entry matched at least one tracked file AND every tracked file
-resolved to a custom rule or a listed exception; 1 a real gap (an entry matching no
-tracked file, a file left to the built-in rubric, or an allow-list entry that has gone
-stale); 3 could not answer (no `ocr`, no tracked files, or unparseable CLI output).
+Exit codes: 0 every entry matched a tracked file with its text arriving verbatim AND every
+tracked file resolved to a custom rule or a listed exception; 1 a real gap (an entry with
+no usable path or text, a duplicated path, a text that did not arrive verbatim, an entry
+matching no tracked file, a file left to the built-in rubric, or an allow-list entry that
+has gone stale); 3 could not answer (no `ocr`, no tracked files, or unparseable CLI
+output).
 """
+import argparse
 import json
 import pathlib
 import shutil
 import subprocess
-import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RULE_FILE = ROOT / "review" / "rule.json"
@@ -56,39 +70,218 @@ ALLOW_LIST = {
 }
 
 
+def parse_tracked(stdout: str) -> list:
+    """`git ls-files -z` output → the tracked paths.
+
+    `-z`, never the newline-separated form: git C-quotes a path containing a space, a quote
+    or a non-ASCII byte, so `"dir with space/note.md"` split on whitespace becomes
+    `['"dir', 'with', 'space/note.md"']` — three strings that name nothing. The real file
+    then reads as uncovered, and the CLI is handed paths that do not exist, which is how
+    this check came to report a correct glob as dead. `build.rs` reads its own listing with
+    `-z` for the same reason.
+    """
+    return [path for path in stdout.split("\0") if path]
+
+
+def usable_rule_text(text) -> bool:
+    """True only for a string with something in it.
+
+    `rule` is optional to `json`, and a blank text is what makes a matched entry an inert
+    checklist without failing anything: the CLI still answers `source: "custom"`.
+    """
+    return isinstance(text, str) and bool(text.strip())
+
+
+def covers(entry: str, path: str) -> bool:
+    """One membership rule for the allow-list: an exact path, or a directory prefix.
+
+    Deliberately one implementation: `allowed` ("does this path have an exception?") and
+    `entry_covers` ("is this exception still needed?") are the same question asked in two
+    directions, and a drift between them would silently change what the list means.
+    """
+    if entry.endswith("/"):
+        return path.startswith(entry)
+    return path == entry
+
+
 def allowed(path: str) -> bool:
     """True when `path` is an allow-listed exact path or sits under an allow-listed prefix."""
-    if path in ALLOW_LIST:
-        return True
-    return any(entry.endswith("/") and path.startswith(entry) for entry in ALLOW_LIST)
+    return any(covers(entry, path) for entry in ALLOW_LIST)
 
 
 def entry_covers(entry: str, tracked: list) -> bool:
     """True when an allow-list entry still names something in the tree."""
-    if entry.endswith("/"):
-        return any(path.startswith(entry) for path in tracked)
-    return entry in set(tracked)
+    return any(covers(entry, path) for path in tracked)
+
+
+def duplicate_paths(paths: list) -> list:
+    """The paths declared more than once, sorted."""
+    counts: dict = {}
+    for path in paths:
+        counts[path] = counts.get(path, 0) + 1
+    return sorted(path for path, count in counts.items() if count > 1)
+
+
+def read_entries(rules: list) -> tuple:
+    """The declared side: paths in file order, usable text per path, and what is wrong.
+
+    Never raises. `rule` is optional to `json` and `path` is only a convention, so a
+    hand-edited file can carry neither — and indexing either was a traceback and an exit
+    code nobody chose until this reader existed.
+    """
+    paths: list = []
+    texts: dict = {}
+    problems: list = []
+    for index, entry in enumerate(rules):
+        if not isinstance(entry, dict):
+            problems.append(f"entry {index} is not an object")
+            continue
+        path, text = entry.get("path"), entry.get("rule")
+        if not isinstance(path, str) or not path.strip():
+            problems.append(f"entry {index} has no usable 'path'")
+            continue
+        paths.append(path)
+        if usable_rule_text(text):
+            texts[path] = text
+        else:
+            problems.append(f"entry {index} ({path!r}) carries no usable 'rule' text")
+    for path in duplicate_paths(paths):
+        problems.append(
+            f"{path!r} is declared more than once; the CLI resolves one entry per path, so "
+            "every other entry's checklist can never reach a reviewer"
+        )
+    return paths, texts, problems
+
+
+def _shape(rules: list) -> tuple:
+    """A self-check row's view of the reader: the paths it kept, and how many problems."""
+    paths, _texts, problems = read_entries(rules)
+    return paths, len(problems)
+
+
+def self_check() -> int:
+    """Table-drive the pure half. No `ocr`, no git, no review.
+
+    The listing and the membership rule are pure functions, and the entry reader is handed
+    hand-authored documents — so every shape it can meet is a row here. The second row is
+    why it reads `-z`; the blank-text rows are the inert checklist both directions above
+    used to pass.
+    """
+    rows = [
+        ("the listing is NUL-separated", parse_tracked("a\0b\0"), ["a", "b"]),
+        (
+            "a path containing a space stays one path",
+            parse_tracked("dir with space/note.md\0plain.txt\0"),
+            ["dir with space/note.md", "plain.txt"],
+        ),
+        (
+            "a path containing a quote stays one path",
+            parse_tracked('quote"name.md\0'),
+            ['quote"name.md'],
+        ),
+        ("a path containing a newline stays one path", parse_tracked("a\nb.md\0"), ["a\nb.md"]),
+        ("a listing without a trailing NUL", parse_tracked("a\0b"), ["a", "b"]),
+        ("an empty listing is empty", parse_tracked(""), []),
+        ("a real rule text is usable", usable_rule_text("check this"), True),
+        ("a whitespace-only rule text is not", usable_rule_text("   "), False),
+        ("an absent rule text is not", usable_rule_text(None), False),
+        ("a non-string rule text is not", usable_rule_text(7), False),
+        ("an exact path covers itself", covers("Cargo.lock", "Cargo.lock"), True),
+        ("an exact path does not cover a sibling", covers("Cargo.lock", "Cargo.lock.bak"), False),
+        (
+            "a trailing slash covers a file under it",
+            covers("baselines/", "baselines/trust.yml"),
+            True,
+        ),
+        (
+            "a trailing slash is a boundary, not a prefix",
+            covers("baselines/", "baselines-old/x"),
+            False,
+        ),
+        (
+            "an allow-listed prefix admits a file under it",
+            allowed("bench/corpus/tier2-positives-v1-captures/x.json"),
+            True,
+        ),
+        ("a path no entry names is not allow-listed", allowed("src/canon.rs"), False),
+        ("a repeated path is reported once", duplicate_paths(["a", "b", "a"]), ["a"]),
+        ("distinct paths are not reported", duplicate_paths(["a", "b"]), []),
+        ("a well-formed entry is read", _shape([{"path": "a", "rule": "x"}]), (["a"], 0)),
+        ("an entry with no 'path' is reported", _shape([{"rule": "x"}]), ([], 1)),
+        ("an entry with no 'rule' is reported", _shape([{"path": "a"}]), (["a"], 1)),
+        (
+            "an entry with a blank 'rule' is reported",
+            _shape([{"path": "a", "rule": "  "}]),
+            (["a"], 1),
+        ),
+        ("an entry that is not an object is reported", _shape(["nonsense"]), ([], 1)),
+        (
+            "a duplicated path is reported",
+            _shape([{"path": "a", "rule": "x"}, {"path": "a", "rule": "y"}]),
+            (["a", "a"], 1),
+        ),
+        (
+            "a malformed entry does not hide the others",
+            _shape([{"rule": "x"}, {"path": "a", "rule": "y"}]),
+            (["a"], 1),
+        ),
+    ]
+    failures = 0
+    for label, got, want in rows:
+        ok = got == want
+        failures += 0 if ok else 1
+        print(f"  {'ok  ' if ok else 'FAIL'} {label:<48} {got!r}")
+    print(f"  {len(rows)} case(s), {failures} failure(s)")
+    return 1 if failures else 0
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="check review/rule.json against the tree")
+    parser.add_argument(
+        "--self-check",
+        action="store_true",
+        help="table-drive the pure checks; run no review",
+    )
+    args = parser.parse_args()
+    if args.self_check:
+        return self_check()
+
     if shutil.which("ocr") is None:
         print("SKIP  ocr not installed; cannot verify review/rule.json globs")
         return 3
     try:
-        rules = json.loads(RULE_FILE.read_text(encoding="utf-8"))["rules"]
+        document = json.loads(RULE_FILE.read_text(encoding="utf-8"))
     except Exception as exc:  # unreadable or malformed rule file
         print(f"FAIL  cannot read {RULE_FILE.relative_to(ROOT)}: {exc}")
         return 1
+    # A document that is not `{"rules": [...]}` is our file being wrong, not the CLI's: the
+    # shape is settled here so the reader below can never meet a `null` or a string, and so
+    # a malformed rule file is reported as ours instead of as an `ocr` exit nobody chose.
+    rules = document.get("rules") if isinstance(document, dict) else None
+    if not isinstance(rules, list):
+        print(f"FAIL  {RULE_FILE.relative_to(ROOT)} has no 'rules' list")
+        return 1
+
+    # The declared side first: it is what the two directions below can even be about, and a
+    # defect in our own file needs no CLI to establish.
+    paths, texts, problems = read_entries(rules)
+    if problems:
+        for problem in problems:
+            print(f"FAIL  review/rule.json: {problem}")
+        return 1
 
     try:
-        tracked = subprocess.run(
-            ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
-        ).stdout.split()
-    except (subprocess.CalledProcessError, OSError) as exc:
-        # "cannot answer", whether git failed or is not installed at all: OSError covers a
-        # missing `git` (FileNotFoundError), which is not a CalledProcessError and would
-        # otherwise escape as a traceback with exit 1 — reporting an absent tool as a finding
-        # about the tree. Every other exit in the contract is unchanged.
+        tracked = parse_tracked(
+            subprocess.run(
+                ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
+            ).stdout
+        )
+    except (subprocess.CalledProcessError, OSError, UnicodeDecodeError) as exc:
+        # "cannot answer", whether git failed, is not installed at all (OSError covers a
+        # missing `git`), or listed a path this decode cannot represent: none of those is a
+        # CalledProcessError, and each would otherwise escape as a traceback with exit 1 —
+        # reporting an absent tool, or an unrepresentable filename, as a finding about the
+        # tree. Every other exit in the contract is unchanged.
         git_stderr = getattr(exc, "stderr", "") or ""
         print(f"SKIP  git ls-files cannot answer: {(git_stderr or str(exc)).strip()[:200]}")
         return 3
@@ -114,14 +307,30 @@ def main() -> int:
     # Direction 1, rules -> files: a custom group with files is the only proof that an entry
     # took effect. The CLI emits an entry whose glob matches nothing just the same; it simply
     # never appears with files.
-    matched = {
-        group["pattern"]
+    resolved = {
+        group["pattern"]: group.get("rule")
         for group in groups
         if group.get("source") == "custom" and group.get("files")
     }
-    dead = [rule["path"] for rule in rules if rule["path"] not in matched]
+    dead = [path for path in paths if path not in resolved]
     for pattern in dead:
         print(f"FAIL  review/rule.json entry matches no tracked file: {pattern}")
+
+    # The text this entry will actually be judged by. It equals the declared text on all of
+    # today's entries (measured), so a difference is a fact about the CLI — a truncated or
+    # normalised checklist is a checklist silently lost — and the remedy is to re-establish
+    # that fact at pin time, never to relax this comparison.
+    mismatched = [
+        pattern
+        for pattern in paths
+        if pattern not in dead and resolved[pattern] != texts[pattern]
+    ]
+    for pattern in mismatched:
+        got, want = resolved[pattern], texts[pattern]
+        print(
+            f"FAIL  review/rule.json entry {pattern!r} did not reach the reviewer verbatim: "
+            f"declared {len(want)} chars, the CLI resolved {len(got or '')}"
+        )
 
     # Direction 2, files -> rules: every tracked path resolves to our rubric or is a listed
     # exception. A path the CLI sends to `default` is a path judged by the vendor checklist,
@@ -143,13 +352,13 @@ def main() -> int:
     for entry in stale:
         print(f"FAIL  allow-list entry matches no tracked file: {entry}")
 
-    if dead or uncovered or stale:
+    if dead or mismatched or uncovered or stale:
         return 1
 
     print(
-        f"review/rule.json: {len(rules)} entries match at least one tracked file, and all "
-        f"{len(tracked)} tracked files resolve to a custom rule or one of "
-        f"{len(ALLOW_LIST)} allow-listed exceptions"
+        f"review/rule.json: {len(paths)} entries match at least one tracked file with their "
+        f"text verbatim, and all {len(tracked)} tracked files resolve to a custom rule or one "
+        f"of {len(ALLOW_LIST)} allow-listed exceptions"
     )
     return 0
 

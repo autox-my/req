@@ -274,6 +274,15 @@ run cargo run -q -- bench bench/corpus/external-v3.yml
 # fails, exactly as a false merge does. See docs/canonical-hashing.md 6.3.
 run cargo run -q -- bench bench/corpus/direction-v1.yml
 
+# The rule-file checks decide from `git ls-files` output and from the shape of review/rule.json,
+# and that decision logic needs neither `ocr` nor a review run — so it is table-driven here,
+# ahead of the review-tool probe, rather than behind a check that can SKIP into looking green.
+if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/review/check_rules.py" ] && command -v python3 >/dev/null 2>&1; }; then
+  run python3 "$PWD/tools/review/check_rules.py" --self-check
+else
+  skip "python3 or tools/review/check_rules.py missing: cannot self-check the rule-file checks"
+fi
+
 # OCR is a review tool, not a gate: report the pin so version drift is visible. A plan
 # reports the rule-check it would run, but probes nothing — so `plan` executes no command
 # at all beyond the environment setup above.

@@ -125,10 +125,16 @@ export OCR_NO_UPDATE=1
   with minisign missing the verify is UNVERIFIABLE (exit 3), and UNVERIFIABLE
   blocks — `brew install minisign` first. Green before every commit and merge.
 - Review-rule coverage: `python3 tools/review/check_rules.py` (part of `check.sh` when
-  `ocr` is present) — asserts every `review/rule.json` entry still matches a tracked
-  file. The CLI **silently** falls back to the built-in rubric for a glob that matches
-  nothing, so a renamed directory would drop a checklist while every exit code stayed
-  zero; the script checks the effect (`source: custom`) instead of the exit status.
+  `ocr` is present) — checks both directions between `review/rule.json` and the tracked tree,
+  plus the checklist text itself: every entry must still match a tracked file, every tracked
+  file must resolve to `source: custom` or be allow-listed with its reason, and each entry's
+  text must reach the reviewer verbatim. The CLI **silently** falls back to the built-in
+  rubric for a glob that matches nothing, so a renamed directory would drop a checklist while
+  every exit code stayed zero; and it answers `source: custom` with whatever text it was
+  handed, so a blank `rule` is an inert checklist that passes both directions — the effect is
+  checked (`source: custom`, and the text), never the exit status. Its `--self-check`
+  table-drives the pure half (the `git ls-files -z` listing, the allow-list membership rule,
+  the entry reader) and needs no `ocr`.
 - Direction: `cargo run -q -- compare <a.yml> <b.yml>` — classifies the change
   (`modality_weakening`, `numeric_tightening`, `polarity_flip`, `scope_divergence`, …),
   exit **3** when a side has no structured form to compare, and when a side declares a
