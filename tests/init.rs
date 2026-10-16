@@ -6,11 +6,14 @@
 //! `req gate` and the corpus loader all read it back. A private writer unit-tested in
 //! isolation would prove nothing about that.
 //!
-//! The address check is deliberately a **fresh derivation** — read the claim the run
-//! produced, parse it, and re-derive the address from the parse with the same public
-//! functions `canon --fill` uses — never a digest literal. A literal would pass today and
-//! go stale on the next `RULES_V` bump, which is exactly the failure the starter claim
-//! must not ship with.
+//! The address is checked **twice, because the two checks fail differently**. A *golden*
+//! derived outside this crate — the address the pack's prototype corpus produced before
+//! `init` existed — is the independent oracle: recomputing the value with the same functions
+//! `build` uses (read the claim, parse it, re-derive) asserts only that the two agree, which
+//! an implementation that never derived a correct address would also satisfy. Keeping the
+//! fresh derivation *beside* it catches the other failure: a file whose stored form no longer
+//! matches its own parse. The golden is not "the implementation's output written down" — when
+//! `RULES_V` moves it is regenerated deliberately, in that commit, as every other golden is.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -99,6 +102,13 @@ const WRITTEN: [&str; 3] = [
     "claims/README.md",
     "aliases/subjects.yml",
 ];
+
+/// The starter claim's address, **derived outside this crate**: the pack's prototype corpus
+/// (`/tmp/newapp`, fact 5) produced exactly this value at `2afbd68`, before `init` existed,
+/// and `init`'s first run reproduced it byte for byte. It is an oracle, not a recording of the
+/// implementation — which is why the test asserts it *and* a fresh derivation, and why a
+/// `RULES_V` bump regenerates it deliberately in that commit.
+const STARTER_ADDRESS: &str = "cbece4455e74d01cac9a6b8be0a551382e1800dfca44b0921a210040f441a7e8";
 
 fn assert_written(dir: &Path) {
     for rel in WRITTEN {
@@ -209,9 +219,17 @@ fn init_creates_a_filled_corpus_in_the_current_directory() {
     ));
     assert_eq!(
         claim.address.as_deref(),
+        Some(STARTER_ADDRESS),
+        "the starter claim's address is a **golden derived outside this crate** — the prototype \
+         corpus filled at the commit before `init` existed. A mismatch is either a derivation \
+         that moved without a rules bump (a defect) or a deliberate `RULES_V` bump, which \
+         regenerates this constant in the same commit"
+    );
+    assert_eq!(
+        claim.address.as_deref(),
         Some(derived.as_str()),
-        "the stored address must be the one a fresh derivation produces — a literal digest \
-         passes here only by accident and goes stale on a RULES_V bump"
+        "and the stored address must be the one its own stored parse derives, so a file whose \
+         form and address disagree cannot pass on the golden alone"
     );
     assert_eq!(
         claim.canonical.rules_v,
@@ -493,6 +511,15 @@ fn a_broken_symlink_at_a_refusal_path_is_something_that_is_there() {
             "a dangling symlink at {name} is a thing that is there, so `init` must refuse:\n{}\n{}",
             out.stdout, out.stderr
         );
+        // The refusal must explain *this* case for every path it covers, not only for the one
+        // that got its own check: a dangling link at `claims` does not resolve, so "already
+        // exists — edit it in place" names a path that is not there and offers the remedy for
+        // a corpus that does not exist.
+        assert!(
+            out.stderr.contains("is a symlink"),
+            "a dangling link at {name} must be refused as a link, not as something that exists:\n{}",
+            out.stderr
+        );
         assert!(
             std::fs::symlink_metadata(&link).is_ok(),
             "a refused `init` must leave the link it found alone"
@@ -504,6 +531,140 @@ fn a_broken_symlink_at_a_refusal_path_is_something_that_is_there() {
             );
         }
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlinked_aliases_directory_is_refused_rather_than_written_through() {
+    // The refusal check above reads `claims` and `aliases/subjects.yml`, but the registry
+    // write goes *through* the `aliases` directory component — and `Created::dir` answers
+    // `exists()`, which follows a link and reports "nothing to create". Pointed at another
+    // tree, `init` therefore writes a corpus's registry into a directory it was never asked
+    // to touch, and still exits 0. The dangling form is the worse one: the refusal is
+    // skipped, `create_dir_all` then fails on the link, and the outcome is UNVERIFIABLE (3)
+    // instead of the refusal (1) whose message says what to do about it.
+    for dangling in [false, true] {
+        let fx = Fixture::new(if dangling {
+            "req-init-aliases-dangling"
+        } else {
+            "req-init-aliases-elsewhere"
+        });
+        // The tree the link points at, when it points at one. The dangling case has none, so
+        // the assertion below is written against the *link target*: an assertion about a path
+        // this run never touches is true whatever `init` does, which is how an unused fixture
+        // made the first version of this test vacuous in exactly the iteration it called the
+        // worse one.
+        let target = (!dangling).then(|| Fixture::new("req-init-aliases-target"));
+        let link_target = match &target {
+            Some(tree) => tree.path().to_path_buf(),
+            // Deliberately nothing: the link resolves to nowhere.
+            None => fx.join("nowhere-at-all"),
+        };
+        std::os::unix::fs::symlink(&link_target, fx.join("aliases"))
+            .expect("plants the link at the directory component");
+
+        let out = run_at(fx.path(), &["init"]);
+        assert_eq!(
+            out.code, 1,
+            "a link at `aliases` (dangling: {dangling}) is a thing that is there and the \
+             corpus is not where it points, so `init` must refuse:\n{}\n{}",
+            out.stdout, out.stderr
+        );
+        assert!(
+            !link_target.join("subjects.yml").exists(),
+            "the registry must not be written through the link, whatever it points at"
+        );
+        assert!(
+            !fx.join("claims").exists(),
+            "a refused `init` writes nothing"
+        );
+        // The refusal must explain *this* case. A link is refused because writing through it
+        // would put the corpus where this run was not asked to create one — not because
+        // something is there to overwrite, which is the reason for the case above and says
+        // nothing about a link that may not even resolve.
+        assert!(
+            out.stderr.contains("is a symlink"),
+            "the refusal must name the link:\n{}",
+            out.stderr
+        );
+        assert!(
+            !out.stderr.contains("already exists"),
+            "`aliases` need not exist at all — a dangling link is refused too, so the \
+             existing-corpus explanation is wrong here:\n{}",
+            out.stderr
+        );
+        assert!(
+            std::fs::symlink_metadata(fx.join("aliases")).is_ok_and(|m| m.file_type().is_symlink()),
+            "a refused `init` must leave the link it found alone"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_hiding_a_registry_is_refused_as_a_link_not_as_an_existing_corpus() {
+    // The refusal loop reads `aliases/subjects.yml`, and `symlink_metadata` follows symlinks in
+    // *intermediate* components — so when `aliases` is a link whose target already holds a
+    // registry, the loop resolves through the link, finds that file and answers first, telling
+    // the operator to "edit it in place": a path in a tree this run never named. The link is the
+    // thing to report, and it is the reason the check belongs **before** the loop.
+    let fx = Fixture::new("req-init-aliases-shadowed");
+    let target = Fixture::new("req-init-aliases-shadow-target");
+    std::fs::write(
+        target.path().join("subjects.yml"),
+        "schema: req.subject_registry/0\n",
+    )
+    .expect("plants a registry in the other tree");
+    std::os::unix::fs::symlink(target.path(), fx.join("aliases")).expect("plants the link");
+
+    let out = run_at(fx.path(), &["init"]);
+    assert_eq!(
+        out.code, 1,
+        "the link must be refused:\n{}\n{}",
+        out.stdout, out.stderr
+    );
+    assert!(
+        out.stderr.contains("is a symlink"),
+        "the link is what makes the path mean somewhere else, so it must be the reason given:\n{}",
+        out.stderr
+    );
+    assert!(
+        !out.stderr.contains("already exists"),
+        "the registry it found is in another tree; `aliases/subjects.yml` is not this run's to \
+         edit:\n{}",
+        out.stderr
+    );
+    assert_eq!(
+        std::fs::read_to_string(target.path().join("subjects.yml")).unwrap(),
+        "schema: req.subject_registry/0\n",
+        "the other tree must be untouched"
+    );
+}
+
+#[test]
+fn a_real_aliases_directory_is_used_rather_than_refused() {
+    // The check above is about *links*. A real `aliases/` directory is under the root the
+    // caller named, so `init` writes its registry into it and leaves everything else there
+    // alone. Refusing any pre-existing `aliases/` would be the easy generalisation and would
+    // block a project that happens to keep one for something unrelated — this is the case
+    // that keeps the check narrow.
+    let fx = Fixture::new("req-init-aliases-existing");
+    std::fs::create_dir_all(fx.join("aliases")).expect("pre-creates a real aliases/");
+    std::fs::write(fx.join("aliases/notes.txt"), "not ours\n")
+        .expect("puts an unrelated file in it");
+
+    let out = run_at(fx.path(), &["init"]);
+    assert_eq!(
+        out.code, 0,
+        "a real `aliases/` directory is where the caller asked for the corpus:\n{}\n{}",
+        out.stdout, out.stderr
+    );
+    assert_written(fx.path());
+    assert_eq!(
+        fx.read("aliases/notes.txt"),
+        "not ours\n",
+        "the adopter's own file must be left exactly as it was"
+    );
 }
 
 // ---------------------------------------------------------------------------

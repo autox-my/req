@@ -9,8 +9,9 @@
 //!
 //! * it does **not** search ancestors for an existing corpus, because a project started
 //!   inside another one must be able to start; and
-//! * it refuses to run where `claims/` or `aliases/subjects.yml` already exists (exit **1**),
-//!   because the alternative is overwriting a human's corpus;
+//! * it refuses to run where `claims/` or `aliases/subjects.yml` already exists, or where
+//!   `aliases` is a symlink (exit **1**), because the alternative is overwriting a human's
+//!   corpus — or writing it into a tree the caller never named;
 //! * `--root` is a **usage error** (exit **2**). Silently ignoring it would create a corpus
 //!   somewhere the caller did not ask for, and honouring it would give `init` a second,
 //!   differently-anchored meaning of a flag ADR 0012 defines as *the corpus root to read*.
@@ -52,6 +53,9 @@ const CLAIMS_README: &str = "claims/README.md";
 const REGISTRY_PATH: &str = "aliases/subjects.yml";
 /// The directory that marks a corpus root, and therefore the first refusal condition.
 const CLAIMS_DIR: &str = "claims";
+/// The registry's directory. It is a refusal condition **only when it is a link** — see
+/// [`init_at`] — because a real one is under the root the caller named.
+const ALIASES_DIR: &str = "aliases";
 
 /// The registry's own file format and version. The version is provenance that rides the
 /// claim's `canonical.subject_registry`; the aliases themselves are what the address covers,
@@ -63,10 +67,21 @@ const REGISTRY_V: u8 = 1;
 /// must not guess the forge a project uses.
 const ISSUES_URL: &str = "https://git.xantu-barb.ts.net/fdx/req/issues";
 
-/// How `init` can fail. The refusal is a decision with a remedy (the corpus is already
-/// here); everything else is a question this run could not settle.
+/// Why a path is refused, because the operator's next move depends on which: an existing corpus
+/// is edited in place, while a *link* is removed (or `init` is run where the corpus should live).
+/// One message for both would tell the second operator to edit a file that need not exist — a
+/// dangling link is refused too.
+enum Refusal {
+    /// Something is already at this path, and it is not this run's to overwrite.
+    Exists,
+    /// A link here would put the corpus where the caller did not name it.
+    Symlink,
+}
+
+/// How `init` can fail. The refusal is a decision with a remedy; everything else is a question
+/// this run could not settle.
 enum Failure {
-    Refused(String),
+    Refused(String, Refusal),
     Unverifiable(String),
 }
 
@@ -91,11 +106,18 @@ pub fn run(args: &[String], cli_root: Option<&Path>) -> i32 {
             print_next_steps();
             0
         }
-        Err(Failure::Refused(what)) => {
-            eprintln!(
-                "refusing to initialise: {what} already exists — a corpus is never \
-                 overwritten. Edit it in place, or run `init` in a different directory."
-            );
+        Err(Failure::Refused(what, why)) => {
+            match why {
+                Refusal::Exists => eprintln!(
+                    "refusing to initialise: {what} already exists — a corpus is never \
+                     overwritten. Edit it in place, or run `init` in a different directory."
+                ),
+                Refusal::Symlink => eprintln!(
+                    "refusing to initialise: {what} is a symlink — writing through it would \
+                     put the corpus where this run was not asked to create one. Remove the \
+                     link, or run `init` where the corpus should live."
+                ),
+            }
             1
         }
         Err(Failure::Unverifiable(why)) => {
@@ -108,6 +130,27 @@ pub fn run(args: &[String], cli_root: Option<&Path>) -> i32 {
 /// Create the corpus under `root`. The refusal is checked first and **only** here: the
 /// question is what this directory already holds, not what an ancestor holds.
 fn init_at(root: &Path) -> Result<(), Failure> {
+    // The registry's **directory component** is checked first, because it can *shadow* the loop
+    // below: `symlink_metadata` follows a link in intermediate components, so with
+    // `aliases -> elsewhere` and a registry already in `elsewhere`, the loop resolves
+    // `aliases/subjects.yml` *through* the link, finds that file and answers "already exists —
+    // edit it in place" — a remedy pointing into a tree this run never named. The link is the
+    // more fundamental fact and the one the operator has to act on.
+    //
+    // The check is also deliberately *narrower* than the loop: a real `aliases/` directory must
+    // stay usable — it is under the root the caller named, and `init` writes its registry into it
+    // as it always has. What is refused is a **link**, which would put the registry outside the
+    // corpus this run was asked to create, and nothing downstream would notice: `Created::dir`
+    // asks `exists()`, which follows the link and reports "nothing to create". A *dangling* link
+    // is worse still — the refusal would be skipped, `create_dir_all` would then fail on the
+    // link, and the outcome would be UNVERIFIABLE (3) instead of the refusal (1) whose message
+    // says what to do about it.
+    if std::fs::symlink_metadata(root.join(ALIASES_DIR))
+        .is_ok_and(|meta| meta.file_type().is_symlink())
+    {
+        return Err(Failure::Refused(ALIASES_DIR.to_string(), Refusal::Symlink));
+    }
+
     for (path, label) in [
         (root.join(CLAIMS_DIR), CLAIMS_DIR),
         (root.join(REGISTRY_PATH), REGISTRY_PATH),
@@ -115,8 +158,18 @@ fn init_at(root: &Path) -> Result<(), Failure> {
         // `symlink_metadata`, not `exists()`: a broken symlink at one of these paths is a
         // thing that is there, and writing through it would be an overwrite of the
         // author's file. `exists()` follows the link and answers "nothing here".
-        if std::fs::symlink_metadata(&path).is_ok() {
-            return Err(Failure::Refused(label.to_string()));
+        if let Ok(meta) = std::fs::symlink_metadata(&path) {
+            // …and a *link* is refused for a different reason from a file or a directory, so it
+            // gets a different remedy: a dangling link does not resolve, and "edit it in place"
+            // would name a path that is not there. Every path this loop covers can be a link,
+            // which is why the reason is read from the metadata rather than assumed from the
+            // check above.
+            let why = if meta.file_type().is_symlink() {
+                Refusal::Symlink
+            } else {
+                Refusal::Exists
+            };
+            return Err(Failure::Refused(label.to_string(), why));
         }
     }
 
@@ -146,7 +199,7 @@ fn init_at(root: &Path) -> Result<(), Failure> {
 /// Write the three files, deriving the claim's identity through the real path and reading
 /// the result back through the loader every other command uses.
 fn build(root: &Path, date: &str, created: &mut Created) -> Result<(), Failure> {
-    created.dir(&root.join("aliases"))?;
+    created.dir(&root.join(ALIASES_DIR))?;
     created.file(&root.join(REGISTRY_PATH), &registry_template())?;
 
     // Read the registry back the way every reader does, so the starter claim's parse is
@@ -617,5 +670,56 @@ mod tests {
             CI_SNIPPET,
             "the CI snippet `init` prints and the block in docs/adopting.md have drifted apart"
         );
+    }
+
+    /// `Created::abort` removes **the directories this run made** — not only its files — and
+    /// this is the only case that says so. `tests/init.rs` cannot reach it: `claims` is a
+    /// refusal condition, so a run that gets far enough to create a directory has already
+    /// passed the check, and the remaining way to fail is a write. A directory left behind is
+    /// not cosmetic — it is what makes the *next* `init` refuse a corpus whose files are gone.
+    ///
+    /// The second half is the other direction: a directory `init` did **not** create is the
+    /// adopter's, and the abort must not take it.
+    #[test]
+    fn abort_removes_only_the_directories_this_run_created() {
+        let dir = std::env::temp_dir().join(format!("req-created-abort-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("theirs"))
+            .expect("pre-creates a directory we did not make");
+
+        let mut created = Created::default();
+        // `assert!` rather than `.expect()`: `Failure` deliberately has no `Debug`, and a test
+        // is not a reason to give a production error type one.
+        assert!(
+            created.dir(&dir.join("theirs")).is_ok(),
+            "a directory that is already there is a no-op"
+        );
+        assert!(
+            created.dir(&dir.join("ours")).is_ok(),
+            "creates the directory this run owns"
+        );
+        assert!(
+            created
+                .file(&dir.join("ours/registry.yml"), "registry\n")
+                .is_ok(),
+            "writes into it"
+        );
+        assert!(dir.join("ours/registry.yml").is_file());
+
+        let left_behind = created.abort();
+        assert!(
+            left_behind.is_empty(),
+            "abort reported leftovers: {left_behind:?}"
+        );
+        assert!(
+            !dir.join("ours").exists(),
+            "the directory this run created must be gone, or the next `init` refuses a corpus \
+             whose files are already removed"
+        );
+        assert!(
+            dir.join("theirs").exists(),
+            "a directory this run did not create is the adopter's and must survive the abort"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

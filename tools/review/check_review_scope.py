@@ -224,6 +224,40 @@ def read_forgejo_rule(
     return rule, None
 
 
+def received_text(body: str) -> str:
+    """The text the model received, decoded out of the request body it arrived in.
+
+    A request body is JSON, and a checklist is embedded with its newlines *escaped*: the same
+    text is in there, as ``\\n`` inside a JSON string. Searching the raw body for a rule
+    therefore finds only a rule whose text is **one line** — which is how this check passed
+    while `'.forgejo/**'` was a single paragraph, and failed the moment that entry gained a
+    second one, with the model receiving the whole checklist both times. The claim under test is
+    "the checklist reached the provider"; this compares the payload, not the envelope it
+    travelled in.
+
+    Never raises: a body that is not JSON is searched with its escapes folded back, because a
+    provider that answers in some other framing still received whatever it received.
+    """
+    try:
+        parsed = json.loads(body)
+    except Exception:
+        return body.replace("\\n", "\n")
+    strings: list = []
+
+    def walk(node) -> None:
+        if isinstance(node, str):
+            strings.append(node)
+        elif isinstance(node, dict):
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(parsed)
+    return "\n".join(strings)
+
+
 def _one_rule_case(label: str, path: pathlib.Path, expect_rule: bool) -> int:
     """One row of the self-check table: 0 when the reader obeyed its contract."""
     raised = None
@@ -275,7 +309,23 @@ def self_check() -> int:
         )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    print(f"  {len(cases) + 2} case(s), {failures} failure(s)")
+    # The comparison the checklist assertion rests on. A body carries the rule text with its
+    # newlines escaped, so a raw search matches only a single-line rule — the multi-line case is
+    # the one that made this necessary.
+    multi = "para one\n\npara two"
+    decoder_rows = [
+        ("a decoded body exposes a multi-line checklist",
+         received_text(json.dumps({"rule": multi})), multi),
+        ("a nested body is walked, not only the top level",
+         received_text(json.dumps({"a": [{"b": multi}]})), multi),
+        ("a body that is not JSON still folds its escapes",
+         received_text("raw \\n text"), "raw \n text"),
+    ]
+    for label, got, want in decoder_rows:
+        ok = got == want
+        failures += 0 if ok else 1
+        print(f"  {'ok  ' if ok else 'FAIL'} {label:<48} {got!r}"[:110])
+    print(f"  {len(cases) + 2 + len(decoder_rows)} case(s), {failures} failure(s)")
     return 1 if failures else 0
 
 
@@ -371,7 +421,9 @@ def main() -> int:
             print(f"  stderr: {proc.stderr.strip()[:200]}")
         return 3
 
-    seen = "\n".join(bodies)
+    # Decoded, for every assertion: a path is plain text in either representation, a checklist
+    # is not — see `received_text`.
+    seen = "\n".join(received_text(body) for body in bodies)
     reached_forgejo = FORGEJO_PATH in seen
     reached_bench = BENCH_PREFIX in seen
     reached_control = CONTROL_PATH in seen

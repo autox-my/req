@@ -100,7 +100,9 @@ export OCR_NO_UPDATE=1
   directory**: `claims/REQ-0001.yml` (filled by the same derivation `canon --fill` runs, and
   asserted green through `fill::verify_text` before the command reports success),
   `claims/README.md`, and `aliases/subjects.yml`. Exit **0** created, **1** refused when
-  `claims/` or `aliases/subjects.yml` already exists (a corpus is never overwritten), **2**
+  `claims/` or `aliases/subjects.yml` already exists, or `aliases` is a symlink (a corpus is
+  never overwritten, and a link would put the registry outside the tree `init` was asked to
+  create), **2**
   usage (`init` takes no arguments and no `--root`), **3** UNVERIFIABLE (the starter claim
   could not be verified, or the target cannot be written — in which case whatever it wrote is
   removed rather than left as a half-corpus that is red and refuses the next run). It reads
@@ -382,9 +384,13 @@ matter:
 
 - A matched file's group becomes `source: "custom"` with exactly our text, and an
   unmatched file falls back to `source: "system"`. Custom rules **replace** the
-  built-in rubric for matched paths — they do not merge — which is why our
-  `src/**/*.rs` entry ends by telling the reviewer to also apply the built-in
-  language checklist.
+  built-in rubric for matched paths — they do not merge — so **every entry whose files are
+  not markdown ends by naming the built-in rubric it replaces, and a real path to read it
+  with**. Markdown is the one exception, and it is checked rather than assumed: the CLI
+  excludes it from review selection as `unsupported_ext`, so a clause there could never take
+  effect. Without the clause the built-in checklist is dropped with no error at all — the
+  failure `tools/review/check_rules.py` exists to catch, in the one field it does not inspect:
+  the text.
 - **Unknown keys are silently ignored** (Go drops them). A misspelled key is
   therefore a no-op that still "loads", so a rule file must be *verified to take
   effect* — check `source`/`rule` in the output, never just the exit code. The two
