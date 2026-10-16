@@ -52,7 +52,8 @@ Exit 0, and exactly three files:
 | `aliases/subjects.yml` | the subject registry: what your prose calls a thing, and the id its address covers |
 
 `init` writes into the **current directory** — never an ancestor — so a project can start inside
-another one. It refuses (exit 1) if `claims/` or `aliases/subjects.yml` already exists, because the
+another one. It refuses (exit 1) if `claims/` or `aliases/subjects.yml` already exists — or if `aliases`
+is a symlink, which would put the registry outside the tree you asked for — because the
 alternative is overwriting your corpus. It takes no arguments and **no `--root`** (exit 2): a
 silently ignored root would create a corpus somewhere you did not ask for, so run it where you want
 the corpus. It prints the next steps, including the CI file. Confirm what you got:

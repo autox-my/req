@@ -100,7 +100,9 @@ export OCR_NO_UPDATE=1
   directory**: `claims/REQ-0001.yml` (filled by the same derivation `canon --fill` runs, and
   asserted green through `fill::verify_text` before the command reports success),
   `claims/README.md`, and `aliases/subjects.yml`. Exit **0** created, **1** refused when
-  `claims/` or `aliases/subjects.yml` already exists (a corpus is never overwritten), **2**
+  `claims/` or `aliases/subjects.yml` already exists, or `aliases` is a symlink (a corpus is
+  never overwritten, and a link would put the registry outside the tree `init` was asked to
+  create), **2**
   usage (`init` takes no arguments and no `--root`), **3** UNVERIFIABLE (the starter claim
   could not be verified, or the target cannot be written — in which case whatever it wrote is
   removed rather than left as a half-corpus that is red and refuses the next run). It reads
