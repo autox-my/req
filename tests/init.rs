@@ -376,6 +376,137 @@ fn a_partial_corpus_is_refused_rather_than_completed() {
 }
 
 // ---------------------------------------------------------------------------
+// Acceptance: the UNVERIFIABLE outcome, and the cleanup it must leave behind
+// ---------------------------------------------------------------------------
+
+/// A mode the fixture held before a case made it read-only, restored on drop so the
+/// fixture can remove its own tree.
+#[cfg(unix)]
+struct RestoreMode(PathBuf);
+
+#[cfg(unix)]
+impl Drop for RestoreMode {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o700));
+        }
+    }
+}
+
+#[test]
+fn an_obstructed_write_is_unverifiable_and_writes_nothing() {
+    // `aliases` as a *regular file*: `Created::dir` skips it (`exists()` is true) and the
+    // registry write then fails — ENOTDIR, on any uid, which is why this case does not
+    // depend on permission bits (root ignores those).
+    let fx = Fixture::new("req-init-unverifiable-obstruction");
+    std::fs::write(fx.join("aliases"), "not a directory\n").expect("plants the obstruction");
+
+    let out = run_at(fx.path(), &["init"]);
+    assert_eq!(
+        out.code, 3,
+        "a write that cannot happen is UNVERIFIABLE, never a creation and never a refusal:\n{}\n{}",
+        out.stdout, out.stderr
+    );
+    assert!(
+        out.stderr.contains("[UNVERIFIABLE] init:"),
+        "the outcome must be named as UNVERIFIABLE:\n{}",
+        out.stderr
+    );
+    for rel in ["claims", "claims/REQ-0001.yml", "aliases/subjects.yml"] {
+        assert!(!fx.join(rel).exists(), "a failed `init` wrote {rel} anyway");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failure_after_a_write_removes_what_it_wrote() {
+    // The case `Created::abort` exists for: a *partial* corpus. The fixture directory is made
+    // read-only, but `aliases/` is planted first and stays writable, so the registry write
+    // **succeeds** and the `claims/` directory creation that follows fails. `abort` must then
+    // remove the registry it wrote — a half-corpus would be red and would make the next
+    // `init` refuse with exit 1.
+    //
+    // A uid that ignores directory permission bits (root) cannot produce this state at all:
+    // `claims/` would be created and `init` would exit 0. So the case probes for that and
+    // says it was not exercised, rather than passing without having run anything.
+    let fx = Fixture::new("req-init-unverifiable-readonly");
+    std::fs::create_dir_all(fx.join("aliases")).expect("pre-creates the writable aliases/");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(fx.path(), std::fs::Permissions::from_mode(0o500))
+            .expect("makes the fixture directory read-only");
+    }
+    let _restore = RestoreMode(fx.path().to_path_buf());
+
+    if std::fs::File::create(fx.join("probe")).is_ok() {
+        let _ = std::fs::remove_file(fx.join("probe"));
+        eprintln!(
+            "NOT EXERCISED: this uid ignores directory permission bits (running as root?), so a \
+             failure after the registry write cannot be induced — the abort cleanup is \
+             unverified here"
+        );
+        return;
+    }
+
+    let out = run_at(fx.path(), &["init"]);
+    assert_eq!(
+        out.code, 3,
+        "an un-creatable `claims/` is UNVERIFIABLE:\n{}\n{}",
+        out.stdout, out.stderr
+    );
+    assert!(
+        out.stderr.contains("[UNVERIFIABLE] init:"),
+        "the outcome must be named as UNVERIFIABLE:\n{}",
+        out.stderr
+    );
+    assert!(
+        !fx.join("aliases/subjects.yml").exists(),
+        "abort must remove the registry this run wrote — otherwise the next `init` refuses"
+    );
+    assert!(!fx.join("claims").exists(), "no claims directory was left");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_broken_symlink_at_a_refusal_path_is_something_that_is_there() {
+    // The refusal check uses `symlink_metadata`, not `exists()`, precisely because `exists()`
+    // follows the link and answers "nothing here" for a dangling one — which would let
+    // `init` write through it. Every other case plants a real directory or a regular file,
+    // for which the two answers agree, so swapping them leaves them all green; this is the
+    // case that does not.
+    for name in ["claims", "aliases/subjects.yml"] {
+        let fx = Fixture::new(&format!("req-init-dangling-{}", name.replace('/', "-")));
+        let link = fx.join(name);
+        std::fs::create_dir_all(link.parent().expect("the path has a parent"))
+            .expect("creates the parent directory");
+        std::os::unix::fs::symlink("nowhere-at-all", &link).expect("plants a dangling symlink");
+        assert!(
+            !link.exists(),
+            "a dangling symlink answers `exists() == false`"
+        );
+
+        let out = run_at(fx.path(), &["init"]);
+        assert_eq!(
+            out.code, 1,
+            "a dangling symlink at {name} is a thing that is there, so `init` must refuse:\n{}\n{}",
+            out.stdout, out.stderr
+        );
+        assert!(
+            std::fs::symlink_metadata(&link).is_ok(),
+            "a refused `init` must leave the link it found alone"
+        );
+        for rel in WRITTEN {
+            assert!(
+                !fx.join(rel).exists() || rel == name,
+                "a refused `init` wrote {rel} anyway"
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Acceptance: the argument contract, and the root `init` is answered before
 // ---------------------------------------------------------------------------
 

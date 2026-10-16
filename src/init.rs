@@ -41,6 +41,7 @@ use crate::canon::{
     RULES_V, address_hex, canonical_json, claim_schema, evaluate_claim, load_claims, load_registry,
 };
 use crate::fill::{StoredState, fill_text, verify_text};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// The three paths `init` writes, relative to the working directory. Exactly these: a
@@ -126,7 +127,17 @@ fn init_at(root: &Path) -> Result<(), Failure> {
         Err(failure) => {
             // Nothing half-written: a surviving `aliases/subjects.yml` would make every
             // later `init` refuse, and a claim without its derived fields would be red.
-            created.abort();
+            // A removal that itself fails is **reported**, never swallowed: the guarantee
+            // ("nothing is left behind") holds only while the operator can see when it does
+            // not, and a stale tree needs a human to remove it.
+            let leftovers = created.abort();
+            if !leftovers.is_empty() {
+                eprintln!(
+                    "[UNVERIFIABLE] init: could not remove what a failed init wrote — \
+                     remove it by hand:\n  {}",
+                    leftovers.join("\n  ")
+                );
+            }
             Err(failure)
         }
     }
@@ -220,22 +231,46 @@ impl Created {
         Ok(())
     }
 
+    /// Write `path` **exclusively**, and remember it.
+    ///
+    /// `create_new` is the guard the refusal check cannot be: that check runs before the
+    /// writes, so a `claims/REQ-0001.yml` — or a symlink at that name pointing outside the
+    /// corpus — planted between the two (a concurrent `init`, an author's stray link) would
+    /// be written through by `std::fs::write`, which follows symlinks and truncates. Here the
+    /// write itself refuses an existing path, and the failure is UNVERIFIABLE rather than an
+    /// overwrite. `baseline.rs` makes the same exclusive-creation guarantee for the same
+    /// reason.
     fn file(&mut self, path: &Path, text: &str) -> Result<(), Failure> {
-        std::fs::write(path, text)
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|e| Failure::Unverifiable(format!("write {}: {e}", path.display())))?;
+        file.write_all(text.as_bytes())
             .map_err(|e| Failure::Unverifiable(format!("write {}: {e}", path.display())))?;
         self.files.push(path.to_path_buf());
         Ok(())
     }
 
-    /// Remove this run's files, then the directories it made. A directory that is not empty
-    /// (something the adopter put there) stays: `remove_dir` refuses, which is correct.
-    fn abort(&self) {
+    /// Remove this run's files, then the directories it made, and **report** every removal
+    /// that failed. A directory that is not empty (something the adopter put there) stays:
+    /// `remove_dir` refuses, which is correct — but the caller must say so, because the
+    /// guarantee this exists for ("a failed `init` leaves nothing behind") is false the
+    /// moment a removal fails silently: the half-corpus would be red *and* would make the
+    /// next `init` refuse, with nothing telling the operator to clean it up by hand.
+    fn abort(&self) -> Vec<String> {
+        let mut left_behind = Vec::new();
         for file in self.files.iter().rev() {
-            let _ = std::fs::remove_file(file);
+            if let Err(e) = std::fs::remove_file(file) {
+                left_behind.push(format!("{}: {e}", file.display()));
+            }
         }
         for dir in self.dirs.iter().rev() {
-            let _ = std::fs::remove_dir(dir);
+            if let Err(e) = std::fs::remove_dir(dir) {
+                left_behind.push(format!("{}: {e}", dir.display()));
+            }
         }
+        left_behind
     }
 }
 
@@ -333,9 +368,12 @@ fn print_next_steps() {
     );
 }
 
-/// The CI snippet `init` prints. Kept in one place so the command's advice and
-/// `docs/adopting.md` carry the same workflow; `tests/init.rs` pins the pieces of it the
-/// adopter cannot afford to lose.
+/// The CI snippet `init` prints. `docs/adopting.md` carries the same block inside its
+/// "## CI" section — two copies of advice no adopter can afford to have drift, so the
+/// equality is **asserted** (`the_printed_snippet_is_the_one_the_adopting_doc_carries`,
+/// below) rather than left to review: the parts that matter (the `summary` fallback, the
+/// `gate()` bookkeeping, `exit $rc`, the presence assertion) would otherwise be free to
+/// diverge with nothing failing.
 ///
 /// The presence assertion is not decoration: a **failed input redirection does not stop a
 /// `set -e` script**, so without it an absent `.req/variants` silently skips every declared
@@ -545,5 +583,39 @@ mod tests {
             "form is an anchor"
         );
         assert_eq!(claim.address.as_deref(), Some(""), "address is an anchor");
+    }
+
+    /// The one **fenced YAML block** in a document, without the fence. Panics when the
+    /// document has none or more than one, because "the first one" is exactly the assumption
+    /// that lets a test compare the wrong block and pass.
+    fn the_only_yaml_block(markdown: &str) -> &str {
+        const OPEN: &str = "```yaml\n";
+        let mut blocks = markdown.match_indices(OPEN);
+        let first = blocks.next().expect("the document has a ```yaml block");
+        assert!(
+            blocks.next().is_none(),
+            "the document must have exactly one ```yaml block; the snippet test compares *the* block"
+        );
+        let after = &markdown[first.0 + OPEN.len()..];
+        let close = after
+            .find("\n```")
+            .expect("the ```yaml block is closed with ```");
+        &after[..close + 1]
+    }
+
+    /// `init` prints the CI snippet; `docs/adopting.md` shows it. The two copies are the same
+    /// block today, and this is what keeps them the same block: the parts an adopter cannot
+    /// afford to lose — the `summary` fallback, the `gate()` bookkeeping, `exit $rc`, the
+    /// `[ -f .req/variants ]` presence assertion — are not pinned anywhere else.
+    #[test]
+    fn the_printed_snippet_is_the_one_the_adopting_doc_carries() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/adopting.md");
+        let doc = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("reads {}: {e}", path.display()));
+        assert_eq!(
+            the_only_yaml_block(&doc),
+            CI_SNIPPET,
+            "the CI snippet `init` prints and the block in docs/adopting.md have drifted apart"
+        );
     }
 }
