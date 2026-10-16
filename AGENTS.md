@@ -26,8 +26,10 @@ false merges** on the parity + adversarial-trap corpora. It is *measured*
   Decision, Baseline as defined there — this project exists because those words were
   used interchangeably. Add a missing term to `CONTEXT.md` in the same commit that
   introduces it.
-- **Never hand-write an `address` or a `canonical.form`.** Both are derived; only
-  `req canon --fill` may write them. A hand-written digest is a critical finding.
+- **Never hand-write an `address` or a `canonical.form`.** Both are *derived* by the
+  canonicalizer and never authored: `req canon --fill` writes them into an existing claim,
+  and `req init` derives a new corpus's starter claim through that same path. A
+  hand-written digest is a critical finding.
 - **Never weaken the asymmetric cost.** A false merge silently deletes a
   requirement — always a failure. A false split is noise. Never auto-merge;
   ratification is a human act.
@@ -64,6 +66,12 @@ else `REQ_ROOT`, else the nearest ancestor of the working directory holding `cla
 chosen root is printed once to stderr; with no corpus the answer is `[UNVERIFIABLE]` and exit
 3 — never an empty result.
 
+**`init` is the exception**: it *creates* a root, so it resolves none. It is answered before
+root resolution, in the position where the subcommand is looked up (like `--version`/`--help`),
+prints no `corpus root:` line, and consults neither `REQ_ROOT` nor `--root` — a `--root` on
+`init` is a usage error (exit 2), because honouring it would give the flag two differently
+anchored meanings and ignoring it would write a corpus somewhere the caller did not ask for.
+
 ```bash
 # Toolchain pinned by rust-toolchain.toml; rustfmt/clippy live in that toolchain,
 # not in `stable`. scripts/check.sh resolves the directory — by hand:
@@ -88,6 +96,16 @@ export OCR_NO_UPDATE=1
   far as we could tell". **Rebuild before probing a
   branch** — a worktree's `target/debug/req` can lag its own branch head — and compare that line
   with `git rev-parse --short HEAD` rather than remembering to.
+- Bootstrapping: `cargo run -q -- init` — create a working corpus in the **current working
+  directory**: `claims/REQ-0001.yml` (filled by the same derivation `canon --fill` runs, and
+  asserted green through `fill::verify_text` before the command reports success),
+  `claims/README.md`, and `aliases/subjects.yml`. Exit **0** created, **1** refused when
+  `claims/` or `aliases/subjects.yml` already exists (a corpus is never overwritten), **2**
+  usage (`init` takes no arguments and no `--root`), **3** UNVERIFIABLE (the starter claim
+  could not be verified, or the target cannot be written — in which case whatever it wrote is
+  removed rather than left as a half-corpus that is red and refuses the next run). It reads
+  no root, prints no `corpus root:` line, and prints the next steps to stdout: the CI
+  snippet, the per-variant rule, and where a req bug goes.
 - Test suite: `cargo test` — check `EXIT=$?` on the *cargo* command.
   **Never pipe a check through `tail`/`grep`**: the pipeline's status is not the
   command's, and `EXIT=$?` after a pipe reports the wrong program.
@@ -390,6 +408,9 @@ matter:
 - `docs/canonical-hashing.md` — Tier-1 rules, the two tiers, freeze policy,
   benchmark protocol.
 - `docs/claim-format.md` — one claim per file; the parity invariant; authoring rules.
+- `docs/adopting.md` — how a project adopts req, on one page: install at a pinned rev,
+  `req init`, the authoring loop and its traps, the CI snippet with the per-variant rule,
+  and where a req bug is reported.
 - `claims/REQ-*.yml` + `claims/README.md` — the dogfood corpus: req's own
   requirements, in req's own format.
 - `aliases/subjects.yml` — subject registry. Alias sets must be disjoint; an
@@ -454,7 +475,8 @@ matter:
   `audit.rs` (the audit packet, derived from the Baseline's drift),
   `decision.rs` (the decision log and its hash chain),
   `funnel.rs` (Tier-2 blocking, the provider seam, the command provider and the
-  gold-set scoring), `fill.rs` (derived fields).
+  gold-set scoring), `fill.rs` (derived fields), `init.rs` (the corpus bootstrap and the
+  templates it writes).
 - `baselines/` — `trust.yml` is the committed trust anchor (ADR 0010) and the **single home of
   the public key**; `<variant>.json` is a signed Baseline's canonical manifest and
   `<variant>.json.minisig` its signature; `trust.example.yml` is the template. The standalone
@@ -479,8 +501,9 @@ matter:
   <dir>`), never a path the reader is told exists.
 - Data flow: claim file → typed parse (`yaml_serde`) → Tier-1 canonical form →
   canonical bytes → `sha256("req.claim.v1\0" ‖ bytes)` = address. Only `req bench`
-  (results) and `req canon --fill` (derived fields) write anything — and `--fill`
-  writes only what the parity invariant confirms.
+  (results), `req canon --fill` (derived fields) and `req init` (a new corpus) write
+  anything — `--fill` writes only what the parity invariant confirms, and `init` derives
+  the starter claim through that same path and verifies it before reporting success.
 
 ## Correctness rules
 

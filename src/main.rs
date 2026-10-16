@@ -16,6 +16,7 @@
 //!   req [--root <dir>] baseline --verify F — verify a signed Baseline: drift, trust, signature
 //!   req [--root <dir>] audit [--baseline F] — the audit packet: coverage, provenance, undecided
 //!   req [--root <dir>] decision [--fill]   — the decision log and its hash chain (step 8)
+//!   req init                               — create a corpus in the working directory
 //!
 //! The corpus root is resolved at **runtime** (ADR 0012), once, before dispatch: `--root`,
 //! then `REQ_ROOT`, then the nearest ancestor of the working directory holding `claims/`.
@@ -23,12 +24,18 @@
 //! a human signs (`req baseline`) — and a root that yields no corpus is UNVERIFIABLE (exit
 //! 3), never an empty answer.
 //!
+//! `--version`, `--help` and `init` are answered **before** that resolution, in the position
+//! where the subcommand is looked up. For the two flags the reason is that they must work in
+//! any directory; for `init` it is that `init` is what *creates* the root, so resolving one
+//! would be answering a question it is about to make true (and `--root` is a usage error
+//! there rather than a second, silently different anchor).
+//!
 //! The Tier-1 canonicalizer (src/canon.rs) is deterministic and offline: no model I/O,
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
 use req::{
-    audit, baseline, bench, canon, compare, decision, fill, funnel, gate, impact, root, select,
-    view,
+    audit, baseline, bench, canon, compare, decision, fill, funnel, gate, impact, init, root,
+    select, view,
 };
 use std::path::Path;
 use std::process::exit;
@@ -45,6 +52,7 @@ usage: req [--root <dir>] <command> [args]
   select | render | trace | gate k=v [...]
                                   the variant projections and the release gate
   impact <claim-id>               what depends on that claim, transitively
+  init                            create a corpus in the current directory (no root lookup)
   propose                         the Tier-2 funnel: blocking, then provider adjudication
   baseline [--verify <file>]      the manifest a human signs, or verify one
   audit [--baseline <file>]       the audit packet: coverage, provenance, undecided
@@ -161,6 +169,15 @@ fn main() {
         "--help" | "-h" => {
             println!("{USAGE}");
             exit(0);
+        }
+        // `init` *creates* the root, so it is answered here beside the two flags and for the
+        // stronger version of their reason: resolving a corpus would answer a question this
+        // command is about to make true, and in a directory with no corpus it would fail
+        // before doing the one thing it was asked to do. It is deliberately not an entry in
+        // `COMMANDS`, whose handlers all take a resolved root.
+        "init" => {
+            rest.remove(0);
+            exit(init::run(&rest, cli_root.as_deref()));
         }
         _ => {}
     }

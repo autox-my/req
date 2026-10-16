@@ -127,10 +127,11 @@ trap: LE vs LT — ``within`` vs ``in fewer than`` — never collapse.
 
 ### 5.1 Writing and verifying the stored fields
 
-`req canon --fill` is the only writer of `canonical.form`/`address`, and it **refuses**
-a claim whose parse disagrees with its authored slots: an address over a parse that
-contradicts the claim would enshrine the contradiction in the audit artifact. A refusal
-is reported and exits 3 — never folded into success.
+`req canon --fill` is the only writer of `canonical.form`/`address` into an existing claim —
+a new corpus's starter claim is derived by `req init` through this same path, never typed —
+and it **refuses** a claim whose parse disagrees with its authored slots: an address over a
+parse that contradicts the claim would enshrine the contradiction in the audit artifact. A
+refusal is reported and exits 3 — never folded into success.
 
 `req canon --verify` is in the gate, and it checks three things per claim: the stored
 form equals what the current parse produces, the stored address recomputes from the

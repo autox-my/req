@@ -27,6 +27,7 @@ relaxed to let a change land.
 
 | command | the question it answers |
 | --- | --- |
+| `req init` | start a corpus here — a starter claim already filled and verified, its registry, and the authoring README |
 | `req canon` | what each claim parses to, and whether the parse still agrees with the author's slots |
 | `req bench` | does identity hold — zero false merges over the corpora; exit non-zero and the build is red |
 | `req select` | which claims apply in a variant — selectors, not branches — with UNKNOWN as a first-class answer |
@@ -43,7 +44,8 @@ The **corpus root** is resolved at *runtime* (ADR 0012), so req manages any repo
 claims: `--root <dir>`, then `REQ_ROOT`, then the nearest ancestor of the working directory
 holding a `claims/` directory. Whichever root was chosen is printed to stderr — never stdout,
 which carries the exact bytes a human signs — and a root that yields no corpus is
-UNVERIFIABLE (exit 3), never an empty answer.
+UNVERIFIABLE (exit 3), never an empty answer. `req init` is the one exception: it *creates* a
+root in the current directory, so it resolves none and takes no `--root`.
 
 ## The two differentiators
 
