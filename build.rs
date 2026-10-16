@@ -9,12 +9,23 @@
 //! The contract, in the order of the traps that decide whether the line is *trustworthy*
 //! rather than merely present:
 //!
-//! 1. **Never fail the build.** No `.git`, no `git`, a shallow clone, a source tarball or a
-//!    git that errors all yield `unknown` — including a `-dirty` probe that cannot answer: an
-//!    unestablished cleanliness is not cleanliness, so the whole identity says `unknown` rather
-//!    than claiming a clean tree. A build script that can fail breaks every build for
-//!    the sake of one provenance line, so the value is emitted unconditionally — `unknown`
-//!    included, never omitted (an absent line reads as "not applicable", a different claim).
+//! 1. **Never fail the build, and only an unresolved commit makes the whole value `unknown`.** No
+//!    `.git`, no `git`, a shallow clone, a source tarball or a git that errors on `rev-parse` all
+//!    yield `unknown`. The **commit and the cleanliness are separate facts**, though: when
+//!    `rev-parse --short HEAD` resolves but the cleanliness probe cannot answer at all — an old git
+//!    that rejects `--no-optional-locks`, a corrupt or locked index, a killed process — the
+//!    resolved commit is kept and only the cleanliness is marked unestablished, as
+//!    `<sha>-cleanliness-unknown`. (Round 1 of this script's review collapsed a *failed* probe into
+//!    "clean" and emitted a bare SHA — asserting cleanliness the probe never established; that was
+//!    the defect, and it is fixed by the suffix, not by discarding the commit.) Collapsing the
+//!    unanswerable probe into `unknown` would make the value mean two different things with two
+//!    different remedies — *this is not a git checkout* and *run `git status` yourself and find out
+//!    why* — and would throw away attribution exactly in the anomalous state a bug report needs it
+//!    most. A build script that can fail breaks every build for the sake of one provenance line, so
+//!    the value is emitted unconditionally — `unknown` included, never omitted (an absent line reads
+//!    as "not applicable", a different claim). The four values are decided by `identity` in
+//!    `src/build_identity.rs`, which is compiled into this script below and unit-tested by
+//!    `cargo test`: a build script itself cannot be tested.
 //! 2. **A stale identity is worse than none.** A value naming a commit the binary was not
 //!    built from is *confidently wrong* — precisely the failure this exists to remove. Cargo
 //!    re-runs a build script only for the paths it is told about, so `<gitdir>/HEAD` is named,
@@ -46,38 +57,48 @@
 
 use std::process::Command;
 
-/// The honest answer when git cannot supply one.
-const UNKNOWN: &str = "unknown";
+// The identity's decision, as a pure function over the two facts it is built from. Pulled in by
+// path so the build script and the library compile the **same file**: one implementation, and the
+// four states are unit-tested in `cargo test` (`src/build_identity.rs`), which a build script
+// cannot be. `#[path]` over `include!`: this stays a normal module with its own imports, with no
+// textual splicing into this file's item scope.
+#[path = "src/build_identity.rs"]
+mod build_identity;
+
+use build_identity::Cleanliness;
 
 fn main() {
     // Unconditional, so `env!("REQ_BUILD_SHA")` always resolves in `src/main.rs`.
-    println!("cargo:rustc-env=REQ_BUILD_SHA={}", build_identity());
+    println!("cargo:rustc-env=REQ_BUILD_SHA={}", resolve_identity());
     watch_inputs();
 }
 
-/// The short HEAD sha, suffixed `-dirty` when a tracked file is modified, or `unknown`.
-/// Never an error: every failure path here is a build that must still succeed.
-fn build_identity() -> String {
-    let Some(head) = git(&["rev-parse", "--short", "HEAD"]) else {
-        return UNKNOWN.to_string();
-    };
-    if head.is_empty() {
-        return UNKNOWN.to_string();
-    }
-    // The dirty probe's answer is three-state, and the third state is the point: `git` returning
-    // `None` (an old git that rejects `--no-optional-locks`, a corrupt index, a killed process)
-    // means whether the tree is dirty was **not established**. Collapsing that into "clean" would
-    // emit a bare SHA — the confidently-wrong identity this script exists to remove — so the whole
-    // identity becomes `unknown`, which is what contract item 1 promises for a git that errors.
-    match git(&[
-        "--no-optional-locks",
-        "status",
-        "--porcelain",
-        "--untracked-files=no",
-    ]) {
-        Some(status) if status.is_empty() => head,
-        Some(_) => format!("{head}-dirty"),
-        None => UNKNOWN.to_string(),
+/// The build identity: the resolved commit, carrying what the cleanliness probe established about
+/// it. Never an error: every failure path here is a build that must still succeed.
+///
+/// The two facts are resolved separately, because they are separate: `rev-parse` answering gives a
+/// commit worth reporting even when the cleanliness probe cannot answer, and only an unresolved
+/// commit makes the whole value `unknown`. The four renderings are `identity`'s
+/// (`src/build_identity.rs`); this function's job is to resolve the two inputs without failing.
+fn resolve_identity() -> String {
+    match git(&["rev-parse", "--short", "HEAD"]) {
+        Some(commit) if !commit.is_empty() => {
+            let cleanliness = match git(&[
+                "--no-optional-locks",
+                "status",
+                "--porcelain",
+                "--untracked-files=no",
+            ]) {
+                Some(status) if status.is_empty() => Cleanliness::Clean,
+                Some(_) => Cleanliness::Dirty,
+                // Not "clean": `None` is git failing to answer at all (see contract item 1).
+                None => Cleanliness::Unestablished,
+            };
+            build_identity::identity(Some(&commit), cleanliness)
+        }
+        // No commit, or an answer that resolved nothing: there is nothing to attribute, and the
+        // cleanliness probe cannot change that, so it is not run.
+        _ => build_identity::identity(None, Cleanliness::Unestablished),
     }
 }
 

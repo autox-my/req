@@ -65,8 +65,12 @@ fn assert_axis(stdout: &str, label: &str, expected: &str) {
 }
 
 /// The build identity as a contract: the line is **never omitted** (an absent line reads as
-/// "not applicable", a different claim), and its value is either `unknown` — no git, no
-/// `.git`, a tarball — or a plausible short SHA, optionally marked dirty.
+/// "not applicable", a different claim), and its value is one of exactly four states — `unknown`,
+/// when the commit itself could not be resolved and so there is nothing to attribute, or a
+/// resolved short SHA, suffixed `-dirty` when a tracked file is modified and
+/// `-cleanliness-unknown` when the cleanliness probe could not answer at all. A bare `<sha>`
+/// therefore always means *clean*: the round-1 defect was emitting exactly that for a probe which
+/// had established nothing.
 fn assert_build_identity(stdout: &str) {
     let value = axis(stdout, "built from").unwrap_or_else(|| {
         panic!(
@@ -76,10 +80,16 @@ fn assert_build_identity(stdout: &str) {
     if value == "unknown" {
         return;
     }
-    let sha = value.strip_suffix("-dirty").unwrap_or(value);
+    // Every suffix a resolved commit can carry, longest first, so the cleanliness marker is never
+    // mistaken for part of the SHA it follows.
+    let sha = value
+        .strip_suffix("-cleanliness-unknown")
+        .or_else(|| value.strip_suffix("-dirty"))
+        .unwrap_or(value);
     assert!(
         (7..=40).contains(&sha.len()) && sha.bytes().all(|b| b.is_ascii_hexdigit()),
-        "`built from` must be `unknown` or a short git SHA (optionally `-dirty`), not {value:?}"
+        "`built from` must be `unknown` or a short git SHA (optionally `-dirty` or \
+         `-cleanliness-unknown`), not {value:?}"
     );
 }
 
