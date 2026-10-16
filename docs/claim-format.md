@@ -10,11 +10,21 @@ claims/REQ-0001.yml        # one claim, one file — filename = claim_id
 aliases/subjects.yml       # the subject registry (T1.7 of the hashing spec)
 bench/corpus/parity.yml    # labeled Equivalent / Not-equivalent pairs
 baselines/                 # signed Baselines — deferred to build step 8
-decisions.jsonl            # append-only Decisions log — deferred to build step 8
+decisions/DEC-*.yml        # one YAML file per Decision — build step 8, landed
 ```
 
-Decisions and Baselines are **not** defined here yet. Claims never store approval
-state: it is always derived from `decisions.jsonl`, never copied into claim files.
+Baselines are **not** defined here yet. Claims never store approval
+state: it is always derived from `decisions/DEC-*.yml`, never copied into claim files.
+
+The Decision log itself landed at build step 8 (ADR 0005), so its shape is no longer a
+deferral: **one YAML file per Decision** under `decisions/`, named `DEC-<zero-padded>.yml`
+so file order is chronological, each entry committing to its predecessor by
+`sha256("req.decision.v1" ‖ prev_hash ‖ canonical content)`. Only `req decision --fill`
+writes the derived `prev_hash`/`hash`, and it refuses to change a derived field already
+present that disagrees with the content — recomputing over it would launder the edit
+`req decision --verify` reports as TAMPERED. `--verify` walks the chain (0 VALID /
+1 TAMPERED / 3 UNVERIFIABLE) and `scripts/check.sh` drives it on every gate run. The
+reader is `src/decision.rs`, whose `log_paths` reads `root.join("decisions")`.
 
 ## Version axes (do not conflate)
 
@@ -165,7 +175,6 @@ genuine paraphrases).
 ## Deliberately deferred
 
 - Formal predicate syntax for `applicability` (v0: informal strings).
-- `decisions.jsonl` schema + hash chain — build step 8 (ADR 0005).
 - `baselines/` signing format — build step 8.
 - A lint rule comparing a claim's statement against its `rationale.source` ADR
   narrative — the human keeps them consistent for now; the check is proposal-tier
