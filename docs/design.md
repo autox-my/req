@@ -199,6 +199,35 @@ Implications:
   or selectors. The differentiation window is real but **closing** — the why-now argument
   is now also a wind-in-our-sails deadline.
 
+### Beside the table: Scion, at a scale where req's target stops
+
+Anthropic, *Redesigning source control at Anthropic*, published 2026-10-13 (updated 2026-10-15):
+<https://www.anthropic.com/engineering/redesigning-source-control>. It is their account of
+**Scion**, an internal version control system they built in-house and migrated their monorepo onto
+in five months with seven people. Scion is a VCS, not a requirements tool, so it is not a row in
+the table above; it sits beside it as the adjacent system whose scale regime is where req's design
+target *stops* rather than starts.
+
+- **What it is, at what scale.** Their own telemetry: ~2,500 code changes merged per day in May
+  2026, over 30,000/day by September; a main-branch history approaching 100 GB, whose compressed
+  working tree exceeds 25 GB; ≈25 million CI checkouts a day. Their problem is *data movement and
+  materialisation*. req reads 21 small YAML files. The regimes do not overlap, and none of their
+  numbers is a target req grows into.
+- **An inverted assumption — a divergence, not a lag.** Scion is designed for clients that are
+  always online, and the article says that git's offline-distributed strengths had become part
+  of the problem at their scale. req inverts a different assumption on purpose: REQ-0012
+  requires no network access for any claim operation in an offline deployment, which is what
+  makes req usable in the air-gapped, auditor-facing settings it names. The article is evidence
+  that one assumption can be inverted profitably; it is not evidence about which assumption req
+  should invert.
+- **The shared premise.** Their move and ADR 0002 are the same thought: identity belongs where
+  the data's semantics are, not where a VCS's primitives happen to put it.
+
+Their own caveat, kept because a prior-art entry that omits it is selling rather than recording:
+they state that Scion is not a fit replacement for git in ordinary use, and that its ideas suit
+only monorepos at extreme scale. It corroborates a premise. It does not validate req's bet,
+which is measured on `bench/` corpora — an unrelated system's success falsifies nothing here.
+
 ## 9. Deferred deliberately
 
 - Tool qualification per standard (DO-330 for airborne; tool-confidence per ISO 26262-8;
@@ -208,3 +237,80 @@ Implications:
   the tool's claimed automation impact, which lowers the qualification burden.
 - Production signatures (prototype: HMAC + hash chain; later: Ed25519/minisign).
 - ReqIF interop, federation, PM web UI — after the plumbing gates pass.
+
+The Scion reading in §8 re-opened two deferrals and made a third question answerable. They are
+recorded here with the trigger — or, for the index, the conditions — that would make each current
+work, because a deferral without one is a note.
+
+### 1. Corpus-scale cost — measured, with a trigger
+
+`gate` walks the whole corpus, so its cost is **O(corpus) per invocation, not O(change size)**: a
+one-claim change pays what a full-corpus gate pays. Measured in this tree — macOS/aarch64, 8 cores,
+release build (`cargo build --release`), one wall-clock `gate` per size, best of two after a
+warm-up run, on a shared host:
+
+| claims | `gate` wall | ms/claim |
+|---|---|---|
+| 21 (the real corpus) | 0.009 s | 0.42 |
+| 210 | 0.034 s | 0.16 |
+| 2,100 | 0.282 s | 0.13 |
+| 10,500 | 1.605 s | 0.15 |
+
+Linear with a stable constant: **~0.09–0.15 ms/claim → ≈9–15 s per `gate` at 100k claims**. The
+band is the honest width: a second independent run, on corpora proved md5-identical to these, gave
+0.0060 / 0.0227 / 0.1951 / 1.0578 s (a repeat 0.0053 / 0.0213 / 0.1846 / 1.0309 s) — ~1.5× faster
+throughout, which points at host load rather than method, with the table above as the slower and
+therefore conservative sample; the claim is the **shape** and the **trigger**, not the third digit
+of the constant. The constant is the **marginal** cost over n≥210 — the 21-claim row's ms/claim sits
+above it because ~5.8 ms of its ~9 ms is fixed process start-up, not corpus work. A debug build,
+measured the same way, is ~6× slower: ≈0.6–0.9 ms/claim → ≈60–90 s at 100k claims (the ratio, not
+the absolute, is what an independent debug run reproduces: three samples span 5.6–6.4×). That is
+the same shape of problem Scion solves, arriving at a much smaller scale.
+**Trigger to act:** a real-corpus invocation above ~1 s, or a corpus past ~10k claims. The remedy
+direction is change-scoping or derived data, not a faster parser — the constant is already small —
+and it is deliberately not prescribed here.
+
+The measurement's own discipline is what makes the table a result rather than a number: the
+21-claim row is the real corpus copied verbatim, while each larger corpus replicated
+`claims/REQ-0001.yml` — which carries no applicability predicate and `relations: []`, so every copy
+applies and every edge resolves — with distinct `claim_id`s **keeping its `canonical:` block** (the
+strict loader rejects a claim without one, and the copied bytes keep the stored address current).
+Each corpus root also needs `aliases/subjects.yml`, without which `gate` exits 3 on a registry load
+failure. The gate's own head was asserted to report the expected load at every size — the real
+corpus as 15 applying + 6 undecided = its 21 files, and exactly n applying / 0 undecided at 210,
+2,100 and 10,500. An earlier attempt that stripped the `canonical:` block was refused by the loader,
+after which `gate` returned a flat, tiny time at every size — single-digit-to-tens of milliseconds,
+no release-gate header, exit 3 — a clean-looking scaling result that measured nothing.
+
+### 2. A persisted index, if one is ever proposed — the tripwire
+
+The cost above makes a derived index over `claims/` the obvious remedy at scale, which is exactly
+why its conditions belong here **before** anyone proposes it. This is not a new rule but the
+extension of existing house style: REQ-0020 stores each relation **once**, on the outgoing side,
+and derives the incoming edges (the `impact` and `trace` paths already read them that way), and
+ADR 0013 hashes `relations` and `rationale` *beside* the address. An index over `claims/` must:
+
+1. be **reconstructible from `claims/` alone**, and **never** influence an address or any digest
+   — identity is meaning-only (ADR 0007);
+2. record **`rules_v` and a corpus digest**, or staleness is undetectable (a `RULES_V` bump moves
+   every address — the same coupling the Baseline `rules_v` guard already enforces);
+3. **fail loudly** when missing, corrupt, or built under other rules, and never fall back quietly
+   to a fresh derivation. The precedent is `tools/review/check_rules.py`: the review CLI silently
+   falls back to its built-in rubric for a glob matching nothing while every exit code stays
+   zero, so that script checks the *effect* rather than the status. An index must be verified
+   **used**, not merely loaded;
+4. and, if it ever becomes **an input to a decision** or an auditor relies on it, carry its own
+   attested hash with a NUL-delimited domain tag and an ADR — the ADR 0013 pattern, which exists
+   for exactly this: derived, relied upon, therefore attested separately from identity.
+
+### 3. Concurrency — a recorded divergence, not a gap
+
+Anthropic abandoned the industry-standard global merge-queue lock at agent scale: hundreds of
+changes land while the test suite is still running, so their investment goes into testing after the
+merge and before deploy, and they rely on agents to fix conflicts fast. req resolves the same
+tension differently, and deliberately — §2's tension 5 gives claim-level granularity, an explicit
+Working set, *one commit per ratified logical Decision*, never last-write-wins, with an auditable
+policy, and ADR 0002 merges in the graph, never with `git merge` over requirement text. The reason
+is the asymmetric cost: they repair forward, while a false merge here **silently deletes a
+requirement**. A future reader who notices the missing merge queue should read the absence as this
+decision, not as an oversight.
