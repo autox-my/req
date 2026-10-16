@@ -67,10 +67,21 @@ const REGISTRY_V: u8 = 1;
 /// must not guess the forge a project uses.
 const ISSUES_URL: &str = "https://git.xantu-barb.ts.net/fdx/req/issues";
 
-/// How `init` can fail. The refusal is a decision with a remedy (the corpus is already
-/// here); everything else is a question this run could not settle.
+/// Why a path is refused, because the operator's next move depends on which: an existing corpus
+/// is edited in place, while a *link* is removed (or `init` is run where the corpus should live).
+/// One message for both would tell the second operator to edit a file that need not exist — a
+/// dangling link is refused too.
+enum Refusal {
+    /// Something is already at this path, and it is not this run's to overwrite.
+    Exists,
+    /// A link here would put the corpus where the caller did not name it.
+    Symlink,
+}
+
+/// How `init` can fail. The refusal is a decision with a remedy; everything else is a question
+/// this run could not settle.
 enum Failure {
-    Refused(String),
+    Refused(String, Refusal),
     Unverifiable(String),
 }
 
@@ -95,11 +106,18 @@ pub fn run(args: &[String], cli_root: Option<&Path>) -> i32 {
             print_next_steps();
             0
         }
-        Err(Failure::Refused(what)) => {
-            eprintln!(
-                "refusing to initialise: {what} already exists — a corpus is never \
-                 overwritten. Edit it in place, or run `init` in a different directory."
-            );
+        Err(Failure::Refused(what, why)) => {
+            match why {
+                Refusal::Exists => eprintln!(
+                    "refusing to initialise: {what} already exists — a corpus is never \
+                     overwritten. Edit it in place, or run `init` in a different directory."
+                ),
+                Refusal::Symlink => eprintln!(
+                    "refusing to initialise: {what} is a symlink — writing through it would \
+                     put the corpus where this run was not asked to create one. Remove the \
+                     link, or run `init` where the corpus should live."
+                ),
+            }
             1
         }
         Err(Failure::Unverifiable(why)) => {
@@ -120,7 +138,7 @@ fn init_at(root: &Path) -> Result<(), Failure> {
         // thing that is there, and writing through it would be an overwrite of the
         // author's file. `exists()` follows the link and answers "nothing here".
         if std::fs::symlink_metadata(&path).is_ok() {
-            return Err(Failure::Refused(label.to_string()));
+            return Err(Failure::Refused(label.to_string(), Refusal::Exists));
         }
     }
 
@@ -136,7 +154,7 @@ fn init_at(root: &Path) -> Result<(), Failure> {
     if std::fs::symlink_metadata(root.join(ALIASES_DIR))
         .is_ok_and(|meta| meta.file_type().is_symlink())
     {
-        return Err(Failure::Refused(ALIASES_DIR.to_string()));
+        return Err(Failure::Refused(ALIASES_DIR.to_string(), Refusal::Symlink));
     }
 
     let date = today_utc().map_err(Failure::Unverifiable)?;

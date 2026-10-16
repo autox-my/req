@@ -569,6 +569,21 @@ fn a_symlinked_aliases_directory_is_refused_rather_than_written_through() {
             !fx.join("claims").exists(),
             "a refused `init` writes nothing"
         );
+        // The refusal must explain *this* case. A link is refused because writing through it
+        // would put the corpus where this run was not asked to create one — not because
+        // something is there to overwrite, which is the reason for the case above and says
+        // nothing about a link that may not even resolve.
+        assert!(
+            out.stderr.contains("is a symlink"),
+            "the refusal must name the link:\n{}",
+            out.stderr
+        );
+        assert!(
+            !out.stderr.contains("already exists"),
+            "`aliases` need not exist at all — a dangling link is refused too, so the \
+             existing-corpus explanation is wrong here:\n{}",
+            out.stderr
+        );
         assert!(
             std::fs::symlink_metadata(fx.join("aliases")).is_ok_and(|m| m.file_type().is_symlink()),
             "a refused `init` must leave the link it found alone"
