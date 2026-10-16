@@ -23,6 +23,10 @@ pub mod fill;
 pub mod funnel;
 pub mod gate;
 pub mod impact;
+// The one command that *creates* a corpus root instead of reading one. It is answered in
+// `main.rs` before root resolution, so its handler takes no corpus — see the module doc for
+// why `--root` is a usage error there and not a second anchor.
+pub mod init;
 pub mod model;
 pub mod root;
 pub mod select;
