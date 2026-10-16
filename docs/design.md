@@ -256,12 +256,16 @@ warm-up run, on a shared host:
 | 2,100 | 0.282 s | 0.13 |
 | 10,500 | 1.605 s | 0.15 |
 
-Linear with a stable constant: **~0.09–0.15 ms/claim → ≈9–15 s per `gate` at 100k claims**. The
-band is the honest width: a second independent run, on corpora proved md5-identical to these, gave
-0.0060 / 0.0227 / 0.1951 / 1.0578 s (a repeat 0.0053 / 0.0213 / 0.1846 / 1.0309 s) — ~1.5× faster
-throughout, which points at host load rather than method, with the table above as the slower and
-therefore conservative sample; the claim is the **shape** and the **trigger**, not the third digit
-of the constant. The constant is the **marginal** cost over n≥210 — the 21-claim row's ms/claim sits
+Linear with a stable constant: **~0.09–0.17 ms/claim → ≈9–17 s per `gate` at 100k claims**. The
+band is the honest width, and it is a band because a per-host absolute is a **sample**, not a
+property: the table above is one sample (0.16 / 0.13 / 0.15 ms/claim at n≥210); a second independent
+run, on corpora proved md5-identical to these, gave 0.0060 / 0.0227 / 0.1951 / 1.0578 s (a repeat
+0.0053 / 0.0213 / 0.1846 / 1.0309 s) — ~1.5× faster throughout, 0.108 / 0.093 / 0.101 ms/claim and
+0.101 / 0.088 / 0.098 on the repeat, which points at host load rather than method; and a third
+independent run was *slower* than the table, 0.171 / 0.147 / 0.169 ms/claim with 1.774 s against the
+table's 1.605 s at 10,500. Four runs at n≥210 span 0.088–0.171 ms/claim, so the band above is that
+range rounded outward; the claim is the **shape** and the **trigger**, not the third digit of the
+constant. The constant is the **marginal** cost over n≥210 — the 21-claim row's ms/claim sits
 above it because ~5.8 ms of its ~9 ms is fixed process start-up, not corpus work. A debug build,
 measured the same way, is ~6× slower: ≈0.6–0.9 ms/claim → ≈60–90 s at 100k claims (the ratio, not
 the absolute, is what an independent debug run reproduces: three samples span 5.6–6.4×). That is
