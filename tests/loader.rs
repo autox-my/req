@@ -632,18 +632,36 @@ fn next_declaration(literal: &str) -> String {
     format!("{prefix}{}", n + 1)
 }
 
-/// `haystack` with the **first** occurrence of `needle` replaced. The `Status:` line is the first
-/// declaration in the document, so this mutates that one and leaves the table row alone.
-fn replacing_first(haystack: &str, needle: &str, replacement: &str) -> String {
-    match haystack.find(needle) {
-        Some(at) => format!(
-            "{}{}{}",
-            &haystack[..at],
-            replacement,
-            &haystack[at + needle.len()..]
-        ),
-        None => haystack.to_string(),
+/// The document with the **`Status:` line's** declaration replaced by `replacement`.
+///
+/// Aimed at the declaration rather than at the first literal in the file, and loud on every way
+/// that can fail to happen: a document with no `Status:` line, a `Status:` line that does not
+/// carry `from`, or a replacement that lands nowhere would otherwise leave Side 2 asserting over
+/// text the mutation never touched — and a check that matches nothing must not read as a pass
+/// (`tools/review/check_rules.py`'s lesson). The `| File format |` row is deliberately not the
+/// mutation site: Side 2 exists to pin that the *declaration* is read, and the `Status:` line is
+/// the first of the two.
+fn replacing_the_status_declaration(doc: &str, from: &str, to: &str) -> String {
+    let mut out = String::new();
+    let mut replaced = false;
+    for line in doc.lines() {
+        if !replaced && line.starts_with("Status:") {
+            assert!(
+                line.contains(from),
+                "the `Status:` line must declare {from:?}, and it says: {line}"
+            );
+            out.push_str(&line.replace(from, to));
+            replaced = true;
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
     }
+    assert!(
+        replaced,
+        "docs/claim-format.md has no `Status:` line, so the mutation has nothing to aim at"
+    );
+    out
 }
 
 #[test]
@@ -691,8 +709,14 @@ fn the_doc_oracle_reads_the_declaration_and_ignores_the_prose() {
         "an illustrative mention in the prose must not enter the oracle"
     );
 
-    // Side 2 — the declaration is what the oracle reads, so mutating it is detected.
-    let mutated_doc = replacing_first(&doc, &format!("`{}`", declared[0]), &format!("`{other}`"));
+    // Side 2 — the declaration is what the oracle reads, so mutating it is detected. The
+    // mutation is aimed at the `Status:` line by name, so it cannot land on some earlier prose
+    // mention and leave the declaration untouched while this test reports success.
+    let mutated_doc = replacing_the_status_declaration(
+        &doc,
+        &format!("`{}`", declared[0]),
+        &format!("`{other}`"),
+    );
     let mutated =
         declared_schema_literals(&mutated_doc).expect("both anchors survive the mutation");
     assert_ne!(

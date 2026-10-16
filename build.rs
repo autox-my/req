@@ -10,7 +10,9 @@
 //! rather than merely present:
 //!
 //! 1. **Never fail the build.** No `.git`, no `git`, a shallow clone, a source tarball or a
-//!    git that errors all yield `unknown`. A build script that can fail breaks every build for
+//!    git that errors all yield `unknown` — including a `-dirty` probe that cannot answer: an
+//!    unestablished cleanliness is not cleanliness, so the whole identity says `unknown` rather
+//!    than claiming a clean tree. A build script that can fail breaks every build for
 //!    the sake of one provenance line, so the value is emitted unconditionally — `unknown`
 //!    included, never omitted (an absent line reads as "not applicable", a different claim).
 //! 2. **A stale identity is worse than none.** A value naming a commit the binary was not
@@ -62,14 +64,21 @@ fn build_identity() -> String {
     if head.is_empty() {
         return UNKNOWN.to_string();
     }
-    let dirty = git(&[
+    // The dirty probe's answer is three-state, and the third state is the point: `git` returning
+    // `None` (an old git that rejects `--no-optional-locks`, a corrupt index, a killed process)
+    // means whether the tree is dirty was **not established**. Collapsing that into "clean" would
+    // emit a bare SHA — the confidently-wrong identity this script exists to remove — so the whole
+    // identity becomes `unknown`, which is what contract item 1 promises for a git that errors.
+    match git(&[
         "--no-optional-locks",
         "status",
         "--porcelain",
         "--untracked-files=no",
-    ])
-    .is_some_and(|out| !out.is_empty());
-    if dirty { format!("{head}-dirty") } else { head }
+    ]) {
+        Some(status) if status.is_empty() => head,
+        Some(_) => format!("{head}-dirty"),
+        None => UNKNOWN.to_string(),
+    }
 }
 
 /// What cargo must watch for this script to re-run. Where the identity *derives from* git
