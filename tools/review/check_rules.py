@@ -84,8 +84,13 @@ def main() -> int:
         tracked = subprocess.run(
             ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
         ).stdout.split()
-    except subprocess.CalledProcessError as exc:  # git cannot list the tree: cannot answer
-        print(f"SKIP  git ls-files cannot answer: {exc.stderr.strip()[:200]}")
+    except (subprocess.CalledProcessError, OSError) as exc:
+        # "cannot answer", whether git failed or is not installed at all: OSError covers a
+        # missing `git` (FileNotFoundError), which is not a CalledProcessError and would
+        # otherwise escape as a traceback with exit 1 — reporting an absent tool as a finding
+        # about the tree. Every other exit in the contract is unchanged.
+        git_stderr = getattr(exc, "stderr", "") or ""
+        print(f"SKIP  git ls-files cannot answer: {(git_stderr or str(exc)).strip()[:200]}")
         return 3
     if not tracked:
         print("SKIP  no tracked files to match against")
