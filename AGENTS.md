@@ -81,8 +81,11 @@ export OCR_NO_UPDATE=1
   corpus root is resolved, so they work in any directory, print no `corpus root:` line, and exit
   **0** — while bare `req`, an unknown subcommand and an unknown flag stay **2**. `rules_v` is
   the axis that makes a stored address current, so it is the first thing to check when a verdict
-  surprises you; `built from` is the short git SHA the binary was built from, `-dirty` when a
-  tracked file was modified and `unknown` when git cannot answer. **Rebuild before probing a
+  surprises you; `built from` is the short git SHA the binary was built from, or `unknown` when the
+  commit itself cannot be resolved (no `.git`, no `git`). A resolved commit carries `-dirty` when a
+  tracked file is modified and `-cleanliness-unknown` when the cleanliness probe could not answer —
+  the commit is a fact git gave us even then — so a bare SHA always means *clean*, never "clean as
+  far as we could tell". **Rebuild before probing a
   branch** — a worktree's `target/debug/req` can lag its own branch head — and compare that line
   with `git rev-parse --short HEAD` rather than remembering to.
 - Test suite: `cargo test` — check `EXIT=$?` on the *cargo* command.
