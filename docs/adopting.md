@@ -5,8 +5,8 @@ claim's identity is a content address over its canonical meaning. This page is t
 adoption path: install it, start a corpus, learn the two traps in the authoring loop, and gate
 every variant in CI.
 
-The commands below were run against `2afbd68` in a scratch corpus, except where a step is marked
-as the prototype's measurement.
+The commands below were run in a scratch corpus: the install form at `2afbd68`, and `req init` with
+a build of the revision that introduced it.
 
 ## Install req
 
@@ -22,7 +22,7 @@ CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install \
 
 `<PIN>` is the merge SHA of the req commit you depend on — read it with
 `git rev-parse --short origin/main`; do not copy a SHA out of any document. This exact form was
-measured in the prototype at `2afbd68`: exit 0, and the installed binary reports `rules_v 5`.
+measured at `2afbd68`: exit 0, and the installed binary reports `rules_v 5`.
 
 Three things make it work, and each one is a failure without it:
 
@@ -86,8 +86,9 @@ If either is not exit 0, the corpus is not yours yet — report it with the comm
 
 ## CI
 
-Save this as `.github/workflows/req.yml`. Forgejo Actions reads the same file, and the summary step
-below targets Forgejo's and GitHub's variable.
+Save this as `.github/workflows/req.yml` (GitHub) or `.forgejo/workflows/req.yml` (Forgejo — Forgejo
+reads `.github/workflows/` only while no `.forgejo/workflows/` exists). The summary step below
+targets Forgejo's variable and GitHub's, and works with neither.
 
 ```yaml
 name: req

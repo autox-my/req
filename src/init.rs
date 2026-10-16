@@ -318,7 +318,8 @@ fn print_next_steps() {
          \x20    Every variant gets its own gate invocation — a claim the invocation leaves\n\
          \x20    undecided is not checked by the gate, and `gate` still exits 0. Add a\n\
          \x20    variant here in the same commit that adds the `applicability:` that needs it.\n\
-         \x20 3. Add .github/workflows/req.yml (Forgejo Actions reads the same file):\n"
+         \x20 3. Add .github/workflows/req.yml (GitHub) or .forgejo/workflows/req.yml (Forgejo —\n\
+         \x20    Forgejo reads .github/workflows/ only while no .forgejo/workflows/ exists):\n"
     );
     print!("{CI_SNIPPET}");
     println!(
