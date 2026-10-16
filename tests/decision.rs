@@ -1,4 +1,10 @@
 //! The decision log: the chain, its three outcomes, and the boundaries between them.
+//!
+//! Two seams. The first is the library (`verify_chain`, `fill`, `canonical_bytes`) plus the CLI
+//! `req decision` over a corpus root, at the bottom of this file's `cli` module: what the log
+//! *is*. The second is `scripts/check.sh decision`, after them: that the **gate** re-verifies the
+//! log on every run, so a record edited after it was recorded fails in the gate rather than in an
+//! auditor's terminal.
 
 use req::decision::{
     Chain, Decision, GENESIS, canonical_bytes, compute_hash, fill, upsert_line, verify_chain,
@@ -935,4 +941,280 @@ fn an_unfilled_record_appended_after_a_clean_prefix_is_filled_alone() {
         0,
         "the appended record is now chained in"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The gate step: `scripts/check.sh decision` re-verifies the log on every run.
+//
+// The observable contract is that step — its **exit code** and its printed verdict — driven
+// through the `REQ_GATE_BIN` seam `tests/baseline.rs` uses for the Baseline step, and copying its
+// shape: the step is separate so its failure modes are testable without the full run, which
+// invokes `cargo test` and would recurse; `plan` pins its default-run call site and executes no
+// check. Tooling, deliberately with no skip path: `bash`, `git`, and a `$HOME/.rustup/toolchains`
+// layout `scripts/check.sh` resolves. `minisign` is *not* needed — this step consults no
+// signature. Fixtures are `cli::Fixture`s, a real `claims/` directory beside `decisions/`, and
+// the gate is handed the binary this test run already built, so no second cargo runs inside
+// `cargo test`.
+// ---------------------------------------------------------------------------------------------
+
+/// Runs `scripts/check.sh` with `args` from the tree under test, handing the named step the binary
+/// this test run already built, plus any environment a fixture needs.
+#[cfg(unix)]
+fn check_sh_env(
+    args: &[&std::ffi::OsStr],
+    req_gate_bin: &std::path::Path,
+    env: &[(&str, &std::ffi::OsStr)],
+) -> std::process::Output {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut command = std::process::Command::new("bash");
+    command
+        .arg(root.join("scripts/check.sh"))
+        .args(args)
+        .current_dir(&root)
+        .env("REQ_GATE_BIN", req_gate_bin)
+        // The resolver reads `REQ_ROOT` before the walk-up, so an inherited value would make the
+        // no-override tests check a different corpus than the tree under test. A fixture sets it
+        // explicitly.
+        .env_remove("REQ_ROOT");
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    // The checkout's own toolchain home wins when it has one — that is how the gate is run by
+    // hand in this workspace (.tools/README.md) — so the test drives the toolchain the gate is
+    // meant to use rather than whatever the ambient HOME happens to hold. Where there is none,
+    // HOME is left exactly as the developer or CI set it (CI installs the pinned channel into
+    // $HOME/.rustup and means it). Neither present is a failure named here, not check.sh's
+    // generic exit 2.
+    let home_has_rustup = std::env::var_os("HOME")
+        .is_some_and(|h| std::path::Path::new(&h).join(".rustup/toolchains").exists());
+    match workspace_toolchain_home(&root) {
+        Some(workspace) => {
+            command.env("HOME", workspace);
+        }
+        None if home_has_rustup => {}
+        None => panic!(
+            "no toolchain home for check.sh: this checkout has no .tools/home/.rustup/toolchains \
+             and $HOME/.rustup/toolchains does not exist either (see .tools/README.md)"
+        ),
+    }
+    command.output().expect("runs scripts/check.sh")
+}
+
+/// `scripts/check.sh <step>`, with the test-built binary behind `REQ_GATE_BIN`.
+#[cfg(unix)]
+fn check_sh_step(step: &str, env: &[(&str, &std::ffi::OsStr)]) -> std::process::Output {
+    check_sh_env(&[std::ffi::OsStr::new(step)], &cli::req_bin(), env)
+}
+
+/// `REQ_ROOT` pointing at `fixture`, which is how the gate drives the step against a corpus that
+/// is not the working tree.
+#[cfg(unix)]
+fn req_root(fixture: &cli::Fixture) -> Vec<(&'static str, &std::ffi::OsStr)> {
+    vec![("REQ_ROOT", fixture.path().as_os_str())]
+}
+
+/// The toolchain home this checkout keeps for `scripts/check.sh`, when it has one: `.tools/home`
+/// beside the git common dir (.tools/README.md), which a feature worktree shares with the main
+/// checkout. `git` is a hard requirement of these tests: its failure is reported here, with git's
+/// own message, rather than swallowed into an empty path.
+#[cfg(unix)]
+fn workspace_toolchain_home(root: &std::path::Path) -> Option<std::path::PathBuf> {
+    let common = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .output()
+        .expect("git is required to locate the shared toolchain home");
+    assert!(
+        common.status.success(),
+        "git rev-parse --git-common-dir failed: {}",
+        String::from_utf8_lossy(&common.stderr)
+    );
+    let common = String::from_utf8_lossy(&common.stdout).trim().to_string();
+    std::path::PathBuf::from(common)
+        .parent()
+        .map(|main| main.join(".tools/home"))
+        .filter(|home| home.is_absolute() && home.join(".rustup/toolchains").exists())
+}
+
+/// The green half: the committed log passes the step, and one check is not the gate. A step that
+/// failed on a good log would not be the step.
+#[cfg(unix)]
+#[test]
+fn the_gate_verifies_the_committed_decision_log() {
+    let output = check_sh_step("decision", &[]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "the committed decision log must pass the step (exit {:?}):\n{stdout}",
+        output.status.code()
+    );
+    assert!(stdout.contains("[VALID]"), "{stdout}");
+    assert!(stdout.contains("DECISION STEP: PASS"), "{stdout}");
+    assert!(
+        !stdout.contains("GATE: PASS"),
+        "one check is not the gate:\n{stdout}"
+    );
+}
+
+/// The red test of the wiring: a recorded decision edited afterwards fails the gate step, and the
+/// finding names the record. Before the step existed the gate stayed green while the log no longer
+/// verified — the blind spot the Baseline step files, on the other recorded artifact.
+///
+/// The break is **stated** by the fixture, not discovered by re-deriving the chain: the body is
+/// edited and the stored `hash` is left exactly where it was, so the finding is "the content was
+/// edited after it was recorded" rather than "the derived field is absent" (which answers
+/// UNVERIFIABLE, exit 3 — and would make a bare non-zero assertion pass for the wrong reason).
+#[cfg(unix)]
+#[test]
+fn the_gate_fails_when_a_decision_was_edited_after_it_was_recorded() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let text = std::fs::read_to_string(root.join("decisions/DEC-0001.yml"))
+        .expect("the committed decision record reads");
+    let tampered = text.replace("I accept REQ-0016", "I accept REQ-0017");
+    assert_ne!(
+        tampered, text,
+        "the fixture must actually edit the record's content, or it exercises nothing"
+    );
+    let fx = cli::Fixture::new("gate-tampered");
+    fx.write("DEC-0001.yml", &tampered);
+
+    let output = check_sh_step("decision", &req_root(&fx));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !output.status.success(),
+        "a tampered decision log must fail the step (exit {:?}):\n{stdout}",
+        output.status.code()
+    );
+    assert!(
+        stdout.contains("[TAMPERED]"),
+        "a stored hash that does not recompute is a definite finding, not an open question:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("DEC-0001: the stored hash does not recompute"),
+        "the finding must name the TAMPERED record:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("[UNVERIFIABLE]"),
+        "a definite finding must not be reported as an open question:\n{stdout}"
+    );
+    assert!(stdout.contains("(exit 1)"), "{stdout}");
+    assert!(stdout.contains("DECISION STEP: FAIL"), "{stdout}");
+}
+
+/// The other side of the same decision: an empty log **blocks** with req's exit-3 class and no
+/// SKIP. Pinned because the tempting "fix" for an empty log is exactly the SKIP this step
+/// deliberately has none of — "we could not tell" must never be a pass, and a skipped check is
+/// never a pass. A missing `decisions/` directory is that case, not an error, and it is the state
+/// a consumer adopting this wiring starts from.
+#[cfg(unix)]
+#[test]
+fn the_gate_blocks_an_empty_decision_log_without_a_skip() {
+    let fx = cli::Fixture::new("gate-empty");
+    // No decisions/ directory at all: the resolver has its claims/, so the root is accepted and
+    // the log it finds is empty.
+    std::fs::remove_dir(fx.path().join("decisions")).expect("removes the empty decisions/");
+
+    let output = check_sh_step("decision", &req_root(&fx));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !output.status.success(),
+        "an empty log verifies nothing, so it must block (exit {:?}):\n{stdout}",
+        output.status.code()
+    );
+    assert!(stdout.contains("[UNVERIFIABLE]"), "{stdout}");
+    assert!(
+        stdout.contains("the decision log is empty"),
+        "the fixture must be the empty-log case, not a missing corpus:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("(exit 3)"),
+        "the step consumes req's exit-3 class:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("SKIP"),
+        "an empty log is UNVERIFIABLE, never a skip:\n{stdout}"
+    );
+    assert!(stdout.contains("DECISION STEP: FAIL"), "{stdout}");
+}
+
+/// The default run's own call site — the wiring that re-verifies the log on every gate invocation.
+/// The standalone-step tests above cannot reach it: `decision` takes its own branch and returns
+/// before the default flow. The `plan` step prints the default run's commands from the same call
+/// sites and executes none, so this pins the wiring without running the gate. It is UNVERIFIABLE
+/// (exit 3): a plan is not a pass.
+#[cfg(unix)]
+#[test]
+fn the_default_gate_run_verifies_the_decision_log() {
+    let plan = check_sh_step("plan", &[]);
+    let stdout = String::from_utf8_lossy(&plan.stdout);
+    assert_eq!(
+        plan.status.code(),
+        Some(3),
+        "a plan executes nothing, so it is UNVERIFIABLE, never a pass:\n{stdout}"
+    );
+    // Compared on normalized lines: the plan's content is the contract, its column padding is
+    // not, so a cosmetic reformat of check.sh must not fail this test.
+    let planned: Vec<String> = stdout
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect();
+    assert!(
+        planned
+            .iter()
+            .any(|line| line.starts_with("PLAN ") && line.contains("decision --verify")),
+        "the default run must verify the decision log:\n{stdout}"
+    );
+    // ...and it is the default run being planned, not the single step.
+    assert!(
+        planned
+            .iter()
+            .any(|line| line.starts_with("PLAN ") && line.contains("cargo test")),
+        "{stdout}"
+    );
+    // The override is the *standalone* step's seam: the full gate never honours it, so a stray
+    // REQ_GATE_BIN — set for this very invocation — must not appear in any of the planned calls.
+    assert!(
+        !planned
+            .iter()
+            .any(|line| line.starts_with("PLAN ") && line.contains("REQ_GATE_BIN")),
+        "the full gate must not honour REQ_GATE_BIN:\n{stdout}"
+    );
+    assert!(stdout.contains("GATE: UNVERIFIABLE"), "{stdout}");
+}
+
+/// The binary seam refuses what it cannot mean, by name and with exit 2: a value that is not a
+/// regular executable file. A directory is the interesting case — `-x` is true for it, so testing
+/// only executability would send it to a generic gate failure instead, and a stray environment
+/// value must not be able to redirect the verification the gate exists to perform.
+#[cfg(unix)]
+#[test]
+fn the_gate_refuses_a_binary_override_that_is_not_an_executable_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // A regular file with the execute bit cleared is the only value that reaches the second half
+    // of the guard: a directory and a missing path already fail its regular-file test.
+    let fx = cli::Fixture::new("gate-binary-override");
+    let plain = fx.path().join("not-executable");
+    std::fs::write(&plain, b"#!/bin/sh\nexit 0\n").expect("writes a plain file");
+    std::fs::set_permissions(&plain, std::fs::Permissions::from_mode(0o644))
+        .expect("clears the execute bit");
+
+    for bad in [root.clone(), root.join("nowhere-at-all"), plain.clone()] {
+        let refused = check_sh_env(&[std::ffi::OsStr::new("decision")], &bad, &[]);
+        assert_eq!(
+            refused.status.code(),
+            Some(2),
+            "{} must be refused as a usage error:\n{}",
+            bad.display(),
+            String::from_utf8_lossy(&refused.stdout)
+        );
+        assert!(
+            String::from_utf8_lossy(&refused.stderr)
+                .contains("REQ_GATE_BIN is not an executable file"),
+            "{}",
+            String::from_utf8_lossy(&refused.stderr)
+        );
+    }
 }

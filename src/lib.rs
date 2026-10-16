@@ -8,6 +8,10 @@
 pub mod audit;
 pub mod baseline;
 pub mod bench;
+// The build identity's decision: `build.rs` renders `req --version`'s `built from` line through
+// this, and pulls the same file in with `#[path]` — one implementation, compiled twice, so the
+// four states are unit-testable here even though a build script is not.
+pub mod build_identity;
 pub mod canon;
 pub mod compare;
 pub mod decision;

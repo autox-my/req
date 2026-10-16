@@ -68,7 +68,7 @@ chosen root is printed once to stderr; with no corpus the answer is `[UNVERIFIAB
 # Toolchain pinned by rust-toolchain.toml; rustfmt/clippy live in that toolchain,
 # not in `stable`. scripts/check.sh resolves the directory — by hand:
 CHANNEL="$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)"
-TC="$HOME/.rustup/toolchains/${CHANNEL}-x86_64-unknown-linux-gnu/bin"
+TC="$(ls -d "$HOME/.rustup/toolchains/${CHANNEL}-"*/bin 2>/dev/null | head -1)"
 export PATH="$TC:$PWD/tools/ocr/node_modules/.bin:$PATH"
 export CARGO_HOME="$PWD/.cargo-home"
 export OCR_NO_UPDATE=1
@@ -81,8 +81,11 @@ export OCR_NO_UPDATE=1
   corpus root is resolved, so they work in any directory, print no `corpus root:` line, and exit
   **0** — while bare `req`, an unknown subcommand and an unknown flag stay **2**. `rules_v` is
   the axis that makes a stored address current, so it is the first thing to check when a verdict
-  surprises you; `built from` is the short git SHA the binary was built from, `-dirty` when a
-  tracked file was modified and `unknown` when git cannot answer. **Rebuild before probing a
+  surprises you; `built from` is the short git SHA the binary was built from, or `unknown` when the
+  commit itself cannot be resolved (no `.git`, no `git`). A resolved commit carries `-dirty` when a
+  tracked file is modified and `-cleanliness-unknown` when the cleanliness probe could not answer —
+  the commit is a fact git gave us even then — so a bare SHA always means *clean*, never "clean as
+  far as we could tell". **Rebuild before probing a
   branch** — a worktree's `target/debug/req` can lag its own branch head — and compare that line
   with `git rev-parse --short HEAD` rather than remembering to.
 - Test suite: `cargo test` — check `EXIT=$?` on the *cargo* command.
@@ -461,8 +464,13 @@ matter:
   to every `ocr` invocation. Its shape and the two CLI behaviours worth knowing are
   documented under **Review** above.
 - `.scratch/` — session scratch, gitignored; never a deliverable.
-- Path facts: the workspace directory is `/home/dsh/understand`; `/home/dsh/req`
-  exists but is **read-only** — never write there. The DSH workspace *name* is `req`.
+- Path facts: there are none to pin, and that is the design. Every subcommand resolves its corpus
+  at runtime (ADR 0012) — `--root <dir>`, else `REQ_ROOT`, else the nearest ancestor of the working
+  directory holding `claims/` — so **ask the shell** (`pwd`, `git rev-parse --show-toplevel`)
+  instead of trusting a path written down here: a hardcoded path describes the deployment it was
+  written for and misleads every other. The workspace *name* follows the checkout directory; it is
+  not a fixed label. A read-only mount is a condition the reader checks before writing (`test -w
+  <dir>`), never a path the reader is told exists.
 - Data flow: claim file → typed parse (`yaml_serde`) → Tier-1 canonical form →
   canonical bytes → `sha256("req.claim.v1\0" ‖ bytes)` = address. Only `req bench`
   (results) and `req canon --fill` (derived fields) write anything — and `--fill`

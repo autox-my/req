@@ -5,7 +5,7 @@
 # a check that cannot run is not a passing check, and the commit message must say
 # so. The first non-zero status fails the gate.
 #
-# Usage: scripts/check.sh [all] | [baseline [file]] | [plan]
+# Usage: scripts/check.sh [all] | [baseline [file]] | [decision] | [plan]
 #   no argument, or `all`
 #                      every check (the default; CI uses the no-argument form)
 #   baseline [file]    only the Baseline step (file defaults to
@@ -16,6 +16,10 @@
 #                      never recurse into the full gate, which runs `cargo test`,
 #                      and it reports its own verdict (`BASELINE STEP: PASS/FAIL`),
 #                      never the gate's banner: one check is not the gate.
+#   decision           only the decision-log step.
+#                      The same shape as `baseline`: tests/decision.rs drives it
+#                      against a tampered and an empty log, and it reports
+#                      `DECISION STEP: PASS/FAIL`, never the gate's banner.
 #   plan               print the command of every check the default run would execute,
 #                      from the same call sites, and execute no check. The probes that
 #                      gate a check are not consulted, so the plan lists a check whose
@@ -81,7 +85,7 @@ run()  {
 # is a usage error (exit 2), never a quiet run of a different scope: an unknown step
 # name, an extra positional, or a second file are all rejected.
 usage() {
-  printf 'usage: scripts/check.sh [all] | [baseline [file]] | [plan]\n' >&2
+  printf 'usage: scripts/check.sh [all] | [baseline [file]] | [decision] | [plan]\n' >&2
 }
 
 # One home for the committed Baseline the gate verifies: the full run and the standalone
@@ -112,6 +116,7 @@ case $step in
     fi
     ;;
   plan) dry=1 ;;
+  decision) ;;
   *)
     usage
     exit 2
@@ -156,6 +161,41 @@ verify_baseline() {
   fi
 }
 
+# The recorded decisions are part of the record, so the gate re-verifies the log on
+# every run: a decision record edited after it was recorded fails here, not in an
+# auditor's terminal. The whole point of `--fill`'s refusal (its "recompute over an
+# edit would launder it" refusal) is that this check exists. The exit contract is
+# req's, and what the gate does with it is the decision this wiring records:
+#   0  VALID          pass
+#   1  TAMPERED       blocks — a stored hash that does not recompute, or a `prev_hash`
+#                     that disagrees with the entry before it: a definite finding
+#   3  UNVERIFIABLE   blocks — an unfilled hash, an unparsable file, an empty log, or a
+#                     log that does not begin at the genesis anchor
+# There is deliberately no SKIP on this step, and a missing `decisions/` directory is
+# that last case rather than an error: an empty log verifies nothing, and "we could not
+# tell" must never be a pass — a skipped check is never a pass. A consumer adopting this
+# wiring needs one ratified Decision first, or the gate stays red until it has one.
+#
+# The step drives the req binary: normally `cargo run -q --` like every other step here.
+# The *standalone* step alone also honors REQ_GATE_BIN — the seam tests/decision.rs uses to
+# exercise it against the binary the test run already built, with no second cargo invocation
+# (and no second build-dir lock) inside `cargo test`. The full gate never honors it, and an
+# override that is not an executable file is refused by name: a stray environment value must
+# not be able to redirect the verification the gate exists to perform.
+verify_decision() {
+  if [ "$step" = decision ] && [ -n "${REQ_GATE_BIN:-}" ]; then
+    # A regular executable: `-x` alone is also true for a directory, which would fail later
+    # as a generic gate failure instead of the usage error promised here.
+    if [ ! -f "$REQ_GATE_BIN" ] || [ ! -x "$REQ_GATE_BIN" ]; then
+      printf 'REQ_GATE_BIN is not an executable file: %s\n' "$REQ_GATE_BIN" >&2
+      exit 2
+    fi
+    run "$REQ_GATE_BIN" decision --verify
+  else
+    run cargo run -q -- decision --verify
+  fi
+}
+
 finish() {
   printf '\n----------------------------------------\n'
   if [ "$dry" -eq 1 ]; then
@@ -163,13 +203,14 @@ finish() {
     printf 'GATE: UNVERIFIABLE (plan only: no check was executed)\n'
     exit 3
   fi
-  if [ "$step" = baseline ]; then
+  if [ "$step" = baseline ] || [ "$step" = decision ]; then
     # One check ran, not the gate. The banner says which, so a caller keying on the
     # full gate's verdict cannot mistake this for one.
+    step_label="$(printf '%s' "$step" | tr '[:lower:]' '[:upper:]')"
     if [ $fail -eq 0 ]; then
-      printf 'BASELINE STEP: PASS (one check; the gate did not run)\n'
+      printf '%s STEP: PASS (one check; the gate did not run)\n' "$step_label"
     else
-      printf 'BASELINE STEP: FAIL\n'
+      printf '%s STEP: FAIL\n' "$step_label"
     fi
     exit $fail
   fi
@@ -183,6 +224,11 @@ finish() {
 
 if [ "$step" = baseline ]; then
   verify_baseline "$baseline_file"
+  finish
+fi
+
+if [ "$step" = decision ]; then
+  verify_decision
   finish
 fi
 
@@ -210,6 +256,9 @@ run cargo run -q -- canon --verify
 # The committed Baseline (F5): the gate re-checks what a human signed. See
 # verify_baseline above for what each exit means — 1 and 3 both block.
 verify_baseline "$baseline_file"
+# The decision log: the gate re-checks the recorded decisions. See verify_decision above
+# for what each exit means — 1 and 3 both block.
+verify_decision
 run cargo run -q -- bench   # seed parity corpus: 0 PASS / 1 FAIL / 3 UNVERIFIABLE
 # External corpora (other projects' real requirement prose, labelled by
 # construction). Same hard gate; see docs/canonical-hashing.md 6.3. v2 adds the
