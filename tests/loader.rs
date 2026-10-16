@@ -545,12 +545,12 @@ fn the_older_direction_classifies_and_is_worded_as_a_migration_candidate() {
     assert_eq!(classify_claim_schema(&claim_schema()), ClaimSchema::Current);
 }
 
-/// Every `req.claim/<n>` literal a document carries. Scanning the text means a reformatting
-/// cannot quietly drop the check.
-fn claim_schema_literals(text: &str) -> Vec<String> {
+/// Every `req.claim/<n>` literal one line carries. Scanning the line means a reformatting cannot
+/// quietly drop the check.
+fn line_schema_literals(line: &str) -> Vec<String> {
     let prefix = req::canon::CLAIM_SCHEMA_PREFIX;
     let mut found = Vec::new();
-    let mut rest = text;
+    let mut rest = line;
     while let Some(at) = rest.find(prefix) {
         let after = &rest[at + prefix.len()..];
         let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
@@ -562,20 +562,98 @@ fn claim_schema_literals(text: &str) -> Vec<String> {
     found
 }
 
+/// The document's **canonical declarations** of the file format: the `Status:` line and the
+/// `| File format |` row of the version-axes table.
+///
+/// Anchored deliberately. `docs/claim-format.md` is where the older/newer axis is explained, so
+/// it legitimately names other formats in prose; collecting *every* mention would redden on a
+/// correct illustrative edit and invite weakening the oracle. The two anchors are the places the
+/// contract states what this build's format *is*.
+///
+/// A missing anchor — or an anchor carrying no declaration, or more than one — is a loud `Err`,
+/// never an empty list: a check that matches nothing must not read as a pass
+/// (`tools/review/check_rules.py`'s lesson). The document stays the oracle either way; this only
+/// says **which** literal in it is the declaration.
+fn declared_schema_literals(text: &str) -> Result<Vec<String>, String> {
+    let mut found = Vec::new();
+    let (mut seen_status, mut seen_row) = (false, false);
+    for line in text.lines() {
+        let anchor = if line.starts_with("Status:") {
+            seen_status = true;
+            "the `Status:` line"
+        } else if line.starts_with("| File format |") {
+            seen_row = true;
+            "the `| File format |` version-axis row"
+        } else {
+            continue;
+        };
+        match line_schema_literals(line).as_slice() {
+            [one] => found.push(one.clone()),
+            other => {
+                return Err(format!(
+                    "{anchor} must declare exactly one `req.claim/<n>` value, found {}",
+                    other.len()
+                ));
+            }
+        }
+    }
+    if !seen_status {
+        return Err(
+            "docs/claim-format.md has no `Status:` line, so the format's canonical declaration \
+             is missing"
+                .to_string(),
+        );
+    }
+    if !seen_row {
+        return Err(
+            "docs/claim-format.md has no `| File format |` row, so the version-axis declaration \
+             is missing"
+                .to_string(),
+        );
+    }
+    Ok(found)
+}
+
+/// The document under test — read once, so both the oracle and the mutation cases start from the
+/// bytes the repository actually ships.
+fn claim_format_doc() -> String {
+    std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs/claim-format.md"))
+        .expect("the claim format doc is part of the tree")
+}
+
+/// The next `req.claim/<n>` after `literal`: a value the document does not state, so a mutation
+/// cannot be mistaken for the untouched text.
+fn next_declaration(literal: &str) -> String {
+    let prefix = req::canon::CLAIM_SCHEMA_PREFIX;
+    let n: u32 = literal
+        .strip_prefix(prefix)
+        .and_then(|numeral| numeral.parse().ok())
+        .expect("a declaration is `req.claim/<digits>`");
+    format!("{prefix}{}", n + 1)
+}
+
+/// `haystack` with the **first** occurrence of `needle` replaced. The `Status:` line is the first
+/// declaration in the document, so this mutates that one and leaves the table row alone.
+fn replacing_first(haystack: &str, needle: &str, replacement: &str) -> String {
+    match haystack.find(needle) {
+        Some(at) => format!(
+            "{}{}{}",
+            &haystack[..at],
+            replacement,
+            &haystack[at + needle.len()..]
+        ),
+        None => haystack.to_string(),
+    }
+}
+
 #[test]
 fn the_schema_constant_equals_the_documented_literal() {
     // **The doc is the spec**, so it is the oracle: the constant is compared against the literal
     // in docs/claim-format.md, never derived from the loader's own value. A test that restated
     // `claim_schema()` would agree with the code whatever it said.
-    let doc = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs/claim-format.md"),
-    )
-    .expect("the claim format doc is part of the tree");
-    let literals = claim_schema_literals(&doc);
-    assert!(
-        !literals.is_empty(),
-        "docs/claim-format.md must state the file format's identifier"
-    );
+    let doc = claim_format_doc();
+    // `.expect`: a document that lost its declaration errors here rather than asserting nothing.
+    let literals = declared_schema_literals(&doc).expect("both canonical declarations are present");
     for literal in literals {
         assert_eq!(
             literal,
@@ -584,6 +662,72 @@ fn the_schema_constant_equals_the_documented_literal() {
              from it"
         );
     }
+}
+
+/// The oracle is the **declaration**, not every mention. `docs/claim-format.md` is exactly where
+/// the older/newer axis is explained, so a legitimate illustrative mention must not redden the
+/// check — while a mutated **declaration** must. Both sides are the deliverable: one alone leaves
+/// the fix free to either scan everything (fragile) or scan nothing (vacuous).
+#[test]
+fn the_doc_oracle_reads_the_declaration_and_ignores_the_prose() {
+    let doc = claim_format_doc();
+    let declared = declared_schema_literals(&doc).expect("both canonical declarations are present");
+    assert_eq!(
+        declared.len(),
+        2,
+        "the format is declared twice: the `Status:` line and the version-axis table row"
+    );
+
+    let other = next_declaration(&declared[0]);
+
+    // Side 1 — a legitimate illustrative mention in the prose does not reach the oracle.
+    let illustrative = format!(
+        "{doc}\n\nAn illustration: a file declaring `{other}` is a question for a build that \
+         writes it, not a defect.\n"
+    );
+    assert_eq!(
+        declared_schema_literals(&illustrative).expect("both anchors survive the addition"),
+        declared,
+        "an illustrative mention in the prose must not enter the oracle"
+    );
+
+    // Side 2 — the declaration is what the oracle reads, so mutating it is detected.
+    let mutated_doc = replacing_first(&doc, &format!("`{}`", declared[0]), &format!("`{other}`"));
+    let mutated =
+        declared_schema_literals(&mutated_doc).expect("both anchors survive the mutation");
+    assert_ne!(
+        mutated[0], declared[0],
+        "a mutated `Status:` declaration must be read by the oracle"
+    );
+    assert_eq!(
+        mutated[1], declared[1],
+        "the version-axis table row is a second anchor, not a fallback"
+    );
+}
+
+/// A check that matches nothing must not read as a pass: dropping either canonical declaration is
+/// a loud `Err`, never a silently vacuous oracle.
+#[test]
+fn a_missing_declaration_anchor_is_an_error_not_an_empty_oracle() {
+    let doc = claim_format_doc();
+
+    let without_status = doc
+        .lines()
+        .filter(|line| !line.starts_with("Status:"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let err = declared_schema_literals(&without_status)
+        .expect_err("the declaration's home must not vanish silently");
+    assert!(err.contains("Status:"), "{err}");
+
+    let without_row = doc
+        .lines()
+        .filter(|line| !line.starts_with("| File format |"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let err = declared_schema_literals(&without_row)
+        .expect_err("the version-axis declaration must not vanish silently");
+    assert!(err.contains("File format"), "{err}");
 }
 
 // ---------------------------------------------------------------------------

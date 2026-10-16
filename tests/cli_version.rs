@@ -12,6 +12,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The absolute path of the compiled binary, so the test does not depend on `$PATH`.
 fn req_bin() -> PathBuf {
@@ -88,11 +89,21 @@ fn assert_build_identity(stdout: &str) {
 ///
 /// It lives under the system temp dir, not `CARGO_TARGET_TMPDIR`: the build tree is inside the
 /// repository, whose own `claims/` is an ancestor of it.
+///
+/// The **name** is unique per process and per instance — the process id covers two processes
+/// sharing a `TMPDIR` (parallel CI jobs, two checkouts), the counter covers two fixtures in one
+/// process. A fixed name meant `new`'s re-create and `Drop`'s remove ran against a directory
+/// another test was living in.
 struct NoCorpus(PathBuf);
+
+/// Distinguishes fixtures within one process. The process id is what extends that distinctness
+/// across processes; this only has to make two instances in one run differ.
+static FIXTURE_SEQ: AtomicU64 = AtomicU64::new(0);
 
 impl NoCorpus {
     fn new(name: &str) -> Self {
-        let dir = std::env::temp_dir().join(name);
+        let seq = FIXTURE_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("{name}-{}-{seq}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("creates the fixture directory");
         if let Some(found) = dir.ancestors().find(|d| req::root::is_corpus_root(d)) {
@@ -112,6 +123,44 @@ impl NoCorpus {
 impl Drop for NoCorpus {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Two fixtures must never share a directory — within one process or across two. `new` removes
+/// and re-creates the path and `Drop` removes it, so a shared name is one test running inside a
+/// directory another test is about to delete, and the failure lands on whatever assertion happens
+/// to be reached next. The label is not the identity: the path must carry the process id as well
+/// as a per-instance component.
+#[test]
+fn fixture_directories_are_unique_per_instance_and_carry_the_process_id() {
+    let first = NoCorpus::new("req-fixture-uniqueness");
+    let second = NoCorpus::new("req-fixture-uniqueness");
+
+    assert_ne!(
+        first.path(),
+        second.path(),
+        "two fixtures created with the same label are two directories, not one"
+    );
+    let pid = std::process::id().to_string();
+    for fx in [&first, &second] {
+        // The process id as its own `-`-separated token: present in the digits of an unrelated
+        // number would not make distinctness hold across processes, which is the property.
+        let name = fx
+            .path()
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default()
+            .to_string();
+        assert!(
+            name.split('-').any(|part| part == pid),
+            "the fixture name must carry the process id, so two processes sharing TMPDIR cannot \
+             collide: {name:?}"
+        );
+        assert!(
+            fx.path().is_dir(),
+            "the fixture is a directory while it lives: {}",
+            fx.path().display()
+        );
     }
 }
 
