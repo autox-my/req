@@ -24,6 +24,15 @@ state: it is always derived from `decisions.jsonl`, never copied into claim file
 | Normalization rules | `canonical.rules_v` | re-canonicalization of affected claims → *candidates* needing re-ratification (hashing spec §5); history never silently rewritten |
 | Subject registry | `aliases/subjects.yml` version | same effect as a rules bump, scoped to claims using affected subjects |
 
+The declared `schema:` is **judged when a file is loaded**, against the value this build writes
+(`CLAIM_SCHEMA_V` in `src/canon.rs`, reported by `req --version` as `claim_schema`). A file
+declaring an *older* format is a migration candidate; a *newer* one is a question this build
+cannot answer, because the file is not wrong — the reader is old; and a value that is not of the
+`req.claim/<n>` shape at all is a broken file, not a version question. All three are **NOT
+JUDGED** (exit 3), never `verified`: nothing inside the file was compared to anything, and the
+declared format is what makes the rest of it readable as a claim of this build's contract. The
+judgement lives in the loader, so no command can ignore the declaration.
+
 ## Field reference
 
 | Field | Meaning | Notes |

@@ -34,6 +34,110 @@ use crate::model::Registry;
 /// computed under older rules are re-canonicalization candidates, never silently
 /// rewritten (hashing spec §5).
 pub const RULES_V: u32 = 5;
+/// The claim **file format's** own version (`docs/claim-format.md`), an axis that moves
+/// independently of the normalization rules: a schema bump is a migration and moves no
+/// address, while a rules bump re-derives every address. Named here, beside the other
+/// identity-path versions, because two callers need one value — `--version` reports it and
+/// the loader judges the value a file declares — and a literal at either site would be a
+/// second home, free to drift from the contract the doc states.
+pub const CLAIM_SCHEMA_V: u32 = 0;
+/// The `schema:` identifier's prefix: the value is `req.claim/<version>`. Split from the
+/// version so the version is stated once, as a number, and the identifier is derived.
+pub const CLAIM_SCHEMA_PREFIX: &str = "req.claim/";
+
+/// The `schema:` value this build reads and writes — `req.claim/<CLAIM_SCHEMA_V>`, derived
+/// rather than re-typed so no site can name a different one.
+pub fn claim_schema() -> String {
+    format!("{CLAIM_SCHEMA_PREFIX}{CLAIM_SCHEMA_V}")
+}
+
+/// What a claim file's declared `schema:` says, judged against the one this build writes.
+///
+/// The direction decides the remedy, as it does for `rules_v` in a Baseline manifest: a file
+/// written under an **older** format is a migration candidate (a format bump moves no address,
+/// `docs/claim-format.md`), a **newer** one is a question this build cannot answer because the
+/// file is not wrong — the reader is old — and a value of no `req.claim/<n>` shape at all is
+/// neither: it is a broken file, and [`ClaimSchema::reason`] says so rather than guessing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimSchema {
+    /// The schema this build reads and writes.
+    Current,
+    /// A schema this build no longer writes: a migration candidate.
+    Older(u32),
+    /// A schema newer than this build's: the reader is old, the file is not wrong.
+    Newer(u32),
+    /// Not the identifier this build's contract defines — no `req.claim/<n>` shape, or a numeral
+    /// that is not canonical (`req.claim/00`): a broken file, not a version question.
+    Malformed,
+}
+
+/// Judge a declared `schema:` value against the one this build writes. Pure, so the three
+/// outcomes are testable without a file.
+pub fn classify_claim_schema(declared: &str) -> ClaimSchema {
+    classify_claim_schema_at(declared, CLAIM_SCHEMA_V)
+}
+
+/// The same judgement against an explicitly given build version.
+///
+/// The build version is a parameter for the same reason [`crate::baseline::rules_mismatch`]'s
+/// direction is reachable from a test: at `CLAIM_SCHEMA_V = 0` **no file can declare an older
+/// format**, so the `Less` arm would otherwise be a branch nobody exercises — free to be wrong on
+/// the day the first format bump arrives, which is the day it matters most. Callers judge with
+/// [`claim_schema`]; only a test names another build.
+pub fn classify_claim_schema_at(declared: &str, build_v: u32) -> ClaimSchema {
+    let Some(numeral) = declared.strip_prefix(CLAIM_SCHEMA_PREFIX) else {
+        return ClaimSchema::Malformed;
+    };
+    let Ok(declared_v) = numeral.parse::<u32>() else {
+        return ClaimSchema::Malformed;
+    };
+    // The numeral is canonical, exactly as a claim's `value` is ("0.3", never "0.30"): `00` and
+    // `+0` parse to the current version but are not the identifier `docs/claim-format.md`
+    // defines, so they are a malformed value rather than a silent `Current`.
+    if declared_v.to_string() != numeral {
+        return ClaimSchema::Malformed;
+    }
+    match declared_v.cmp(&build_v) {
+        std::cmp::Ordering::Equal => ClaimSchema::Current,
+        std::cmp::Ordering::Less => ClaimSchema::Older(declared_v),
+        std::cmp::Ordering::Greater => ClaimSchema::Newer(declared_v),
+    }
+}
+
+impl ClaimSchema {
+    /// What a reader must be told about a file whose declared schema is not the current one, or
+    /// `None` when there is nothing to say.
+    ///
+    /// The wording is not cosmetic. Nothing inside the file was compared to anything, so every
+    /// arm says **NOT JUDGED** — as [`crate::baseline::RulesMismatch::reason`] does for a rules
+    /// version, and for the same reason: a reader told only that the file "could not be read"
+    /// goes looking for a syntax error that is not there, while a reader told nothing concludes
+    /// the file was checked. Each arm names the declared value, the value this build writes, and
+    /// the one remedy the direction calls for.
+    pub fn reason(&self, declared: &str) -> Option<String> {
+        let current = claim_schema();
+        match self {
+            ClaimSchema::Current => None,
+            ClaimSchema::Older(_) => Some(format!(
+                "declares schema {declared}, which predates {current}: the claim was NOT JUDGED — \
+                 the file is a migration candidate, and a format bump moves no address \
+                 (docs/claim-format.md). Migrate it to {current}"
+            )),
+            ClaimSchema::Newer(_) => Some(format!(
+                "declares schema {declared}, newer than the {current} this build writes: the claim \
+                 was NOT JUDGED — the file is not wrong, the reader is old. Read it with a build \
+                 that writes {declared}, which is not this one"
+            )),
+            ClaimSchema::Malformed => Some(format!(
+                "declares schema {declared:?}, which is not the {CLAIM_SCHEMA_PREFIX}<n> \
+                 identifier docs/claim-format.md defines — the numeral is canonical, so `00` is \
+                 not `0`: the claim was NOT JUDGED — the file cannot be established as a claim \
+                 of this build's format at all, so it is a broken file, not a version question"
+            )),
+        }
+    }
+}
+
 /// Versioned domain tag — a rules bump never silently re-hashes ratified history
 /// (hashing spec §5 freeze policy).
 pub const ADDRESS_TAG: &[u8] = b"req.claim.v1\0";
@@ -1308,6 +1412,13 @@ fn looks_like_claim_file(name: &str) -> bool {
 ///   subdirectory is a place a claim can be filed out of sight;
 /// - an unreadable file, or YAML that does not parse under the strict `ClaimFile`
 ///   (a misspelled key names itself; a missing `applicability`/`relations` does too);
+/// - a `schema:` that is not the file format this build writes (`CLAIM_SCHEMA_V`): parsed and
+///   never consulted, it was decoration — and the address does not cover the field, so a wrong
+///   value moved no address either and nothing would have noticed. Judged **by direction**, as
+///   [`crate::baseline::rules_mismatch`] judges `rules_v`: older is a migration candidate, newer
+///   is a question this build cannot answer, and a value of no `req.claim/<n>` shape is a broken
+///   file. All three are NOT JUDGED, and refusing here means no command — `canon`, `--verify`,
+///   `--fill`, the views, the gate — can quietly ignore the declaration;
 /// - two files declaring one `claim_id` — their **content** is compared, so an
 ///   identical copy and a divergent rewrite are named differently;
 /// - a claim-shaped file that is not `REQ-<digits>.yml` (`req-0008.yml`,
@@ -1379,6 +1490,13 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
             std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
         let claim: crate::model::ClaimFile =
             yaml_serde::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
+        // The declared file-format version, judged where the file is loaded — so that every
+        // command inherits the check rather than each one re-deciding whether to look, and so
+        // `--fill` refuses to write derived fields into a format this build does not write.
+        // `reason` is `None` only for the schema this build writes.
+        if let Some(reason) = classify_claim_schema(&claim.schema).reason(&claim.schema) {
+            return Err(format!("{}: {reason}", path.display()));
+        }
         loaded.push(LoadedClaim {
             path,
             name,

@@ -74,6 +74,17 @@ export CARGO_HOME="$PWD/.cargo-home"
 export OCR_NO_UPDATE=1
 ```
 
+- What this binary is: `cargo run -q -- --version` (`-V`) prints the versions that decide a
+  verdict — the crate, `rules_v`, the Baseline envelope, the decision chain and the claim file
+  schema — and the build identity. The first line stays single-line and greppable; `--help`
+  (`-h`) prints `USAGE`. Both are answered where the subcommand is looked up, **before** the
+  corpus root is resolved, so they work in any directory, print no `corpus root:` line, and exit
+  **0** — while bare `req`, an unknown subcommand and an unknown flag stay **2**. `rules_v` is
+  the axis that makes a stored address current, so it is the first thing to check when a verdict
+  surprises you; `built from` is the short git SHA the binary was built from, `-dirty` when a
+  tracked file was modified and `unknown` when git cannot answer. **Rebuild before probing a
+  branch** — a worktree's `target/debug/req` can lag its own branch head — and compare that line
+  with `git rev-parse --short HEAD` rather than remembering to.
 - Test suite: `cargo test` — check `EXIT=$?` on the *cargo* command.
   **Never pipe a check through `tail`/`grep`**: the pipeline's status is not the
   command's, and `EXIT=$?` after a pipe reports the wrong program.
@@ -83,13 +94,21 @@ export OCR_NO_UPDATE=1
   are append-only, one record per rules version.
 - Claim diagnostics: `cargo run -q -- canon` — per-claim parity-invariant report
   (unstructured tag, modality, subject, value/unit, operator). Exit 3 when the
-  registry or a claim file cannot be read.
+  registry or a claim file cannot be read, and when a file's declared `schema:` is not the
+  `req.claim/<n>` value this build writes (`CLAIM_SCHEMA_V`, reported by `--version` as
+  `claim_schema`): the file's parse is **NOT JUDGED** — an older schema is a migration candidate
+  (a format bump moves no address), a newer one is a question for a build that writes it (the
+  file is not wrong, the reader is old), and a value of no `req.claim/<n>` shape at all is a
+  broken file, not a version question. The judgement lives in the loader, so no command can
+  ignore the declaration, and `--fill` refuses to write derived fields into a format it does not
+  write.
 - Derived fields: `cargo run -q -- canon --fill` writes `canonical.form` + `address`,
   and **refuses any claim whose parse disagrees with its authored slots** (exit 3) —
   an address over a contradicted parse would enshrine the contradiction.
   `cargo run -q -- canon --verify` checks the stored fields against a fresh parse:
-  exit **1** mismatch (a hand-edited digest), **3** candidate (unfilled, or filled
-  under other rules — re-fill before merging a rules bump). Both are in the gate.
+  exit **1** mismatch (a hand-edited digest), **3** candidate (unfilled, filled
+  under other rules, or a declared schema this build does not write — re-fill before
+  merging a rules bump). Both are in the gate.
 - Lint/format: `cargo fmt --all -- --check` and
   `cargo clippy --all-targets -- -D warnings` — both part of the gate. The
   components live in the *pinned* toolchain, not in `stable`, so the toolchain

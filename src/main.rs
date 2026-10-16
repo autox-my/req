@@ -49,9 +49,41 @@ usage: req [--root <dir>] <command> [args]
   baseline [--verify <file>]      the manifest a human signs, or verify one
   audit [--baseline <file>]       the audit packet: coverage, provenance, undecided
   decision [--fill | --verify]    the decision log and its hash chain
+  --version | -V                  the versions that decide a verdict, and the build identity
+  --help | -h                     this text
 
 The corpus root is resolved at runtime: --root, else REQ_ROOT, else the nearest ancestor of
 the working directory holding claims/ (ADR 0012).";
+
+/// What `--version` prints: the crate's version on the first line — single-line and greppable,
+/// so `req --version | head -1` behaves like any other tool's — then every version axis this
+/// build *judges* by, then the build identity.
+///
+/// Every value is read from the constant that carries it (`env!("CARGO_PKG_VERSION")`,
+/// [`canon::RULES_V`], [`baseline::BASELINE_VERSION`], [`decision::DECISION_VERSION`],
+/// [`canon::claim_schema()`]), never re-typed here: a literal `5` in this file would be a second
+/// copy of `RULES_V`, free to drift from the value that decides whether a stored address is
+/// current.
+///
+/// `rules_v` comes first because it is that axis and the first thing to check when a verdict
+/// surprises the reader. The build line is printed even when the identity cannot be established
+/// (`unknown`, from `build.rs`): an absent line reads as "not applicable", a different claim.
+fn version_text() -> String {
+    let axes = [
+        ("rules_v", canon::RULES_V.to_string()),
+        ("baseline_envelope", baseline::BASELINE_VERSION.to_string()),
+        ("decision_chain", decision::DECISION_VERSION.to_string()),
+        ("claim_schema", canon::claim_schema()),
+        ("built from", env!("REQ_BUILD_SHA").to_string()),
+    ];
+    // Two-space indent and a 19-wide label column: the values line up, and the block stays one
+    // fact per line for a reader and for a grep.
+    let mut out = format!("req {}\n", env!("CARGO_PKG_VERSION"));
+    for (label, value) in axes {
+        out.push_str(&format!("  {label:<19}{value}\n"));
+    }
+    out
+}
 
 /// A subcommand's handler: its own arguments (`--root` already stripped) and the corpus.
 type Handler = fn(&[String], &Path) -> i32;
@@ -114,6 +146,23 @@ fn main() {
     if rest.is_empty() {
         eprintln!("{USAGE}");
         exit(2);
+    }
+    // The tool's own flags, answered in the same position as the subcommand lookup below and
+    // for the same reason: they belong to no subcommand, and they must work **anywhere** —
+    // including a directory with no `claims/` ancestor — so they are answered *before* the
+    // corpus root is resolved and never print a `corpus root:` line. `--help` is deliberately
+    // not folded into the empty-`rest` path above: saying nothing is a usage error, whereas a
+    // request for help is a request that was answered.
+    match rest[0].as_str() {
+        "--version" | "-V" => {
+            print!("{}", version_text());
+            exit(0);
+        }
+        "--help" | "-h" => {
+            println!("{USAGE}");
+            exit(0);
+        }
+        _ => {}
     }
     let cmd = rest.remove(0);
     let args = rest;
