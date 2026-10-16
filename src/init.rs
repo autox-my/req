@@ -137,8 +137,18 @@ fn init_at(root: &Path) -> Result<(), Failure> {
         // `symlink_metadata`, not `exists()`: a broken symlink at one of these paths is a
         // thing that is there, and writing through it would be an overwrite of the
         // author's file. `exists()` follows the link and answers "nothing here".
-        if std::fs::symlink_metadata(&path).is_ok() {
-            return Err(Failure::Refused(label.to_string(), Refusal::Exists));
+        if let Ok(meta) = std::fs::symlink_metadata(&path) {
+            // …and a *link* is refused for a different reason from a file or a directory, so it
+            // gets a different remedy: a dangling link does not resolve, and "edit it in place"
+            // would name a path that is not there. Every path this loop covers can be a link,
+            // which is why the reason is read from the metadata rather than assumed from the
+            // check above.
+            let why = if meta.file_type().is_symlink() {
+                Refusal::Symlink
+            } else {
+                Refusal::Exists
+            };
+            return Err(Failure::Refused(label.to_string(), why));
         }
     }
 

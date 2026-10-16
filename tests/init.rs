@@ -511,6 +511,15 @@ fn a_broken_symlink_at_a_refusal_path_is_something_that_is_there() {
             "a dangling symlink at {name} is a thing that is there, so `init` must refuse:\n{}\n{}",
             out.stdout, out.stderr
         );
+        // The refusal must explain *this* case for every path it covers, not only for the one
+        // that got its own check: a dangling link at `claims` does not resolve, so "already
+        // exists — edit it in place" names a path that is not there and offers the remedy for
+        // a corpus that does not exist.
+        assert!(
+            out.stderr.contains("is a symlink"),
+            "a dangling link at {name} must be refused as a link, not as something that exists:\n{}",
+            out.stderr
+        );
         assert!(
             std::fs::symlink_metadata(&link).is_ok(),
             "a refused `init` must leave the link it found alone"
@@ -540,16 +549,16 @@ fn a_symlinked_aliases_directory_is_refused_rather_than_written_through() {
         } else {
             "req-init-aliases-elsewhere"
         });
-        let target = Fixture::new(if dangling {
-            "req-init-aliases-unused"
-        } else {
-            "req-init-aliases-target"
-        });
-        let link_target = if dangling {
-            // Deliberately not created: the link resolves to nothing.
-            fx.join("nowhere-at-all")
-        } else {
-            target.path().to_path_buf()
+        // The tree the link points at, when it points at one. The dangling case has none, so
+        // the assertion below is written against the *link target*: an assertion about a path
+        // this run never touches is true whatever `init` does, which is how an unused fixture
+        // made the first version of this test vacuous in exactly the iteration it called the
+        // worse one.
+        let target = (!dangling).then(|| Fixture::new("req-init-aliases-target"));
+        let link_target = match &target {
+            Some(tree) => tree.path().to_path_buf(),
+            // Deliberately nothing: the link resolves to nowhere.
+            None => fx.join("nowhere-at-all"),
         };
         std::os::unix::fs::symlink(&link_target, fx.join("aliases"))
             .expect("plants the link at the directory component");
@@ -562,8 +571,8 @@ fn a_symlinked_aliases_directory_is_refused_rather_than_written_through() {
             out.stdout, out.stderr
         );
         assert!(
-            !target.path().join("subjects.yml").exists(),
-            "the registry must not be written through the link into another tree"
+            !link_target.join("subjects.yml").exists(),
+            "the registry must not be written through the link, whatever it points at"
         );
         assert!(
             !fx.join("claims").exists(),

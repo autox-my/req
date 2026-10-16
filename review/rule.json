@@ -2,7 +2,7 @@
   "rules": [
     {
       "path": "review/**/*.json",
-      "rule": "The review-rule file is itself reviewed, and its EFFECT is verified rather than assumed: a matched file's group must come back with source \"custom\" and this text, because this CLI silently ignores unknown keys — a misspelled key still loads and does nothing. Check that each entry's `path` glob actually matches files that exist (a renamed directory turns an entry into a silent no-op that falls back to the built-in rule), and that no entry claims paths whose built-in language checklist we would lose: custom rules REPLACE the system rubric for matched paths, so an entry covering source files must say so in its own text. Rules belong to this project's invariants, never a restatement of the tool's generic advice."
+      "rule": "The review-rule file is itself reviewed, and its EFFECT is verified rather than assumed: a matched file's group must come back with source \"custom\" and this text, because this CLI silently ignores unknown keys — a misspelled key still loads and does nothing. Check that each entry's `path` glob actually matches files that exist (a renamed directory turns an entry into a silent no-op that falls back to the built-in rule), and that no entry claims paths whose built-in language checklist we would lose: custom rules REPLACE the system rubric for matched paths, so an entry covering source files must say so in its own text. Rules belong to this project's invariants, never a restatement of the tool's generic advice.\n\nAlso apply the built-in system rubric for JSON (spelling in `json-keys`; the content of `json-values` is ignored): a custom rule REPLACES the system rubric for matched paths. Run `ocr delegate rule --format json review/rule.json` without --rule to see the built-in checklist."
     },    {
       "path": "build.rs",
       "rule": "build.rs carries the identity contract, and this file is the whole build script. It had no entry of ours because our Rust entries are directory-scoped (`src/**/*.rs`, `tests/**/*.rs`), so a top-level `build.rs` fell to the CLI's built-in `**/*.rs` pattern. It is **not** because `**/` misses a root-level file, and the probe belongs with the claim: `{\"rules\":[{\"path\":\"**/*.rs\",\"rule\":\"PROBE-PATTERN\"}]}` resolves `build.rs`, `src/canon.rs` and `tests/baseline.rs` all to `source: custom`, because a gitignore `**/` matches zero or more directories. Check this file as a build script, not as engine code:\n\n(1) The SHA is **printed, never hashed**. `REQ_BUILD_SHA` may reach `req --version` and nothing else: it must not appear in `canonical_bytes`, in an address, or in any digest — identity is meaning-only (ADR 0007), so hashing the commit would tie every address to history. `req canon --verify` staying green on the committed corpus is the proof.\n(2) **Never fail the build.** Every failure path — no `.git`, no `git`, a shallow clone, a source tarball, an old git that rejects `--no-optional-locks` — must still produce a value, `unknown` included and never omitted. A build script that can fail breaks every build for one provenance line.\n(3) A resolved commit and the cleanliness probe are **separate facts**: a probe that answers nothing keeps the commit and marks only the cleanliness unestablished (`<sha>-cleanliness-unknown`). Collapsing that into a bare SHA asserts cleanliness nobody established; collapsing it into `unknown` throws the attribution away.\n(4) No new dependency, no network, no reading outside local files and local git state.\n(5) `cargo:rerun-if-changed` must name everything the value derives from, or `built from` goes stale: a hardcoded `.git` watches nothing in a worktree (where `.git` is a file), staging moves only `<gitdir>/index`, and a bare `HEAD` does not move on a commit. A stale identity is confidently wrong, which is the failure this script exists to remove.\n\nAlso apply the built-in system rubric for Rust (typos, error handling and panics, unsafe boundaries, allocations): a custom rule REPLACES the system rubric for matched paths. Run `ocr delegate rule --format json build.rs` without --rule to see the built-in checklist."
@@ -21,11 +21,11 @@
     },
     {
       "path": "bench/corpus/*.yml",
-      "rule": "Corpus labels are an independent oracle: written from the spec, or produced by construction (the transformation applied) — NEVER regenerated from the canonicalizer's output. A corpus labelled by the thing it tests cannot falsify it. Every pair carries its source; adversarial pairs are minimal meaning-changing edits. Adding a mutation class the tool FAILS is the point: record the failure, widen the rules, never relabel the corpus to make it pass."
+      "rule": "Corpus labels are an independent oracle: written from the spec, or produced by construction (the transformation applied) — NEVER regenerated from the canonicalizer's output. A corpus labelled by the thing it tests cannot falsify it. Every pair carries its source; adversarial pairs are minimal meaning-changing edits. Adding a mutation class the tool FAILS is the point: record the failure, widen the rules, never relabel the corpus to make it pass.\n\nAlso apply the built-in system rubric for YAML (spelling in `yaml-keys`; the content of `yaml-values` is ignored): a custom rule REPLACES the system rubric for matched paths. Run `ocr delegate rule --format json bench/corpus/parity.yml` without --rule to see the built-in checklist."
     },
     {
       "path": "bench/results/*.json",
-      "rule": "Results are append-only records: one per corpus and rules version. Never rewrite or delete an existing record — a changed number arrives as a new file. Each record names the corpus bytes it measured (corpus_sha256) and the rules version, so a reported number stays reproducible."
+      "rule": "Results are append-only records: one per corpus and rules version. Never rewrite or delete an existing record — a changed number arrives as a new file. Each record names the corpus bytes it measured (corpus_sha256) and the rules version, so a reported number stays reproducible.\n\nAlso apply the built-in system rubric for JSON (spelling in `json-keys`; the content of `json-values` is ignored): a custom rule REPLACES the system rubric for matched paths. Run `ocr delegate rule --format json bench/results/direction-v1-rules-v5.json` without --rule to see the built-in checklist."
     },
     {
       "path": "docs/**/*.md",
@@ -49,15 +49,15 @@
     },
     {
       "path": "baselines/**",
-      "rule": "A change to the trust anchor, a signed Baseline or its signature is trust-material: verify the key statement, the rotation window and that the manifest still re-derives from the committed claims before accepting any of it. A key swap without a recorded rotation story is a finding."
+      "rule": "A change to the trust anchor, a signed Baseline or its signature is trust-material: verify the key statement, the rotation window and that the manifest still re-derives from the committed claims before accepting any of it. A key swap without a recorded rotation story is a finding.\n\nAlso apply the built-in system rubric for YAML (spelling in `yaml-keys`; the content of `yaml-values` is ignored): a custom rule REPLACES the system rubric for matched paths. Run `ocr delegate rule --format json baselines/trust.yml` without --rule to see the built-in checklist."
     },
     {
       "path": "aliases/subjects.yml",
-      "rule": "The subject registry feeds the addresses: an alias edit changes identity claims. Every entry must resolve; a silent alias drop is a finding."
+      "rule": "The subject registry feeds the addresses: an alias edit changes identity claims. Every entry must resolve; a silent alias drop is a finding.\n\nAlso apply the built-in system rubric for YAML (spelling in `yaml-keys`; the content of `yaml-values` is ignored): a custom rule REPLACES the system rubric for matched paths. Run `ocr delegate rule --format json aliases/subjects.yml` without --rule to see the built-in checklist."
     },
     {
       "path": ".forgejo/**",
-      "rule": "Workflow and runner changes alter what CI can enforce. A relaxation of the gate, a removal of a fail-closed check or a new untethered provider input is a finding."
+      "rule": "Workflow and runner changes alter what CI can enforce. A relaxation of the gate, a removal of a fail-closed check or a new untethered provider input is a finding.\n\nAlso apply the built-in system rubric for YAML (spelling in `yaml-keys`; the content of `yaml-values` is ignored): a custom rule REPLACES the system rubric for matched paths. Run `ocr delegate rule --format json .forgejo/workflows/ci.yml` without --rule to see the built-in checklist."
     },
     {
       "path": "Cargo.toml",
@@ -65,7 +65,7 @@
     },
     {
       "path": "rust-toolchain.toml",
-      "rule": "The toolchain is a pin. Verify at pin time; a bump is a Tier-1 rules bump (RULES_V changes, addresses become re-canonicalization candidates, the gate's `canon --verify` exits 3 until the corpus is re-filled). The toolchain directory is resolved from this file, never hardcoded — rustfmt/clippy live in the pinned toolchain, not in `stable`."
+      "rule": "The toolchain is a pin. Verify at pin time; a bump is a Tier-1 rules bump (RULES_V changes, addresses become re-canonicalization candidates, the gate's `canon --verify` exits 3 until the corpus is re-filled). The toolchain directory is resolved from this file, never hardcoded — rustfmt/clippy live in the pinned toolchain, not in `stable`.\n\nAlso apply the built-in system rubric (its general checklist: correctness, security, performance, maintainability, test coverage): a custom rule REPLACES the system rubric for matched paths — a pin is reviewed too. Run `ocr delegate rule --format json rust-toolchain.toml` without --rule to see the built-in checklist."
     }
   ]
 }
