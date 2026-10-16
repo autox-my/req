@@ -600,6 +600,47 @@ fn a_symlinked_aliases_directory_is_refused_rather_than_written_through() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn a_link_hiding_a_registry_is_refused_as_a_link_not_as_an_existing_corpus() {
+    // The refusal loop reads `aliases/subjects.yml`, and `symlink_metadata` follows symlinks in
+    // *intermediate* components — so when `aliases` is a link whose target already holds a
+    // registry, the loop resolves through the link, finds that file and answers first, telling
+    // the operator to "edit it in place": a path in a tree this run never named. The link is the
+    // thing to report, and it is the reason the check belongs **before** the loop.
+    let fx = Fixture::new("req-init-aliases-shadowed");
+    let target = Fixture::new("req-init-aliases-shadow-target");
+    std::fs::write(
+        target.path().join("subjects.yml"),
+        "schema: req.subject_registry/0\n",
+    )
+    .expect("plants a registry in the other tree");
+    std::os::unix::fs::symlink(target.path(), fx.join("aliases")).expect("plants the link");
+
+    let out = run_at(fx.path(), &["init"]);
+    assert_eq!(
+        out.code, 1,
+        "the link must be refused:\n{}\n{}",
+        out.stdout, out.stderr
+    );
+    assert!(
+        out.stderr.contains("is a symlink"),
+        "the link is what makes the path mean somewhere else, so it must be the reason given:\n{}",
+        out.stderr
+    );
+    assert!(
+        !out.stderr.contains("already exists"),
+        "the registry it found is in another tree; `aliases/subjects.yml` is not this run's to \
+         edit:\n{}",
+        out.stderr
+    );
+    assert_eq!(
+        std::fs::read_to_string(target.path().join("subjects.yml")).unwrap(),
+        "schema: req.subject_registry/0\n",
+        "the other tree must be untouched"
+    );
+}
+
 #[test]
 fn a_real_aliases_directory_is_used_rather_than_refused() {
     // The check above is about *links*. A real `aliases/` directory is under the root the

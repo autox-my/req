@@ -130,6 +130,27 @@ pub fn run(args: &[String], cli_root: Option<&Path>) -> i32 {
 /// Create the corpus under `root`. The refusal is checked first and **only** here: the
 /// question is what this directory already holds, not what an ancestor holds.
 fn init_at(root: &Path) -> Result<(), Failure> {
+    // The registry's **directory component** is checked first, because it can *shadow* the loop
+    // below: `symlink_metadata` follows a link in intermediate components, so with
+    // `aliases -> elsewhere` and a registry already in `elsewhere`, the loop resolves
+    // `aliases/subjects.yml` *through* the link, finds that file and answers "already exists —
+    // edit it in place" — a remedy pointing into a tree this run never named. The link is the
+    // more fundamental fact and the one the operator has to act on.
+    //
+    // The check is also deliberately *narrower* than the loop: a real `aliases/` directory must
+    // stay usable — it is under the root the caller named, and `init` writes its registry into it
+    // as it always has. What is refused is a **link**, which would put the registry outside the
+    // corpus this run was asked to create, and nothing downstream would notice: `Created::dir`
+    // asks `exists()`, which follows the link and reports "nothing to create". A *dangling* link
+    // is worse still — the refusal would be skipped, `create_dir_all` would then fail on the
+    // link, and the outcome would be UNVERIFIABLE (3) instead of the refusal (1) whose message
+    // says what to do about it.
+    if std::fs::symlink_metadata(root.join(ALIASES_DIR))
+        .is_ok_and(|meta| meta.file_type().is_symlink())
+    {
+        return Err(Failure::Refused(ALIASES_DIR.to_string(), Refusal::Symlink));
+    }
+
     for (path, label) in [
         (root.join(CLAIMS_DIR), CLAIMS_DIR),
         (root.join(REGISTRY_PATH), REGISTRY_PATH),
@@ -150,21 +171,6 @@ fn init_at(root: &Path) -> Result<(), Failure> {
             };
             return Err(Failure::Refused(label.to_string(), why));
         }
-    }
-
-    // The registry's **directory component** needs its own check, and this one is deliberately
-    // narrower than the loop above: that loop refuses a *path*, while a real `aliases/`
-    // directory must stay usable — it is under the root the caller named, and `init` writes its
-    // registry into it as it always has. What is refused here is a **link**. `aliases ->
-    // elsewhere` would put the registry outside the corpus this run was asked to create, and
-    // nothing downstream would notice: `Created::dir` asks `exists()`, which follows the link
-    // and reports "nothing to create". A *dangling* link is worse still — the refusal is
-    // skipped, `create_dir_all` then fails on the link, and the outcome is UNVERIFIABLE (3)
-    // instead of the refusal (1) whose message tells the operator what to do about it.
-    if std::fs::symlink_metadata(root.join(ALIASES_DIR))
-        .is_ok_and(|meta| meta.file_type().is_symlink())
-    {
-        return Err(Failure::Refused(ALIASES_DIR.to_string(), Refusal::Symlink));
     }
 
     let date = today_utc().map_err(Failure::Unverifiable)?;
