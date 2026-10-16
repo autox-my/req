@@ -58,17 +58,34 @@ fn build_identity() -> String {
 /// What cargo must watch for this script to re-run. Where the identity *derives from* git
 /// state that does not change when a file does — and vice versa — both are named:
 ///
-/// * the resolved gitdir's `HEAD`, which moves on a commit or checkout;
+/// * the git metadata a commit or a checkout rewrites;
 /// * every tracked path, because a working-tree edit changes no git metadata at all, and a
 ///   `-dirty` marker that lags the edit is the same stale-identity failure wearing a badge.
 ///
 /// Untracked paths are deliberately not watched: they never make the identity dirty, so
 /// watching them would only rebuild the world whenever a scratch file is written.
+///
+/// **`HEAD` alone is not enough, and that was measured.** `<gitdir>/HEAD` is a *symref*
+/// (`ref: refs/heads/<branch>`); a commit moves the branch it points at, not the symref, so
+/// after `git commit --allow-empty` both `<gitdir>/HEAD` and `<gitdir>/index` keep their mtime
+/// while `<gitdir>/logs/HEAD` and the loose ref file move. Relying on `HEAD` therefore leaves
+/// `built from` stale after exactly the commits that change no tracked file — an amended
+/// message, a re-run of the same tree — which is the confidently-wrong value this script exists
+/// to remove. The reflog is what every HEAD-moving operation appends to; the loose ref is
+/// watched beside it, because a repository with reflogs switched off still rewrites that.
 fn watch_inputs() {
     if let Some(gitdir) = git(&["rev-parse", "--git-dir"])
         && !gitdir.is_empty()
     {
-        println!("cargo:rerun-if-changed={gitdir}/HEAD");
+        let gitdir = std::path::Path::new(&gitdir);
+        watch_if_present(&gitdir.join("HEAD"));
+        watch_if_present(&gitdir.join("logs/HEAD"));
+        if let Some(reference) = git(&["symbolic-ref", "-q", "HEAD"])
+            && !reference.is_empty()
+            && let Some(resolved) = git(&["rev-parse", "--git-path", &reference])
+        {
+            watch_if_present(std::path::Path::new(&resolved));
+        }
     }
     let Some(listing) = git_raw(&["ls-files", "-z"]) else {
         // No git, or no index: nothing else to watch. The default rule (re-run when a file in
@@ -77,13 +94,23 @@ fn watch_inputs() {
     };
     // `-z`: a path containing a space or a newline is still one path. A path that is not valid
     // UTF-8 cannot be named to cargo as it is written, so it is skipped rather than mangled
-    // into a path that does not exist (which cargo would read as "always changed").
+    // into a path that does not exist — cargo re-runs the script on **every** build for a path
+    // that does not exist, which is why every optional path above goes through the same guard.
     for path in listing.split(|byte| *byte == 0) {
         if let Ok(path) = std::str::from_utf8(path)
             && !path.is_empty()
         {
             println!("cargo:rerun-if-changed={path}");
         }
+    }
+}
+
+/// Name `path` to cargo only when it is there. A `rerun-if-changed` path that does not exist
+/// makes cargo re-run the script on every build, so a path git may or may not have — a reflog, a
+/// loose ref — is watched when present and silently skipped when not.
+fn watch_if_present(path: &std::path::Path) {
+    if path.exists() {
+        println!("cargo:rerun-if-changed={}", path.display());
     }
 }
 

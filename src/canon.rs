@@ -66,19 +66,38 @@ pub enum ClaimSchema {
     Older(u32),
     /// A schema newer than this build's: the reader is old, the file is not wrong.
     Newer(u32),
-    /// Not of the `req.claim/<n>` shape at all: a broken file, not a version question.
+    /// Not the identifier this build's contract defines — no `req.claim/<n>` shape, or a numeral
+    /// that is not canonical (`req.claim/00`): a broken file, not a version question.
     Malformed,
 }
 
-/// Judge a declared `schema:` value. Pure, so the three outcomes are testable without a file.
+/// Judge a declared `schema:` value against the one this build writes. Pure, so the three
+/// outcomes are testable without a file.
 pub fn classify_claim_schema(declared: &str) -> ClaimSchema {
-    let Some(declared_v) = declared
-        .strip_prefix(CLAIM_SCHEMA_PREFIX)
-        .and_then(|version| version.parse::<u32>().ok())
-    else {
+    classify_claim_schema_at(declared, CLAIM_SCHEMA_V)
+}
+
+/// The same judgement against an explicitly given build version.
+///
+/// The build version is a parameter for the same reason [`crate::baseline::rules_mismatch`]'s
+/// direction is reachable from a test: at `CLAIM_SCHEMA_V = 0` **no file can declare an older
+/// format**, so the `Less` arm would otherwise be a branch nobody exercises — free to be wrong on
+/// the day the first format bump arrives, which is the day it matters most. Callers judge with
+/// [`claim_schema`]; only a test names another build.
+pub fn classify_claim_schema_at(declared: &str, build_v: u32) -> ClaimSchema {
+    let Some(numeral) = declared.strip_prefix(CLAIM_SCHEMA_PREFIX) else {
         return ClaimSchema::Malformed;
     };
-    match declared_v.cmp(&CLAIM_SCHEMA_V) {
+    let Ok(declared_v) = numeral.parse::<u32>() else {
+        return ClaimSchema::Malformed;
+    };
+    // The numeral is canonical, exactly as a claim's `value` is ("0.3", never "0.30"): `00` and
+    // `+0` parse to the current version but are not the identifier `docs/claim-format.md`
+    // defines, so they are a malformed value rather than a silent `Current`.
+    if declared_v.to_string() != numeral {
+        return ClaimSchema::Malformed;
+    }
+    match declared_v.cmp(&build_v) {
         std::cmp::Ordering::Equal => ClaimSchema::Current,
         std::cmp::Ordering::Less => ClaimSchema::Older(declared_v),
         std::cmp::Ordering::Greater => ClaimSchema::Newer(declared_v),
@@ -110,10 +129,10 @@ impl ClaimSchema {
                  that writes {declared}, which is not this one"
             )),
             ClaimSchema::Malformed => Some(format!(
-                "declares schema {declared:?}, which is not of the {CLAIM_SCHEMA_PREFIX}<n> shape \
-                 docs/claim-format.md defines: the claim was NOT JUDGED — the file cannot be \
-                 established as a claim of this build's format at all, so it is a broken file, \
-                 not a version question"
+                "declares schema {declared:?}, which is not the {CLAIM_SCHEMA_PREFIX}<n> \
+                 identifier docs/claim-format.md defines — the numeral is canonical, so `00` is \
+                 not `0`: the claim was NOT JUDGED — the file cannot be established as a claim \
+                 of this build's format at all, so it is a broken file, not a version question"
             )),
         }
     }

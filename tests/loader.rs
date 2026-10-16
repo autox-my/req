@@ -13,7 +13,8 @@
 use std::path::{Path, PathBuf};
 
 use req::canon::{
-    ClaimSchema, claim_schema, classify_claim_schema, load_claims, run_claim_diagnostics_at,
+    ClaimSchema, claim_schema, classify_claim_schema, classify_claim_schema_at, load_claims,
+    run_claim_diagnostics_at,
 };
 
 /// Run the compiled binary against a fixture root. The *class* is a CLI contract — `canon
@@ -467,6 +468,14 @@ fn a_malformed_schema_is_a_broken_file_not_a_version_question() {
         "claim/0",
         "req.claim/-1",
         "req.claim/ 0",
+        // A numeral that parses but is not the identifier the doc states. `00` and `+0` both
+        // *parse* to the current version, so a bare parse would report them `verified` — the same
+        // silent acceptance this guard exists to remove, one character along. `value` already
+        // carries the canonical-decimal rule ("0.3", never "0.30"); the schema numeral is held to
+        // it too.
+        "req.claim/00",
+        "req.claim/+0",
+        "req.claim/  ",
     ] {
         let f = Fixture::new("schema-malformed").claim(
             "REQ-0001.yml",
@@ -500,13 +509,28 @@ fn a_malformed_schema_is_a_broken_file_not_a_version_question() {
 }
 
 #[test]
-fn the_older_direction_is_worded_as_a_migration_candidate() {
-    // Unreachable by a fixture while `CLAIM_SCHEMA_V` is 0 — the format has no earlier version
-    // yet — but the direction must exist before the bump that needs it, exactly as
-    // `rules_mismatch` handles both directions. The wording is the contract: a reader who is
-    // told only "could not be read" goes looking for a syntax error that is not there.
+fn the_older_direction_classifies_and_is_worded_as_a_migration_candidate() {
+    // No fixture can declare an *older* format while `CLAIM_SCHEMA_V` is 0 — that is what the
+    // version being the first one means — so the direction is exercised against an explicit build
+    // version rather than reasoned about: an untested branch is free to be wrong on the day the
+    // first format bump arrives, which is the day it matters most. `rules_mismatch`'s direction is
+    // reachable the same way, by a manifest declaring another `rules_v`.
+    let older = format!("{}{}", req::canon::CLAIM_SCHEMA_PREFIX, 0);
+    assert_eq!(
+        classify_claim_schema_at(&older, 1),
+        ClaimSchema::Older(0),
+        "a file from the previous format is a migration candidate, not a broken file"
+    );
+    assert_eq!(
+        classify_claim_schema_at(&older, 0),
+        ClaimSchema::Current,
+        "the same value against this build is Current"
+    );
+
+    // The wording is the contract: a reader who is told only "could not be read" goes looking for
+    // a syntax error that is not there.
     let reason = ClaimSchema::Older(0)
-        .reason(&format!("{}{}", req::canon::CLAIM_SCHEMA_PREFIX, 0))
+        .reason(&older)
         .expect("a mismatch has a reason");
     assert!(reason.contains("NOT JUDGED"), "{reason}");
     assert!(reason.contains("predates"), "{reason}");
