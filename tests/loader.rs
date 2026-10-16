@@ -12,7 +12,29 @@
 
 use std::path::{Path, PathBuf};
 
-use req::canon::{load_claims, run_claim_diagnostics_at};
+use req::canon::{
+    ClaimSchema, claim_schema, classify_claim_schema, load_claims, run_claim_diagnostics_at,
+};
+
+/// Run the compiled binary against a fixture root. The *class* is a CLI contract — `canon
+/// --verify` exits 0 verified, 1 mismatch, 3 not judgeable — so the exit codes are read here
+/// rather than inferred from a library return value.
+fn req(root: &Path, args: &[&str]) -> (i32, String) {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_req"))
+        .arg("--root")
+        .arg(root)
+        .args(args)
+        .output()
+        .expect("runs the compiled binary");
+    (
+        output.status.code().unwrap_or(-1),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ),
+    )
+}
 
 /// A minimal but *valid* registry: the diagnostics command loads it before the
 /// claims, and a fixture that failed here would exit 3 for the wrong reason.
@@ -330,6 +352,214 @@ fn an_empty_corpus_is_unverifiable_never_a_pass() {
     let err = load_claims(f.path()).expect_err("an empty corpus must not load");
     assert!(err.contains("no claim files"), "{err}");
     assert_eq!(run_claim_diagnostics_at(f.path()), 3);
+}
+
+// ---------------------------------------------------------------------------
+// The declared file-format version is judged, not decoration
+// ---------------------------------------------------------------------------
+
+/// The values a claim file's `schema:` may carry and what each one means for this build. The
+/// **direction** decides the remedy, exactly as it does for `rules_v` in a Baseline manifest:
+/// an older file is a migration candidate, a newer one is a question this build cannot answer
+/// (the file is not wrong, the reader is old), and a value of no `req.claim/<n>` shape at all is
+/// neither — it is a broken file, and it is reported as one rather than guessed at.
+#[test]
+fn a_mismatched_schema_is_never_reported_verified() {
+    // The measured defect: `schema` was parsed and never compared, and the address does not
+    // cover the field, so `req.claim/99` and `nonsense` both reported `verified` with
+    // mismatches 0 — the one check that would have noticed could not.
+    let f = Fixture::new("schema-mismatch").claim("REQ-0001.yml", &claim_text("REQ-0001"));
+    let path = f.path().join("claims/REQ-0001.yml");
+
+    // Fill first: an unfilled claim is a candidate (exit 3) for an unrelated reason, so the
+    // fixture has to be verifiable *today* for the failure to be about the schema.
+    let (fill_code, fill_text) = req(f.path(), &["canon", "--fill"]);
+    assert_eq!(fill_code, 0, "{fill_text}");
+    let (clean_code, clean_text) = req(f.path(), &["canon", "--verify"]);
+    assert_eq!(
+        clean_code, 0,
+        "precondition: the filled fixture verifies under its own schema\n{clean_text}"
+    );
+    assert!(clean_text.contains("mismatches 0"), "{clean_text}");
+    let current = std::fs::read_to_string(&path).expect("the filled fixture");
+
+    for declared in [
+        format!(
+            "{}{}",
+            req::canon::CLAIM_SCHEMA_PREFIX,
+            req::canon::CLAIM_SCHEMA_V + 1
+        ),
+        "nonsense".to_string(),
+    ] {
+        let rewritten = current.replace(
+            &format!("schema: {}", claim_schema()),
+            &format!("schema: {declared}"),
+        );
+        assert!(
+            rewritten.contains(&format!("schema: {declared}")),
+            "the fixture's schema line was rewritten"
+        );
+        std::fs::write(&path, &rewritten).expect("rewrites the declared schema");
+
+        let (code, text) = req(f.path(), &["canon", "--verify"]);
+        assert_eq!(
+            code, 3,
+            "schema {declared:?} is UNVERIFIABLE, never a pass:\n{text}"
+        );
+        assert!(
+            text.contains("NOT JUDGED"),
+            "the file's parse must be reported as NOT JUDGED, not silently skipped:\n{text}"
+        );
+        assert!(
+            !text.contains("verified"),
+            "a claim whose schema this build cannot judge must never print `verified`:\n{text}"
+        );
+        assert_eq!(
+            run_claim_diagnostics_at(f.path()),
+            3,
+            "the diagnostics command judges it too, not only `--verify`"
+        );
+    }
+}
+
+#[test]
+fn a_newer_schema_names_the_reader_as_old_and_keeps_the_file() {
+    let declared = format!(
+        "{}{}",
+        req::canon::CLAIM_SCHEMA_PREFIX,
+        req::canon::CLAIM_SCHEMA_V + 1
+    );
+    let f = Fixture::new("schema-newer").claim(
+        "REQ-0001.yml",
+        &claim_text("REQ-0001").replace(
+            &format!("schema: {}", claim_schema()),
+            &format!("schema: {declared}"),
+        ),
+    );
+
+    let err = load_claims(f.path()).expect_err("a schema this build does not write must not load");
+    assert!(err.contains(&declared), "names the declared value: {err}");
+    assert!(err.contains("NOT JUDGED"), "{err}");
+    assert!(
+        err.contains("newer"),
+        "the direction decides the remedy: a file from a newer format is read with a build that \
+         writes it, never re-filled with this one: {err}"
+    );
+    assert_eq!(
+        classify_claim_schema(&declared),
+        ClaimSchema::Newer(req::canon::CLAIM_SCHEMA_V + 1)
+    );
+}
+
+#[test]
+fn a_malformed_schema_is_a_broken_file_not_a_version_question() {
+    // The class decision, pinned: a value that is not of the `req.claim/<n>` shape has no
+    // direction to classify, and this build cannot tell a typo from an identifier of a naming
+    // scheme it does not implement. It is reported as a broken file — the loader's class, the
+    // same one every other unloadable corpus error takes — rather than asserted to be a defect
+    // the tool cannot actually establish. See the PR body for why FAIL was rejected.
+    for declared in [
+        "nonsense",
+        "",
+        "req.claim/",
+        "req.claim/abc",
+        "req.claim",
+        "claim/0",
+        "req.claim/-1",
+        "req.claim/ 0",
+    ] {
+        let f = Fixture::new("schema-malformed").claim(
+            "REQ-0001.yml",
+            &claim_text("REQ-0001").replace(
+                &format!("schema: {}", claim_schema()),
+                &format!("schema: {declared:?}"),
+            ),
+        );
+
+        assert_eq!(
+            classify_claim_schema(declared),
+            ClaimSchema::Malformed,
+            "{declared:?} is not of the req.claim/<n> shape"
+        );
+        let err = load_claims(f.path()).expect_err("a broken schema must not load");
+        assert!(
+            err.contains(&format!("{declared:?}")),
+            "the error must quote the value the file declares ({declared:?}): {err}"
+        );
+        assert!(
+            err.contains("broken file"),
+            "a malformed value is not a version question: {err}"
+        );
+        assert!(err.contains("NOT JUDGED"), "{err}");
+        assert_eq!(
+            run_claim_diagnostics_at(f.path()),
+            3,
+            "{declared:?} is UNVERIFIABLE, never a pass and never a silent load"
+        );
+    }
+}
+
+#[test]
+fn the_older_direction_is_worded_as_a_migration_candidate() {
+    // Unreachable by a fixture while `CLAIM_SCHEMA_V` is 0 — the format has no earlier version
+    // yet — but the direction must exist before the bump that needs it, exactly as
+    // `rules_mismatch` handles both directions. The wording is the contract: a reader who is
+    // told only "could not be read" goes looking for a syntax error that is not there.
+    let reason = ClaimSchema::Older(0)
+        .reason(&format!("{}{}", req::canon::CLAIM_SCHEMA_PREFIX, 0))
+        .expect("a mismatch has a reason");
+    assert!(reason.contains("NOT JUDGED"), "{reason}");
+    assert!(reason.contains("predates"), "{reason}");
+    assert!(
+        reason.contains("migration candidate"),
+        "an older format is a migration, and a format bump moves no address: {reason}"
+    );
+    assert!(
+        reason.contains(&claim_schema()),
+        "the remedy names the value to migrate to: {reason}"
+    );
+    assert_eq!(classify_claim_schema(&claim_schema()), ClaimSchema::Current);
+}
+
+/// Every `req.claim/<n>` literal a document carries. Scanning the text means a reformatting
+/// cannot quietly drop the check.
+fn claim_schema_literals(text: &str) -> Vec<String> {
+    let prefix = req::canon::CLAIM_SCHEMA_PREFIX;
+    let mut found = Vec::new();
+    let mut rest = text;
+    while let Some(at) = rest.find(prefix) {
+        let after = &rest[at + prefix.len()..];
+        let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
+        if !digits.is_empty() {
+            found.push(format!("{prefix}{digits}"));
+        }
+        rest = after;
+    }
+    found
+}
+
+#[test]
+fn the_schema_constant_equals_the_documented_literal() {
+    // **The doc is the spec**, so it is the oracle: the constant is compared against the literal
+    // in docs/claim-format.md, never derived from the loader's own value. A test that restated
+    // `claim_schema()` would agree with the code whatever it said.
+    let doc = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs/claim-format.md"),
+    )
+    .expect("the claim format doc is part of the tree");
+    let literals = claim_schema_literals(&doc);
+    assert!(
+        !literals.is_empty(),
+        "docs/claim-format.md must state the file format's identifier"
+    );
+    for literal in literals {
+        assert_eq!(
+            literal,
+            claim_schema(),
+            "docs/claim-format.md states this build's file format; the constant must not drift \
+             from it"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
