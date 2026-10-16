@@ -19,10 +19,22 @@
 //!    resolved with `git rev-parse --git-dir` and **never** a hardcoded `.git`: in a worktree
 //!    `.git` is a *file* pointing at the real gitdir, so a hardcoded path would watch nothing
 //!    and leave the identity stale forever. Every tracked file is named too, or the `-dirty`
-//!    marker would survive the edit that should have set it.
-//! 3. **Dirty means "tracked files modified"**: `git status --porcelain --untracked-files=no`.
-//!    A plain `--porcelain` marks any checkout holding an untracked file dirty forever, and an
-//!    always-on `-dirty` trains the reader to ignore the marker.
+//!    marker would survive the edit that should have set it — and **so is `<gitdir>/index`**,
+//!    because staging is exactly the edit nothing else records: `git add <untracked>`,
+//!    `git reset` and `git rm --cached` move `HEAD`-relative state without changing `HEAD`, the
+//!    reflog, the ref, or any working-tree file, so a staged-only change left `built from`
+//!    confidently clean while `git status` reported it.
+//! 3. **Dirty means "tracked files modified"**: `git --no-optional-locks status --porcelain
+//!    --untracked-files=no`. A plain `--porcelain` marks any checkout holding an untracked file
+//!    dirty forever, and an always-on `-dirty` trains the reader to ignore the marker. The
+//!    probe must also not *write*: `git status` otherwise refreshes (and rewrites) the index as
+//!    a side effect, and now that item 2 watches that file, a probe that rewrites its own watch
+//!    input makes the script re-run itself — **measured, not argued**, by dropping the flag on a
+//!    deliberately stale index: the rewrite happened, and it cost one extra build-script
+//!    execution per staleness event before settling (1, 1, 0, 0, 0), with one measured window at
+//!    three consecutive re-runs (1, 1, 1). So the flag is load-bearing on every build it is
+//!    missing, and an unbounded loop is plausible rather than measured. `--no-optional-locks` is
+//!    what keeps the probe a reader.
 //! 4. **No new dependency**: `std::process::Command`, not `git2` — a build-graph dependency for
 //!    one version string, in a crate that links no cryptography and needs no network. This
 //!    script reads local files and local git state only; it fetches nothing.
@@ -50,8 +62,13 @@ fn build_identity() -> String {
     if head.is_empty() {
         return UNKNOWN.to_string();
     }
-    let dirty =
-        git(&["status", "--porcelain", "--untracked-files=no"]).is_some_and(|out| !out.is_empty());
+    let dirty = git(&[
+        "--no-optional-locks",
+        "status",
+        "--porcelain",
+        "--untracked-files=no",
+    ])
+    .is_some_and(|out| !out.is_empty());
     if dirty { format!("{head}-dirty") } else { head }
 }
 
@@ -59,6 +76,9 @@ fn build_identity() -> String {
 /// state that does not change when a file does — and vice versa — both are named:
 ///
 /// * the git metadata a commit or a checkout rewrites;
+/// * `<gitdir>/index`, because the `-dirty` probe compares the index to `HEAD` and staging is
+///   the one way that comparison moves without moving anything else — `git add <untracked>`,
+///   `git reset` and `git rm --cached` rewrite no ref, no reflog, and no working-tree file;
 /// * every tracked path, because a working-tree edit changes no git metadata at all, and a
 ///   `-dirty` marker that lags the edit is the same stale-identity failure wearing a badge.
 ///
@@ -86,6 +106,11 @@ fn watch_inputs() {
         {
             watch_if_present(std::path::Path::new(&resolved));
         }
+        // The index is the only input that moves for a staged-only change: `git add <untracked>`
+        // rewrites it and nothing else this function names, so without it cargo never re-runs
+        // the script and `-dirty` stays silently absent. The probe above must therefore not
+        // write it — `--no-optional-locks` (contract item 3).
+        watch_if_present(&gitdir.join("index"));
     }
     let Some(listing) = git_raw(&["ls-files", "-z"]) else {
         // No git, or no index: nothing else to watch. The default rule (re-run when a file in
