@@ -35,6 +35,12 @@ judgement lives in `claim_schema_reason` (`src/canon.rs`), which the loader call
 every reader that reads a claim by path (`compare`, the fill path) — one home, so no command can
 ignore the declaration.
 
+The class is assigned by the **load loop**, not by the schema check alone: an equally definite
+**duplicate `claim_id`** — two files declaring one id, their content compared — is UNVERIFIABLE
+(3) in the same loop (`load_claims` in `src/canon.rs`), and every command that reads the corpus
+reports it the same way. The two classes are therefore **coupled**: if either ever moves to FAIL
+(1), the other must be revisited in the same change, and neither should move alone.
+
 ## Field reference
 
 | Field | Meaning | Notes |
