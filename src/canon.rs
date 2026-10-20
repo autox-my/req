@@ -1223,9 +1223,15 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
 /// parser to agree with, so the diagnostic says so rather than flagging nearly every claim.
 ///
 /// The three quantity slots are judged by ADR 0014's four-case rule (as amended 2026-10-20):
-/// a slot the parse derived and the author contradicts, or omits, is a flag; a slot the
-/// author wrote that the canonical form does not derive is an **annotation** — reported and
-/// counted, never a flag and never silent.
+/// a slot the parse derived and the author contradicts, or omits, is a flag. An authored slot
+/// the canonical form does not *carry* is an **annotation** — reported and counted, never a
+/// flag and never silent — but only when the claim is authored as the qualitative triple
+/// (`operator: EQ`, `unit: none`, a non-numeric value). A quantity-shaped claim that authors a
+/// slot the parse missed is a contradiction: the bound would otherwise leave the address, and
+/// that is a false merge. A qualitative claim's derived value/unit are not compared either —
+/// the parser can find a stray number in prose (REQ-0014's `exactly one commit` yields
+/// `value 1 / EQ`), and the authored triple is the author's statement of state — so the
+/// per-claim cell shows what identity carries beside the annotation.
 /// One claim's parity-invariant verdict: the parse, and whether each *authored* slot agrees
 /// with it. Shared by `req canon` (which reports the divergence) and `req canon --fill`
 /// (which refuses to derive for a divergent claim) — the two must never drift apart.
@@ -1267,8 +1273,10 @@ pub enum SlotCheck {
     Contradiction,
     /// The parse derived the slot and the author left it out.
     Omission,
-    /// The author wrote a slot the canonical form does not derive. Reported and counted,
-    /// never a flag: it is a qualitative statement, not a defect of identity.
+    /// The author wrote a qualitative slot the canonical form does not carry. Reported and
+    /// counted, never a flag: it is a statement of state, not a defect of identity. Only the
+    /// qualitative convention reaches this state — a quantity-shaped claim that authors a slot
+    /// the parse missed is a contradiction.
     Annotation,
 }
 
@@ -1341,8 +1349,10 @@ fn classify_slot(derived: bool, authored: bool, agree: bool, qualitative: bool) 
 /// used to be — it only recognizes the corpus's qualitative convention below, so a state
 /// name is not mistaken for a quantity.
 fn authored_is_numeric(value: &str) -> bool {
-    let unsigned = value.strip_prefix('-').unwrap_or(value);
-    !unsigned.is_empty() && unsigned.starts_with(|c: char| c.is_ascii_digit())
+    // The whole string must be a decimal, not just its first character: a digit-leading state
+    // name (`2_tier_sync`) is a name, and calling it a quantity would make a legitimate
+    // qualitative annotation a contradiction.
+    parse_decimal(value).is_some()
 }
 
 /// The qualitative convention the corpus authors: an `attribute = value` triple with
@@ -1779,13 +1789,23 @@ fn value_unit_cell(v: &ClaimVerdict) -> String {
     }
     if v.value_check.is_annotation() || v.unit_check.is_annotation() {
         // Both are rendered when both are annotations: one cell hiding the other would be the
-        // invisibility ADR 0014's Amendment exists to remove.
+        // invisibility ADR 0014's Amendment exists to remove. The parsed side is rendered too
+        // when identity carried one (a qualitative claim can yield a stray number), so an
+        // annotation cannot be misread as "the form derives nothing".
         let mut parts: Vec<String> = Vec::new();
         if v.value_check.is_annotation() {
-            parts.push(format!("value {}", v.authored_v));
+            parts.push(format!(
+                "value {}{}",
+                v.authored_v,
+                parsed_beside(&v.v_parsed)
+            ));
         }
         if v.unit_check.is_annotation() {
-            parts.push(format!("unit {}", v.authored_u));
+            parts.push(format!(
+                "unit {}{}",
+                v.authored_u,
+                parsed_beside(&v.u_parsed)
+            ));
         }
         return format!("ann {}", parts.join("; "));
     }
@@ -1794,6 +1814,16 @@ fn value_unit_cell(v: &ClaimVerdict) -> String {
         format!("ok {value}/{authored}")
     } else {
         format!("ok {value}/{authored} {}", v.u_parsed)
+    }
+}
+
+/// `" (parse X)"` when the parse derived something, empty otherwise (the `"none"` sentinel is
+/// the no-value marker for unit and operator).
+fn parsed_beside(parsed: &str) -> String {
+    if parsed.is_empty() || parsed == "none" {
+        String::new()
+    } else {
+        format!(" (parse {parsed})")
     }
 }
 

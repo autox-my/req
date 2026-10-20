@@ -285,6 +285,23 @@ fn a_quantity_claim_may_not_author_a_slot_the_parse_never_derived() {
     assert_eq!(v.flags(), 1);
 }
 
+/// A digit-leading *state name* is a name, not a quantity. `authored_is_numeric` must parse the
+/// whole string, not its first character: `2_tier_sync` on a statement with no derived quantity
+/// is the qualitative annotation ADR 0014 allows, not a contradiction.
+#[test]
+fn a_digit_leading_state_name_is_a_qualitative_annotation() {
+    let v = evaluate_claim(
+        &claim(&QUALITATIVE.replace("value: claim", "value: 2_tier_sync")),
+        registry(),
+    );
+    assert_eq!(v.value_check, SlotCheck::Annotation);
+    assert_eq!(
+        v.flags(),
+        0,
+        "a name that starts with a digit is not a quantity"
+    );
+}
+
 /// The sentinel regression guard. `Form::operator_str()` returns `"none"`, and the unit is
 /// defaulted the same way, so "the parse derived one" is `!= "none"`, never "non-empty".
 /// A comparison against the raw sentinel reports REQ-0007 as a contradiction.
@@ -396,6 +413,14 @@ fn the_corpus_has_zero_flags_and_sixteen_annotations() {
         out.stdout
     );
 
+    // The arithmetic the count rests on: if a claim were lost, `16` would still print and this
+    // test would pass on a corpus that had shrunk. Pin the denominator too.
+    assert!(
+        out.stdout.contains("claims: 21"),
+        "the count is 16 of 21; the denominator must be real:\n{}",
+        out.stdout
+    );
+
     // The annotation is visible per claim, in a cell distinct from `ok` and from `FLAG`.
     let annotated = row(&out.stdout, "REQ-0001");
     assert!(
@@ -403,6 +428,16 @@ fn the_corpus_has_zero_flags_and_sixteen_annotations() {
         "the qualitative triple must be visible in its own cell:\n{annotated}"
     );
     assert!(!annotated.contains("FLAG"), "{annotated}");
+
+    // A qualitative claim can still yield a stray parsed number (REQ-0014's `exactly one
+    // commit`); the cell shows it beside the annotation, so the reader can see that identity
+    // carries `1` while the author wrote a state name. Hiding it would be the invisibility the
+    // annotation exists to remove.
+    let stray = row(&out.stdout, "REQ-0014");
+    assert!(
+        stray.contains("ann value one_ratified_logical_decision (parse 1)"),
+        "the parsed side is shown beside the annotation:\n{stray}"
+    );
 
     // REQ-0007's slots are null by design: ok, not flagged and not annotated.
     let unstructured = row(&out.stdout, "REQ-0007");
@@ -530,4 +565,16 @@ fn fill_accepts_a_corpus_that_only_annotates() {
         out.stdout
     );
     assert!(out.stdout.contains("refused 0"), "{}", out.stdout);
+    // A fill that silently did nothing would satisfy "refused 0": the fixture is unfilled, so
+    // the positive side must show a write — `filled 1`, and derived fields on disk.
+    assert!(out.stdout.contains("filled 1"), "{}", out.stdout);
+    let filled: ClaimFile = yaml_serde::from_str(
+        &std::fs::read_to_string(fx.path().join("claims/REQ-0001.yml")).expect("reads"),
+    )
+    .expect("the filled claim still parses");
+    assert!(filled.canonical.form.is_some(), "a form was written");
+    assert!(
+        filled.address.is_some(),
+        "and the address that makes the claim identifiable"
+    );
 }
