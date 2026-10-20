@@ -289,6 +289,9 @@ if [ -f "$PWD/.req/variants" ]; then
   # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while still
   # assigning it, and a release appended without one would otherwise be silently dropped.
   while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
+    # The tests' reader strips a trailing CR (`str::lines` plus `trim`); `read -r` keeps it, so a
+    # CRLF checkout would gate a `\r`-suffixed value the tests never see.
+    variant_line="${variant_line%$'\r'}"
     # `read -a` splits on IFS and does **not** run pathname expansion: a bare expansion would
     # glob-expand a value carrying `*`, `?` or `[` against the working directory.
     read -r -a release <<< "${variant_line%%#*}"

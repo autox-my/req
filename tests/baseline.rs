@@ -1461,11 +1461,94 @@ fn the_default_gate_run_gates_every_declared_release() {
         .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
         .collect();
     for variant in &variants {
+        // Normalized the same way the plan's lines are: `read -a` in the script accepts a tab or a
+        // second space between pairs, and a raw comparison would then fail on a healthy tree.
+        let expected = variant.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(
             planned.iter().any(|line| line.starts_with("PLAN ")
                 && line.contains(" gate ")
-                && line.ends_with(variant)),
+                && line.ends_with(&expected)),
             "the default run must gate the declared release `{variant}`:\n{stdout}"
         );
     }
+}
+
+/// A throwaway root holding a copy of `scripts/check.sh`, so a test can vary the tree the script
+/// sees. The script `cd`s to the parent of its own directory, so the fixture root plays "the repo".
+#[cfg(unix)]
+fn script_root(tag: &str) -> std::path::PathBuf {
+    let root = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(tag);
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("scripts")).expect("creates scripts/");
+    std::fs::copy(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/check.sh"),
+        root.join("scripts/check.sh"),
+    )
+    .expect("copies check.sh");
+    root
+}
+
+/// `check.sh plan` in `root`, with HOME pointed at this workspace's toolchain home so the script
+/// resolves `cargo` the way the real gate does. `plan` executes no check, which is what lets this run
+/// against a tree that is only a copy of the script.
+#[cfg(unix)]
+fn script_plan_at(root: &std::path::Path) -> std::process::Output {
+    let mut command = std::process::Command::new("bash");
+    command
+        .arg(root.join("scripts/check.sh"))
+        .arg("plan")
+        .current_dir(root);
+    match workspace_toolchain_home(&std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))) {
+        Some(home) => {
+            command.env("HOME", home);
+        }
+        None => panic!("no toolchain home for the copied gate (see .tools/README.md)"),
+    }
+    command.output().expect("runs the copied scripts/check.sh")
+}
+
+/// The branch nobody reached: with `.req/variants` missing, `skip`-ing would leave `fail=0` and the
+/// run would still end `GATE: PASS` — the mode this script exists to forbid, and the one that would
+/// silently restore the hole the release-gate step closed. Every other reader of the file assumes it
+/// exists (`tests/common::variant_lines` `.expect`s it), so deleting the branch used to keep the
+/// whole suite green. `plan` reaches it without executing a check.
+#[cfg(unix)]
+#[test]
+fn a_missing_variants_file_is_a_failure_not_a_skip() {
+    let root = script_root("req-gate-missing-variants");
+    let out = script_plan_at(&root);
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        text.contains("FAIL  .req/variants is missing"),
+        "a missing variants file must be reported as a failure, never skipped:\n{text}"
+    );
+    assert_ne!(
+        out.status.code(),
+        Some(0),
+        "a missing variants file must not exit 0:\n{text}"
+    );
+
+    // And the healthy direction, so the assertion above is not satisfied by a branch that always
+    // runs: with the file in place the same script reports nothing of the kind.
+    std::fs::create_dir_all(root.join(".req")).expect("creates .req/");
+    std::fs::copy(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".req/variants"),
+        root.join(".req/variants"),
+    )
+    .expect("copies .req/variants");
+    let healthy = script_plan_at(&root);
+    let healthy_text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&healthy.stdout),
+        String::from_utf8_lossy(&healthy.stderr)
+    );
+    assert!(
+        !healthy_text.contains(".req/variants is missing"),
+        "a healthy tree must not report a missing variants file:\n{healthy_text}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }

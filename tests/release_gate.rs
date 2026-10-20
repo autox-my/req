@@ -163,7 +163,10 @@ mod cli {
     /// The dogfood corpus, whose selector vocabulary the oracle read: `deployment_mode ==
     /// air_gapped`, `runs >= 20`, `corpus_set == parity` / `parity_and_adversarial`, `set ==
     /// direction_gold_structural`, `field == value`.
-    fn dogfood(args: &[&str]) -> Outcome {
+    /// The gate run over this repository's own corpus, with `--root` explicit rather than relying
+    /// on the cwd walk-up. `pub` so the dogfood tests at the crate root — which assert the same
+    /// thing about `.req/variants` — do not re-derive the binary and the invocation.
+    pub fn dogfood(args: &[&str]) -> Outcome {
         gate_at(&PathBuf::from(env!("CARGO_MANIFEST_DIR")), args)
     }
 
@@ -663,7 +666,7 @@ fn every_claim_applies_in_at_least_one_declared_release() {
         .collect();
     assert!(!contexts.is_empty(), ".req/variants must declare a release");
 
-    let mut uncovered = Vec::new();
+    let mut unexamined = Vec::new();
     for loaded in &claims {
         let predicates: Vec<_> = loaded
             .claim
@@ -671,16 +674,32 @@ fn every_claim_applies_in_at_least_one_declared_release() {
             .iter()
             .map(|text| req::select::parse_predicate(text))
             .collect();
-        if !contexts
+        let states: Vec<Applies> = contexts
             .iter()
-            .any(|context| req::select::applies(&predicates, context) == Applies::Yes)
-        {
-            uncovered.push(loaded.claim.claim_id.clone());
+            .map(|context| req::select::applies(&predicates, context))
+            .collect();
+        if states.contains(&Applies::Yes) {
+            continue;
+        }
+        // `Unknown` is not `No`, and the remedies differ, so the failure says which case it is —
+        // the same distinction the gate and `select` keep ("an undecided claim is never treated as
+        // absent"). `Unknown` means a key is decided but its value matches no line; `No` means no
+        // line applies the claim at all.
+        let id = &loaded.claim.claim_id;
+        if states.contains(&Applies::Unknown) {
+            unexamined.push(format!(
+                "{id}: undecided in every release — a line must decide it"
+            ));
+        } else {
+            unexamined.push(format!(
+                "{id}: excluded by every release — no line applies it"
+            ));
         }
     }
     assert!(
-        uncovered.is_empty(),
-        "these claims apply in no declared release, so `req gate` never examines them: {uncovered:?}"
+        unexamined.is_empty(),
+        "these claims are examined by no declared release, so `req gate` never checks them:\n  {}",
+        unexamined.join("\n  ")
     );
 }
 
@@ -690,35 +709,25 @@ fn every_claim_applies_in_at_least_one_declared_release() {
 /// undecided; the gate refuses to answer instead of skipping.
 #[test]
 fn every_declared_release_is_gate_green() {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let binary = std::env::var_os("CARGO_BIN_EXE_req")
-        .map(std::path::PathBuf::from)
-        .expect("integration tests run with CARGO_BIN_EXE_req set");
     let lines = common::variant_lines();
     assert!(!lines.is_empty(), ".req/variants must declare a release");
     for line in lines {
-        let out = std::process::Command::new(&binary)
-            .arg("gate")
-            .args(line.split_whitespace())
-            .current_dir(&root)
-            .env_remove("REQ_ROOT")
-            .output()
-            .expect("runs `req gate`");
-        let stdout = String::from_utf8_lossy(&out.stdout);
+        let args: Vec<&str> = line.split_whitespace().collect();
+        let out = cli::dogfood(&args);
         assert_eq!(
-            out.status.code(),
-            Some(0),
-            "the declared release `{line}` is not green:\n{stdout}{}",
-            String::from_utf8_lossy(&out.stderr)
+            out.code, 0,
+            "the declared release `{line}` is not green:\n{}",
+            out.text
         );
         // Green is not enough, and this is the invariant a green gate does not give you: only
         // `corpus_set` is dependency-guarded, so dropping `set`, `runs`, `deployment_mode` or
         // `field` leaves that claim **undecided in this release — unexamined** — while the gate
         // still exits 0. A line is a complete release context, so it must leave nothing undecided.
+        let headline = out.headline();
         assert!(
-            stdout.contains(", 0 undecided"),
+            headline.contains(", 0 undecided"),
             "the declared release `{line}` leaves a claim undecided, so the gate does not examine \
-             it — a complete release context decides every scoped claim:\n{stdout}"
+             it — a complete release context decides every scoped claim:\n{headline}"
         );
     }
 }
