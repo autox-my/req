@@ -131,7 +131,14 @@ jobs:
             out="$(req gate "$@" 2>&1)" && code=0 || code=$?
             verdict="$(printf '%s' "$out" | sed -n 's/^verdict: //p' | head -1)"
             printf '| `%s` | %s | %s |\n' "${*:-<none>}" "$code" "${verdict:-no verdict line}" >> "$summary"
-            [ "$code" -eq 0 ] || rc=$code
+            # Fail outranks unverifiable, and the last line does not decide the step: with more
+            # than one declared variant, keeping the last non-zero code would report 0/3 when an
+            # earlier line FAILed. Keep the strongest.
+            if [ "$code" -eq 1 ]; then
+              rc=1
+            elif [ "$code" -eq 3 ] && [ "$rc" -eq 0 ]; then
+              rc=3
+            fi
           }
           gated=0
           # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while

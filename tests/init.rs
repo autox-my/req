@@ -916,6 +916,69 @@ fn run_gate_step(fx: &Fixture, script: &str) -> (i32, String) {
     (code, text)
 }
 
+/// Run the extracted CI step with a **stub `req`**: a script that answers the codes it is given, in
+/// order. The loop's aggregation is shell logic, and a real corpus cannot produce every ordering
+/// (a FAIL and an UNVERIFIABLE in the order that used to mask the FAIL), so the stub is what makes
+/// the precedence observable.
+#[cfg(unix)]
+fn run_gate_step_with_codes(fx: &Fixture, script: &str, codes: &[i32]) -> (i32, String) {
+    let bin = fx.join("stub-bin");
+    std::fs::create_dir_all(&bin).expect("creates the stub bin directory");
+    let queue = fx.join("stub-codes");
+    std::fs::write(
+        &queue,
+        codes
+            .iter()
+            .map(|c| c.to_string())
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+    .expect("writes the stub's answers");
+    // Pop the next code; when the queue is empty, answer 0.
+    std::fs::write(
+        bin.join("req"),
+        format!(
+            "#!/bin/sh\n\
+             queue={queue}\n\
+             code=0\n\
+             if [ -s \"$queue\" ]; then\n\
+               code=$(head -1 \"$queue\")\n\
+               tail -n +2 \"$queue\" > \"$queue.tmp\" && mv \"$queue.tmp\" \"$queue\"\n\
+             fi\n\
+             echo \"verdict: stub $code\"\n\
+             exit $code\n",
+            queue = queue.display()
+        ),
+    )
+    .expect("writes the stub req");
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(bin.join("req"), std::fs::Permissions::from_mode(0o755))
+        .expect("makes the stub executable");
+    let summary = fx.join("step-summary.md");
+    let _ = std::fs::remove_file(&summary);
+    let out = Command::new("bash")
+        .arg("-c")
+        .arg(script)
+        .current_dir(fx.path())
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                bin.display(),
+                std::env::var("PATH").unwrap_or_default()
+            ),
+        )
+        .env("FORGEJO_STEP_SUMMARY", &summary)
+        .env_remove("REQ_ROOT")
+        .output()
+        .expect("runs the CI gate step");
+    let rows = std::fs::read_to_string(&summary).unwrap_or_default();
+    (
+        out.status.code().unwrap_or(-1),
+        format!("{rows}{}", String::from_utf8_lossy(&out.stderr)),
+    )
+}
+
 /// The summary rows the step wrote, one per `gate()` call.
 #[cfg(unix)]
 fn summary_rows(text: &str) -> Vec<&str> {
@@ -1003,6 +1066,34 @@ fn the_ci_gate_step_script_behaves_as_an_adopter_needs() {
         rows[1].contains("runs=5"),
         "the second line is gated too: {text}"
     );
+
+    // (2d) Precedence across lines: a FAIL on one line must not be masked by an UNVERIFIABLE on a
+    // later one. `rc` used to keep the *last* non-zero code, which reported 3 beside a real 1 — the
+    // asymmetry the whole project keeps, inverted by the step adopters run.
+    for (codes, expected, why) in [
+        (
+            vec![1, 3],
+            1,
+            "a later UNVERIFIABLE must not mask an earlier FAIL",
+        ),
+        (vec![3, 1], 1, "and the order must not matter"),
+        (vec![3, 3], 3, "all undecided is still UNVERIFIABLE"),
+        (
+            vec![0, 3],
+            3,
+            "a pass beside an undecided line is UNVERIFIABLE",
+        ),
+        (vec![0, 0], 0, "all green is green"),
+    ] {
+        write_variants(&fx, "deployment_mode=air_gapped\nruns=5\n");
+        let (code, text) = run_gate_step_with_codes(&fx, &script, &codes);
+        assert_eq!(code, expected, "{why} ({codes:?}): {text}");
+        assert_eq!(
+            summary_rows(&text).len(),
+            2,
+            "one row per line ({codes:?}): {text}"
+        );
+    }
 
     // (3) Blank and comment-only lines are skipped, never turned into a bare run.
     write_variants(&fx, "\n   \n# a comment\n\n");
