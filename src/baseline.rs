@@ -480,15 +480,18 @@ impl TrustFile {
         let Some(key) = self.key(id) else {
             return TrustState::Unknown;
         };
-        // `YYYY-MM-DD` is the prefix of both spellings, and **both sides** are reduced to it:
-        // a timestamp-valued trust entry (the shape a v3 manifest now uses) must fire on its own
-        // day, and a timestamp-valued judgement time must not read a same-day expiry as past
-        // because a clock came along.
-        // A malformed anchor spelling must fail **closed**: `date_of` truncates without checking
-        // the shape, so a typo'd month, an unpadded day or a human date would yield a prefix that
-        // sorts below every real judgement date — reading a revoked key as trusted. An
-        // unreadable `revoked_at` is therefore treated as revoked, and an unreadable
-        // `valid_until` as expired; both refuse rather than pass.
+        // Both sides are reduced to their `YYYY-MM-DD` date: a timestamp-valued trust entry must
+        // fire on its own day, and a timestamp-valued judgement time must not read a same-day
+        // expiry as past because a clock came along.
+        //
+        // **The behaviour: a date this build cannot read fails closed.** `valid_judgement_time`
+        // accepts only a calendar-valid `YYYY-MM-DD` (month 1-12, the month's real last day, year
+        // >= 1970) or an RFC 3339 timestamp whose date part is valid. Anything else — a typo'd
+        // month (`2026-13-01`), an unpadded day (`2026-10-1`), a human spelling (`Oct 20 2026`) —
+        // is reported as **revoked** (for `revoked_at`) or **expired** (for `valid_until`), never
+        // as trusted. `date_of` truncates blindly, so without that check a malformed spelling
+        // would sort below every real date and read a revoked key as trusted; the check is why it
+        // cannot. Pinned by `tests/baseline.rs::a_malformed_trust_date_fails_closed`.
         let at_date = date_of(at);
         if let Some(revoked_at) = &key.revoked_at {
             if !valid_judgement_time(revoked_at) {
@@ -1054,11 +1057,15 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
         ));
     }
 
-    // **v3 attests the authority it was signed under (ADR 0016).** Re-derive the Decision log's
-    // chain head and compare it with the one the manifest records. A definite disagreement is
-    // FAIL — the same class as a hand-edited digest — while a log that cannot be read is
-    // UNVERIFIABLE: the chain's own `verify_chain` distinguishes "the content moved" from
-    // "there is nothing to judge", and both answers must not be flattened into one.
+    // **v3 attests the authority it was signed under (ADR 0016).** Re-derive the head of the
+    // **prefix** the manifest names: `authority.entries` says which record its head points at, so
+    // decisions recorded *after* the signature are ordinary history growth (ADR 0005) and must
+    // not invalidate a Baseline the human signed before them. The comparison is that record's
+    // stored hash against the attested one. A disagreement is FAIL — the same class as a
+    // hand-edited digest; a log too short to hold the attested record is FAIL too (what the human
+    // signed over is not there); a log that cannot be read is UNVERIFIABLE. `verify_chain`
+    // distinguishes "the content moved" from "there is nothing to judge", and the three answers
+    // must not be flattened into one.
     if manifest.version == BASELINE_VERSION {
         match (&manifest.signed_at, &manifest.authority) {
             (Some(_), Some(authority)) => match log {
