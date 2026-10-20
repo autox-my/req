@@ -40,6 +40,33 @@ fn fixture_log(note: &str) -> Vec<Decision> {
     log
 }
 
+/// The head accessor itself, on a two-entry log: the **last** record's hash and the count of
+/// every record. With the repo's one-entry log these two properties are indistinguishable, so
+/// the ADR's "a head alone cannot distinguish one entry" needs its own fixture.
+#[test]
+fn the_head_is_the_last_record_and_the_count_is_every_record() {
+    let mut log = fixture_log(FIXTURE_DECISION_NOTE);
+    let first = log[0].hash.clone().expect("filled");
+    let mut second = log[0].clone();
+    second.id = "DEC-0002".to_string();
+    second.note = "the second record".to_string();
+    second.prev_hash = None;
+    second.hash = None;
+    log.push(second);
+    decision::fill(&mut log);
+    let head = decision::head(&log).expect("a filled log has a head");
+    assert_eq!(head.entries, 2, "the count is every record, not one");
+    assert_eq!(
+        head.hash,
+        log[1].hash.clone().expect("filled"),
+        "the head is the last record's hash"
+    );
+    assert_ne!(
+        head.hash, first,
+        "a head that returned the first entry is caught"
+    );
+}
+
 /// The fixture log's head, as the manifest records it.
 fn fixture_head() -> decision::Head {
     let log = fixture_log(FIXTURE_DECISION_NOTE);
@@ -690,6 +717,19 @@ fn a_key_revoked_after_the_signing_time_still_verifies() {
         "2026-11-15",
     );
     assert_eq!(after.exit_code(), 1, "{after:?}");
+
+    // A timestamp-valued trust entry is reduced to its date, so it fires on its own day: the
+    // key was revoked the same day the Baseline was signed.
+    let same_day = verify(
+        &rows,
+        &manifest,
+        Some("sig"),
+        &trust_dates(Some("2026-10-07T12:00:00Z"), None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        FIXTURE_SIGNED_AT,
+    );
+    assert_eq!(same_day.exit_code(), 1, "{same_day:?}");
 }
 
 /// The committed Decision record, parsed by the test rather than through `decision::head`, so
