@@ -302,6 +302,87 @@ fn a_digit_leading_state_name_is_a_qualitative_annotation() {
     );
 }
 
+/// A qualitative *shape* must not exempt a numeral. `1_000`, `200ms` and `0.2s` are values a
+/// quantity claim would carry; the full-string decimal parse alone would call them names and
+/// annotate a bound the parse missed — the false merge the other direction of this rule exists
+/// to prevent. (The exemption for a digit-leading name like `2_tier_sync` is below.)
+#[test]
+fn a_non_canonical_numeral_is_still_a_quantity_not_an_annotation() {
+    for value in ["\"1_000\"", "\"200ms\"", "\"0.2s\""] {
+        let v = evaluate_claim(
+            &claim(&QUALITATIVE.replace("value: claim", &format!("value: {value}"))),
+            registry(),
+        );
+        assert_eq!(
+            v.value_check,
+            SlotCheck::Contradiction,
+            "{value} is a quantity the parse did not derive, so it must flag"
+        );
+        assert!(v.flags() >= 1);
+    }
+}
+
+/// A unit the parse never derived is a contradiction, not an annotation: the qualitative
+/// convention requires `unit: none`, so a claim that authors a unit is quantity-shaped. This is
+/// the ADR's measured `unit: s` mutation.
+#[test]
+fn a_unit_the_parse_never_derived_is_a_contradiction() {
+    let v = evaluate_claim(
+        &claim(&QUALITATIVE.replace("unit: none", "unit: s")),
+        registry(),
+    );
+    assert_eq!(v.unit_check, SlotCheck::Contradiction);
+    assert!(v.flags() >= 1);
+}
+
+/// `operator: none` is the canonical no-operator sentinel, like `unit: none`: a claim that
+/// spells it is not authoring an operator, and the qualitative triple stays an annotation.
+#[test]
+fn operator_none_is_the_no_operator_sentinel() {
+    let v = evaluate_claim(
+        &claim(&QUALITATIVE.replace("operator: EQ", "operator: none")),
+        registry(),
+    );
+    assert_eq!(v.op_check, SlotCheck::Ok, "no operator was authored");
+    assert_eq!(v.value_check, SlotCheck::Annotation);
+    assert_eq!(v.flags(), 0);
+}
+
+/// ADR 0014's motivating shape, `SHALL-NOT` with the qualitative triple, is an annotation: it
+/// is the corpus's REQ-0015/REQ-0021 convention. The same statement authored quantity-shaped (a
+/// comparator other than `EQ`, or a unit) contradicts the parse and flags — the flag direction
+/// the Amendment's falsification is really about.
+#[test]
+fn a_prohibition_is_an_annotation_until_it_is_authored_as_a_quantity() {
+    let prohibition = QUANTITY
+        .replace(
+            "shall respond to a health check within 200 ms.",
+            "shall not operate a continuous synchronization bridge.",
+        )
+        .replace("value: \"0.2\"", "value: absent")
+        .replace("operator: LE", "operator: EQ")
+        .replace("unit: s", "unit: none")
+        .replace("modality: SHALL", "modality: SHALL-NOT");
+    let v = evaluate_claim(&claim(&prohibition), registry());
+    assert_eq!(v.value_check, SlotCheck::Annotation);
+    assert_eq!(v.op_check, SlotCheck::Annotation);
+    assert_eq!(
+        v.flags(),
+        0,
+        "the qualitative prohibition is not a contradiction"
+    );
+
+    // The same statement authored quantity-shaped: a comparator the parse never derived.
+    let quantity_shaped = prohibition.replace("operator: EQ", "operator: LT");
+    let v = evaluate_claim(&claim(&quantity_shaped), registry());
+    assert_eq!(v.value_check, SlotCheck::Contradiction);
+    assert!(
+        v.flags() >= 1,
+        "authoring the same statement as a quantity must flag: {:?}",
+        v.value_check
+    );
+}
+
 /// The sentinel regression guard. `Form::operator_str()` returns `"none"`, and the unit is
 /// defaulted the same way, so "the parse derived one" is `!= "none"`, never "non-empty".
 /// A comparison against the raw sentinel reports REQ-0007 as a contradiction.

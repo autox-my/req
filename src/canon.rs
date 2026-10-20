@@ -1348,11 +1348,26 @@ fn classify_slot(derived: bool, authored: bool, agree: bool, qualitative: bool) 
 /// Is the authored value a canonical decimal? This is deliberately *not* the parity gate it
 /// used to be — it only recognizes the corpus's qualitative convention below, so a state
 /// name is not mistaken for a quantity.
-fn authored_is_numeric(value: &str) -> bool {
-    // The whole string must be a decimal, not just its first character: a digit-leading state
-    // name (`2_tier_sync`) is a name, and calling it a quantity would make a legitimate
-    // qualitative annotation a contradiction.
-    parse_decimal(value).is_some()
+fn authored_is_quantity(value: &str) -> bool {
+    // The whole string must be numeric, not just its first character: a digit-leading *state
+    // name* (`2_tier_sync`) is a name, and treating it as a quantity would make a legitimate
+    // qualitative annotation a contradiction. But the exemption must not widen the other way:
+    // a non-canonical *numeral* (`1_000`, `200ms`, `0.2s`) is still a quantity the parse did
+    // not derive, and annotating it would let the bound leave the address (a false merge).
+    // The asymmetric cost decides which side an ambiguous value lands on: a wrongly flagged
+    // name is noise, a wrongly annotated bound silently deletes it.
+    if parse_decimal(value).is_some() || parse_decimal(&value.replace('_', "")).is_some() {
+        return true;
+    }
+    // A digit run followed by digits/underscores or a unit the T1.4 table knows is a quantity.
+    let Some((_, Some(suffix))) = leading_numeric_part(value) else {
+        return false;
+    };
+    let suffix = suffix.trim_start_matches('_');
+    let letters: String = suffix.chars().filter(|c| c.is_ascii_alphabetic()).collect();
+    letters.is_empty()
+        || suffix.starts_with(|c: char| c.is_ascii_digit())
+        || units().contains_key(letters.to_lowercase().as_str())
 }
 
 /// The qualitative convention the corpus authors: an `attribute = value` triple with
@@ -1363,7 +1378,10 @@ fn authored_is_numeric(value: &str) -> bool {
 /// which is why the derived value is not compared against the authored state name: comparing
 /// it is the prototype that flagged 31 slots across 17 of 21 claims.
 fn is_qualitative_convention(value: &str, operator: &str, unit: &str) -> bool {
-    !value.is_empty() && !authored_is_numeric(value) && operator == "EQ" && unit == "none"
+    !value.is_empty()
+        && !authored_is_quantity(value)
+        && (operator == "EQ" || operator == "none")
+        && unit == "none"
 }
 
 /// The parity invariant, per claim: re-parse `statement` and compare the derived
@@ -1401,7 +1419,12 @@ pub fn evaluate_claim(claim: &crate::model::ClaimFile, registry: &Registry) -> C
     let op_derived = op_parsed != "none";
     let authored_v_present = !authored_v.is_empty();
     let authored_u_present = claim.unit.as_deref().is_some_and(|u| u != "none");
-    let authored_op_present = !authored_op.is_empty();
+    // `operator: none` is the canonical no-operator sentinel, exactly as `unit: none` is the
+    // no-unit one: a claim that spells it is not authoring an operator.
+    let authored_op_present = claim
+        .operator
+        .as_deref()
+        .is_some_and(|o| !o.is_empty() && o != "none");
 
     let value_check = classify_slot(
         value_derived,
@@ -1792,38 +1815,25 @@ fn value_unit_cell(v: &ClaimVerdict) -> String {
         // invisibility ADR 0014's Amendment exists to remove. The parsed side is rendered too
         // when identity carried one (a qualitative claim can yield a stray number), so an
         // annotation cannot be misread as "the form derives nothing".
-        let mut parts: Vec<String> = Vec::new();
-        if v.value_check.is_annotation() {
-            parts.push(format!(
-                "value {}{}",
-                v.authored_v,
-                parsed_beside(&v.v_parsed)
-            ));
-        }
-        if v.unit_check.is_annotation() {
-            parts.push(format!(
-                "unit {}{}",
-                v.authored_u,
-                parsed_beside(&v.u_parsed)
-            ));
-        }
-        return format!("ann {}", parts.join("; "));
+        // `unit_check` cannot itself be an annotation: the qualitative convention requires
+        // `unit: none`, so a unit the parse did not derive is a contradiction. The parsed side
+        // is rendered when identity carried one — unit included, because a qualitative claim
+        // can yield a stray number *and* a unit (`shall wait 200 ms` authored `value: claim`) —
+        // so an annotation cannot be misread as "the form derives nothing".
+        let parsed = if v.v_parsed.is_empty() {
+            String::new()
+        } else if v.u_parsed == "none" {
+            format!(" (parse {})", v.v_parsed)
+        } else {
+            format!(" (parse {} {})", v.v_parsed, v.u_parsed)
+        };
+        return format!("ann value {}{parsed}", v.authored_v);
     }
     // `none` is the canonical no-unit sentinel: name a unit only when one exists.
     if v.u_parsed == "none" && v.authored_u == "none" {
         format!("ok {value}/{authored}")
     } else {
         format!("ok {value}/{authored} {}", v.u_parsed)
-    }
-}
-
-/// `" (parse X)"` when the parse derived something, empty otherwise (the `"none"` sentinel is
-/// the no-value marker for unit and operator).
-fn parsed_beside(parsed: &str) -> String {
-    if parsed.is_empty() || parsed == "none" {
-        String::new()
-    } else {
-        format!(" (parse {parsed})")
     }
 }
 

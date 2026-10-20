@@ -131,6 +131,15 @@ carried, to satisfy a check about identity.
   annotation for the qualitative convention and a flag otherwise; the corpus measurement (`flags:
   0`, 16 annotations) is unchanged, because every claim carrying an annotation is a qualitative
   triple.
+
+  This also settles the **Falsification** paragraph at the end of this Amendment. Its sentence
+  ("`value: present` on REQ-0015 … must each be flagged") is the Decision's, and the rule the
+  Amendment states supersedes it for those two mutations: `value: present` authors the
+  *qualitative* triple, so it is an annotation and `--fill` accepts it — which is what this
+  Amendment says about REQ-0015 and REQ-0021 keeping `value: absent`. The flag direction is proven
+  by the same slot authored **quantity-shaped** (a comparator other than `EQ`, or a unit): it
+  contradicts the parse, flags, and `--fill` refuses it. Both directions are pinned in
+  `tests/parity_annotations.rs`.
 - `docs/claim-format.md` documents the annotation convention and retires the `value: absent`
   instruction, which is one instance of the convention rather than a rule of its own;
 - `attribute` stays unverified by design: its lexicon has no parser to agree with, so "unverified" is
