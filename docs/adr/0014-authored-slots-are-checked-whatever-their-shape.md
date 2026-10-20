@@ -1,8 +1,8 @@
 # 0014. An authored slot that contradicts the parse is a defect, whatever its shape
 
 **Status: accepted** — proposed by the agent, ratified by the maintainer on 2026-10-20, and
-**amended the same day** after prototyping the rule against the whole corpus (see *Amendment* at the
-end). The decision answers review finding [F2]. Date proposed: 2026-10-20.
+**amended twice the same day** — once after prototyping the rule against the whole corpus, once after
+implementing it (see the two *Amendments* at the end). The decision answers review finding [F2]. Date proposed: 2026-10-20.
  The decision answers review
 finding [F2]. Date proposed: 2026-10-20.
 
@@ -47,8 +47,9 @@ derived token would flag nearly every claim and teach authors to ignore the repo
 
 ## Decision
 
-*(The rule below is refined by the Amendment at the end of this file: a slot the parse did not derive
-is an **annotation** to be reported, not a contradiction to be flagged. Read both.)*
+*(The rule below is refined by **two** Amendments at the end of this file: a slot the parse did not
+derive is an **annotation** to be reported, not a contradiction — and, per Amendment 2, that holds
+only for a claim authored as the qualitative triple. Read both.)*
 
 The parity check compares `value`, `unit` and `operator` against the parse for **every** claim, whatever
 the authored value's shape. The numeric-ness of the authored value stops being the condition:
@@ -167,3 +168,65 @@ ones that are neither a defect nor represented.
 direction this amendment adds: with the corpus as it stands, `req canon` must report `discrepancy flags:
 0` **and** count the annotations — a rule that fixed the flags by going silent would fail the second
 half.
+
+---
+
+## Amendment 2 (2026-10-20) — the rule keys on the claim's **authored shape**, not on whether the parse found a value
+
+Amendment 1's table asks *"did the parse derive one?"*. Implemented, that question is the wrong test for
+one whole class of claims, because **the parser finds numerals in prose that are not quantities**:
+
+```
+REQ-0014  "exactly one commit"  → parse value 1   authored value one_ratified_logical_decision
+REQ-0021  "merge two claims"    → parse value 2   authored value absent
+REQ-0003  "…"                   → parse value 1   authored value applicability_selectors
+REQ-0005  "…"                   → parse value 2   authored value human_ratification_required
+```
+
+Under Amendment 1's literal row — *derived, authored, disagree → flag* — all four are contradictions, and
+the corpus this repository has been gating for weeks goes red on claims nobody disputes. The prototype
+that produced Amendment 1 flagged 31 slots for exactly this reason and I attributed them all to
+annotations; the four above are the residue where the parse *did* derive a number, so the distinction has
+to be drawn somewhere else.
+
+**The implemented rule keys on the claim's authored shape.** A claim is *qualitative* when it is authored
+as the corpus's convention — `operator: EQ`, `unit: none`, a non-numeric `value`. Everything else is
+*quantity-shaped*.
+
+| the claim is | value/unit compared against the parse? | a slot the parse does not carry |
+|---|---|---|
+| **qualitative** | **no** — the parse's derived value and unit are ignored (`value_derived = !qualitative && form.value.is_some()`) | **annotation** — reported, counted, never identity |
+| **quantity-shaped** | yes | **contradiction** — a flag |
+| operator, any shape | against the `"none"` sentinel (`op_derived = op_parsed != "none"`) | annotation for a qualitative claim; contradiction otherwise |
+
+The asymmetry is the project's own: a **bound the parse missed must never leave the address** — two claims
+differing only in that bound would collapse, which is the false merge this check exists to prevent, so a
+quantity-shaped claim authoring such a slot is a contradiction and `--fill` still refuses it. A **numeral
+in prose** is the opposite risk: treating it as identity reddens a correct claim, which is the false-split
+noise the same asymmetry says to absorb. The per-claim cell shows the parse beside the annotation
+(`ann value absent (parse 2)`) so the reader cannot mistake the numeral for something the address carries.
+
+**Measured on `8e0f636`** (the implementation's merge): `claims: 21; discrepancy flags: 0; annotations: 16`;
+the four claims above read `ann … (parse N)`; `req canon --verify` reports `verified 21, candidates 0,
+mismatches 0`; REQ-0015's and REQ-0021's addresses are unchanged (`4a15b28c…`, `fc5e269b…`). Twelve
+claims carry an annotation without a stray numeral, and **REQ-0007** — null slots against the `"none"`
+sentinel — reads `ok`, not `ann`, because nothing is authored.
+
+`--fill` consumes the same verdict: a **contradiction or an omission is refused**, an **annotation is
+accepted** (and must not be deleted — it is the author's qualitative predicate, which identity does not
+carry). `attribute` remains **unverified by design**, unchanged from the Decision.
+
+**No `RULES_V` bump and no address moves**, unchanged: the canonical form does not read the authored
+slots, only the check on them changed.
+
+**Falsification** — the four cases that separate this rule from Amendment 1's table:
+
+1. a **quantity-shaped** claim (`operator: GE`, `unit: s`, numeric value) authoring a value the parse did
+   not derive → **flag** (contradiction), and `--fill` refuses;
+2. a **qualitative** claim whose prose contains a stray numeral (REQ-0021's "merge two claims") →
+   **annotation**, `(parse 2)` shown, `flags: 0`;
+3. the same claim with the stray numeral removed → still an annotation, unchanged;
+4. a qualitative claim that authors `operator: LT` → **quantity-shaped** by definition, so a slot the
+   parse missed is a contradiction — the convention is the shape, not the author's intent.
+
+If any of 1–4 behaves otherwise, this amendment has not landed.
