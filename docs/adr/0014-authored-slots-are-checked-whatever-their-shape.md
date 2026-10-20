@@ -1,6 +1,8 @@
 # 0014. An authored slot that contradicts the parse is a defect, whatever its shape
 
-**Status: accepted** — proposed by the agent, ratified by the maintainer on 2026-10-20. The decision answers review finding [F2]. Date proposed: 2026-10-20.
+**Status: accepted** — proposed by the agent, ratified by the maintainer on 2026-10-20, and
+**amended the same day** after prototyping the rule against the whole corpus (see *Amendment* at the
+end). The decision answers review finding [F2]. Date proposed: 2026-10-20.
  The decision answers review
 finding [F2]. Date proposed: 2026-10-20.
 
@@ -45,6 +47,9 @@ derived token would flag nearly every claim and teach authors to ignore the repo
 
 ## Decision
 
+*(The rule below is refined by the Amendment at the end of this file: a slot the parse did not derive
+is an **annotation** to be reported, not a contradiction to be flagged. Read both.)*
+
 The parity check compares `value`, `unit` and `operator` against the parse for **every** claim, whatever
 the authored value's shape. The numeric-ness of the authored value stops being the condition:
 
@@ -74,3 +79,66 @@ the authored value's shape. The numeric-ness of the authored value stops being t
 - **Falsification:** author `value: present` on REQ-0015, and `operator: GE` on REQ-0021, in the
   committed corpus; `req canon` must flag both and `req canon --fill` must refuse both. If either passes,
   this ADR has not landed.
+
+---
+
+## Amendment (2026-10-20) — the rule is narrower than the Decision above says, and why
+
+The Decision was written from four mutations on **one** claim (REQ-0015), then generalised to "every
+claim, whatever its shape". Prototyped against the whole corpus before implementation, that rule flags
+**31 slots across 17 of 21 claims**. The reason is a convention the ADR had not looked at:
+
+```
+REQ-0001  attribute: unit_of_work                       operator: EQ   value: claim
+REQ-0002  attribute: decision_records                   operator: EQ   value: first_class_signed_objects
+REQ-0015  attribute: continuous_bidirectional_file_sync operator: EQ   value: absent
+```
+
+The corpus states a **qualitative triple** — `attribute = value` — and the canonical form derives
+`value` and `operator` **only for quantities**. For every qualitative claim the parsed side is empty, so
+the literal rule calls an annotation a contradiction; applied as written, its "migration" would have
+deleted the authored `value` and `operator` from 17 claims — deleting meaning that the identity never
+carried, to satisfy a check about identity.
+
+**The corrected rule separates the two cases — which is what the check was always for:**
+
+| the parse derived a value/operator? | the author wrote one? | verdict |
+|---|---|---|
+| yes | yes, and they agree | ok |
+| yes | yes, and they disagree | **flag** — a contradiction |
+| yes | no | **flag** — an omission |
+| no | yes | **annotation** — reported and counted, never a flag, never silent |
+| no | no | ok |
+
+- a **contradiction** and an **omission** are refused by `--fill`, exactly as today;
+- an **annotation** is made visible in both places the exemption used to hide: the per-claim diagnostic
+  cell is distinct from `ok` and from `FLAG`, and the summary line counts the class
+  (`annotations: N` — 17 claims with this corpus, measured). F2's harm was *invisibility*, and this
+  removes it even where nothing is wrong;
+- `docs/claim-format.md` documents the annotation convention and retires the `value: absent`
+  instruction, which is one instance of the convention rather than a rule of its own;
+- `attribute` stays unverified by design: its lexicon has no parser to agree with, so "unverified" is
+  the honest verdict for it and a flag would teach authors to ignore the report.
+
+**Two implementation details that decide whether this rule is applied as written.** `Form::operator_str()`
+returns the **sentinel `"none"`**, never an empty string (`src/canon.rs:258-263`), and the unit is
+defaulted the same way — so "the parse derived one" is `op_parsed != "none"`, not "is non-empty".
+Measured consequence: a claim whose `operator`/`value` is `null` (REQ-0007, the `UNSTRUCTURED` one) must
+read **ok**, not flag, because its authored side is empty *and* the parse derived nothing. The prototype
+that flagged it did so by comparing the sentinel against emptiness — the exact mistake this paragraph
+exists to prevent.
+
+**No corpus migration.** Under the corrected rule REQ-0015 and REQ-0021 keep `value: absent` — it is a
+faithful annotation, so the Consequences' "the migration is two files" paragraph is **superseded by this
+Amendment**: the corpus needs no edit at all, only the diagnostic, its summary, the field reference and
+their tests change.
+
+**No `RULES_V` bump and no address moves** — unchanged from the Decision: the canonical form and the file
+format are untouched. Only the diagnostic's judgement of authored slots changes, and how it reports the
+ones that are neither a defect nor represented.
+
+**Falsification** (unchanged, and still the acceptance test): `value: present` on REQ-0015 and
+`operator: GE` on REQ-0021 must each be flagged, and `--fill` must refuse both. Plus the annotation
+direction this amendment adds: with the corpus as it stands, `req canon` must report `discrepancy flags:
+0` **and** count the annotations — a rule that fixed the flags by going silent would fail the second
+half.
