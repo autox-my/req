@@ -116,7 +116,9 @@ claim file, before merge direction analysis is trusted.
   predicate is an authored **annotation**: record it as an `attribute`/`operator`/`value`
   triple with operator `EQ`, `unit: none`, and a non-numeric `value` ("shall not run a
   continuous sync" → attribute `continuous_bidirectional_file_sync`, operator `EQ`, value
-  `absent`; "the unit of work is a claim" → `unit_of_work = claim`). The canonical form
+  `absent`; "the unit of work is a claim" → `unit_of_work = claim`). `operator: EQ` is the
+  form to author; `operator: none` or an omitted operator is the same no-operator marker and
+  reads as the same annotation. The canonical form
   derives value/unit/operator only for quantities, so such a triple is not identity:
   `req canon` reports it as an annotation (`ann`), never as a flag and never as part of an
   address. Do not delete the triple to silence the report, and do not expect it to be

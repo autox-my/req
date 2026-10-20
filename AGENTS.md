@@ -120,7 +120,8 @@ export OCR_NO_UPDATE=1
   are judged by ADR 0014's four cases (as amended): a derived slot the author **contradicts**
   is a **flag — contradiction**; a derived slot the author **omits** is a **flag — omission**;
   a slot the author wrote that the canonical form does not derive — the qualitative
-  `attribute`/`value` triple (`operator: EQ`, `unit: none`, non-numeric `value`) — is an
+  `attribute`/`value` triple (`unit: none`, non-numeric `value`, and `operator: EQ` or no
+  operator at all: `none` and an absent operator are the same no-operator marker) — is an
   **annotation**, printed as `ann` in its own cell and counted by the summary line, never a
   flag and never part of identity. The annotation is **only the qualitative triple**: a
   quantity-shaped claim (a numeric authored value, a comparator other than `EQ`, or an authored
