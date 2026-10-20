@@ -809,10 +809,10 @@ fn the_adoption_doc_carries_the_verified_install_form_and_the_ci_gate() {
         "the scp-style URL is the form that fails, and the doc must not offer it"
     );
 
-    // The gate step's fail-closed assertion: an absent `.req/variants` must be red, because
-    // a failed input redirection does not stop a `set -e` script.
+    // The gate step's fail-closed assertion: an absent **or unreadable** `.req/variants` must
+    // be red, because a failed input redirection does not stop a `set -e` script.
     for required in [
-        "[ -f .req/variants ]",
+        "[ -r .req/variants ]",
         "req canon --verify",
         "req gate",
         ".req/variants",
@@ -934,12 +934,18 @@ fn run_gate_step_with_codes(fx: &Fixture, script: &str, codes: &[i32]) -> (i32, 
             .join("\n"),
     )
     .expect("writes the stub's answers");
+    // The path is interpolated into generated shell, so it must be shell-escaped for a path
+    // containing a single quote as well as a space: `'''` closes, escapes and reopens the quote.
+    let queue_sh = queue.display().to_string().replace('\'', r"'\''");
     // Pop the next code; when the queue is empty, answer 0.
     std::fs::write(
         bin.join("req"),
         format!(
             "#!/bin/sh\n\
-             queue={queue}\n\
+             queue='{queue}'\n\
+             # Consume stdin the way any command might. The step must hand `req` its own\n\
+             # stdin: a gate that read the loop's file would silently shorten the release list.\n\
+             cat >/dev/null 2>&1 || true\n\
              code=0\n\
              if [ -s \"$queue\" ]; then\n\
                code=$(head -1 \"$queue\")\n\
@@ -947,7 +953,7 @@ fn run_gate_step_with_codes(fx: &Fixture, script: &str, codes: &[i32]) -> (i32, 
              fi\n\
              echo \"verdict: stub $code\"\n\
              exit $code\n",
-            queue = queue.display()
+            queue = queue_sh
         ),
     )
     .expect("writes the stub req");
@@ -1002,8 +1008,8 @@ fn the_ci_gate_step_script_behaves_as_an_adopter_needs() {
         "the snippet still loops over .req/variants:\n{script}"
     );
     assert!(
-        script.contains("[ -f .req/variants ]"),
-        "and still fails closed on an absent file:\n{script}"
+        script.contains("[ -r .req/variants ]"),
+        "and still fails closed on an absent or unreadable file:\n{script}"
     );
 
     // A corpus, exactly as `req init` leaves it.
@@ -1095,6 +1101,17 @@ fn the_ci_gate_step_script_behaves_as_an_adopter_needs() {
             2,
             "a pass beside a usage error is the usage error",
         ),
+        // Among non-FAIL codes the rule is the **first** failure, not the last: a missing
+        // binary (127) followed by an UNVERIFIABLE (3) used to report 3, which reads as a
+        // corpus question when the tool never ran.
+        (
+            vec![127, 3],
+            127,
+            "a missing binary is not reported as UNVERIFIABLE",
+        ),
+        (vec![3, 2], 3, "the first non-FAIL failure is reported"),
+        (vec![2, 3], 2, "in either order"),
+        (vec![3, 0], 3, "a later pass does not clear it"),
     ] {
         write_variants(&fx, "deployment_mode=air_gapped\nruns=5\n");
         let (code, text) = run_gate_step_with_codes(&fx, &script, &codes);
@@ -1120,4 +1137,103 @@ fn the_ci_gate_step_script_behaves_as_an_adopter_needs() {
     std::fs::remove_file(fx.join(".req/variants")).expect("removes the variants file");
     let (code, text) = run_gate_step(&fx, &script);
     assert_eq!(code, 1, "an absent variants file is red: {text}");
+}
+
+/// A file that exists but cannot be read is not a file the step can gate: the redirection at
+/// `done <` fails, the loop never runs, and the fallback would gate the bare variant instead of
+/// the declared releases. `[ -f ]` proves existence, not readability — `[ -r ]` is the assertion.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_variants_file_is_red_not_a_fallback_to_the_bare_gate() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let script = gate_script();
+    let fx = Fixture::new("ci-gate-step-unreadable");
+    let init = run_at(fx.path(), &["init"]);
+    assert_eq!(init.code, 0, "{}{}", init.stdout, init.stderr);
+    write_variants(&fx, "deployment_mode=air_gapped\n");
+    let path = fx.join(".req/variants");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000))
+        .expect("makes the variants file unreadable");
+    // `access()` grants R_OK to uid 0 even on a 0o000 regular file, so a root container would
+    // pass the guard and fail this test for an environment reason rather than a product one.
+    // Probe the effect of the chmod and say NOT EXERCISED, as the abort test does.
+    if std::fs::File::open(&path).is_ok() {
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
+            .expect("restores the variants file");
+        eprintln!(
+            "NOT EXERCISED: mode 0o000 is still readable here (running as root?) — the \
+             unreadable-variants guard was not exercised"
+        );
+        return;
+    }
+    let (code, text) = run_gate_step(&fx, &script);
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
+        .expect("restores the variants file so the fixture can be removed");
+    assert_eq!(
+        code, 1,
+        "an unreadable variants file is red, never a green bare fallback: {text}"
+    );
+    assert!(
+        text.contains("missing, unreadable, or not a regular file .req/variants"),
+        "the step says which file and why: {text}"
+    );
+}
+
+/// `[ -r ]` alone passes for a readable **directory**: the redirection then fails, the loop never
+/// runs and the fallback gates the bare variant — the same false green the assertion exists to
+/// prevent. Both halves (`-f` and `-r`) are asserted.
+#[cfg(unix)]
+#[test]
+fn a_directory_at_the_variants_path_is_red() {
+    let script = gate_script();
+    let fx = Fixture::new("ci-gate-step-variants-dir");
+    let init = run_at(fx.path(), &["init"]);
+    assert_eq!(init.code, 0, "{}{}", init.stdout, init.stderr);
+    std::fs::create_dir_all(fx.join(".req/variants")).expect("creates a directory at the path");
+    let (code, text) = run_gate_step(&fx, &script);
+    assert_eq!(code, 1, "a directory is not a release list: {text}");
+    assert!(
+        text.contains("not a regular file"),
+        "the step says what the path is: {text}"
+    );
+}
+
+/// The generated stub interpolates the queue path into shell; a fixture (or `TMPDIR`) whose path
+/// contains a space must survive it. This test's fixture name carries one on purpose — and the
+/// path is asserted to carry it, so a later normalisation of fixture names cannot turn this test
+/// into a green no-op.
+#[cfg(unix)]
+#[test]
+fn the_stub_survives_a_fixture_path_with_a_space() {
+    let script = gate_script();
+    let fx = Fixture::new("ci gate step spaced");
+    assert!(
+        fx.path().to_string_lossy().contains(' '),
+        "the fixture name must reach the path, or this test checks nothing: {}",
+        fx.path().display()
+    );
+    write_variants(&fx, "deployment_mode=air_gapped\n");
+    let (code, text) = run_gate_step_with_codes(&fx, &script, &[3]);
+    assert_eq!(code, 3, "one row, and its refusal is the step's: {text}");
+    assert_eq!(summary_rows(&text).len(), 1, "one gate run: {text}");
+}
+
+/// The same pin for the escaping branch: a path carrying a single quote must not close the quote
+/// in the generated stub. No other fixture (or `TMPDIR`) carries one, so without this the
+/// `'\''` in `run_gate_step_with_codes` would be unpinned.
+#[cfg(unix)]
+#[test]
+fn the_stub_survives_a_fixture_path_with_a_single_quote() {
+    let script = gate_script();
+    let fx = Fixture::new("ci gate step 'quoted'");
+    assert!(
+        fx.path().to_string_lossy().contains('\''),
+        "the fixture name must reach the path: {}",
+        fx.path().display()
+    );
+    write_variants(&fx, "deployment_mode=air_gapped\n");
+    let (code, text) = run_gate_step_with_codes(&fx, &script, &[3]);
+    assert_eq!(code, 3, "one row, and its refusal is the step's: {text}");
+    assert_eq!(summary_rows(&text).len(), 1, "one gate run: {text}");
 }
