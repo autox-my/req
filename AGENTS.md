@@ -309,9 +309,9 @@ export OCR_NO_UPDATE=1
   is verified with a build that writes it, never re-signed with this binary). Trust is consulted
   at `baselines/trust.yml` (ADR 0010), and the key is judged at the **manifest's `signed_at`**
   for v3 (today for v2; `--now` is the explicit override): a key whose expiry is **at or after**
-  the signing time verifies even when today is later, an **expired at signing** key is
-  UNVERIFIABLE with that reason, and **revocation is prospective** — a key revoked *after* the
-  signing time still verifies, while one revoked at or before it is FAIL. An unknown key or a
+  the signing time verifies even when today is later, a key **expired at signing** is FAIL (it
+  was not valid when the signature was made), and **revocation is prospective** — a key revoked
+  *after* the signing time still verifies, while one revoked at or before it is FAIL. An unknown key or a
   missing signature is UNVERIFIABLE — a manifest is **not yet a Baseline** until a human signs
   it. The signature check is a **process boundary** to a pinned verifier, so the core links no
   cryptography and still no network; with no verifier installed the outcome is UNVERIFIABLE,

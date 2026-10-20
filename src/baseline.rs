@@ -1026,7 +1026,7 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
     // FAIL — the same class as a hand-edited digest — while a log that cannot be read is
     // UNVERIFIABLE: the chain's own `verify_chain` distinguishes "the content moved" from
     // "there is nothing to judge", and both answers must not be flattened into one.
-    if manifest.version >= BASELINE_VERSION {
+    if manifest.version == BASELINE_VERSION {
         match (&manifest.signed_at, &manifest.authority) {
             (Some(_), Some(authority)) => match log {
                 None => open.push(
@@ -1078,20 +1078,22 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
         TrustState::Trusted => {}
         TrustState::Revoked(reason) => failed.push(format!("key {key_id} is {reason}")),
         // A v3 manifest records its signing time, so expiry is judged *at that time* (ADR
-        // 0016) rather than left unanswerable; it is still never a pass. A v2 Manifest has no
-        // trusted signing time at all, which is the older ADR 0010 answer.
-        TrustState::Expired(reason) => open.push(if manifest.version >= BASELINE_VERSION {
-            format!(
-                "key {key_id} is {reason} — the signing time is the manifest's signed_at, and it \
-                 falls outside the key's validity window, so this Baseline was not signed under \
-                 a trusted key"
-            )
-        } else {
-            format!(
-                "key {key_id} is {reason} — a Baseline is historical and no trusted signing time \
-                 exists, so this cannot be decided"
-            )
-        }),
+        // 0016): a key that had already expired then was not trusted when the Baseline was
+        // signed, which is a definite finding — symmetric with revocation at/before the signing
+        // time. A v2 manifest has no trusted signing time, which is the older ADR 0010 answer.
+        TrustState::Expired(reason) => {
+            if manifest.version == BASELINE_VERSION {
+                failed.push(format!(
+                    "key {key_id} is {reason} — the manifest's signed_at is outside the key's \
+                     validity window, so the Baseline was signed with an expired key (ADR 0016)"
+                ));
+            } else {
+                open.push(format!(
+                    "key {key_id} is {reason} — a Baseline is historical and no trusted signing \
+                     time exists, so this cannot be decided"
+                ));
+            }
+        }
         TrustState::Unknown => open.push(format!("key {key_id} is not in the trust file")),
     }
 
@@ -1414,7 +1416,7 @@ fn read_decisions(root: &Path) -> Result<Vec<decision::Decision>, String> {
 /// The first characters of a digest, for a reason a human reads. Never decides anything: the
 /// full values are compared, and only the message is shortened.
 fn short_hash(hash: &str) -> &str {
-    &hash[..12.min(hash.len())]
+    hash.get(..12).unwrap_or(hash)
 }
 
 /// An RFC 3339 UTC timestamp with a `Z` offset — the only shape `--at` accepts. req never

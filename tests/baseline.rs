@@ -1105,11 +1105,12 @@ fn an_unknown_key_is_unverifiable_and_a_revoked_key_fails() {
 }
 
 /// Expiry is judged at the **signing time** for a v3 Baseline (ADR 0016): a key that had
-/// already expired then is UNVERIFIABLE, never a pass, and the reason says the judgement time is
-/// the manifest's `signed_at`. A v2 Baseline has no trusted signing time, so the older ADR 0010
-/// answer — "cannot be decided" — still stands for it.
+/// already expired then was not valid when the Baseline was signed, which is a definite finding
+/// — the symmetric answer to revocation at/before the signing time. A v2 Baseline has no trusted
+/// signing time, so the older ADR 0010 answer — "cannot be decided" (UNVERIFIABLE) — still
+/// stands for it.
 #[test]
-fn a_key_expired_before_the_signing_time_is_unverifiable() {
+fn a_key_expired_before_the_signing_time_fails() {
     let (rows, manifest) = signed_manifest();
     let outcome = verify(
         &rows,
@@ -1120,7 +1121,7 @@ fn a_key_expired_before_the_signing_time_is_unverifiable() {
         &Stub(SignatureOutcome::Valid),
         FIXTURE_SIGNED_AT,
     );
-    assert_eq!(outcome.exit_code(), 3, "{outcome:?}");
+    assert_eq!(outcome.exit_code(), 1, "{outcome:?}");
     let reasons = outcome.reasons().join(" ");
     assert!(
         reasons.contains("outside the key's validity window"),

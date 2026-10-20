@@ -111,8 +111,9 @@ req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not y
 - **The secret key is yours and is not in the repository.** minisign reads `~/.minisign/minisign.key` by
   default, or `-s <secret key>`; `req` has no flag for it and needs none.
 - **`signed_at` judges the key, never the claims.** A key whose validity ends **at or after** the signing
-  time verifies for that Baseline even when today is later, and a key **revoked after** the signing time
-  no longer invalidates it — revocation is prospective. Whether a claim is *current* remains
+  time verifies for that Baseline even when today is later; a key that had already **expired** at the
+  signing time fails (it was not valid when the signature was made), and a key **revoked after** the
+  signing time no longer invalidates it — revocation is prospective. Whether a claim is *current* remains
   `canon --verify`'s and `audit`'s business, which re-derive addresses. `--now <date>` is the explicit
   override for the judgement time; it is a verification flag, not an emission one.
 - **`baselines/trust.yml` must carry the matching public key**, or verification is UNVERIFIABLE — an
