@@ -496,7 +496,9 @@ matter:
   `<variant>.json.minisig` its signature; `trust.example.yml` is the template. The standalone
   `req.pub` that minisign writes is deliberately **not** kept here: two copies of one key drift,
   and `minisign -R -s <secret key> -p <path>` regenerates it from the secret half on demand. req
-  emits and verifies; it never signs.
+  emits and verifies; it never signs — the act is `minisign -Sm <manifest>`, which writes
+  `<manifest>.minisig` (the name `--verify` looks for) and prompts for the secret key's passphrase.
+  `docs/adopting.md` carries the adopter-facing form.
 - `tools/ocr/` — the pinned review CLI (`package.json` + lockfile committed;
   `node_modules/` ignored).
 - `tools/review/ocr_gate.py` — the verdict on an OCR review result: pass, fail, or a legitimate
