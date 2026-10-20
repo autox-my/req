@@ -349,15 +349,18 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                     r.selectors
                         .iter()
                         .map(|text| parse_predicate(text))
-                        // Exhaustive on purpose: a `_` arm would mean "a context can decide this" by
-                        // default, which re-derives `select::evaluate`'s decidability with no compiler
-                        // help — a new `Predicate` variant would silently join the decidable side.
+                        // This bucket mirrors `select::evaluate`'s decidability, and `select` owns
+                        // both halves of it: `parse_predicate` for the grammar and the `Decimal`
+                        // comparison. Keep the match exhaustive — a `_` arm would default "a context
+                        // can decide this", so a new `Predicate` variant must be classified here
+                        // too or it silently joins the decidable side.
                         .filter_map(|predicate| match predicate {
                             Predicate::Unsupported { text } => Some(text),
                             // A `Ge` whose bound is not a decimal parses (the grammar sees
                             // `key >= value`) but no evaluation can compare it — `runs >= twenty` is
                             // unparsable in effect, and "pass the variant context" would be the wrong
-                            // advice for it. The same `Decimal` parse `evaluate` uses decides the bucket.
+                            // advice for it. The same `Decimal` parse `select::evaluate` uses decides
+                            // the bucket.
                             Predicate::Ge { key, value } => (value.parse::<Decimal>().is_err())
                                 .then(|| format!("{key} >= {value}")),
                             // Decidable by a context, in both directions.
@@ -382,14 +385,16 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         for (claim, text) in &unparsable {
             println!(
                 "  - {claim}: `{text}` is not in the selector grammar (`key == value`, \
-                 `key >= number`), so no context can make it apply — a context can only exclude \
-                 it, and the corpus cannot go green until the predicate is rewritten"
+                 `key >= number`), so no context can make it apply; a context can still exclude \
+                 it (another selector on the claim returning `No`), and an excluded claim is not \
+                 the variant's problem"
             );
         }
         if unparsable.is_empty() {
             println!(
-                "  remedy: pass the variant context that decides them — a complete release context, \
-                 as `.req/variants` declares — and gate each declared variant"
+                "  remedy: pass the variant context that decides them — one complete release \
+                 context per line of the release list your own gate script reads — and gate each \
+                 declared variant"
             );
         } else if unparsable.len() == undecided.len() {
             // Every undecided claim here is unreadable, so there is no "rest" for a context to
@@ -400,7 +405,8 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         } else {
             println!(
                 "  remedy: rewrite the predicate above, then pass the variant context that decides \
-                 the rest — a complete release context, as `.req/variants` declares"
+                 the rest — one complete release context per line of the release list your own gate \
+                 script reads"
             );
         }
     }

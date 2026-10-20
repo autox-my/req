@@ -427,12 +427,13 @@ fn print_next_steps() {
 /// "## CI" section — two copies of advice no adopter can afford to have drift, so the
 /// equality is **asserted** (`the_printed_snippet_is_the_one_the_adopting_doc_carries`,
 /// below) rather than left to review: the parts that matter (the `summary` fallback, the
-/// `gate()` bookkeeping, `exit $rc`, the presence assertion) would otherwise be free to
+/// `gate()` bookkeeping, `exit $rc`, the readability assertion) would otherwise be free to
 /// diverge with nothing failing.
 ///
-/// The presence assertion is not decoration: a **failed input redirection does not stop a
-/// `set -e` script**, so without it an absent `.req/variants` silently skips every declared
-/// variant and the step goes green. Measured, and the reason the assertion is explicit.
+/// The readability assertion is not decoration: a **failed input redirection does not stop a
+/// `set -e` script**, so without it an absent or unreadable `.req/variants` silently skips every
+/// declared variant and the step goes green (or falls back to the bare variant). `[ -f ]` proves
+/// existence, not readability — measured, and the reason the assertion is `[ -r ]`.
 pub const CI_SNIPPET: &str = r#"name: req
 on:
   pull_request:
@@ -459,10 +460,12 @@ jobs:
       - name: the release gate — every declared variant, and the default when none is declared
         run: |
           set -eu
-          # An absent variants file must be red. A failed INPUT REDIRECTION does not stop a
-          # `set -e` script, so the file's presence is asserted rather than assumed —
-          # otherwise every declared variant is silently skipped and the step still exits 0.
-          [ -f .req/variants ] || { echo "missing .req/variants" >&2; exit 1; }
+          # An absent or unreadable variants file must be red. A failed INPUT REDIRECTION does
+          # not stop a `set -e` script, so the file is checked with `[ -r ]` — `[ -f ]` proves
+          # existence, not readability, and a present-but-unreadable file would make the loop's
+          # redirection fail, skipping every declared variant and letting the fallback below
+          # report a bare run instead.
+          [ -r .req/variants ] || { echo "missing or unreadable .req/variants" >&2; exit 1; }
           # A job summary above the log (runner >= 13.2 sets one of these).
           # Absent variable = an older runner: the step must still pass, so the target is /dev/null.
           summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}"
@@ -472,13 +475,15 @@ jobs:
             out="$(req gate "$@" 2>&1)" && code=0 || code=$?
             verdict="$(printf '%s' "$out" | sed -n 's/^verdict: //p' | head -1)"
             printf '| `%s` | %s | %s |\n' "${*:-<none>}" "$code" "${verdict:-no verdict line}" >> "$summary"
-            # Fail outranks unverifiable, and nothing non-zero may be swallowed. The previous
-            # rule kept the *last* non-zero code, so a later 3 masked an earlier 1; this one keeps
-            # 1 sticky and propagates every other non-zero code as itself — a usage error (2) or a
-            # missing binary (127) must fail the step, not pass it.
+            # Fail outranks unverifiable, and nothing non-zero may be swallowed. The rule: 1 is
+            # sticky above every code; among the rest the **first** non-zero is kept. The first
+            # failed invocation is the one to investigate, and ranking 2/3/127 by severity would be
+            # this script inventing an order req's exit contract does not define (127 is the
+            # shell's, not req's). The previous rule kept the *last*, so a missing binary (127)
+            # followed by an UNVERIFIABLE (3) reported 3 — the tool never ran.
             if [ "$code" -eq 1 ]; then
               rc=1
-            elif [ "$code" -ne 0 ] && [ "$rc" -ne 1 ]; then
+            elif [ "$code" -ne 0 ] && [ "$rc" -eq 0 ]; then
               rc=$code
             fi
           }
@@ -491,7 +496,11 @@ jobs:
             variant_line="${variant_line%$'\r'}"
             read -r -a release <<< "${variant_line%%#*}"
             [ "${#release[@]}" -gt 0 ] || continue
-            gate "${release[@]}"
+            # /dev/null: nothing in the body may consume the remaining releases from this
+            # file's stdin — a command that reads stdin would shorten the list without error, and
+            # the loop would end early with a green step. scripts/check.sh guards the same loop
+            # the same way.
+            gate "${release[@]}" < /dev/null
             gated=$((gated + 1))
           done < .req/variants
           # A comment-only file declares one variant — the default — and the bare invocation is
@@ -681,7 +690,7 @@ mod tests {
     /// `init` prints the CI snippet; `docs/adopting.md` shows it. The two copies are the same
     /// block today, and this is what keeps them the same block: the parts an adopter cannot
     /// afford to lose — the `summary` fallback, the `gate()` bookkeeping, `exit $rc`, the
-    /// `[ -f .req/variants ]` presence assertion — are not pinned anywhere else.
+    /// `[ -r .req/variants ]` readability assertion — are not pinned anywhere else.
     #[test]
     fn the_printed_snippet_is_the_one_the_adopting_doc_carries() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/adopting.md");

@@ -511,6 +511,13 @@ relations: []
             "and not the unreadable-predicate remedy: {}",
             bare.text
         );
+        // req never reads `.req/variants` (the file says so itself): it is the caller's script
+        // convention, so the remedy must name the release list, not a file req knows nothing about.
+        assert!(
+            !bare.text.contains(".req/variants"),
+            "the remedy names the caller's release list, not a file req never reads: {}",
+            bare.text
+        );
 
         // The same corpus, with the context that decides the claim: green.
         let decided = fixture.gate(&["mode=beta"]);
@@ -781,6 +788,21 @@ relations: []
         assert!(
             out.text.contains("rewrite the predicate"),
             "and says what to do about it: {}",
+            out.text
+        );
+        // The negative direction: when *every* undecided claim is unreadable, no "rest" is left
+        // for a context to decide, so the context remedy must be absent. Without this, a mutation
+        // turning the `else if` into a plain `else` keeps the positive assertion green.
+        assert!(
+            !out.text.contains("pass the variant context"),
+            "when no context can make a claim apply, the context remedy is the wrong advice: {}",
+            out.text
+        );
+        // And the false claim the review found: an unreadable predicate does not make the corpus
+        // permanently red — a context can still exclude the claim.
+        assert!(
+            !out.text.contains("cannot go green"),
+            "a context can still exclude the claim: {}",
             out.text
         );
     }
