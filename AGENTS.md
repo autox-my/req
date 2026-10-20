@@ -426,7 +426,7 @@ matter:
   to the reviewer, like one that changed the signed bytes and forgot the signature — a blocking
   finding on every future signing. The blind spot is therefore **declared rather than hidden**:
   `review/rule.json` excludes `baselines/*.minisig` explicitly (verified: the selection reports
-  `exclude_reason: user_exclude`), and the `baselines/**` checklist tells the reviewer that the
+  `exclude_reason: user_exclude`), and the `baselines/*.json` checklist tells the reviewer that the
   signature is outside its view, that a signed change always carries its re-signature, and that
   the gate's Baseline step (no SKIP) is what verifies it. `tools/review/check_rules.py` pins both
   — the exclusion and the declaration's text — because a declaration that can vanish silently is
