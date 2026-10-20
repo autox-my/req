@@ -772,6 +772,9 @@ fn an_absent_decision_log_is_unverifiable_never_tampered() {
     assert_eq!(outcome.exit_code(), 3, "{outcome:?}");
     let reasons = outcome.reasons().join(" ");
     assert!(reasons.contains("cannot be read"), "{reasons}");
+    // The loader's own diagnosis travels: "missing", "parse error" and "unfilled" have
+    // different remedies, so a generic "cannot be read" would hide the next step.
+    assert!(reasons.contains("decisions/ is absent"), "{reasons}");
     assert!(!reasons.contains("edited"), "{reasons}");
     assert!(!reasons.contains("does not recompute"), "{reasons}");
 }
