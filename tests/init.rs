@@ -1084,6 +1084,17 @@ fn the_ci_gate_step_script_behaves_as_an_adopter_needs() {
             "a pass beside an undecided line is UNVERIFIABLE",
         ),
         (vec![0, 0], 0, "all green is green"),
+        // Anything non-zero that is not 1 or 3 must still fail the step: a usage error (2) or a
+        // missing binary (127) reported as success is worse than the masked FAIL this rule fixed.
+        (vec![2], 2, "a usage error is propagated"),
+        (vec![127], 127, "a missing binary is propagated"),
+        (vec![1, 2], 1, "and FAIL still outranks it"),
+        (vec![2, 1], 1, "in either order"),
+        (
+            vec![0, 2],
+            2,
+            "a pass beside a usage error is the usage error",
+        ),
     ] {
         write_variants(&fx, "deployment_mode=air_gapped\nruns=5\n");
         let (code, text) = run_gate_step_with_codes(&fx, &script, &codes);

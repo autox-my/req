@@ -472,13 +472,14 @@ jobs:
             out="$(req gate "$@" 2>&1)" && code=0 || code=$?
             verdict="$(printf '%s' "$out" | sed -n 's/^verdict: //p' | head -1)"
             printf '| `%s` | %s | %s |\n' "${*:-<none>}" "$code" "${verdict:-no verdict line}" >> "$summary"
-            # Fail outranks unverifiable, and the last line does not decide the step: with more
-            # than one declared variant, keeping the last non-zero code would report 0/3 when an
-            # earlier line FAILed. Keep the strongest.
+            # Fail outranks unverifiable, and nothing non-zero may be swallowed. The previous
+            # rule kept the *last* non-zero code, so a later 3 masked an earlier 1; this one keeps
+            # 1 sticky and propagates every other non-zero code as itself — a usage error (2) or a
+            # missing binary (127) must fail the step, not pass it.
             if [ "$code" -eq 1 ]; then
               rc=1
-            elif [ "$code" -eq 3 ] && [ "$rc" -eq 0 ]; then
-              rc=3
+            elif [ "$code" -ne 0 ] && [ "$rc" -ne 1 ]; then
+              rc=$code
             fi
           }
           gated=0
