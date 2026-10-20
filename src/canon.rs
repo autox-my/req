@@ -1377,10 +1377,14 @@ fn authored_is_quantity(value: &str) -> bool {
 /// annotation. The parser may still find a stray number in the prose ("any two claims" → 2),
 /// which is why the derived value is not compared against the authored state name: comparing
 /// it is the prototype that flagged 31 slots across 17 of 21 claims.
+///
+/// A **missing** operator is the no-operator marker, exactly as `operator: none` spells it.
+/// Reading `operator: null` as quantity-shaped made the value a contradiction although the
+/// claim carries no bound at all, and made two spellings of one qualitative triple disagree.
 fn is_qualitative_convention(value: &str, operator: &str, unit: &str) -> bool {
     !value.is_empty()
         && !authored_is_quantity(value)
-        && (operator == "EQ" || operator == "none")
+        && (operator == "EQ" || operator == "none" || operator.is_empty())
         && unit == "none"
 }
 
@@ -1777,7 +1781,8 @@ pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
     }
     let _ = &registry;
     println!(
-        "claims: {checked}; discrepancy flags: {flags_total}; annotations: {annotated_claims} \
+        "claims: {checked}; discrepancy flags: {flags_total} slot(s); annotations: \
+         {annotated_claims} claim(s) \
          (v0 diagnostic: `ann` is an authored value/unit/operator the canonical form does not \
          derive — counted, never a flag, never part of identity; `attribute` is unverified by \
          design, as are rationale wording and applicability predicate syntax; authoring \

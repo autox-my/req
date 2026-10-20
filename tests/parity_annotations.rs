@@ -27,6 +27,17 @@ fn claim(text: &str) -> ClaimFile {
     yaml_serde::from_str(text).expect("claim parses")
 }
 
+/// `str::replace` silently returns its input when the needle is absent, so a fixture mutation
+/// whose needle has drifted leaves the *unmutated* claim in place and the assertion passes
+/// without testing anything. Assert the fixture still carries the text before replacing it.
+fn replaced(text: &str, from: &str, to: &str) -> String {
+    assert!(
+        text.contains(from),
+        "the fixture does not contain {from:?}: the mutation would be a no-op"
+    );
+    text.replace(from, to)
+}
+
 /// A registry that resolves the fixtures' subject. It is built once: `Registry::load` reads a
 /// file, and a per-test copy would repeat the same YAML four times. The directory is unique per
 /// process **and** per call, and removed as soon as the registry is in memory, so the suite does
@@ -291,7 +302,7 @@ fn a_quantity_claim_may_not_author_a_slot_the_parse_never_derived() {
 #[test]
 fn a_digit_leading_state_name_is_a_qualitative_annotation() {
     let v = evaluate_claim(
-        &claim(&QUALITATIVE.replace("value: claim", "value: 2_tier_sync")),
+        &claim(&replaced(QUALITATIVE, "value: claim", "value: 2_tier_sync")),
         registry(),
     );
     assert_eq!(v.value_check, SlotCheck::Annotation);
@@ -346,6 +357,29 @@ fn operator_none_is_the_no_operator_sentinel() {
     assert_eq!(v.op_check, SlotCheck::Ok, "no operator was authored");
     assert_eq!(v.value_check, SlotCheck::Annotation);
     assert_eq!(v.flags(), 0);
+}
+
+/// `operator: null` is the *missing* spelling of the same no-operator marker. Reading it as a
+/// quantity-shaped authoring made the value a contradiction although the claim carries no bound
+/// at all, and made two spellings of one qualitative triple disagree. The noise is in the
+/// affordable direction (a false split, never a merge), but it is still noise.
+#[test]
+fn a_missing_operator_is_the_no_operator_marker_on_a_qualitative_claim() {
+    let v = evaluate_claim(
+        &claim(&replaced(QUALITATIVE, "operator: EQ", "operator: null")),
+        registry(),
+    );
+    assert_eq!(v.op_check, SlotCheck::Ok, "no operator was authored");
+    assert_eq!(
+        v.value_check,
+        SlotCheck::Annotation,
+        "the state name is the annotation, not a contradiction"
+    );
+    assert_eq!(v.flags(), 0);
+    assert!(
+        v.has_annotation(),
+        "the triple is still visible as an annotation"
+    );
 }
 
 /// ADR 0014's motivating shape, `SHALL-NOT` with the qualitative triple, is an annotation: it
@@ -404,7 +438,8 @@ fn the_unstructured_claim_reads_ok_not_flagged() {
 #[test]
 fn a_wrong_authored_attribute_is_not_flagged_by_design() {
     let v = evaluate_claim(
-        &claim(&QUANTITY.replace(
+        &claim(&replaced(
+            QUANTITY,
             "attribute: health_check_latency",
             "attribute: something_entirely_different",
         )),
@@ -474,12 +509,40 @@ fn row<'a>(stdout: &'a str, id: &str) -> &'a str {
         .unwrap_or_else(|| panic!("no row for {id} in:\n{stdout}"))
 }
 
+/// The value/unit cell of a report row. `canon::run` pins the column layout as
+/// `{:<9} {:<9} {:<9} {:<12} {:<30} {:<26} {:<9}` with single-space separators, so the fifth
+/// cell begins after the four leading columns. Delimiting it matters: a bare `contains("ann")`
+/// over the whole row is satisfied by a *subject* that happens to carry those letters, and the
+/// same loose test would break the REQ-0007 negative.
+fn value_unit_cell(row: &str) -> &str {
+    const CELL_START: usize = 9 + 1 + 9 + 1 + 9 + 1 + 12 + 1;
+    row.get(CELL_START..)
+        .unwrap_or_else(|| panic!("row is shorter than its four leading columns:\n{row}"))
+}
+
+/// The cell delimiting itself, on a row shaped like the report's: a subject carrying `ann` is
+/// not the annotation, and a sentinel row with the same subject must not be read as one. A
+/// full-row `contains("ann")` would pass the first and fail the second.
+#[test]
+fn the_annotation_cell_is_read_at_its_column_not_matched_across_the_row() {
+    let row = format!(
+        "{:<9} {:<9} {:<9} {:<12} {:<30} {:<26} {:<9}",
+        "REQ-X", "ok", "ok", "ann", "ok -/-", "ok n/a", "ok"
+    );
+    let cell = value_unit_cell(&row);
+    assert!(row.contains("ann"), "the forged subject carries it: {row}");
+    assert!(
+        !cell.trim_start().starts_with("ann"),
+        "the sentinel's value/unit cell is `ok`, not the subject column:\n{row}"
+    );
+}
+
 #[test]
 fn the_corpus_has_zero_flags_and_sixteen_annotations() {
     let out = corpus(&["canon"]);
     assert_eq!(out.code, 0, "canon exit code:\n{}", out.stderr);
     assert!(
-        out.stdout.contains("discrepancy flags: 0"),
+        out.stdout.contains("discrepancy flags: 0 slot(s)"),
         "a rule that fixed the flags by going silent would fail the annotation half:\n{}",
         out.stdout
     );
@@ -489,7 +552,7 @@ fn the_corpus_has_zero_flags_and_sixteen_annotations() {
     // *flagged* claims, and it included REQ-0007 — the sentinel false positive this rule
     // exists to prevent. The number is data: if a claim joins the corpus, it moves.
     assert!(
-        out.stdout.contains("annotations: 16"),
+        out.stdout.contains("annotations: 16 claim(s)"),
         "16 of 21 claims carry the qualitative triple (measured, not a constant):\n{}",
         out.stdout
     );
@@ -504,8 +567,9 @@ fn the_corpus_has_zero_flags_and_sixteen_annotations() {
 
     // The annotation is visible per claim, in a cell distinct from `ok` and from `FLAG`.
     let annotated = row(&out.stdout, "REQ-0001");
+    let annotated_cell = value_unit_cell(annotated);
     assert!(
-        annotated.contains("ann"),
+        annotated_cell.trim_start().starts_with("ann value claim"),
         "the qualitative triple must be visible in its own cell:\n{annotated}"
     );
     assert!(!annotated.contains("FLAG"), "{annotated}");
@@ -522,8 +586,9 @@ fn the_corpus_has_zero_flags_and_sixteen_annotations() {
 
     // REQ-0007's slots are null by design: ok, not flagged and not annotated.
     let unstructured = row(&out.stdout, "REQ-0007");
+    let unstructured_cell = value_unit_cell(unstructured);
     assert!(
-        !unstructured.contains("FLAG") && !unstructured.contains("ann"),
+        !unstructured_cell.contains("FLAG") && !unstructured_cell.trim_start().starts_with("ann"),
         "the UNSTRUCTURED claim has nothing to report:\n{unstructured}"
     );
 }
