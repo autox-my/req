@@ -497,6 +497,20 @@ relations: []
             bare.undecided()
         );
         assert!(bare.text.contains("remedy:"), "{}", bare.text);
+        // The remedy has two directions and this corpus is the context-decidable one: REQ-9002's
+        // `mode == beta` is decided by a context. A regression that always printed the unreadable
+        // predicate's wording would send the caller to rewrite a predicate that is perfectly fine,
+        // and `remedy:` alone would not notice.
+        assert!(
+            bare.text.contains("pass the variant context"),
+            "a context-decidable claim gets the context remedy: {}",
+            bare.text
+        );
+        assert!(
+            !bare.text.contains("rewrite the predicate"),
+            "and not the unreadable-predicate remedy: {}",
+            bare.text
+        );
 
         // The same corpus, with the context that decides the claim: green.
         let decided = fixture.gate(&["mode=beta"]);

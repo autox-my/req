@@ -974,6 +974,21 @@ fn the_ci_gate_step_script_behaves_as_an_adopter_needs() {
     );
     assert!(text.contains("deployment_mode=air_gapped"), "{text}");
 
+    // (2b) A CRLF checkout must not leave a `\r` on the value: `read -a` does not split on carriage
+    // return, so without the strip the gate would receive `deployment_mode=air_gapped\r`, refuse it
+    // for the wrong reason, and write the CR into the job summary where nobody reads it.
+    write_variants(&fx, "deployment_mode=air_gapped\r\n");
+    let (code, text) = run_gate_step(&fx, &script);
+    assert_eq!(
+        code, 3,
+        "the declared line is gated on a CRLF file too: {text}"
+    );
+    assert!(
+        !text.contains('\r'),
+        "no carriage return reaches the gate or the summary: {text:?}"
+    );
+    assert!(text.contains("deployment_mode=air_gapped"), "{text}");
+
     // (3) Blank and comment-only lines are skipped, never turned into a bare run.
     write_variants(&fx, "\n   \n# a comment\n\n");
     let (code, text) = run_gate_step(&fx, &script);

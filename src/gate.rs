@@ -336,33 +336,36 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     // Not every undecided claim is waiting for a context: a predicate the grammar cannot read is
     // decided by no context at all, so "pass the variant" would send the caller looking for a value
     // that does not exist. The two cases are named apart, each with its own remedy.
-    let unparsable: Vec<(String, String)> = rows
-        .iter()
-        .filter(|r| r.applies == Applies::Unknown)
-        .filter_map(|r| {
-            let bad: Vec<String> = r
-                .selectors
-                .iter()
-                .map(|text| parse_predicate(text))
-                .filter_map(|predicate| match predicate {
-                    Predicate::Unsupported { text } => Some(text),
-                    // A `Ge` whose bound is not a decimal parses (the grammar sees
-                    // `key >= value`) but no evaluation can compare it — `runs >= twenty` is
-                    // unparsable in effect, and "pass the variant context" would be the wrong
-                    // advice for it. The same parse `evaluate` uses decides the bucket.
-                    Predicate::Ge { key, value } if value.parse::<Decimal>().is_err() => {
-                        Some(format!("{key} >= {value}"))
-                    }
-                    _ => None,
-                })
-                .collect();
-            if bad.is_empty() {
-                None
-            } else {
-                Some((r.claim_id.clone(), bad.join("; ")))
-            }
-        })
-        .collect();
+    let unparsable: Vec<(String, String)> =
+        rows.iter()
+            .filter(|r| r.applies == Applies::Unknown)
+            .filter_map(|r| {
+                let bad: Vec<String> =
+                    r.selectors
+                        .iter()
+                        .map(|text| parse_predicate(text))
+                        // Exhaustive on purpose: a `_` arm would mean "a context can decide this" by
+                        // default, which re-derives `select::evaluate`'s decidability with no compiler
+                        // help — a new `Predicate` variant would silently join the decidable side.
+                        .filter_map(|predicate| match predicate {
+                            Predicate::Unsupported { text } => Some(text),
+                            // A `Ge` whose bound is not a decimal parses (the grammar sees
+                            // `key >= value`) but no evaluation can compare it — `runs >= twenty` is
+                            // unparsable in effect, and "pass the variant context" would be the wrong
+                            // advice for it. The same `Decimal` parse `evaluate` uses decides the bucket.
+                            Predicate::Ge { key, value } => (value.parse::<Decimal>().is_err())
+                                .then(|| format!("{key} >= {value}")),
+                            // Decidable by a context, in both directions.
+                            Predicate::Eq { .. } => None,
+                        })
+                        .collect();
+                if bad.is_empty() {
+                    None
+                } else {
+                    Some((r.claim_id.clone(), bad.join("; ")))
+                }
+            })
+            .collect();
     if !undecided.is_empty() {
         // The disclosure is not the signal — the exit code is — so the claims it skipped are
         // named beside it, with the one remedy that turns them into examined claims. Without
@@ -382,6 +385,10 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                 "  remedy: pass the variant context that decides them — a complete release context, \
                  as `.req/variants` declares — and gate each declared variant"
             );
+        } else if unparsable.len() == undecided.len() {
+            // Every undecided claim here is unreadable, so there is no "rest" for a context to
+            // decide: the rewrite is the whole remedy.
+            println!("  remedy: rewrite the predicates above; no context can decide them");
         } else {
             println!(
                 "  remedy: rewrite the predicate above, then pass the variant context that decides \

@@ -285,8 +285,11 @@ run cargo run -q -- bench bench/corpus/direction-v1.yml
 # step instead of passing silently — and the gate names the claim it cost. What no single line can
 # see is the property *across* lines — a claim that applies in no declared release is examined by
 # none of them — and that is what `tests/release_gate.rs` adds with
-# `every_claim_applies_in_at_least_one_declared_release`. (Its per-line twin asserts exit 0 and
-# `, 0 undecided` in the headline: that is what fails if `exit_code` ever stops honouring the count.)
+# `every_claim_applies_in_at_least_one_declared_release`. Its per-line twin asserts exit 0 and
+# `, 0 undecided` for the declared lines — which proves today's lines are complete, not that
+# `exit_code` honours the count: a `gate` that stopped counting undecided would leave these lines
+# green. What fails in that case is the fixture tests that assert exit 3 for an undecided corpus
+# (`a_bare_gate_that_leaves_a_claim_undecided_is_unverifiable` and the `Ge` one beside it).
 if [ -r "$PWD/.req/variants" ]; then
   variants_gated=0
   # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while still
