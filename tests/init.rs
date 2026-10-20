@@ -838,9 +838,11 @@ fn gate_script() -> String {
     // The snippet has several `run: |` blocks (install, verify, gate). The gate one is the block
     // that contains the variants loop, so the loop is the anchor and the opener is the nearest
     // `run: |` above it — positional, not "the first" or "the last".
+    // Anchored on the redirection that closes the loop, not on a variable name: a
+    // behaviour-preserving rename of the loop variable must not break the extractor.
     let loop_at = lines
         .iter()
-        .position(|line| line.contains("while IFS= read -r variant_line"))
+        .position(|line| line.trim() == "done < .req/variants")
         .expect("the gate step loops over .req/variants");
     let at = lines[..loop_at]
         .iter()
@@ -933,7 +935,7 @@ fn summary_rows(text: &str) -> Vec<&str> {
 fn the_ci_gate_step_script_behaves_as_an_adopter_needs() {
     let script = gate_script();
     assert!(
-        script.contains("while IFS= read -r variant_line"),
+        script.contains("done < .req/variants"),
         "the snippet still loops over .req/variants:\n{script}"
     );
     assert!(
@@ -988,6 +990,19 @@ fn the_ci_gate_step_script_behaves_as_an_adopter_needs() {
         "no carriage return reaches the gate or the summary: {text:?}"
     );
     assert!(text.contains("deployment_mode=air_gapped"), "{text}");
+
+    // (2c) More than one declared line: the loop must gate **each** of them. Every other case
+    // writes one line, so a stray `break` (or a body that ran once) would pass them all.
+    write_variants(&fx, "deployment_mode=air_gapped\nruns=5\n");
+    let (code, text) = run_gate_step(&fx, &script);
+    assert_eq!(code, 3, "both declared lines are gated: {text}");
+    let rows = summary_rows(&text);
+    assert_eq!(rows.len(), 2, "one row per declared line: {text}");
+    assert!(rows[0].contains("deployment_mode=air_gapped"), "{text}");
+    assert!(
+        rows[1].contains("runs=5"),
+        "the second line is gated too: {text}"
+    );
 
     // (3) Blank and comment-only lines are skipped, never turned into a bare run.
     write_variants(&fx, "\n   \n# a comment\n\n");

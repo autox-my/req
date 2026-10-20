@@ -23,6 +23,11 @@
 //! outranks that ("we found a problem" is stronger than "we could not tell"), and an undecided
 //! claim outranks a pass (ADR 0015). A bare `gate` is therefore UNVERIFIABLE on any corpus
 //! carrying a selector, and the per-variant invocation is the one that can be green.
+//!
+//! One case is not fixable by any invocation, and the docs must not imply otherwise: a selector
+//! outside the grammar (`field = value`) or a `Ge` whose bound is not a decimal (`runs >= twenty`)
+//! is decided by no context at all — such a claim can be *excluded* by a context, never made to
+//! apply — so that corpus is UNVERIFIABLE until the predicate is rewritten.
 
 use crate::fill::StoredState;
 use crate::select::{Applies, Context, Predicate, parse_predicate};
@@ -377,7 +382,8 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         for (claim, text) in &unparsable {
             println!(
                 "  - {claim}: `{text}` is not in the selector grammar (`key == value`, \
-                 `key >= number`), so no context can decide it — rewrite the predicate"
+                 `key >= number`), so no context can make it apply — a context can only exclude \
+                 it, and the corpus cannot go green until the predicate is rewritten"
             );
         }
         if unparsable.is_empty() {
@@ -388,7 +394,9 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         } else if unparsable.len() == undecided.len() {
             // Every undecided claim here is unreadable, so there is no "rest" for a context to
             // decide: the rewrite is the whole remedy.
-            println!("  remedy: rewrite the predicates above; no context can decide them");
+            println!(
+                "  remedy: rewrite the predicates above — no context can make these claims apply"
+            );
         } else {
             println!(
                 "  remedy: rewrite the predicate above, then pass the variant context that decides \

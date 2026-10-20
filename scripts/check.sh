@@ -288,8 +288,9 @@ run cargo run -q -- bench bench/corpus/direction-v1.yml
 # `every_claim_applies_in_at_least_one_declared_release`. Its per-line twin asserts exit 0 and
 # `, 0 undecided` for the declared lines — which proves today's lines are complete, not that
 # `exit_code` honours the count: a `gate` that stopped counting undecided would leave these lines
-# green. What fails in that case is the fixture tests that assert exit 3 for an undecided corpus
-# (`a_bare_gate_that_leaves_a_claim_undecided_is_unverifiable` and the `Ge` one beside it).
+# green. What fails in that case is the fixture tests that assert exit 3 for an undecided corpus:
+# `tests/release_gate.rs::a_bare_gate_that_leaves_a_claim_undecided_is_unverifiable` and
+# `::a_ge_with_a_non_decimal_bound_is_named_not_left_to_a_context`.
 if [ -r "$PWD/.req/variants" ]; then
   variants_gated=0
   # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while still

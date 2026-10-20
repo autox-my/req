@@ -785,6 +785,27 @@ relations: []
         );
     }
 
+    /// The **mixed** bucket: one undecided claim is unreadable and another is context-decidable, so
+    /// the remedy must name both moves. Every other fixture puts all undecided claims in one bucket,
+    /// which leaves this branch — "rewrite the predicate above, then pass the variant context that
+    /// decides the rest" — unexercised.
+    #[test]
+    fn a_mixed_undecided_set_gets_both_remedies() {
+        let fixture = Fixture::new("mixed-undecided");
+        fixture.claim("REQ-9001", &[]);
+        fixture.claim("REQ-9002", &["field = value"]);
+        fixture.claim("REQ-9003", &["mode == beta"]);
+        fixture.fill();
+        let out = fixture.gate(&[]);
+        assert_eq!(out.code, 3, "{}", out.text);
+        assert!(
+            out.text
+                .contains("rewrite the predicate above, then pass the variant context"),
+            "both remedies are named, in that order: {}",
+            out.text
+        );
+    }
+
     /// A `Ge` whose bound is not a decimal parses — the grammar does not validate the bound — but
     /// `select::evaluate` returns UNKNOWN for it because the comparison needs decimals on both
     /// sides. It therefore belongs in the "no context can decide it" bucket: telling the caller to
