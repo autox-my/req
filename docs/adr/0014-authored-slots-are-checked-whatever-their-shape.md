@@ -113,8 +113,33 @@ carried, to satisfy a check about identity.
 - a **contradiction** and an **omission** are refused by `--fill`, exactly as today;
 - an **annotation** is made visible in both places the exemption used to hide: the per-claim diagnostic
   cell is distinct from `ok` and from `FLAG`, and the summary line counts the class
-  (`annotations: N` — 17 claims with this corpus, measured). F2's harm was *invisibility*, and this
-  removes it even where nothing is wrong;
+  (`annotations: N`). F2's harm was *invisibility*, and this removes it even where nothing is wrong.
+
+  **Measurement note (2026-10-20, at implementation).** The draft above said 17; the corpus measures
+  **16**. The arithmetic is the oracle: 21 claims, less the four numeric ones (REQ-0008–0011), less the
+  one `UNSTRUCTURED` claim whose slots are null by design (REQ-0007) = 16 qualitative triples. The 17
+  was the naive prototype's count of *flagged* claims, and that count included REQ-0007 — the sentinel
+  false positive this amendment exists to prevent, so it could not survive the corrected rule. The
+  measurement changes no rule, and it is recorded rather than quietly restated;
+
+  **One refinement at implementation (same day, from a review finding).** The annotation class is
+  the **qualitative triple only**. A quantity-shaped claim — a numeric authored `value`, a
+  comparator other than `EQ`, or an authored `unit` — that authors a slot the parse never derived
+  is a **contradiction and a flag**, as the Decision says and as the pre-amendment gate did: the
+  bound would otherwise stay out of the address, and two claims differing only in it would
+  collapse, the false merge this check exists to prevent. The table's `no/yes` row is therefore an
+  annotation for the qualitative convention and a flag otherwise; the corpus measurement (`flags:
+  0`, 16 annotations) is unchanged, because every claim carrying an annotation is a qualitative
+  triple.
+
+  This also settles the **Falsification** paragraph at the end of this Amendment. Its sentence
+  ("`value: present` on REQ-0015 … must each be flagged") is the Decision's, and the rule the
+  Amendment states supersedes it for those two mutations: `value: present` authors the
+  *qualitative* triple, so it is an annotation and `--fill` accepts it — which is what this
+  Amendment says about REQ-0015 and REQ-0021 keeping `value: absent`. The flag direction is proven
+  by the same slot authored **quantity-shaped** (a comparator other than `EQ`, or a unit): it
+  contradicts the parse, flags, and `--fill` refuses it. Both directions are pinned in
+  `tests/parity_annotations.rs`.
 - `docs/claim-format.md` documents the annotation convention and retires the `value: absent`
   instruction, which is one instance of the convention rather than a rule of its own;
 - `attribute` stays unverified by design: its lexicon has no parser to agree with, so "unverified" is

@@ -63,7 +63,7 @@ reports it the same way. The two classes are therefore **coupled**: if either ev
 | `statement` | the human sentence | **the source of truth in prose** |
 | `modality` | SHALL / SHALL-NOT / MAY / SHOULD | mapping table = hashing spec T1.6; `UNSTRUCTURED` when unparseable (see below) |
 | `subject` | registry id | must resolve in `aliases/subjects.yml` |
-| `attribute` / `operator` / `value` / `unit` | the bounded obligation | operator per T1.5 {LT, LE, EQ, GE, GT, NE}; `unit: none` for non-SI quantities |
+| `attribute` / `operator` / `value` / `unit` | the bounded obligation, or the qualitative annotation | operator per T1.5 {LT, LE, EQ, GE, GT, NE}; `unit: none` when there is no unit. `value`/`unit`/`operator` are checked against the parse (contradiction and omission are flags; a qualitative triple is an annotation — see the parity invariant); `attribute` is unverified by design |
 | `conditions[]` | guard clauses **parsed from the statement** (when/if/unless/during) | part of identity; sorted at T1.8. `req canon` compares it with the parse, so a scope predicate written here but absent from the statement is a *flag*, not a nuance — a variant belongs in `applicability` |
 | `applicability[]` | variant predicates (`applies_when`) — the **selector slot** | **required** (an omitted key is a parse error, never `[]`); part of identity (ADR 0003); since rules v5 an *input* to the canonical form, because the statement carries no formal selector syntax: the sorted authored list is hashed |
 | `exception`, `temporal`, `quantifier` | reserved slots: no derivation, no field | `null` when unused; authoring one is **refused** by `req canon --fill` rather than silently dropped from identity |
@@ -79,14 +79,32 @@ whatever stays stable under rewording.
 ## The parity invariant (what `req canon` must check)
 
 The statement is the source of truth; the structured slots are an **authored parse**
-of it. `req canon` re-parses the statement under the current rules and demands:
+of it. `req canon` re-parses the statement under the current rules and judges `value`,
+`unit` and `operator` by four cases, per slot:
 
-```
-parse(statement, rules_v, registry_v) == authored slots
-```
+| the parse derived it? | the author wrote it? | verdict |
+|---|---|---|
+| yes | yes, and they disagree | **flag** — a contradiction |
+| yes | no | **flag** — an omission |
+| no | yes | **annotation** — counted and shown, never a flag |
+| no | no | ok |
 
-A mismatch is a lint ERROR — never silently "corrected" in either direction. If no
-deterministic parse exists, the claim is re-filed with `unstructured: true` after lint
+A contradiction or an omission is a lint ERROR — never silently "corrected" in either
+direction, and `req canon --fill` refuses to write an address over it. An annotation is the
+other case: the canonical form carries value/unit/operator **only for quantities**, so a
+qualitative statement's authored triple is recorded rather than refused (ADR 0014's
+Amendment). It appears in a cell of its own (`ann`), is counted in the summary, and was
+never part of the address — reported and counted, never a flag, never silent.
+
+The annotation is **only the qualitative triple** above. A quantity-shaped claim — a numeric
+authored `value`, a comparator other than `EQ`, or an authored `unit` — that authors a slot
+the parse did not derive is still a **contradiction and a flag**: the bound would otherwise
+stay out of the address, and two claims differing only in it would collapse (a false merge).
+`--fill` refuses it, exactly as before the amendment. `attribute` is **unverified by
+design**: its lexicon has no parser to agree with, so comparing it would flag nearly every
+claim and teach authors to ignore the report.
+
+If no deterministic parse exists, the claim is re-filed with `unstructured: true` after lint
 records why. This is the seam where writing a claim file *can be proven* against a
 claim file, before merge direction analysis is trusted.
 
@@ -94,13 +112,20 @@ claim file, before merge direction analysis is trusted.
 
 - One obligation per claim. A "shall … and shall …" statement is two claims, split
   before filing.
-- Negation rides on `modality: SHALL-NOT` composed with the `attribute`/`value`
-  slots ("shall not run a continuous sync" → attribute `continuous_bidirectional_file_sync`,
-  operator EQ, value `absent`), never on reworded semantics.
+- Negation rides on `modality: SHALL-NOT`, never on reworded semantics, and a qualitative
+  predicate is an authored **annotation**: record it as an `attribute`/`operator`/`value`
+  triple with operator `EQ`, `unit: none`, and a non-numeric `value` ("shall not run a
+  continuous sync" → attribute `continuous_bidirectional_file_sync`, operator `EQ`, value
+  `absent`; "the unit of work is a claim" → `unit_of_work = claim`). The canonical form
+  derives value/unit/operator only for quantities, so such a triple is not identity:
+  `req canon` reports it as an annotation (`ann`), never as a flag and never as part of an
+  address. Do not delete the triple to silence the report, and do not expect it to be
+  verified — a non-numeric value is never compared with the parse.
 - Values are **exact decimal strings** *in canonical form*: strip trailing zeros at
   write time (`"0.3"`, never `"0.30"`, never a float); never rounded, never truncated
-  (hashing spec T1.3/T1.4). A non-canonical authored value is exactly what `req
-  canon`'s flag exists to catch.
+  (hashing spec T1.3/T1.4). In a quantity claim, a non-canonical authored value is exactly
+  what `req canon`'s flag exists to catch; in the qualitative convention above the value is
+  a state name, and it is an annotation rather than a flag.
 - Anything the rules cannot decide — bare `dB`, "under 200 ms" (ambiguous), "fast" —
   yields a lint finding (`untestable_quantity`, `untestable_comparator`,
   `ambiguous_modality`), never a guess (REQ-0019).

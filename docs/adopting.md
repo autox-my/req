@@ -146,10 +146,14 @@ jobs:
       - name: the release gate — every declared variant, and the default when none is declared
         run: |
           set -eu
-          # An absent variants file must be red. A failed INPUT REDIRECTION does not stop a
-          # `set -e` script, so the file's presence is asserted rather than assumed —
-          # otherwise every declared variant is silently skipped and the step still exits 0.
-          [ -f .req/variants ] || { echo "missing .req/variants" >&2; exit 1; }
+          # An absent, unreadable, or non-regular variants file must be red. A failed INPUT
+          # REDIRECTION does not stop a `set -e` script: the loop then never runs and the
+          # fallback below gates the bare variant, so the step can be green with no declared
+          # variant gated. `[ -f ]` proves a regular file, not readability; `[ -r ]` proves
+          # readability, not that a directory is not the path (a readable directory passes it
+          # and the redirection still fails) — so both are asserted.
+          [ -f .req/variants ] && [ -r .req/variants ] \
+            || { echo "missing, unreadable, or not a regular file .req/variants" >&2; exit 1; }
           # A job summary above the log (runner >= 13.2 sets one of these).
           # Absent variable = an older runner: the step must still pass, so the target is /dev/null.
           summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}"
@@ -159,13 +163,15 @@ jobs:
             out="$(req gate "$@" 2>&1)" && code=0 || code=$?
             verdict="$(printf '%s' "$out" | sed -n 's/^verdict: //p' | head -1)"
             printf '| `%s` | %s | %s |\n' "${*:-<none>}" "$code" "${verdict:-no verdict line}" >> "$summary"
-            # Fail outranks unverifiable, and nothing non-zero may be swallowed. The previous
-            # rule kept the *last* non-zero code, so a later 3 masked an earlier 1; this one keeps
-            # 1 sticky and propagates every other non-zero code as itself — a usage error (2) or a
-            # missing binary (127) must fail the step, not pass it.
+            # Fail outranks unverifiable, and nothing non-zero may be swallowed. The rule: 1 is
+            # sticky above every code; among the rest the **first** non-zero is kept. The first
+            # failed invocation is the one to investigate, and ranking 2/3/127 by severity would be
+            # this script inventing an order req's exit contract does not define (127 is the
+            # shell's, not req's). The previous rule kept the *last*, so a missing binary (127)
+            # followed by an UNVERIFIABLE (3) reported 3 — the tool never ran.
             if [ "$code" -eq 1 ]; then
               rc=1
-            elif [ "$code" -ne 0 ] && [ "$rc" -ne 1 ]; then
+            elif [ "$code" -ne 0 ] && [ "$rc" -eq 0 ]; then
               rc=$code
             fi
           }
@@ -178,7 +184,11 @@ jobs:
             variant_line="${variant_line%$'\r'}"
             read -r -a release <<< "${variant_line%%#*}"
             [ "${#release[@]}" -gt 0 ] || continue
-            gate "${release[@]}"
+            # /dev/null: nothing in the body may consume the remaining releases from this
+            # file's stdin — a command that reads stdin would shorten the list without error, and
+            # the loop would end early with a green step. scripts/check.sh guards the same loop
+            # the same way.
+            gate "${release[@]}" < /dev/null
             gated=$((gated + 1))
           done < .req/variants
           # A comment-only file declares one variant — the default — and the bare invocation is
@@ -201,14 +211,16 @@ a line that is empty after stripping the comment is skipped. Two rules matter:
   corpus carrying a selector (ADR 0015), and a false red beside green variants is how a real red
   gets ignored. The unscoped variant is still not a line — a blank line cannot be distinguished from
   formatting, and a format where "nothing" means "the default variant" is a trap.
-- **The file must exist.** `[ -f .req/variants ]` is asserted, because an absent file makes the
-  loop's input redirection fail *without* stopping a `set -e` script — every declared variant would
-  be skipped and the step would still exit 0. While you declare no variants, the file is valid with
-  comments only.
+- **The file must be a readable regular file.** `[ -f ]` **and** `[ -r ]` are asserted, because an
+  absent, unreadable, or non-regular file makes the loop's input redirection fail *without*
+  stopping a `set -e` script — every declared variant would be skipped, the fallback would gate the
+  bare variant, and the step would still exit 0. `[ -f ]` alone proves a regular file, not
+  readability; `[ -r ]` alone also passes for a readable *directory*, whose redirection still
+  fails. While you declare no variants, the file is valid with comments only.
 
 One part of the snippet is not verified on a runner: whether the job summary renders above the log.
-The shell logic was run locally against this exact text — an absent `.req/variants` → exit 1
-(`missing .req/variants`); a comment-only file → one row, the bare default variant, and exit 0 **on a
+The shell logic was run locally against this exact text — an absent, unreadable, or non-regular
+`.req/variants` → exit 1 (`missing, unreadable, or not a regular file .req/variants`); a comment-only file → one row, the bare default variant, and exit 0 **on a
 corpus with no selector** (a fresh `req init` corpus; on a corpus with a selector the bare run is
 UNVERIFIABLE, which is the right answer and not a mistake in the step); one declared variant → one
 row and exit 0, with **no** bare row beside it; a release appended without a trailing newline → still
