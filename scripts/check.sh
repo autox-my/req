@@ -274,6 +274,48 @@ run cargo run -q -- bench bench/corpus/external-v3.yml
 # fails, exactly as a false merge does. See docs/canonical-hashing.md 6.3.
 run cargo run -q -- bench bench/corpus/direction-v1.yml
 
+# The release gate over this repository's own corpus. `req gate` was the one subcommand the gate
+# never invoked, so the six variant-scoped claims in `claims/` were never examined by CI while a
+# bare `gate` printed PASS (`15 applying claim(s), 6 undecided`, measured). `.req/variants` is this
+# repository's own list — one `key=value ...` release per line, and the reader is this script,
+# because req knows nothing about the file.
+#
+# Each line is a **complete** release context, and "the gate is green" is not the property to rely
+# on: only `corpus_set` is dependency-guarded (REQ-0009/10/11 relate to REQ-0008, so leaving it
+# undecided makes `dependencies_decided` answer UNVERIFIABLE). Drop any other key and that claim is
+# simply undecided in this release — unexamined — with the gate still exiting 0. What keeps a dropped
+# key from passing is `tests/release_gate.rs`, which requires **zero undecided** per declared line.
+if [ -r "$PWD/.req/variants" ]; then
+  variants_gated=0
+  # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while still
+  # assigning it, and a release appended without one would otherwise be silently dropped.
+  while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
+    # The tests' reader strips a trailing CR (`str::lines` plus `trim`); `read -r` keeps it, so a
+    # CRLF checkout would gate a `\r`-suffixed value the tests never see.
+    variant_line="${variant_line%$'\r'}"
+    # `read -a` splits on IFS and does **not** run pathname expansion: a bare expansion would
+    # glob-expand a value carrying `*`, `?` or `[` against the working directory.
+    read -r -a release <<< "${variant_line%%#*}"
+    [ "${#release[@]}" -gt 0 ] || continue
+    # </dev/null: nothing in the body may consume the remaining releases from this file's stdin.
+    run cargo run -q -- gate "${release[@]}" < /dev/null
+    variants_gated=$((variants_gated + 1))
+  done < "$PWD/.req/variants"
+  # "Nothing was examined" is not a pass. A file of only comments iterates zero times, and an
+  # unreadable file makes the redirection at `done` fail — the loop then does not execute, its
+  # non-zero status is discarded (`set -e` is off here), and without this the banner would print
+  # PASS with the release gate never run.
+  if [ "$variants_gated" -eq 0 ]; then
+    printf 'FAIL  .req/variants declares no release: nothing was gated, and a skipped check is never a pass\n'
+    fail=1
+  fi
+else
+  # Not a SKIP. The file is tracked, so its absence is a defect — and a skipped check is never a
+  # pass, which is the invariant this script exists to keep.
+  printf 'FAIL  .req/variants is missing or unreadable: the release gate cannot run, and a skipped check is never a pass\n'
+  fail=1
+fi
+
 # The rule-file checks decide from `git ls-files` output and from the shape of review/rule.json,
 # and that decision logic needs neither `ocr` nor a review run — so it is table-driven here,
 # ahead of the review-tool probe, rather than behind a check that can SKIP into looking green.

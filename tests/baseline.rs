@@ -1022,43 +1022,10 @@ fn check_sh_env(args: &[&std::ffi::OsStr], req_gate_bin: &std::path::Path) -> st
     // HOME is left exactly as the developer or CI set it (CI installs the pinned channel into
     // $HOME/.rustup and means it). Neither present is a failure named here, not check.sh's
     // generic exit 2.
-    let home_has_rustup = std::env::var_os("HOME")
-        .is_some_and(|h| std::path::Path::new(&h).join(".rustup/toolchains").exists());
-    match workspace_toolchain_home(&root) {
-        Some(workspace) => {
-            command.env("HOME", workspace);
-        }
-        None if home_has_rustup => {}
-        None => panic!(
-            "no toolchain home for check.sh: this checkout has no .tools/home/.rustup/toolchains \
-             and $HOME/.rustup/toolchains does not exist either (see .tools/README.md)"
-        ),
-    }
+    // One copy, in `tests/common`: the same decision had a byte-identical twin in
+    // `tests/decision.rs`, and a third written from scratch panicked in CI.
+    common::point_home_at_toolchain(&mut command);
     command.output().expect("runs scripts/check.sh")
-}
-
-/// The toolchain home this checkout keeps for `scripts/check.sh`, when it has one: `.tools/home`
-/// beside the git common dir (.tools/README.md), which a feature worktree shares with the main
-/// checkout. `git` is a hard requirement of these tests: its failure is reported here, with
-/// git's own message, rather than swallowed into an empty path.
-#[cfg(unix)]
-fn workspace_toolchain_home(root: &std::path::Path) -> Option<std::path::PathBuf> {
-    let common = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
-        .output()
-        .expect("git is required to locate the shared toolchain home");
-    assert!(
-        common.status.success(),
-        "git rev-parse --git-common-dir failed: {}",
-        String::from_utf8_lossy(&common.stderr)
-    );
-    let common = String::from_utf8_lossy(&common.stdout).trim().to_string();
-    std::path::PathBuf::from(common)
-        .parent()
-        .map(|main| main.join(".tools/home"))
-        .filter(|home| home.is_absolute() && home.join(".rustup/toolchains").exists())
 }
 
 /// The Baseline step, with an optional fixture in place of the committed Baseline.
@@ -1437,5 +1404,180 @@ fn a_fixture_removes_its_directory_on_drop() {
     assert!(
         !dir.exists(),
         "dropping the fixture removes its directory: {dir:?}"
+    );
+}
+
+/// The release gate over this repository's own corpus. `scripts/check.sh` must run `req gate`
+/// once per declared release: it was the one subcommand the gate never invoked, which is how
+/// six variant-scoped claims in `claims/` went unchecked while a bare `gate` printed PASS
+/// (`15 applying, 6 undecided`, measured). Pinned from the same plan output as the Baseline
+/// wiring above, so a refactor that drops the step fails here instead of passing silently.
+#[cfg(unix)]
+#[test]
+fn the_default_gate_run_gates_every_declared_release() {
+    let variants = common::variant_lines();
+    assert!(
+        !variants.is_empty(),
+        ".req/variants must declare at least one release, or the gate examines no variant"
+    );
+
+    let plan = check_sh_args(&["plan".as_ref()]);
+    let stdout = String::from_utf8_lossy(&plan.stdout);
+    let planned: Vec<String> = stdout
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect();
+    for variant in &variants {
+        // The whole token sequence, not a normalized tail: `ends_with` accepts a *different* context
+        // whose trailing pairs happen to match, which is exactly the drift these tests exist to catch.
+        // Tokens are whitespace-insensitive, so a tab or a second space between pairs is fine.
+        let expected: Vec<&str> = variant.split_whitespace().collect();
+        let planned_gate = |line: &str| {
+            let words: Vec<&str> = line.split_whitespace().collect();
+            words.starts_with(&["PLAN", "cargo", "run", "-q", "--", "gate"])
+                && words.len() == 6 + expected.len()
+                && words[6..] == expected[..]
+        };
+        assert!(
+            planned.iter().any(|line| planned_gate(line)),
+            "the default run must gate the declared release `{variant}`:\n{stdout}"
+        );
+    }
+}
+
+/// A throwaway root holding a copy of `scripts/check.sh` beside a **fake toolchain whose `cargo`
+/// exits 0**, so a test can drive the script to its banner on a tree that is only the script: every
+/// `cargo …` step "passes", and the only thing that can fail the run is the branch under test.
+/// `Fixture` owns the name's uniqueness and the cleanup — including on a panicking assertion.
+#[cfg(unix)]
+fn script_fixture(tag: &str) -> Fixture {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::unique(tag);
+    std::fs::create_dir_all(fixture.path().join("scripts")).expect("creates scripts/");
+    std::fs::copy(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/check.sh"),
+        fixture.path().join("scripts/check.sh"),
+    )
+    .expect("copies check.sh");
+    let bin = fixture.path().join("home/.rustup/toolchains/fake/bin");
+    std::fs::create_dir_all(&bin).expect("creates the fake toolchain");
+    std::fs::write(bin.join("cargo"), "#!/bin/sh\nexit 0\n").expect("writes the stub cargo");
+    std::fs::set_permissions(bin.join("cargo"), std::fs::Permissions::from_mode(0o755))
+        .expect("makes the stub executable");
+    fixture
+}
+
+/// Run the copied `scripts/check.sh` to its banner. HOME and PATH are the fixture's, not the
+/// developer's: the fake toolchain is what the script resolves, and nothing ambient (an installed
+/// `ocr`, say) leaks into the run, so the fixture is the same tree on a laptop and in CI.
+#[cfg(unix)]
+fn script_banner(fixture: &Fixture) -> std::process::Output {
+    let bin = fixture.path().join("home/.rustup/toolchains/fake/bin");
+    std::process::Command::new("bash")
+        .arg(fixture.path().join("scripts/check.sh"))
+        .current_dir(fixture.path())
+        .env("HOME", fixture.path().join("home"))
+        .env(
+            "PATH",
+            format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", bin.display()),
+        )
+        .output()
+        .expect("runs the copied scripts/check.sh")
+}
+
+#[cfg(unix)]
+#[test]
+fn a_missing_variants_file_is_a_failure_not_a_skip() {
+    // The branch pinned here: with `.req/variants` absent the run must end `GATE: FAIL`, never
+    // `GATE: PASS` with the release gate skipped — "a skipped check is never a pass" is the invariant
+    // this script exists to keep, and this is the branch whose removal would silently restore the hole
+    // the release-gate step closed. It takes the banner to prove, not a message: every other step is
+    // driven to pass by the fixture's stub `cargo`, so whatever flips the banner is this branch.
+    let fixture = script_fixture("req-gate-no-variants");
+    let missing = script_banner(&fixture);
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&missing.stdout),
+        String::from_utf8_lossy(&missing.stderr)
+    );
+    assert!(
+        text.contains("FAIL  .req/variants is missing or unreadable"),
+        "a missing variants file must be reported as a failure, never skipped:\n{text}"
+    );
+    assert!(
+        text.contains("GATE: FAIL"),
+        "and the run must say so in its banner:\n{text}"
+    );
+    assert_eq!(
+        missing.status.code(),
+        Some(1),
+        "a failed run exits 1, not 0 and not the plan's UNVERIFIABLE:\n{text}"
+    );
+
+    // The healthy direction: the same script with the file in place ends `GATE: PASS` and gates both
+    // releases, so the assertions above are the branch's doing and not the fixture's.
+    std::fs::create_dir_all(fixture.path().join(".req")).expect("creates .req/");
+    std::fs::copy(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".req/variants"),
+        fixture.path().join(".req/variants"),
+    )
+    .expect("copies .req/variants");
+    let healthy = script_banner(&fixture);
+    let healthy_text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&healthy.stdout),
+        String::from_utf8_lossy(&healthy.stderr)
+    );
+    assert!(
+        healthy_text.contains("GATE: PASS"),
+        "a healthy tree passes:\n{healthy_text}"
+    );
+    assert_eq!(
+        healthy.status.code(),
+        Some(0),
+        "a passing run exits 0 — the banner alone would let a script print PASS and exit non-zero:\n{healthy_text}"
+    );
+    assert!(
+        !healthy_text.contains(".req/variants is missing"),
+        "a healthy tree must not report a missing variants file:\n{healthy_text}"
+    );
+    // The count comes from the data, not from a literal: `.req/variants` is data, and the `.req/**`
+    // review rule explicitly anticipates another line when a new claim needs one.
+    let declared = common::variant_lines().len();
+    assert_eq!(
+        healthy_text
+            .lines()
+            .filter(|line| line.starts_with("== cargo run -q -- gate"))
+            .count(),
+        declared,
+        "every declared release is gated ({declared} in .req/variants):\n{healthy_text}"
+    );
+
+    // The other way the step could examine nothing: a file that is *there* and declares no release.
+    // Every line is a comment, so the loop iterates zero times — and a run that examined nothing must
+    // not report PASS.
+    std::fs::write(
+        fixture.path().join(".req/variants"),
+        "# nothing declared yet\n",
+    )
+    .expect("writes a comment-only variants file");
+    let empty = script_banner(&fixture);
+    let empty_text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&empty.stdout),
+        String::from_utf8_lossy(&empty.stderr)
+    );
+    assert!(
+        empty_text.contains("declares no release"),
+        "a variants file with no release must be reported, never treated as a pass:\n{empty_text}"
+    );
+    assert!(
+        empty_text.contains("GATE: FAIL"),
+        "and the run must say so in its banner:\n{empty_text}"
+    );
+    assert_eq!(
+        empty.status.code(),
+        Some(1),
+        "and exit 1, so a caller keying on the status sees the failure:\n{empty_text}"
     );
 }

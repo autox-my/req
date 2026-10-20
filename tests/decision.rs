@@ -6,6 +6,8 @@
 //! log on every run, so a record edited after it was recorded fails in the gate rather than in an
 //! auditor's terminal.
 
+mod common;
+
 use req::decision::{
     Chain, Decision, GENESIS, canonical_bytes, compute_hash, fill, upsert_line, verify_chain,
 };
@@ -979,24 +981,7 @@ fn check_sh_env(
     for (key, value) in env {
         command.env(key, value);
     }
-    // The checkout's own toolchain home wins when it has one — that is how the gate is run by
-    // hand in this workspace (.tools/README.md) — so the test drives the toolchain the gate is
-    // meant to use rather than whatever the ambient HOME happens to hold. Where there is none,
-    // HOME is left exactly as the developer or CI set it (CI installs the pinned channel into
-    // $HOME/.rustup and means it). Neither present is a failure named here, not check.sh's
-    // generic exit 2.
-    let home_has_rustup = std::env::var_os("HOME")
-        .is_some_and(|h| std::path::Path::new(&h).join(".rustup/toolchains").exists());
-    match workspace_toolchain_home(&root) {
-        Some(workspace) => {
-            command.env("HOME", workspace);
-        }
-        None if home_has_rustup => {}
-        None => panic!(
-            "no toolchain home for check.sh: this checkout has no .tools/home/.rustup/toolchains \
-             and $HOME/.rustup/toolchains does not exist either (see .tools/README.md)"
-        ),
-    }
+    common::point_home_at_toolchain(&mut command);
     command.output().expect("runs scripts/check.sh")
 }
 
@@ -1011,30 +996,6 @@ fn check_sh_step(step: &str, env: &[(&str, &std::ffi::OsStr)]) -> std::process::
 #[cfg(unix)]
 fn req_root(fixture: &cli::Fixture) -> Vec<(&'static str, &std::ffi::OsStr)> {
     vec![("REQ_ROOT", fixture.path().as_os_str())]
-}
-
-/// The toolchain home this checkout keeps for `scripts/check.sh`, when it has one: `.tools/home`
-/// beside the git common dir (.tools/README.md), which a feature worktree shares with the main
-/// checkout. `git` is a hard requirement of these tests: its failure is reported here, with git's
-/// own message, rather than swallowed into an empty path.
-#[cfg(unix)]
-fn workspace_toolchain_home(root: &std::path::Path) -> Option<std::path::PathBuf> {
-    let common = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
-        .output()
-        .expect("git is required to locate the shared toolchain home");
-    assert!(
-        common.status.success(),
-        "git rev-parse --git-common-dir failed: {}",
-        String::from_utf8_lossy(&common.stderr)
-    );
-    let common = String::from_utf8_lossy(&common.stdout).trim().to_string();
-    std::path::PathBuf::from(common)
-        .parent()
-        .map(|main| main.join(".tools/home"))
-        .filter(|home| home.is_absolute() && home.join(".rustup/toolchains").exists())
 }
 
 /// The green half: the committed log passes the step, and one check is not the gate. A step that

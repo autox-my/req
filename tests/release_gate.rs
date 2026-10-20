@@ -163,7 +163,10 @@ mod cli {
     /// The dogfood corpus, whose selector vocabulary the oracle read: `deployment_mode ==
     /// air_gapped`, `runs >= 20`, `corpus_set == parity` / `parity_and_adversarial`, `set ==
     /// direction_gold_structural`, `field == value`.
-    fn dogfood(args: &[&str]) -> Outcome {
+    /// The gate run over this repository's own corpus, with `--root` explicit rather than relying
+    /// on the cwd walk-up. `pub` so the dogfood tests at the crate root — which assert the same
+    /// thing about `.req/variants` — do not re-derive the binary and the invocation.
+    pub fn dogfood(args: &[&str]) -> Outcome {
         gate_at(&PathBuf::from(env!("CARGO_MANIFEST_DIR")), args)
     }
 
@@ -631,4 +634,140 @@ relations: []
         );
         assert!(out.text.contains("verdict: FAIL"), "{}", out.text);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Dogfood: the gate over this repository's own corpus, once per declared release
+// ---------------------------------------------------------------------------
+
+/// What `req gate` would be handed for one line.
+fn context_of(line: &str) -> Context {
+    let mut context = Context::new();
+    for pair in line.split_whitespace() {
+        let (key, value) = pair
+            .split_once('=')
+            .unwrap_or_else(|| panic!("a release line is key=value pairs, not {line:?}"));
+        context.insert(key.to_string(), value.to_string());
+    }
+    context
+}
+
+/// Coverage, not counting: a claim that applies in **no** declared release is a claim the gate
+/// never examines — which is the whole failure the variants list exists to prevent. Being
+/// excluded in one release and applied in another is what a variant *is*, so this asks only
+/// that every claim is applied somewhere.
+#[test]
+fn every_claim_applies_in_at_least_one_declared_release() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let claims = req::canon::load_claims(&root).expect("loads this repository's corpus");
+    let contexts: Vec<Context> = common::variant_lines()
+        .iter()
+        .map(|l| context_of(l))
+        .collect();
+    assert!(!contexts.is_empty(), ".req/variants must declare a release");
+
+    let mut unexamined = Vec::new();
+    for loaded in &claims {
+        let predicates: Vec<_> = loaded
+            .claim
+            .applicability
+            .iter()
+            .map(|text| req::select::parse_predicate(text))
+            .collect();
+        let states: Vec<Applies> = contexts
+            .iter()
+            .map(|context| req::select::applies(&predicates, context))
+            .collect();
+        if states.contains(&Applies::Yes) {
+            continue;
+        }
+        // `Unknown` is not `No`, and the remedies differ, so the failure says which case it is —
+        // the same distinction the gate and `select` keep ("an undecided claim is never treated as
+        // absent"). `Unknown` means a key is decided but its value matches no line; `No` means no
+        // line applies the claim at all.
+        // Three shapes, three remedies. `Unknown` is the context *not deciding* the predicate (a
+        // key no line supplies, or a predicate the grammar does not parse); `No` is the context
+        // deciding it and the value not matching. A claim can be `Unknown` in one line and `No` in
+        // another — common when a new predicate key reaches only some lines — so "every release" is
+        // only true of the all-`Unknown` case.
+        let id = &loaded.claim.claim_id;
+        let undecided = states.iter().filter(|s| **s == Applies::Unknown).count();
+        if undecided == states.len() {
+            unexamined.push(format!(
+                "{id}: undecided in every release — no line supplies a key its predicate needs"
+            ));
+        } else if undecided > 0 {
+            unexamined.push(format!(
+                "{id}: undecided in {undecided} of {} releases and decided as excluded in the rest \
+                 — one line must supply the missing key, and one must match its value",
+                states.len()
+            ));
+        } else {
+            unexamined.push(format!(
+                "{id}: excluded by every release — every line decides it and no value matches"
+            ));
+        }
+    }
+    assert!(
+        unexamined.is_empty(),
+        "these claims are examined by no declared release, so `req gate` never checks them:\n  {}",
+        unexamined.join("\n  ")
+    );
+}
+
+/// Each declared release is green through the binary the gate would actually run — the check
+/// that catches a badly-chosen context. Measured before this existed: a context carrying only
+/// `set` makes REQ-0009 exit 3, because REQ-0009 refines REQ-0008 and REQ-0008 is then
+/// undecided; the gate refuses to answer instead of skipping.
+///
+/// That refusal is pinned by `an_incomplete_context_is_not_green` below, not by the loop here: today's
+/// two lines are complete, so a regression that stopped refusing an undecided dependency would leave
+/// this test green — the negative direction is what makes the doc's claim true.
+#[test]
+fn every_declared_release_is_gate_green() {
+    let lines = common::variant_lines();
+    assert!(!lines.is_empty(), ".req/variants must declare a release");
+    for line in lines {
+        let args: Vec<&str> = line.split_whitespace().collect();
+        let out = cli::dogfood(&args);
+        assert_eq!(
+            out.code, 0,
+            "the declared release `{line}` is not green:\n{}",
+            out.text
+        );
+        // Green is not enough, and this is the invariant a green gate does not give you: only
+        // `corpus_set` is dependency-guarded, so dropping `set`, `runs`, `deployment_mode` or
+        // `field` leaves that claim **undecided in this release — unexamined** — while the gate
+        // still exits 0. A line is a complete release context, so it must leave nothing undecided.
+        let headline = out.headline();
+        assert!(
+            headline.contains(", 0 undecided"),
+            "the declared release `{line}` leaves a claim undecided, so the gate does not examine \
+             it — a complete release context decides every scoped claim:\n{headline}"
+        );
+    }
+}
+
+/// The negative direction: a context that leaves a dependency undecided must **not** be green. Without
+/// it, `every_declared_release_is_gate_green` only exercises today's two declared lines, and the
+/// refusal its doc describes would be unpinned — a gate that stopped answering UNVERIFIABLE for an
+/// incomplete context would pass every test in this file.
+#[test]
+fn an_incomplete_context_is_not_green() {
+    // `set` alone leaves REQ-0008 undecided and REQ-0009 refines REQ-0008: measured, exit 3 with
+    // `16 applying claim(s), 5 undecided (an undecided claim is never treated as absent)`.
+    let out = cli::dogfood(&["set=direction_gold_structural"]);
+    // Exactly 3, not merely non-zero: 1 is FAIL (a defect found) and 2 is a usage error, and neither is
+    // the answer "I could not decide what this release contains". A regression that collapsed
+    // undecided into a generic failure would satisfy `!= 0` and mean something else entirely.
+    assert_eq!(
+        out.code, 3,
+        "an incomplete context must be UNVERIFIABLE (3), not FAIL (1) or a usage error (2):\n{}",
+        out.text
+    );
+    assert!(
+        out.headline().contains("undecided"),
+        "and it must say what is undecided rather than skipping it:\n{}",
+        out.headline()
+    );
 }
