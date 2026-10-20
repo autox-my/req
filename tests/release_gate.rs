@@ -757,9 +757,12 @@ fn an_incomplete_context_is_not_green() {
     // `set` alone leaves REQ-0008 undecided and REQ-0009 refines REQ-0008: measured, exit 3 with
     // `16 applying claim(s), 5 undecided (an undecided claim is never treated as absent)`.
     let out = cli::dogfood(&["set=direction_gold_structural"]);
-    assert_ne!(
-        out.code, 0,
-        "an incomplete context must not be green:\n{}",
+    // Exactly 3, not merely non-zero: 1 is FAIL (a defect found) and 2 is a usage error, and neither is
+    // the answer "I could not decide what this release contains". A regression that collapsed
+    // undecided into a generic failure would satisfy `!= 0` and mean something else entirely.
+    assert_eq!(
+        out.code, 3,
+        "an incomplete context must be UNVERIFIABLE (3), not FAIL (1) or a usage error (2):\n{}",
         out.text
     );
     assert!(

@@ -1532,6 +1532,11 @@ fn a_missing_variants_file_is_a_failure_not_a_skip() {
         healthy_text.contains("GATE: PASS"),
         "a healthy tree passes:\n{healthy_text}"
     );
+    assert_eq!(
+        healthy.status.code(),
+        Some(0),
+        "a passing run exits 0 — the banner alone would let a script print PASS and exit non-zero:\n{healthy_text}"
+    );
     assert!(
         !healthy_text.contains(".req/variants is missing"),
         "a healthy tree must not report a missing variants file:\n{healthy_text}"
@@ -1569,5 +1574,10 @@ fn a_missing_variants_file_is_a_failure_not_a_skip() {
     assert!(
         empty_text.contains("GATE: FAIL"),
         "and the run must say so in its banner:\n{empty_text}"
+    );
+    assert_eq!(
+        empty.status.code(),
+        Some(1),
+        "and exit 1, so a caller keying on the status sees the failure:\n{empty_text}"
     );
 }
