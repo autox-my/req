@@ -1448,14 +1448,7 @@ fn a_fixture_removes_its_directory_on_drop() {
 #[cfg(unix)]
 #[test]
 fn the_default_gate_run_gates_every_declared_release() {
-    let variants: Vec<String> = std::fs::read_to_string(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".req/variants"),
-    )
-    .expect(".req/variants declares this corpus's releases")
-    .lines()
-    .map(|line| line.split('#').next().unwrap_or("").trim().to_string())
-    .filter(|line| !line.is_empty())
-    .collect();
+    let variants = common::variant_lines();
     assert!(
         !variants.is_empty(),
         ".req/variants must declare at least one release, or the gate examines no variant"

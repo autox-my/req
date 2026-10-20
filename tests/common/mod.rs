@@ -109,3 +109,20 @@ pub fn rationale(mut row: Row, source: &str) -> Row {
     row.rationale_hash = provenance.hash;
     row
 }
+
+/// The releases this repository declares, from `.req/variants`, as raw `key=value ...` lines.
+///
+/// **One reader, so the tests and the script cannot disagree about which lines exist.** The grammar
+/// is `scripts/check.sh`'s: `#` starts a comment, and a line that is empty after stripping it is
+/// skipped. A second, differently written parser is how the tests come to assert the gate for one set
+/// of releases while the gate runs another.
+pub fn variant_lines() -> Vec<String> {
+    std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".req/variants"),
+    )
+    .expect(".req/variants declares this corpus's releases")
+    .lines()
+    .map(|line| line.split('#').next().unwrap_or("").trim().to_string())
+    .filter(|line| !line.is_empty())
+    .collect()
+}

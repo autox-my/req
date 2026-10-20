@@ -1,12 +1,16 @@
 # One release per line: a `key=value ...` context for `req gate`. The reader is
-# `scripts/check.sh` (and any CI that runs it) — req itself knows nothing about this file, so
-# the format is the reader's: `#` starts a comment, and a line that is empty after stripping it
-# is skipped.
+# `scripts/check.sh` (and any CI that runs it) — req itself knows nothing about this file, so the
+# format is the reader's: `#` starts a comment, and a line that is empty after stripping it is
+# skipped.
 #
-# Two releases, not one, and the corpus says why: `corpus_set` takes two mutually exclusive
-# values, so no single context can apply both REQ-0008 (parity and adversarial) and REQ-0010
-# (parity). Every *other* scoped claim must be decided in both, or `dependencies_decided`
-# refuses to answer rather than skipping — measured: a context carrying only `set` makes
-# REQ-0009 exit 3, because REQ-0009 refines REQ-0008 and REQ-0008 is then undecided.
+# Each line is a **complete** release context, and two are declared because `corpus_set` takes two
+# mutually exclusive values: no single line can apply both REQ-0008 (parity and adversarial) and
+# REQ-0010 (parity).
+#
+# Do not drop a key from a line because the gate still exits 0. Only `corpus_set` is
+# dependency-guarded (REQ-0009/10/11 relate to REQ-0008, so leaving it undecided makes
+# `dependencies_decided` answer UNVERIFIABLE); drop `set`, `runs`, `deployment_mode` or `field` and
+# that claim is simply undecided in this release — unexamined — while the gate passes. The guard is
+# `tests/release_gate.rs`, which requires zero undecided claims **per declared line**.
 corpus_set=parity_and_adversarial set=direction_gold_structural runs=25 deployment_mode=air_gapped field=value
 corpus_set=parity set=direction_gold_structural runs=25 deployment_mode=air_gapped field=value

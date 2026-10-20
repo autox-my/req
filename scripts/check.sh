@@ -278,21 +278,29 @@ run cargo run -q -- bench bench/corpus/direction-v1.yml
 # never invoked, so the six variant-scoped claims in `claims/` were never examined by CI while a
 # bare `gate` printed PASS (`15 applying claim(s), 6 undecided`, measured). `.req/variants` is this
 # repository's own list — one `key=value ...` release per line, and the reader is this script,
-# because req knows nothing about the file. Each line has to decide every key an applying claim
-# depends on, or `dependencies_decided` refuses to answer rather than skipping (measured: a context
-# carrying only `set` makes REQ-0009 exit 3, since REQ-0009 refines REQ-0008).
+# because req knows nothing about the file.
+#
+# Each line is a **complete** release context, and "the gate is green" is not the property to rely
+# on: only `corpus_set` is dependency-guarded (REQ-0009/10/11 relate to REQ-0008, so leaving it
+# undecided makes `dependencies_decided` answer UNVERIFIABLE). Drop any other key and that claim is
+# simply undecided in this release — unexamined — with the gate still exiting 0. What keeps a dropped
+# key from passing is `tests/release_gate.rs`, which requires **zero undecided** per declared line.
 if [ -f "$PWD/.req/variants" ]; then
-  while IFS= read -r variant_line; do
-    variant="${variant_line%%#*}"
-    # Trim, so an indented or trailing-space line still names a context.
-    variant="$(printf '%s' "${variant}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-    [ -n "${variant}" ] || continue
-    # Unquoted on purpose: one line is several key=value arguments.
-    # shellcheck disable=SC2086
-    run cargo run -q -- gate ${variant}
+  # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while still
+  # assigning it, and a release appended without one would otherwise be silently dropped.
+  while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
+    # `read -a` splits on IFS and does **not** run pathname expansion: a bare expansion would
+    # glob-expand a value carrying `*`, `?` or `[` against the working directory.
+    read -r -a release <<< "${variant_line%%#*}"
+    [ "${#release[@]}" -gt 0 ] || continue
+    # </dev/null: nothing in the body may consume the remaining releases from this file's stdin.
+    run cargo run -q -- gate "${release[@]}" < /dev/null
   done < "$PWD/.req/variants"
 else
-  skip "no .req/variants: the release gate was not run"
+  # Not a SKIP. The file is tracked, so its absence is a defect — and a skipped check is never a
+  # pass, which is the invariant this script exists to keep.
+  printf 'FAIL  .req/variants is missing: the release gate cannot run, and a skipped check is never a pass\n'
+  fail=1
 fi
 
 # The rule-file checks decide from `git ls-files` output and from the shape of review/rule.json,

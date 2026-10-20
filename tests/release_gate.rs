@@ -637,18 +637,6 @@ relations: []
 // Dogfood: the gate over this repository's own corpus, once per declared release
 // ---------------------------------------------------------------------------
 
-/// The releases this corpus declares, as raw `key=value ...` lines.
-fn variant_lines() -> Vec<String> {
-    std::fs::read_to_string(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".req/variants"),
-    )
-    .expect(".req/variants declares this corpus's releases")
-    .lines()
-    .map(|line| line.split('#').next().unwrap_or("").trim().to_string())
-    .filter(|line| !line.is_empty())
-    .collect()
-}
-
 /// What `req gate` would be handed for one line.
 fn context_of(line: &str) -> Context {
     let mut context = Context::new();
@@ -669,7 +657,10 @@ fn context_of(line: &str) -> Context {
 fn every_claim_applies_in_at_least_one_declared_release() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let claims = req::canon::load_claims(&root).expect("loads this repository's corpus");
-    let contexts: Vec<Context> = variant_lines().iter().map(|l| context_of(l)).collect();
+    let contexts: Vec<Context> = common::variant_lines()
+        .iter()
+        .map(|l| context_of(l))
+        .collect();
     assert!(!contexts.is_empty(), ".req/variants must declare a release");
 
     let mut uncovered = Vec::new();
@@ -703,7 +694,9 @@ fn every_declared_release_is_gate_green() {
     let binary = std::env::var_os("CARGO_BIN_EXE_req")
         .map(std::path::PathBuf::from)
         .expect("integration tests run with CARGO_BIN_EXE_req set");
-    for line in variant_lines() {
+    let lines = common::variant_lines();
+    assert!(!lines.is_empty(), ".req/variants must declare a release");
+    for line in lines {
         let out = std::process::Command::new(&binary)
             .arg("gate")
             .args(line.split_whitespace())
@@ -711,12 +704,21 @@ fn every_declared_release_is_gate_green() {
             .env_remove("REQ_ROOT")
             .output()
             .expect("runs `req gate`");
+        let stdout = String::from_utf8_lossy(&out.stdout);
         assert_eq!(
             out.status.code(),
             Some(0),
-            "the declared release `{line}` is not green:\n{}{}",
-            String::from_utf8_lossy(&out.stdout),
+            "the declared release `{line}` is not green:\n{stdout}{}",
             String::from_utf8_lossy(&out.stderr)
+        );
+        // Green is not enough, and this is the invariant a green gate does not give you: only
+        // `corpus_set` is dependency-guarded, so dropping `set`, `runs`, `deployment_mode` or
+        // `field` leaves that claim **undecided in this release — unexamined** — while the gate
+        // still exits 0. A line is a complete release context, so it must leave nothing undecided.
+        assert!(
+            stdout.contains(", 0 undecided"),
+            "the declared release `{line}` leaves a claim undecided, so the gate does not examine \
+             it — a complete release context decides every scoped claim:\n{stdout}"
         );
     }
 }
