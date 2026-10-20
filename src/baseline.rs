@@ -467,16 +467,18 @@ impl TrustFile {
         let Some(key) = self.key(id) else {
             return TrustState::Unknown;
         };
-        // `YYYY-MM-DD` is the prefix of both spellings; comparing dates as strings avoids
-        // reading a same-day expiry as already past because the timestamp carries a clock.
-        let at_date = at.get(..10).unwrap_or(at);
+        // `YYYY-MM-DD` is the prefix of both spellings, and **both sides** are reduced to it:
+        // a timestamp-valued trust entry (the shape a v3 manifest now uses) must fire on its own
+        // day, and a timestamp-valued judgement time must not read a same-day expiry as past
+        // because a clock came along.
+        let at_date = date_of(at);
         if let Some(revoked_at) = &key.revoked_at
-            && at_date >= revoked_at.as_str()
+            && at_date >= date_of(revoked_at)
         {
             return TrustState::Revoked(format!("revoked at {revoked_at}"));
         }
         if let Some(valid_until) = &key.valid_until
-            && at_date > valid_until.as_str()
+            && at_date > date_of(valid_until)
         {
             return TrustState::Expired(format!("valid until {valid_until}, judging at {at}"));
         }
@@ -1081,11 +1083,14 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
         // 0016): a key that had already expired then was not trusted when the Baseline was
         // signed, which is a definite finding — symmetric with revocation at/before the signing
         // time. A v2 manifest has no trusted signing time, which is the older ADR 0010 answer.
+        // `--now` may supply the judged time instead, so the reason names the time it actually
+        // used rather than claiming it was `signed_at`.
         TrustState::Expired(reason) => {
             if manifest.version == BASELINE_VERSION {
                 failed.push(format!(
-                    "key {key_id} is {reason} — the manifest's signed_at is outside the key's \
-                     validity window, so the Baseline was signed with an expired key (ADR 0016)"
+                    "key {key_id} is {reason} — the judged time ({now}) is outside the key's \
+                     validity window, so the Baseline was not signed under a trusted key \
+                     (ADR 0016)"
                 ));
             } else {
                 open.push(format!(
@@ -1234,6 +1239,18 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                 }
             },
         }
+    }
+
+    // `--now` is the explicit judgement-time override, so it must be a time: an unvalidated
+    // string would compare below every trust date and read a revoked key as trusted (a fail-open
+    // on the one flag meant to be diagnostic). A bare date is accepted for compatibility with
+    // the pre-v3 override; a full RFC 3339 UTC timestamp is reduced to its date by `state`.
+    if explicit_now && !valid_judgement_time(&now) {
+        eprintln!(
+            "--now must be a date (YYYY-MM-DD) or an RFC 3339 UTC timestamp, e.g. \
+             2026-10-20 or 2026-10-20T18:30:00Z: {now}"
+        );
+        return 2;
     }
 
     let Some(path) = verify_path else {
@@ -1419,6 +1436,54 @@ fn short_hash(hash: &str) -> &str {
     hash.get(..12).unwrap_or(hash)
 }
 
+/// The date part of a date-or-timestamp: `YYYY-MM-DD`, the prefix both spellings share. A trust
+/// entry and a judgement time are compared through this, so neither a clock nor a timestamp-
+/// valued anchor can make a same-day comparison wrong.
+fn date_of(value: &str) -> &str {
+    value.get(..10).unwrap_or(value)
+}
+
+/// A real calendar date. `1..=31` per month is not enough: a signed `2026-02-31` would be used
+/// as a judgement date and cannot be corrected without re-signing.
+fn valid_calendar_date(year: u32, month: u32, day: u32) -> bool {
+    if year < 1970 || !(1..=12).contains(&month) {
+        return false;
+    }
+    let leap = year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400));
+    let last_day = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return false,
+    };
+    (1..=last_day).contains(&day)
+}
+
+/// A `--now` value: a bare ISO date, or the full RFC 3339 UTC timestamp `--at` requires.
+fn valid_judgement_time(value: &str) -> bool {
+    if value.contains('T') {
+        return valid_signing_time(value);
+    }
+    let b = value.as_bytes();
+    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+        return false;
+    }
+    let is_digits = |bytes: &[u8]| bytes.iter().all(u8::is_ascii_digit);
+    if !is_digits(&b[0..4]) || !is_digits(&b[5..7]) || !is_digits(&b[8..10]) {
+        return false;
+    }
+    let number = |field: &[u8]| {
+        std::str::from_utf8(field)
+            .ok()
+            .and_then(|text| text.parse::<u32>().ok())
+    };
+    match (number(&b[0..4]), number(&b[5..7]), number(&b[8..10])) {
+        (Some(year), Some(month), Some(day)) => valid_calendar_date(year, month, day),
+        _ => false,
+    }
+}
+
 /// An RFC 3339 UTC timestamp with a `Z` offset — the only shape `--at` accepts. req never
 /// invents a signing time, so a value it cannot read is a usage error rather than a defaulted
 /// field (ADR 0016). Fractional seconds are accepted (and preserved verbatim, because they are
@@ -1472,12 +1537,7 @@ fn valid_signing_time(value: &str) -> bool {
         number(&b[17..19]),
     ) {
         (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) => {
-            year >= 1970
-                && (1..=12).contains(&month)
-                && (1..=31).contains(&day)
-                && hour < 24
-                && minute < 60
-                && second < 60
+            valid_calendar_date(year, month, day) && hour < 24 && minute < 60 && second < 60
         }
         _ => false,
     }

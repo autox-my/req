@@ -677,10 +677,47 @@ fn a_key_revoked_after_the_signing_time_still_verifies() {
         FIXTURE_SIGNED_AT,
     );
     assert_eq!(before.exit_code(), 1, "{before:?}");
+
+    // ...and `--now` is an override of the judgement time, not a way to dodge it: judged after
+    // the revocation, the same key FAILS.
+    let after = verify(
+        &rows,
+        &manifest,
+        Some("sig"),
+        &trust_dates(Some("2026-11-01"), None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        "2026-11-15",
+    );
+    assert_eq!(after.exit_code(), 1, "{after:?}");
+}
+
+/// The committed Decision record, parsed by the test rather than through `decision::head`, so
+/// the expected head is the file's own `hash:` value and the expected count is the number of
+/// `DEC-*.yml` files — an oracle the implementation cannot satisfy by agreeing with itself.
+fn committed_decision() -> Decision {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("decisions/DEC-0001.yml");
+    let text = std::fs::read_to_string(&path).expect("the committed decision reads");
+    yaml_serde::from_str(&text).expect("the committed decision parses")
+}
+
+fn committed_decision_count() -> usize {
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("decisions");
+    std::fs::read_dir(dir)
+        .expect("the decisions directory reads")
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with("DEC-") && name.ends_with(".yml"))
+        })
+        .count()
 }
 
 /// The emission path attests the chain head and the signer's timestamp, end to end through the
-/// CLI: the manifest's `signed_at` is the one supplied, and its `authority` is the log's head.
+/// CLI: the manifest's `signed_at` is the one supplied, and its `authority` is the log's head —
+/// pinned against `DEC-0001.yml`'s own stored hash and the file count, not against `head()`.
 #[test]
 fn emitting_attests_the_chain_head_and_the_signing_time() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -695,11 +732,42 @@ fn emitting_attests_the_chain_head_and_the_signing_time() {
     assert_eq!(parsed.version, BASELINE_VERSION);
     assert_eq!(parsed.signed_at.as_deref(), Some(FIXTURE_SIGNED_AT));
     let authority = parsed.authority.as_ref().expect("the head is attested");
-    assert!(!authority.head.is_empty(), "{authority:?}");
-    assert!(
-        authority.entries >= 1,
-        "the repo's decision log holds at least one entry: {authority:?}"
+    let record = committed_decision();
+    assert_eq!(
+        authority.head,
+        record.hash.clone().expect("the committed record is filled"),
+        "the attested head is DEC-0001's own stored hash"
     );
+    assert_eq!(
+        authority.entries,
+        committed_decision_count(),
+        "the attested entry count is the number of DEC-*.yml files"
+    );
+}
+
+/// A head that matches but a count that does not is also an authority mismatch: `entries` is
+/// what distinguishes "one entry" from "a log rebuilt to one entry with the same head". Without
+/// this, deleting the comparison in `verify` would leave the suite green.
+#[test]
+fn an_authority_with_the_right_head_but_the_wrong_entry_count_fails() {
+    let (rows, mut manifest) = signed_manifest();
+    manifest.authority.as_mut().expect("attested").entries += 1;
+    let log = fixture_log(FIXTURE_DECISION_NOTE);
+    let outcome = req::baseline::verify(
+        &rows,
+        &manifest,
+        &Verification {
+            signature: Some("sig"),
+            trust: &trust(false, None),
+            key_id: "req-baseline-1",
+            verifier: &Stub(SignatureOutcome::Valid),
+            now: FIXTURE_SIGNED_AT,
+            log: Some(&log),
+        },
+    );
+    assert_eq!(outcome.exit_code(), 1, "{outcome:?}");
+    let reasons = outcome.reasons().join(" ");
+    assert!(reasons.contains("entries"), "{reasons}");
 }
 
 /// Case 5 — no signing time is a usage error, never a guessed one. So is a timestamp the tool
@@ -728,6 +796,39 @@ fn a_manifest_without_a_signing_time_is_a_usage_error() {
     assert_eq!(code, Some(2), "{stderr}");
     assert!(stderr.contains("RFC 3339"), "{stderr}");
 
+    // A calendar-impossible date is not an RFC 3339 timestamp either; accepting it would put a
+    // date that does not exist inside the signed bytes.
+    for impossible in [
+        "2026-02-31T00:00:00Z",
+        "2026-04-31T00:00:00Z",
+        "2026-13-01T00:00:00Z",
+    ] {
+        let (code, stderr) = run(&["baseline", "--at", impossible]);
+        assert_eq!(code, Some(2), "{impossible}: {stderr}");
+        assert!(stderr.contains("RFC 3339"), "{impossible}: {stderr}");
+    }
+
+    // `--now` is the judgement-time override and is validated like `--at`: an unvalidated
+    // string sorts below every trust date and would read a revoked key as trusted.
+    let (code, stderr) = run(&[
+        "baseline",
+        "--verify",
+        "baselines/air-gapped.json",
+        "--now",
+        "",
+    ]);
+    assert_eq!(code, Some(2), "{stderr}");
+    assert!(stderr.contains("--now"), "{stderr}");
+    let (code, stderr) = run(&[
+        "baseline",
+        "--verify",
+        "baselines/air-gapped.json",
+        "--now",
+        "1",
+    ]);
+    assert_eq!(code, Some(2), "{stderr}");
+    assert!(stderr.contains("--now"), "{stderr}");
+
     let (code, stderr) = run(&[
         "baseline",
         "--verify",
@@ -741,6 +842,38 @@ fn a_manifest_without_a_signing_time_is_a_usage_error() {
 
 /// A head that attests nothing must not be signed: a freshly initialised corpus has no decision
 /// log, so emission refuses (exit 3) instead of printing a manifest with an empty authority.
+/// The tampered arm of the emission refusal, not only the absent-log one: an edited record whose
+/// stored hash no longer recomputes must not be signed either.
+#[test]
+fn emitting_refuses_a_tampered_decision_log() {
+    let fixture = Fixture::new("cli-emit-tampered-decisions");
+    let init = std::process::Command::new(req_bin())
+        .arg("init")
+        .current_dir(fixture.path())
+        .output()
+        .expect("runs the compiled binary");
+    assert_eq!(init.status.code(), Some(0), "{init:?}");
+
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let text = std::fs::read_to_string(root.join("decisions/DEC-0001.yml"))
+        .expect("the committed decision reads");
+    let tampered = text.replace("date: 2026-10-15", "date: 2026-10-16");
+    assert_ne!(tampered, text, "the date line the tamper edits is present");
+    std::fs::create_dir_all(fixture.path().join("decisions")).expect("creates decisions/");
+    std::fs::write(fixture.path().join("decisions/DEC-0001.yml"), tampered)
+        .expect("writes the tampered decision");
+
+    let output = std::process::Command::new(req_bin())
+        .args(["baseline", "--at", FIXTURE_SIGNED_AT])
+        .current_dir(fixture.path())
+        .output()
+        .expect("runs the compiled binary");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(3), "{stderr}");
+    assert!(stderr.contains("does not verify"), "{stderr}");
+    assert!(stderr.contains("must not be signed"), "{stderr}");
+}
+
 #[test]
 fn emitting_refuses_a_corpus_with_no_readable_decision_log() {
     let fixture = Fixture::new("cli-emit-no-decisions");

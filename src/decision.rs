@@ -124,6 +124,13 @@ pub fn fill(log: &mut [Decision]) {
 /// verification (ADR 0016); `entries` rides beside it because a head alone cannot distinguish
 /// "one entry" from a log rebuilt to one entry with the same head — impossible in principle,
 /// cheap to state in fact.
+///
+/// **Precondition: the caller judges the chain first** ([`verify_chain`]). This function reads
+/// the *stored* hash, and a stored hash that no longer recomputes is exactly what an edit after
+/// the fact looks like: signing this value without the judgement would attest an edited record
+/// as the chain's committed head — the failure ADR 0016 exists to close. `baseline`'s emit path
+/// refuses unless the chain is [`Chain::Valid`], and its verify path makes a nonlinear chain a
+/// finding rather than a head to compare.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Head {
     pub hash: String,

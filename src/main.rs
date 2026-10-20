@@ -56,7 +56,7 @@ usage: req [--root <dir>] <command> [args]
   init                            create a corpus in the current directory (no root lookup)
   propose                         the Tier-2 funnel: blocking, then provider adjudication
   baseline --at <ts>              the manifest a human signs (--at is the signing time)
-  baseline --verify <file>        verify one (its signed_at judges the key)
+  baseline --verify <file>        verify one (a v3 manifest's signed_at judges the key)
   audit [--baseline <file>]       the audit packet: coverage, provenance, undecided
   decision [--fill | --verify]    the decision log and its hash chain
   --version | -V                  the versions that decide a verdict, and the build identity
