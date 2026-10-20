@@ -1216,24 +1216,29 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
 // req canon — claim-file diagnostics (the parity-invariant surface, v0)
 // ---------------------------------------------------------------------------
 
-/// `req canon` (v0 diagnostics) parses each claim's statement with the same
-/// pipeline and reports every field the pipeline can verify today vs the
-/// *authored* slots: unstructured-tag consistency, modality, subject (via the
-/// registry), value+unit when numeric, operator when a comparator matched.
-/// Attribute-token derivation and corpus-predicate condition fields are
-/// deliberately not verified; the diagnostic reports them as unchecked so
-/// nothing silently passes.
-/// One claim's parity-invariant verdict: the parse, and whether each *authored*
-/// slot agrees with it. Shared by `req canon` (which reports the divergence) and
-/// `req canon --fill` (which refuses to derive for a divergent claim) — the two must
-/// never drift apart.
+/// `req canon` (v0 diagnostics) parses each claim's statement with the same pipeline and
+/// reports every field the pipeline can verify today against the *authored* slots:
+/// unstructured-tag consistency, modality, subject (via the registry), value, unit,
+/// operator and conditions. `attribute` stays unverified **by design**: its lexicon has no
+/// parser to agree with, so the diagnostic says so rather than flagging nearly every claim.
+///
+/// The three quantity slots are judged by ADR 0014's four-case rule (as amended 2026-10-20):
+/// a slot the parse derived and the author contradicts, or omits, is a flag; a slot the
+/// author wrote that the canonical form does not derive is an **annotation** — reported and
+/// counted, never a flag and never silent.
+/// One claim's parity-invariant verdict: the parse, and whether each *authored* slot agrees
+/// with it. Shared by `req canon` (which reports the divergence) and `req canon --fill`
+/// (which refuses to derive for a divergent claim) — the two must never drift apart.
 pub struct ClaimVerdict {
     pub form: CanonicalForm,
     pub unstructured_ok: bool,
     pub modality_ok: bool,
     pub subject_ok: bool,
-    pub value_unit_ok: bool,
-    pub op_ok: bool,
+    /// `value`, `unit` and `operator` are judged separately so the report can show an
+    /// annotation as its own state instead of folding it into `ok` or `FLAG`.
+    pub value_check: SlotCheck,
+    pub unit_check: SlotCheck,
+    pub op_check: SlotCheck,
     /// Parsed conditions vs authored conditions: a claim that gains one is a different
     /// claim (T1.8), so disagreement here is a divergence and not a detail.
     pub conditions_ok: bool,
@@ -1243,9 +1248,40 @@ pub struct ClaimVerdict {
     pub slots_ok: bool,
     pub slots_detail: String,
     pub v_parsed: String,
+    pub u_parsed: String,
     pub authored_v: String,
+    pub authored_u: String,
     pub op_parsed: String,
+    pub authored_op: String,
+    /// Whether the parse derived an operator, past its `"none"` sentinel. The report uses it
+    /// to choose between showing the parsed operator and `n/a`; it is not a verdict.
     pub op_checkable: bool,
+}
+
+/// One authored slot's parity verdict (ADR 0014, as amended 2026-10-20).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlotCheck {
+    /// Both sides agree, or neither side carries the slot.
+    Ok,
+    /// The parse derived the slot and the authored slot contradicts it.
+    Contradiction,
+    /// The parse derived the slot and the author left it out.
+    Omission,
+    /// The author wrote a slot the canonical form does not derive. Reported and counted,
+    /// never a flag: it is a qualitative statement, not a defect of identity.
+    Annotation,
+}
+
+impl SlotCheck {
+    /// An annotation is the class the report shows in its own cell; it is never a flag.
+    pub fn is_annotation(self) -> bool {
+        matches!(self, SlotCheck::Annotation)
+    }
+
+    /// The two directions `req canon --fill` refuses, exactly as before.
+    pub fn flags(self) -> bool {
+        matches!(self, SlotCheck::Contradiction | SlotCheck::Omission)
+    }
 }
 
 impl ClaimVerdict {
@@ -1254,15 +1290,61 @@ impl ClaimVerdict {
             self.unstructured_ok,
             self.modality_ok,
             self.subject_ok,
-            self.value_unit_ok,
-            self.op_ok,
             self.conditions_ok,
             self.slots_ok,
         ]
         .iter()
         .filter(|ok| !**ok)
         .count()
+            + [self.value_check, self.unit_check, self.op_check]
+                .iter()
+                .filter(|check| check.flags())
+                .count()
     }
+
+    /// Annotations carried by this claim. The summary counts *claims* carrying at least one,
+    /// so a caller asks [`ClaimVerdict::has_annotation`] rather than summing this.
+    pub fn annotations(&self) -> usize {
+        [self.value_check, self.unit_check, self.op_check]
+            .iter()
+            .filter(|check| check.is_annotation())
+            .count()
+    }
+
+    pub fn has_annotation(&self) -> bool {
+        self.annotations() > 0
+    }
+}
+
+/// The four-case table ADR 0014's Amendment states, in one place: what the canonical form
+/// derived, what the author wrote, and whether the two agree when both are present.
+fn classify_slot(derived: bool, authored: bool, agree: bool) -> SlotCheck {
+    match (derived, authored) {
+        (true, true) if agree => SlotCheck::Ok,
+        (true, true) => SlotCheck::Contradiction,
+        (true, false) => SlotCheck::Omission,
+        (false, true) => SlotCheck::Annotation,
+        (false, false) => SlotCheck::Ok,
+    }
+}
+
+/// Is the authored value a canonical decimal? This is deliberately *not* the parity gate it
+/// used to be — it only recognizes the corpus's qualitative convention below, so a state
+/// name is not mistaken for a quantity.
+fn authored_is_numeric(value: &str) -> bool {
+    let unsigned = value.strip_prefix('-').unwrap_or(value);
+    !unsigned.is_empty() && unsigned.starts_with(|c: char| c.is_ascii_digit())
+}
+
+/// The qualitative convention the corpus authors: an `attribute = value` triple with
+/// `operator: EQ`, no unit, and a non-numeric value (REQ-0001 `unit_of_work = claim`,
+/// REQ-0015 `continuous_bidirectional_file_sync = absent`). The canonical form carries
+/// value/unit/operator only for quantities, so such a triple is not representable and is an
+/// annotation. The parser may still find a stray number in the prose ("any two claims" → 2),
+/// which is why the derived value is not compared against the authored state name: comparing
+/// it is the prototype that flagged 31 slots across 17 of 21 claims.
+fn is_qualitative_convention(value: &str, operator: &str, unit: &str) -> bool {
+    !value.is_empty() && !authored_is_numeric(value) && operator == "EQ" && unit == "none"
 }
 
 /// The parity invariant, per claim: re-parse `statement` and compare the derived
@@ -1281,23 +1363,30 @@ pub fn evaluate_claim(claim: &crate::model::ClaimFile, registry: &Registry) -> C
     // unstructured tag is the field that carries that decision.
     let subject_ok = claim.unstructured || form.subject == claim.subject;
 
-    // value: only really checkable when the *authored* value is numeric
+    // The value/unit/operator four-case rule (ADR 0014, as amended). `attribute` is
+    // deliberately absent: it is unverified by design.
     let authored_v = claim.value.clone().unwrap_or_default();
-    let authored_is_num =
-        !authored_v.is_empty() && authored_v.chars().next().unwrap_or('x').is_ascii_digit();
+    let authored_u = claim.unit.clone().unwrap_or_else(|| "none".to_string());
+    let authored_op = claim.operator.clone().unwrap_or_default();
     let v_parsed = form
         .value
         .as_ref()
         .map(canonical_decimal)
         .unwrap_or_default();
     let u_parsed = form.unit.clone().unwrap_or_else(|| "none".to_string());
-    let authored_u = claim.unit.clone().unwrap_or_else(|| "none".to_string());
-    let value_unit_ok = !authored_is_num || (v_parsed == authored_v && u_parsed == authored_u);
-
-    let authored_op = claim.operator.clone().unwrap_or_default();
     let op_parsed = form.operator_str().to_string();
-    let op_checkable = authored_is_num;
-    let op_ok = !op_checkable || op_parsed == authored_op;
+
+    let qualitative = is_qualitative_convention(&authored_v, &authored_op, &authored_u);
+    let value_derived = !qualitative && form.value.is_some();
+    let unit_derived = !qualitative && form.unit.as_deref().is_some_and(|u| u != "none");
+    let op_derived = op_parsed != "none";
+    let authored_v_present = !authored_v.is_empty();
+    let authored_u_present = claim.unit.as_deref().is_some_and(|u| u != "none");
+    let authored_op_present = !authored_op.is_empty();
+
+    let value_check = classify_slot(value_derived, authored_v_present, v_parsed == authored_v);
+    let unit_check = classify_slot(unit_derived, authored_u_present, u_parsed == authored_u);
+    let op_check = classify_slot(op_derived, authored_op_present, op_parsed == authored_op);
 
     // Conditions ARE parsed (T1.8), so they are comparable — and a claim that gains one
     // is a different claim, which makes an authored list that disagrees with the parse a
@@ -1344,16 +1433,20 @@ pub fn evaluate_claim(claim: &crate::model::ClaimFile, registry: &Registry) -> C
         unstructured_ok,
         modality_ok,
         subject_ok,
-        value_unit_ok,
-        op_ok,
+        value_check,
+        unit_check,
+        op_check,
         conditions_ok,
         conditions_detail,
         slots_ok,
         slots_detail,
         v_parsed,
+        u_parsed,
         authored_v,
+        authored_u,
         op_parsed,
-        op_checkable,
+        authored_op,
+        op_checkable: op_derived,
     }
 }
 
@@ -1597,13 +1690,15 @@ pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
 
     let mut checked = 0usize;
     let mut flags_total = 0usize;
+    let mut annotated_claims = 0usize;
     for loaded in claims.iter() {
         let claim = &loaded.claim;
         let verdict = evaluate_claim(claim, &registry);
         checked += 1;
         flags_total += verdict.flags();
+        annotated_claims += usize::from(verdict.has_annotation());
         println!(
-            "{:<9} {:<9} {:<9} {:<12} {:<10} {:<8} {:<9}",
+            "{:<9} {:<9} {:<9} {:<12} {:<30} {:<26} {:<9}",
             claim.claim_id,
             mark(
                 verdict.unstructured_ok,
@@ -1611,18 +1706,8 @@ pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
             ),
             mark(verdict.modality_ok, verdict.form.modality_str().to_string()),
             mark(verdict.subject_ok, verdict.form.subject.clone()),
-            mark(
-                verdict.value_unit_ok,
-                format!("{}/{}", verdict.v_parsed, verdict.authored_v)
-            ),
-            mark(
-                verdict.op_ok,
-                if verdict.op_checkable {
-                    verdict.op_parsed.clone()
-                } else {
-                    "n/a".to_string()
-                }
-            ),
+            value_unit_cell(&verdict),
+            op_cell(&verdict),
             mark(
                 verdict.conditions_ok && verdict.slots_ok,
                 if !verdict.slots_ok {
@@ -1635,9 +1720,62 @@ pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
     }
     let _ = &registry;
     println!(
-        "claims: {checked}; discrepancy flags: {flags_total} (v0 diagnostic: attribute lexicon, rationale wording, and applicability predicate syntax unverified by design; authoring quantifier/exception/temporal is refused, never ignored)"
+        "claims: {checked}; discrepancy flags: {flags_total}; annotations: {annotated_claims} \
+         (v0 diagnostic: `ann` is an authored value/unit/operator the canonical form does not \
+         derive — counted, never a flag, never part of identity; `attribute` is unverified by \
+         design, as are rationale wording and applicability predicate syntax; authoring \
+         quantifier/exception/temporal is refused, never ignored)"
     );
     0
+}
+
+/// The value+unit cell. The two slots share one column because the parse derives them
+/// together; the worst state wins, and a flag names both sides so the contradiction is
+/// checkable rather than merely reported.
+fn value_unit_cell(v: &ClaimVerdict) -> String {
+    let value = if v.v_parsed.is_empty() {
+        "-"
+    } else {
+        v.v_parsed.as_str()
+    };
+    let authored = if v.authored_v.is_empty() {
+        "-"
+    } else {
+        v.authored_v.as_str()
+    };
+    if v.value_check.flags() || v.unit_check.flags() {
+        let mut parts: Vec<String> = Vec::new();
+        if v.value_check.flags() {
+            parts.push(format!("value {value}/{authored}"));
+        }
+        if v.unit_check.flags() {
+            parts.push(format!("unit {}/{}", v.u_parsed, v.authored_u));
+        }
+        return format!("FLAG {}", parts.join("; "));
+    }
+    if v.value_check.is_annotation() {
+        return format!("ann value {}", v.authored_v);
+    }
+    if v.unit_check.is_annotation() {
+        return format!("ann unit {}", v.authored_u);
+    }
+    // `none` is the canonical no-unit sentinel: name a unit only when one exists.
+    if v.u_parsed == "none" && v.authored_u == "none" {
+        format!("ok {value}/{authored}")
+    } else {
+        format!("ok {value}/{authored} {}", v.u_parsed)
+    }
+}
+
+/// The operator cell: a third state distinct from `ok` and `FLAG`, as ADR 0014 requires.
+fn op_cell(v: &ClaimVerdict) -> String {
+    match v.op_check {
+        SlotCheck::Ok if v.op_checkable => format!("ok {}", v.op_parsed),
+        SlotCheck::Ok => "ok n/a".to_string(),
+        SlotCheck::Annotation => format!("ann {}", v.authored_op),
+        SlotCheck::Contradiction => format!("FLAG {}/{}", v.op_parsed, v.authored_op),
+        SlotCheck::Omission => format!("FLAG missing ({})", v.op_parsed),
+    }
 }
 
 fn mark(ok: bool, detail: String) -> String {

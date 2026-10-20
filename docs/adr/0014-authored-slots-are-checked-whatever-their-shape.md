@@ -113,8 +113,14 @@ carried, to satisfy a check about identity.
 - a **contradiction** and an **omission** are refused by `--fill`, exactly as today;
 - an **annotation** is made visible in both places the exemption used to hide: the per-claim diagnostic
   cell is distinct from `ok` and from `FLAG`, and the summary line counts the class
-  (`annotations: N` — 17 claims with this corpus, measured). F2's harm was *invisibility*, and this
-  removes it even where nothing is wrong;
+  (`annotations: N`). F2's harm was *invisibility*, and this removes it even where nothing is wrong.
+
+  **Measurement note (2026-10-20, at implementation).** The draft above said 17; the corpus measures
+  **16**. The arithmetic is the oracle: 21 claims, less the four numeric ones (REQ-0008–0011), less the
+  one `UNSTRUCTURED` claim whose slots are null by design (REQ-0007) = 16 qualitative triples. The 17
+  was the naive prototype's count of *flagged* claims, and that count included REQ-0007 — the sentinel
+  false positive this amendment exists to prevent, so it could not survive the corrected rule. The
+  measurement changes no rule, and it is recorded rather than quietly restated;
 - `docs/claim-format.md` documents the annotation convention and retires the `value: absent`
   instruction, which is one instance of the convention rather than a rule of its own;
 - `attribute` stays unverified by design: its lexicon has no parser to agree with, so "unverified" is

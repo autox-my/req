@@ -116,7 +116,14 @@ export OCR_NO_UPDATE=1
   3 = UNVERIFIABLE**. Writes `bench/results/<corpus-stem>-rules-v<N>.json`; results
   are append-only, one record per rules version.
 - Claim diagnostics: `cargo run -q -- canon` — per-claim parity-invariant report
-  (unstructured tag, modality, subject, value/unit, operator). Exit 3 when the
+  (unstructured tag, modality, subject, value/unit, operator). `value`, `unit` and `operator`
+  are judged by ADR 0014's four cases (as amended): a derived slot the author **contradicts**
+  is a **flag — contradiction**; a derived slot the author **omits** is a **flag — omission**;
+  a slot the author wrote that the canonical form does not derive — the qualitative
+  `attribute`/`value` triple (`operator: EQ`, `unit: none`, non-numeric `value`) — is an
+  **annotation**, printed as `ann` in its own cell and counted by the summary line, never a
+  flag and never part of identity. `attribute` stays **unverified by design** (its lexicon has
+  no parser to agree with). Exit 3 when the
   registry or a claim file cannot be read, and when a file's declared `schema:` is not the
   `req.claim/<n>` value this build writes (`CLAIM_SCHEMA_V`, reported by `--version` as
   `claim_schema`): the file's parse is **NOT JUDGED** — an older schema is a migration candidate
@@ -127,8 +134,10 @@ export OCR_NO_UPDATE=1
   (`compare`, the fill path), so no command can ignore the declaration, and `--fill` refuses to
   write derived fields into a format it does not write.
 - Derived fields: `cargo run -q -- canon --fill` writes `canonical.form` + `address`,
-  and **refuses any claim whose parse disagrees with its authored slots** (exit 3) —
-  an address over a contradicted parse would enshrine the contradiction.
+  and **refuses any claim carrying a discrepancy flag — a contradiction or an omission**
+  (exit 3) — an address over a contradicted parse would enshrine the contradiction. An
+  annotation is not a refusal: it is the author's qualitative predicate, which identity does
+  not carry and the fill must not delete.
   `cargo run -q -- canon --verify` checks the stored fields against a fresh parse:
   exit **1** mismatch (a hand-edited digest), **3** candidate (unfilled, filled
   under other rules, or a declared schema this build does not write — re-fill before
