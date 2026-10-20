@@ -1022,55 +1022,10 @@ fn check_sh_env(args: &[&std::ffi::OsStr], req_gate_bin: &std::path::Path) -> st
     // HOME is left exactly as the developer or CI set it (CI installs the pinned channel into
     // $HOME/.rustup and means it). Neither present is a failure named here, not check.sh's
     // generic exit 2.
-    point_home_at_toolchain(&mut command);
+    // One copy, in `tests/common`: the same decision had a byte-identical twin in
+    // `tests/decision.rs`, and a third written from scratch panicked in CI.
+    common::point_home_at_toolchain(&mut command);
     command.output().expect("runs scripts/check.sh")
-}
-
-/// Point `command`'s HOME at the toolchain home `scripts/check.sh` should see.
-///
-/// The workspace's `.tools/home` when it has one, **else the ambient HOME** — CI installs the pinned
-/// channel into `$HOME/.rustup` and means it. One copy of this decision, because a second that
-/// assumed the developer's layout panicked in CI while the gate was green locally (the failure this
-/// helper was extracted from).
-#[cfg(unix)]
-fn point_home_at_toolchain(command: &mut std::process::Command) {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let home_has_rustup = std::env::var_os("HOME")
-        .is_some_and(|h| std::path::Path::new(&h).join(".rustup/toolchains").exists());
-    match workspace_toolchain_home(&root) {
-        Some(workspace) => {
-            command.env("HOME", workspace);
-        }
-        None if home_has_rustup => {}
-        None => panic!(
-            "no toolchain home for check.sh: this checkout has no .tools/home/.rustup/toolchains \
-             and $HOME/.rustup/toolchains does not exist either (see .tools/README.md)"
-        ),
-    }
-}
-
-/// The toolchain home this checkout keeps for `scripts/check.sh`, when it has one: `.tools/home`
-/// beside the git common dir (.tools/README.md), which a feature worktree shares with the main
-/// checkout. `git` is a hard requirement of these tests: its failure is reported here, with
-/// git's own message, rather than swallowed into an empty path.
-#[cfg(unix)]
-fn workspace_toolchain_home(root: &std::path::Path) -> Option<std::path::PathBuf> {
-    let common = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
-        .output()
-        .expect("git is required to locate the shared toolchain home");
-    assert!(
-        common.status.success(),
-        "git rev-parse --git-common-dir failed: {}",
-        String::from_utf8_lossy(&common.stderr)
-    );
-    let common = String::from_utf8_lossy(&common.stdout).trim().to_string();
-    std::path::PathBuf::from(common)
-        .parent()
-        .map(|main| main.join(".tools/home"))
-        .filter(|home| home.is_absolute() && home.join(".rustup/toolchains").exists())
 }
 
 /// The Baseline step, with an optional fixture in place of the committed Baseline.
@@ -1473,13 +1428,18 @@ fn the_default_gate_run_gates_every_declared_release() {
         .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
         .collect();
     for variant in &variants {
-        // Normalized the same way the plan's lines are: `read -a` in the script accepts a tab or a
-        // second space between pairs, and a raw comparison would then fail on a healthy tree.
-        let expected = variant.split_whitespace().collect::<Vec<_>>().join(" ");
+        // The whole token sequence, not a normalized tail: `ends_with` accepts a *different* context
+        // whose trailing pairs happen to match, which is exactly the drift these tests exist to catch.
+        // Tokens are whitespace-insensitive, so a tab or a second space between pairs is fine.
+        let expected: Vec<&str> = variant.split_whitespace().collect();
+        let planned_gate = |line: &str| {
+            let words: Vec<&str> = line.split_whitespace().collect();
+            words.starts_with(&["PLAN", "cargo", "run", "-q", "--", "gate"])
+                && words.len() == 6 + expected.len()
+                && words[6..] == expected[..]
+        };
         assert!(
-            planned.iter().any(|line| line.starts_with("PLAN ")
-                && line.contains(" gate ")
-                && line.ends_with(&expected)),
+            planned.iter().any(|line| planned_gate(line)),
             "the default run must gate the declared release `{variant}`:\n{stdout}"
         );
     }
@@ -1576,13 +1536,16 @@ fn a_missing_variants_file_is_a_failure_not_a_skip() {
         !healthy_text.contains(".req/variants is missing"),
         "a healthy tree must not report a missing variants file:\n{healthy_text}"
     );
+    // The count comes from the data, not from a literal: `.req/variants` is data, and the `.req/**`
+    // review rule explicitly anticipates another line when a new claim needs one.
+    let declared = common::variant_lines().len();
     assert_eq!(
         healthy_text
             .lines()
             .filter(|line| line.starts_with("== cargo run -q -- gate"))
             .count(),
-        2,
-        "both declared releases are gated:\n{healthy_text}"
+        declared,
+        "every declared release is gated ({declared} in .req/variants):\n{healthy_text}"
     );
 
     // The other way the step could examine nothing: a file that is *there* and declares no release.

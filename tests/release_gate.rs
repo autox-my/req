@@ -719,6 +719,10 @@ fn every_claim_applies_in_at_least_one_declared_release() {
 /// that catches a badly-chosen context. Measured before this existed: a context carrying only
 /// `set` makes REQ-0009 exit 3, because REQ-0009 refines REQ-0008 and REQ-0008 is then
 /// undecided; the gate refuses to answer instead of skipping.
+///
+/// That refusal is pinned by `an_incomplete_context_is_not_green` below, not by the loop here: today's
+/// two lines are complete, so a regression that stopped refusing an undecided dependency would leave
+/// this test green — the negative direction is what makes the doc's claim true.
 #[test]
 fn every_declared_release_is_gate_green() {
     let lines = common::variant_lines();
@@ -742,4 +746,25 @@ fn every_declared_release_is_gate_green() {
              it — a complete release context decides every scoped claim:\n{headline}"
         );
     }
+}
+
+/// The negative direction: a context that leaves a dependency undecided must **not** be green. Without
+/// it, `every_declared_release_is_gate_green` only exercises today's two declared lines, and the
+/// refusal its doc describes would be unpinned — a gate that stopped answering UNVERIFIABLE for an
+/// incomplete context would pass every test in this file.
+#[test]
+fn an_incomplete_context_is_not_green() {
+    // `set` alone leaves REQ-0008 undecided and REQ-0009 refines REQ-0008: measured, exit 3 with
+    // `16 applying claim(s), 5 undecided (an undecided claim is never treated as absent)`.
+    let out = cli::dogfood(&["set=direction_gold_structural"]);
+    assert_ne!(
+        out.code, 0,
+        "an incomplete context must not be green:\n{}",
+        out.text
+    );
+    assert!(
+        out.headline().contains("undecided"),
+        "and it must say what is undecided rather than skipping it:\n{}",
+        out.headline()
+    );
 }

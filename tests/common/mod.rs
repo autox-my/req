@@ -126,3 +126,50 @@ pub fn variant_lines() -> Vec<String> {
     .filter(|line| !line.is_empty())
     .collect()
 }
+
+/// The toolchain home this checkout keeps for `scripts/check.sh`, when it has one: `.tools/home`
+/// beside the git common dir (.tools/README.md), which a feature worktree shares with the main
+/// checkout. `git` is a hard requirement of these tests: its failure is reported here, with git's
+/// own message, rather than swallowed into an empty path.
+#[cfg(unix)]
+pub fn workspace_toolchain_home(root: &std::path::Path) -> Option<std::path::PathBuf> {
+    let common = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .output()
+        .expect("git is required to locate the shared toolchain home");
+    assert!(
+        common.status.success(),
+        "git rev-parse --git-common-dir failed: {}",
+        String::from_utf8_lossy(&common.stderr)
+    );
+    let common = String::from_utf8_lossy(&common.stdout).trim().to_string();
+    std::path::PathBuf::from(common)
+        .parent()
+        .map(|main| main.join(".tools/home"))
+        .filter(|home| home.is_absolute() && home.join(".rustup/toolchains").exists())
+}
+
+/// Point `command`'s HOME at the toolchain home `scripts/check.sh` should see.
+///
+/// The workspace's `.tools/home` when it has one, **else the ambient HOME** — CI installs the pinned
+/// channel into `$HOME/.rustup` and means it. One copy, in the one place test binaries can share:
+/// `tests/baseline.rs` had this and `tests/decision.rs` a byte-identical second, and a third written
+/// for one new test demanded the workspace layout and panicked in CI while the gate was green here.
+#[cfg(unix)]
+pub fn point_home_at_toolchain(command: &mut std::process::Command) {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let home_has_rustup = std::env::var_os("HOME")
+        .is_some_and(|h| std::path::Path::new(&h).join(".rustup/toolchains").exists());
+    match workspace_toolchain_home(&root) {
+        Some(workspace) => {
+            command.env("HOME", workspace);
+        }
+        None if home_has_rustup => {}
+        None => panic!(
+            "no toolchain home for check.sh: this checkout has no .tools/home/.rustup/toolchains \
+             and $HOME/.rustup/toolchains does not exist either (see .tools/README.md)"
+        ),
+    }
+}
