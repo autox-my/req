@@ -280,11 +280,17 @@ run cargo run -q -- bench bench/corpus/direction-v1.yml
 # repository's own list — one `key=value ...` release per line, and the reader is this script,
 # because req knows nothing about the file.
 #
-# Each line is a **complete** release context, and "the gate is green" is not the property to rely
-# on: only `corpus_set` is dependency-guarded (REQ-0009/10/11 relate to REQ-0008, so leaving it
-# undecided makes `dependencies_decided` answer UNVERIFIABLE). Drop any other key and that claim is
-# simply undecided in this release — unexamined — with the gate still exiting 0. What keeps a dropped
-# key from passing is `tests/release_gate.rs`, which requires **zero undecided** per declared line.
+# Each line is a **complete** release context, and since ADR 0015 a green line means exactly that:
+# an undecided claim exits 3, so a dropped `set`, `runs`, `deployment_mode` or `field` reddens this
+# step instead of passing silently — and the gate names the claim it cost. What no single line can
+# see is the property *across* lines — a claim that applies in no declared release is examined by
+# none of them — and that is what `tests/release_gate.rs` adds with
+# `every_claim_applies_in_at_least_one_declared_release`. Its per-line twin asserts exit 0 and
+# `, 0 undecided` for the declared lines — which proves today's lines are complete, not that
+# `exit_code` honours the count: a `gate` that stopped counting undecided would leave these lines
+# green. What fails in that case is the fixture tests that assert exit 3 for an undecided corpus:
+# `tests/release_gate.rs::a_bare_gate_that_leaves_a_claim_undecided_is_unverifiable` and
+# `::a_ge_with_a_non_decimal_bound_is_named_not_left_to_a_context`.
 if [ -r "$PWD/.req/variants" ]; then
   variants_gated=0
   # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while still

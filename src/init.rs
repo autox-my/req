@@ -404,8 +404,9 @@ fn print_next_steps() {
          \x20 2. Add .req/variants beside the corpus: one `key=value ...` gate invocation per\n\
          \x20    line, `#` comments, and a comment-only file while you declare no variants.\n\
          \x20    Every variant gets its own gate invocation — a claim the invocation leaves\n\
-         \x20    undecided is not checked by the gate, and `gate` still exits 0. Add a\n\
-         \x20    variant here in the same commit that adds the `applicability:` that needs it.\n\
+         \x20    undecided is not examined, so `gate` exits 3 (UNVERIFIABLE) and names it.\n\
+         \x20    Add a variant here in the same commit that adds the `applicability:` that\n\
+         \x20    needs it (ADR 0015: the invocation that decides every claim is the gate).\n\
          \x20 3. Add .github/workflows/req.yml (GitHub) or .forgejo/workflows/req.yml (Forgejo —\n\
          \x20    Forgejo reads .github/workflows/ only while no .forgejo/workflows/ exists):\n"
     );
@@ -421,7 +422,8 @@ fn print_next_steps() {
     );
 }
 
-/// The CI snippet `init` prints. `docs/adopting.md` carries the same block inside its
+/// The CI snippet `init` prints. Public so the execution test (`tests/init.rs`) can run the
+/// exact block an adopter's runner runs, not a copy of it. `docs/adopting.md` carries it inside its
 /// "## CI" section — two copies of advice no adopter can afford to have drift, so the
 /// equality is **asserted** (`the_printed_snippet_is_the_one_the_adopting_doc_carries`,
 /// below) rather than left to review: the parts that matter (the `summary` fallback, the
@@ -431,7 +433,7 @@ fn print_next_steps() {
 /// The presence assertion is not decoration: a **failed input redirection does not stop a
 /// `set -e` script**, so without it an absent `.req/variants` silently skips every declared
 /// variant and the step goes green. Measured, and the reason the assertion is explicit.
-const CI_SNIPPET: &str = r#"name: req
+pub const CI_SNIPPET: &str = r#"name: req
 on:
   pull_request:
   push:
@@ -454,7 +456,7 @@ jobs:
           req --version
       - name: every stored address still recomputes (variant-independent)
         run: req canon --verify
-      - name: the release gate — the unscoped variant first, then every declared one
+      - name: the release gate — every declared variant, and the default when none is declared
         run: |
           set -eu
           # An absent variants file must be red. A failed INPUT REDIRECTION does not stop a
@@ -470,16 +472,35 @@ jobs:
             out="$(req gate "$@" 2>&1)" && code=0 || code=$?
             verdict="$(printf '%s' "$out" | sed -n 's/^verdict: //p' | head -1)"
             printf '| `%s` | %s | %s |\n' "${*:-<none>}" "$code" "${verdict:-no verdict line}" >> "$summary"
-            [ "$code" -eq 0 ] || rc=$code
+            # Fail outranks unverifiable, and nothing non-zero may be swallowed. The previous
+            # rule kept the *last* non-zero code, so a later 3 masked an earlier 1; this one keeps
+            # 1 sticky and propagates every other non-zero code as itself — a usage error (2) or a
+            # missing binary (127) must fail the step, not pass it.
+            if [ "$code" -eq 1 ]; then
+              rc=1
+            elif [ "$code" -ne 0 ] && [ "$rc" -ne 1 ]; then
+              rc=$code
+            fi
           }
-          gate
-          while IFS= read -r line; do
-            variant="${line%%#*}"
-            [ -n "$variant" ] || continue
-            # unquoted on purpose: one line is several key=value arguments
-            # shellcheck disable=SC2086
-            gate $variant
+          gated=0
+          # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while
+          # still assigning it, and a release appended without one would otherwise be silently
+          # dropped. `read -a` splits on IFS and runs no pathname expansion, so a whitespace-only or
+          # comment-only line yields no element and is skipped rather than becoming a bare run.
+          while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
+            variant_line="${variant_line%$'\r'}"
+            read -r -a release <<< "${variant_line%%#*}"
+            [ "${#release[@]}" -gt 0 ] || continue
+            gate "${release[@]}"
+            gated=$((gated + 1))
           done < .req/variants
+          # A comment-only file declares one variant — the default — and the bare invocation is
+          # its gate. With a line declared, the loop is the gate: a bare run beside it reports
+          # UNVERIFIABLE on any corpus carrying a selector (ADR 0015), and a false red beside
+          # green variants is how a real red gets ignored.
+          if [ "$gated" -eq 0 ]; then
+            gate
+          fi
           exit $rc
 "#;
 
@@ -524,7 +545,8 @@ invariant. `req canon` re-parses the statement and reports every slot that disag
   not …`) is two claims; split it.
 - **`applicability:` makes a claim variant-scoped.** Gate every variant you declare (one
   `req gate key=value ...` invocation per line in `.req/variants`): a claim the invocation
-  leaves undecided is not checked by that invocation, and the gate still exits 0.
+  leaves undecided is not examined, so `req gate` exits 3 and names it — the invocation that
+  decides every claim is the gate (ADR 0015).
 "#;
 
 /// Today's date in UTC as `YYYY-MM-DD`, from `SystemTime` and the civil-from-days

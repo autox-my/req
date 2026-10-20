@@ -7,10 +7,12 @@
 # mutually exclusive values: no single line can apply both REQ-0008 (parity and adversarial) and
 # REQ-0010 (parity).
 #
-# Do not drop a key from a line because the gate still exits 0. Only `corpus_set` is
-# dependency-guarded (REQ-0009/10/11 relate to REQ-0008, so leaving it undecided makes
-# `dependencies_decided` answer UNVERIFIABLE); drop `set`, `runs`, `deployment_mode` or `field` and
-# that claim is simply undecided in this release — unexamined — while the gate passes. The guard is
-# `tests/release_gate.rs`, which requires zero undecided claims **per declared line**.
+# Since ADR 0015 the per-line property enforces itself: a dropped `set`, `runs`, `deployment_mode`
+# or `field` makes `req gate` exit 3, and the gate's own `undecided (not examined by this
+# invocation): …` line names the claim it cost. (Only `corpus_set` is dependency-guarded:
+# REQ-0009/10/11 relate to REQ-0008, so leaving it undecided also makes `dependencies_decided`
+# answer UNVERIFIABLE.) What needs the words here is the property **across** lines: a claim that
+# applies in no declared release is examined by none of them, and `tests/release_gate.rs::
+# every_claim_applies_in_at_least_one_declared_release` is what pins it.
 corpus_set=parity_and_adversarial set=direction_gold_structural runs=25 deployment_mode=air_gapped field=value
 corpus_set=parity set=direction_gold_structural runs=25 deployment_mode=air_gapped field=value

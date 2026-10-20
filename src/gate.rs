@@ -11,14 +11,28 @@
 //! * **Unverifiable** — nothing is known to be wrong, but nothing can be confirmed either:
 //!   an unfilled claim, a relation that does not resolve, a dependency left undecided, a
 //!   context the corpus cannot confirm.
-//! * **Pass** — every policy settled in the affirmative.
+//! * **Pass** — every policy settled in the affirmative **and** every claim in the corpus was
+//!   decided; a selection that leaves a claim undecided is Unverifiable, never Pass.
 //!
 //! One policy judges the **invocation** rather than a claim: what the `key=value` context
 //! selected, and whether the corpus's own selector predicates confirm it.
+//!
+//! The verdict joins that answer to the selection: a run that leaves **any claim undecided**
+//! is UNVERIFIABLE, because the invocation did not decide what it claims to release — the
+//! claims it skipped are named, with the remedy, rather than merely counted. `Fail` still
+//! outranks that ("we found a problem" is stronger than "we could not tell"), and an undecided
+//! claim outranks a pass (ADR 0015). A bare `gate` is therefore UNVERIFIABLE on any corpus
+//! carrying a selector, and the per-variant invocation is the one that can be green.
+//!
+//! One case is not fixable by any invocation, and the docs must not imply otherwise: a selector
+//! outside the grammar (`field = value`) or a `Ge` whose bound is not a decimal (`runs >= twenty`)
+//! is decided by no context at all — such a claim can be *excluded* by a context, never made to
+//! apply — so that corpus is UNVERIFIABLE until the predicate is rewritten.
 
 use crate::fill::StoredState;
 use crate::select::{Applies, Context, Predicate, parse_predicate};
 use crate::view::Row;
+use rust_decimal::Decimal;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -269,11 +283,18 @@ pub fn evaluate(rows: &[Row], context: &Context) -> Vec<PolicyResult> {
     vec![addresses, relations, decided, rationale, selectors]
 }
 
-/// The overall verdict of a set of policy results, as an exit code.
-pub fn exit_code(results: &[PolicyResult]) -> i32 {
+/// The overall verdict of a set of policy results **and the selection they were made over**, as
+/// an exit code.
+///
+/// The precedence is the ADR's, not a detail: **Fail (1) > undecided-or-Unverifiable (3) > Pass
+/// (0)**. A definite defect outranks an open question — "we found a problem" is the stronger
+/// statement — while an undecided claim outranks a pass, because a variant that did not decide
+/// what it claims to release has not examined it (ADR 0015). The count is passed in rather than
+/// derived from `results`: no policy over the *applying* claims can see what was not applying.
+pub fn exit_code(results: &[PolicyResult], undecided: usize) -> i32 {
     if results.iter().any(|r| r.outcome == Outcome::Fail) {
         1
-    } else if results.iter().any(|r| r.outcome == Outcome::Unverifiable) {
+    } else if undecided > 0 || results.iter().any(|r| r.outcome == Outcome::Unverifiable) {
         3
     } else {
         0
@@ -282,8 +303,10 @@ pub fn exit_code(results: &[PolicyResult]) -> i32 {
 
 /// `req gate [key=value ...]`
 ///
-/// Exit: **0** every policy passed, **1** a policy failed, **3** a policy could not be
-/// settled, **2** usage. Fail outranks unverifiable.
+/// Exit: **0** every policy passed **and** every claim in the corpus was decided, **1** a policy
+/// failed, **3** a policy could not be settled *or* the selection left a claim undecided (the
+/// claims are named, with the remedy), **2** usage. Fail outranks unverifiable, and an undecided
+/// claim outranks a pass.
 pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut context = Context::new();
     for arg in args {
@@ -305,14 +328,82 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         }
     };
     let applying = rows.iter().filter(|r| r.applies == Applies::Yes).count();
-    let undecided = rows
+    let undecided: Vec<&str> = rows
         .iter()
         .filter(|r| r.applies == Applies::Unknown)
-        .count();
+        .map(|r| r.claim_id.as_str())
+        .collect();
     println!(
-        "# Release gate: {applying} applying claim(s), {undecided} undecided \
-         (an undecided claim is never treated as absent)"
+        "# Release gate: {applying} applying claim(s), {} undecided \
+         (an undecided claim is never treated as absent)",
+        undecided.len()
     );
+    // Not every undecided claim is waiting for a context: a predicate the grammar cannot read is
+    // decided by no context at all, so "pass the variant" would send the caller looking for a value
+    // that does not exist. The two cases are named apart, each with its own remedy.
+    let unparsable: Vec<(String, String)> =
+        rows.iter()
+            .filter(|r| r.applies == Applies::Unknown)
+            .filter_map(|r| {
+                let bad: Vec<String> =
+                    r.selectors
+                        .iter()
+                        .map(|text| parse_predicate(text))
+                        // Exhaustive on purpose: a `_` arm would mean "a context can decide this" by
+                        // default, which re-derives `select::evaluate`'s decidability with no compiler
+                        // help — a new `Predicate` variant would silently join the decidable side.
+                        .filter_map(|predicate| match predicate {
+                            Predicate::Unsupported { text } => Some(text),
+                            // A `Ge` whose bound is not a decimal parses (the grammar sees
+                            // `key >= value`) but no evaluation can compare it — `runs >= twenty` is
+                            // unparsable in effect, and "pass the variant context" would be the wrong
+                            // advice for it. The same `Decimal` parse `evaluate` uses decides the bucket.
+                            Predicate::Ge { key, value } => (value.parse::<Decimal>().is_err())
+                                .then(|| format!("{key} >= {value}")),
+                            // Decidable by a context, in both directions.
+                            Predicate::Eq { .. } => None,
+                        })
+                        .collect();
+                if bad.is_empty() {
+                    None
+                } else {
+                    Some((r.claim_id.clone(), bad.join("; ")))
+                }
+            })
+            .collect();
+    if !undecided.is_empty() {
+        // The disclosure is not the signal — the exit code is — so the claims it skipped are
+        // named beside it, with the one remedy that turns them into examined claims. Without
+        // the names, a caller knows a release is incomplete and not which decision is missing.
+        println!(
+            "  undecided (not examined by this invocation): {}",
+            undecided.join(", ")
+        );
+        for (claim, text) in &unparsable {
+            println!(
+                "  - {claim}: `{text}` is not in the selector grammar (`key == value`, \
+                 `key >= number`), so no context can make it apply — a context can only exclude \
+                 it, and the corpus cannot go green until the predicate is rewritten"
+            );
+        }
+        if unparsable.is_empty() {
+            println!(
+                "  remedy: pass the variant context that decides them — a complete release context, \
+                 as `.req/variants` declares — and gate each declared variant"
+            );
+        } else if unparsable.len() == undecided.len() {
+            // Every undecided claim here is unreadable, so there is no "rest" for a context to
+            // decide: the rewrite is the whole remedy.
+            println!(
+                "  remedy: rewrite the predicates above — no context can make these claims apply"
+            );
+        } else {
+            println!(
+                "  remedy: rewrite the predicate above, then pass the variant context that decides \
+                 the rest — a complete release context, as `.req/variants` declares"
+            );
+        }
+    }
     let results = evaluate(&rows, &context);
     for result in &results {
         println!("\n[{}] {}", result.outcome.as_str(), result.name);
@@ -321,11 +412,11 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             println!("  - {offender}");
         }
     }
-    let code = exit_code(&results);
+    let code = exit_code(&results, undecided.len());
     println!(
         "\nverdict: {}",
         match code {
-            0 => "PASS — every policy settled in the affirmative",
+            0 => "PASS — every policy settled in the affirmative, and every claim was decided",
             1 => "FAIL — a defect in a claim this variant includes",
             _ => "UNVERIFIABLE — nothing is wrong, but something cannot be confirmed",
         }

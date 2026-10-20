@@ -60,7 +60,7 @@ the corpus. It prints the next steps, including the CI file. Confirm what you go
 
 ```bash
 req canon --verify   # exit 0, "rules_v 5; verified 1, candidates 0, mismatches 0"
-req gate             # exit 0, "verdict: PASS — every policy settled in the affirmative"
+req gate             # exit 0, "verdict: PASS — every policy settled in the affirmative, and every claim was decided"
 ```
 
 If either is not exit 0, the corpus is not yours yet — report it with the command and the exit code
@@ -115,7 +115,7 @@ jobs:
           req --version
       - name: every stored address still recomputes (variant-independent)
         run: req canon --verify
-      - name: the release gate — the unscoped variant first, then every declared one
+      - name: the release gate — every declared variant, and the default when none is declared
         run: |
           set -eu
           # An absent variants file must be red. A failed INPUT REDIRECTION does not stop a
@@ -131,16 +131,35 @@ jobs:
             out="$(req gate "$@" 2>&1)" && code=0 || code=$?
             verdict="$(printf '%s' "$out" | sed -n 's/^verdict: //p' | head -1)"
             printf '| `%s` | %s | %s |\n' "${*:-<none>}" "$code" "${verdict:-no verdict line}" >> "$summary"
-            [ "$code" -eq 0 ] || rc=$code
+            # Fail outranks unverifiable, and nothing non-zero may be swallowed. The previous
+            # rule kept the *last* non-zero code, so a later 3 masked an earlier 1; this one keeps
+            # 1 sticky and propagates every other non-zero code as itself — a usage error (2) or a
+            # missing binary (127) must fail the step, not pass it.
+            if [ "$code" -eq 1 ]; then
+              rc=1
+            elif [ "$code" -ne 0 ] && [ "$rc" -ne 1 ]; then
+              rc=$code
+            fi
           }
-          gate
-          while IFS= read -r line; do
-            variant="${line%%#*}"
-            [ -n "$variant" ] || continue
-            # unquoted on purpose: one line is several key=value arguments
-            # shellcheck disable=SC2086
-            gate $variant
+          gated=0
+          # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while
+          # still assigning it, and a release appended without one would otherwise be silently
+          # dropped. `read -a` splits on IFS and runs no pathname expansion, so a whitespace-only or
+          # comment-only line yields no element and is skipped rather than becoming a bare run.
+          while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
+            variant_line="${variant_line%$'\r'}"
+            read -r -a release <<< "${variant_line%%#*}"
+            [ "${#release[@]}" -gt 0 ] || continue
+            gate "${release[@]}"
+            gated=$((gated + 1))
           done < .req/variants
+          # A comment-only file declares one variant — the default — and the bare invocation is
+          # its gate. With a line declared, the loop is the gate: a bare run beside it reports
+          # UNVERIFIABLE on any corpus carrying a selector (ADR 0015), and a false red beside
+          # green variants is how a real red gets ignored.
+          if [ "$gated" -eq 0 ]; then
+            gate
+          fi
           exit $rc
 ```
 
@@ -148,9 +167,12 @@ jobs:
 a parser: one gate invocation per line, `key=value` pairs space-separated, `#` starts a comment, and
 a line that is empty after stripping the comment is skipped. Two rules matter:
 
-- **The unscoped variant is not a line.** `req gate` runs bare before the loop, because a blank line
-  cannot be distinguished from formatting and a format where "nothing" means "the default variant"
-  is a trap.
+- **No release line declares the default variant.** A comment-only `.req/variants` describes exactly
+  one variant — the default — so the step runs the bare `req gate` only when the loop read no line.
+  Once a line is declared, **the loop is the gate**: a bare run beside it is UNVERIFIABLE on any
+  corpus carrying a selector (ADR 0015), and a false red beside green variants is how a real red
+  gets ignored. The unscoped variant is still not a line — a blank line cannot be distinguished from
+  formatting, and a format where "nothing" means "the default variant" is a trap.
 - **The file must exist.** `[ -f .req/variants ]` is asserted, because an absent file makes the
   loop's input redirection fail *without* stopping a `set -e` script — every declared variant would
   be skipped and the step would still exit 0. While you declare no variants, the file is valid with
@@ -158,31 +180,37 @@ a line that is empty after stripping the comment is skipped. Two rules matter:
 
 One part of the snippet is not verified on a runner: whether the job summary renders above the log.
 The shell logic was run locally against this exact text — an absent `.req/variants` → exit 1
-(`missing .req/variants`); a comment-only file → one row and exit 0; the unscoped invocation plus
-one declared variant → two rows and exit 0; a variant the corpus does not describe → a row reading
-`3 | UNVERIFIABLE` and exit 3; no summary variable → no output and exit 0. Confirm the table renders
-on your first pull request — if it does not, the step is still correct, it just loses the summary.
+(`missing .req/variants`); a comment-only file → one row, the bare default variant, and exit 0 **on a
+corpus with no selector** (a fresh `req init` corpus; on a corpus with a selector the bare run is
+UNVERIFIABLE, which is the right answer and not a mistake in the step); one declared variant → one
+row and exit 0, with **no** bare row beside it; a release appended without a trailing newline → still
+one row per release; a whitespace-only line → skipped, never a bare run; a variant the corpus does
+not describe → a row reading `3 | UNVERIFIABLE` and exit 3; no summary variable → no output and
+exit 0.
+Confirm the table renders on your first pull request — if it does not, the step is still correct, it
+just loses the summary.
 
 ## The coverage rule
 
 `req gate` checks the **applying claims of its invocation**. A claim the invocation leaves
-**undecided** is not checked by it, and the gate still exits 0 — that is a fact of the tool, not a
-bug, and it is why CI gates each variant separately rather than trusting one bare invocation. So:
+**undecided** is not examined by it — and since ADR 0015 that is a failure, not a disclosure: the
+gate exits **3 (UNVERIFIABLE)** and names the claims it could not examine, with the remedy. A bare
+`req gate` is therefore UNVERIFIABLE on any corpus carrying a selector, and the per-variant
+invocation is the only one that can be green. So:
 
 **Every variant the project declares gets its own gate invocation.** That is what `.req/variants`
 is for. When you add an `applicability:` predicate to a claim, add its variant to `.req/variants`
-in the same commit — otherwise the claim is inside no gate invocation at all, and the only commands
-that will tell you are `req select` and `req render`, which report the undecided claim and exit 3
-while `req gate` stays green.
+in the same commit — otherwise the claim is inside no gate invocation at all, and the bare run tells
+you so: it exits 3 and names that claim among the undecided.
 
 ## Without CI
 
 Nothing about the tool changes; only whether it is run. The gate becomes a ritual, and a ritual that
-is not enforced is not a gate. The cheapest enforcement is a `pre-push` hook that runs the same two
-steps — `req canon --verify` and `req gate` — and, if you declare variants, the same loop over
-`.req/variants` shown above; a hook that runs only the unscoped variant has exactly the coverage gap
-this page just described. Do not oversell it: a local hook is a reminder, not a record, and nothing
-outside your machine can see whether it ran.
+is not enforced is not a gate. The cheapest enforcement is a `pre-push` hook that runs
+`req canon --verify` and then the same loop over `.req/variants` shown above — on a corpus carrying
+a selector the bare invocation is UNVERIFIABLE (ADR 0015), so the loop *is* the gate. Do not
+oversell it: a local hook is a reminder, not a record, and nothing outside your machine can see
+whether it ran.
 
 ## Reporting a bug in req
 

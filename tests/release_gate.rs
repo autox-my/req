@@ -14,8 +14,36 @@ fn a_clean_selection_passes_every_policy() {
         row("REQ-B", Applies::Yes, &[]),
     ];
     let results = evaluate(&rows, &Context::new());
-    assert_eq!(exit_code(&results), 0, "{results:?}");
+    assert_eq!(exit_code(&results, 0), 0, "{results:?}");
     assert!(results.iter().all(|r| r.outcome == Outcome::Pass));
+}
+
+/// ADR 0015 at the library seam: the selection is part of the verdict, not only the policies.
+/// A count of undecided claims makes the run UNVERIFIABLE even when every policy settled in
+/// the affirmative — "I could not decide what this release contains" is not a pass — while a
+/// definite defect still outranks it, because "we found a problem" is the stronger statement.
+#[test]
+fn an_undecided_claim_is_unverifiable_and_a_defect_outranks_it() {
+    let clean = evaluate(&[row("REQ-A", Applies::Yes, &[])], &Context::new());
+    assert_eq!(exit_code(&clean, 0), 0, "{clean:?}");
+    assert_eq!(
+        exit_code(&clean, 1),
+        3,
+        "one claim the gate did not examine is enough: {clean:?}"
+    );
+
+    let defect = evaluate(
+        &[stored(
+            row("REQ-A", Applies::Yes, &[]),
+            StoredState::Mismatch("stored address does not recompute".to_string()),
+        )],
+        &Context::new(),
+    );
+    assert_eq!(
+        exit_code(&defect, 1),
+        1,
+        "Fail outranks the undecided count: {defect:?}"
+    );
 }
 
 /// The variant-scoping property: a claim the selection excludes is not this variant's
@@ -31,7 +59,7 @@ fn claims_outside_the_selection_do_not_fail_the_gate() {
         rationale(row("REQ-C", Applies::No, &[]), ""),
     ];
     let results = evaluate(&rows, &Context::new());
-    assert_eq!(exit_code(&results), 0, "{results:?}");
+    assert_eq!(exit_code(&results, 0), 0, "{results:?}");
 }
 
 #[test]
@@ -41,7 +69,7 @@ fn a_hand_edited_digest_fails_and_an_unfilled_claim_does_not_pass() {
         StoredState::Mismatch("stored address does not recompute".to_string()),
     )];
     let results = evaluate(&tampered, &Context::new());
-    assert_eq!(exit_code(&results), 1);
+    assert_eq!(exit_code(&results, 0), 1);
     assert_eq!(results[0].outcome, Outcome::Fail);
     assert!(results[0].offenders[0].contains("does not recompute"));
 
@@ -51,7 +79,7 @@ fn a_hand_edited_digest_fails_and_an_unfilled_claim_does_not_pass() {
     )];
     let results = evaluate(&unfilled, &Context::new());
     assert_eq!(
-        exit_code(&results),
+        exit_code(&results, 0),
         3,
         "not wrong, but not confirmed either"
     );
@@ -65,7 +93,7 @@ fn a_defect_outranks_an_open_question() {
         row("REQ-B", Applies::Yes, &[("refines", "REQ-GONE")]),
     ];
     let results = evaluate(&rows, &Context::new());
-    assert_eq!(exit_code(&results), 1, "{results:?}");
+    assert_eq!(exit_code(&results, 0), 1, "{results:?}");
 }
 
 #[test]
@@ -75,7 +103,7 @@ fn an_undecided_dependency_blocks_the_release() {
         row("REQ-B", Applies::Unknown, &[]),
     ];
     let results = evaluate(&rows, &Context::new());
-    assert_eq!(exit_code(&results), 3);
+    assert_eq!(exit_code(&results, 0), 3);
     let decided = results
         .iter()
         .find(|r| r.name == "dependencies_decided")
@@ -96,7 +124,7 @@ fn a_selection_with_nothing_applying_verifies_nothing() {
         .find(|r| r.name == "selectors_confirmed")
         .expect("the invocation is judged as a policy");
     assert_eq!(policy.outcome, Outcome::Unverifiable, "{policy:?}");
-    assert_eq!(exit_code(&results), 3);
+    assert_eq!(exit_code(&results, 0), 3);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -122,6 +150,17 @@ mod cli {
         /// measured, printed by the gate itself.
         pub fn headline(&self) -> &str {
             self.text.lines().next().unwrap_or_default()
+        }
+
+        /// The `undecided (not examined by this invocation): …` line — the claims the selection
+        /// left open, which the gate names when they change the verdict (ADR 0015). Panics when
+        /// the line is absent: "the gate said nothing about them" is the defect the line rules
+        /// out, so a test cannot pass by finding nothing.
+        pub fn undecided(&self) -> &str {
+            self.text
+                .lines()
+                .find(|line| line.trim_start().starts_with("undecided (not examined"))
+                .unwrap_or_else(|| panic!("no undecided-claims line in:\n{}", self.text))
         }
 
         /// One policy's block, from its `[OUTCOME] name` header to the next one.
@@ -331,14 +370,16 @@ relations: []
         )
     }
 
-    // ---- the context the corpus confirms: still a PASS ---------------------------------------
+    // ---- the context the corpus confirms: the policy passes, the release stays open ----------
 
     /// The declared value, on the corpus that declares it: the fix refuses typo'd values, not the
-    /// vocabulary the corpus actually has.
+    /// vocabulary the corpus actually has. The **policy** is what this pins. The run as a whole is
+    /// UNVERIFIABLE because five scoped claims are left undecided (ADR 0015), which is why the
+    /// exit code is 3 while `selectors_confirmed` is PASS.
     #[test]
-    fn the_value_the_corpus_declares_still_passes() {
+    fn the_value_the_corpus_declares_is_confirmed() {
         let out = dogfood(&["field=value"]);
-        assert_eq!(out.code, 0, "{}", out.text);
+        assert_eq!(out.code, 3, "{}", out.text);
         assert!(
             out.headline().contains("16 applying claim(s), 5 undecided"),
             "{}",
@@ -349,16 +390,28 @@ relations: []
             "{}",
             out.policy("selectors_confirmed")
         );
+        assert!(
+            out.undecided().contains("REQ-0008"),
+            "the verdict must name what it did not examine: {}",
+            out.undecided()
+        );
     }
 
+    /// The same for the other declared deployment value: the entry is confirmed, and the run is
+    /// still UNVERIFIABLE for the claims the selection leaves open (ADR 0015).
     #[test]
-    fn the_declared_air_gapped_value_still_passes() {
+    fn the_declared_air_gapped_value_is_confirmed() {
         let out = dogfood(&["deployment_mode=air_gapped"]);
-        assert_eq!(out.code, 0, "{}", out.text);
+        assert_eq!(out.code, 3, "{}", out.text);
         assert!(
             out.headline().contains("16 applying claim(s), 5 undecided"),
             "{}",
             out.headline()
+        );
+        assert!(
+            out.policy("selectors_confirmed").starts_with("[PASS]"),
+            "{}",
+            out.policy("selectors_confirmed")
         );
     }
 
@@ -401,6 +454,113 @@ relations: []
                 out.policy(name)
             );
         }
+    }
+
+    // ---- ADR 0015: the selection is part of the verdict ---------------------------------------
+
+    /// A claim the invocation leaves undecided is never examined, so the invocation cannot be
+    /// green however cleanly every policy settles over the claims it did apply. The fixture
+    /// carries one **unconditional** claim on purpose: with only the scoped claim, nothing
+    /// applies and the vacuity guard above already exits 3 — today's defect is a gate that
+    /// passes *with something examined beside* the claim it skipped, so that is the shape that
+    /// can fail before this change.
+    #[test]
+    fn a_bare_gate_that_leaves_a_claim_undecided_is_unverifiable() {
+        let fixture = Fixture::new("undecided");
+        fixture.claim("REQ-9001", &[]);
+        fixture.claim("REQ-9002", &["mode == beta"]);
+        fixture.fill();
+
+        let bare = fixture.gate(&[]);
+        assert_eq!(bare.code, 3, "{}", bare.text);
+        assert!(
+            bare.headline().contains("1 applying claim(s), 1 undecided"),
+            "{}",
+            bare.headline()
+        );
+        // Nothing is wrong: every policy passes. The undecided claim alone decides the verdict.
+        assert!(
+            bare.policy("selectors_confirmed").starts_with("[PASS]"),
+            "{}",
+            bare.policy("selectors_confirmed")
+        );
+        assert!(bare.text.contains("verdict: UNVERIFIABLE"), "{}", bare.text);
+        // The gate must say *which* claim it did not examine, and what to do about it.
+        assert!(
+            bare.undecided().contains("REQ-9002"),
+            "{}",
+            bare.undecided()
+        );
+        assert!(
+            !bare.undecided().contains("REQ-9001"),
+            "a claim that applies was examined and must not be listed: {}",
+            bare.undecided()
+        );
+        assert!(bare.text.contains("remedy:"), "{}", bare.text);
+        // The remedy has two directions and this corpus is the context-decidable one: REQ-9002's
+        // `mode == beta` is decided by a context. A regression that always printed the unreadable
+        // predicate's wording would send the caller to rewrite a predicate that is perfectly fine,
+        // and `remedy:` alone would not notice.
+        assert!(
+            bare.text.contains("pass the variant context"),
+            "a context-decidable claim gets the context remedy: {}",
+            bare.text
+        );
+        assert!(
+            !bare.text.contains("rewrite the predicate"),
+            "and not the unreadable-predicate remedy: {}",
+            bare.text
+        );
+
+        // The same corpus, with the context that decides the claim: green.
+        let decided = fixture.gate(&["mode=beta"]);
+        assert_eq!(decided.code, 0, "{}", decided.text);
+        assert!(
+            decided
+                .headline()
+                .contains("2 applying claim(s), 0 undecided"),
+            "{}",
+            decided.headline()
+        );
+        // The negative direction of the disclosure: a decided release must print neither the
+        // "not examined" list nor a remedy. Without this, a regression that printed both lines
+        // unconditionally would keep every assertion above green.
+        assert!(
+            !decided.text.contains("undecided (not examined"),
+            "a decided release must not print the disclosure: {}",
+            decided.text
+        );
+        assert!(
+            !decided.text.contains("remedy:"),
+            "a decided release must not print a remedy: {}",
+            decided.text
+        );
+    }
+
+    /// Fail still outranks the open question after ADR 0015: a corpus whose bare gate finds a
+    /// defect **and** leaves a claim undecided is FAIL (1), never 3 — "we found a problem" is
+    /// the stronger statement, and a change that made the undecided count swallow a known
+    /// defect would reverse the asymmetry the rest of req keeps.
+    #[test]
+    fn a_defect_outranks_an_undecided_claim() {
+        let fixture = Fixture::new("defect-undecided");
+        fixture.claim("REQ-9001", &[]);
+        fixture.claim("REQ-9002", &["mode == beta"]);
+        fixture.fill();
+        fixture.tamper_address("REQ-9001");
+
+        let out = fixture.gate(&[]);
+        assert_eq!(out.code, 1, "{}", out.text);
+        assert!(
+            out.headline().contains("1 undecided"),
+            "the undecided claim is still counted: {}",
+            out.headline()
+        );
+        assert!(
+            out.policy("addresses_current").starts_with("[FAIL]"),
+            "{}",
+            out.policy("addresses_current")
+        );
     }
 
     /// A context key no predicate in the corpus mentions decided nothing at all: it selected
@@ -452,7 +612,8 @@ relations: []
             block.contains("field == value"),
             "the declared alternative must be named: {block}"
         );
-        // Nothing else is wrong with this corpus, so the refusal is the whole reason for the 3.
+        // Nothing else is wrong with the *policies*: this refusal is one reason for the 3, and
+        // the five undecided claims ADR 0015 counts are the other.
         for name in [
             "addresses_current",
             "relations_resolve",
@@ -512,7 +673,8 @@ relations: []
             "no finding in this policy may name the `runs` key: {}",
             out.policy("selectors_confirmed")
         );
-        // The reason this run is UNVERIFIABLE at all, and it predates this change.
+        // One reason this run is UNVERIFIABLE, and it predates this change; since ADR 0015 the
+        // undecided count is another.
         let decided = out.policy("dependencies_decided");
         assert!(decided.starts_with("[UNVERIFIABLE]"), "{decided}");
         assert!(
@@ -524,11 +686,12 @@ relations: []
     /// A non-decimal value for a `Ge` key is not guessed and not refused: the predicate decides
     /// nothing, so REQ-0011 lands in the undecided count (6 here against the 5 of a decided
     /// `runs`), while the entry itself stays confirmed — a `Ge` key enumerates no legal values to
-    /// check it against. The gate reports the undecided count rather than inventing a finding.
+    /// check it against. The gate reports the undecided count rather than inventing a finding —
+    /// and since ADR 0015 that count is itself enough to keep the run UNVERIFIABLE.
     #[test]
     fn a_non_numeric_ge_value_is_confirmed_and_surfaces_as_undecided() {
         let out = dogfood(&["runs=abc"]);
-        assert_eq!(out.code, 0, "{}", out.text);
+        assert_eq!(out.code, 3, "{}", out.text);
         assert!(
             out.headline().contains("15 applying claim(s), 6 undecided"),
             "{}",
@@ -606,6 +769,65 @@ relations: []
         assert!(
             !block.contains("no applicability predicate in the corpus mentions"),
             "the gate must not assert absence of a key an unread selector may carry: {block}"
+        );
+        // An unread predicate is decided by no context, so the remedy must say to rewrite it —
+        // not to pass a variant context, which would send the caller looking for a value that
+        // cannot exist.
+        assert!(
+            out.text.contains("is not in the selector grammar"),
+            "the remedy names the unread predicate: {}",
+            out.text
+        );
+        assert!(
+            out.text.contains("rewrite the predicate"),
+            "and says what to do about it: {}",
+            out.text
+        );
+    }
+
+    /// The **mixed** bucket: one undecided claim is unreadable and another is context-decidable, so
+    /// the remedy must name both moves. Every other fixture puts all undecided claims in one bucket,
+    /// which leaves this branch — "rewrite the predicate above, then pass the variant context that
+    /// decides the rest" — unexercised.
+    #[test]
+    fn a_mixed_undecided_set_gets_both_remedies() {
+        let fixture = Fixture::new("mixed-undecided");
+        fixture.claim("REQ-9001", &[]);
+        fixture.claim("REQ-9002", &["field = value"]);
+        fixture.claim("REQ-9003", &["mode == beta"]);
+        fixture.fill();
+        let out = fixture.gate(&[]);
+        assert_eq!(out.code, 3, "{}", out.text);
+        assert!(
+            out.text
+                .contains("rewrite the predicate above, then pass the variant context"),
+            "both remedies are named, in that order: {}",
+            out.text
+        );
+    }
+
+    /// A `Ge` whose bound is not a decimal parses — the grammar does not validate the bound — but
+    /// `select::evaluate` returns UNKNOWN for it because the comparison needs decimals on both
+    /// sides. It therefore belongs in the "no context can decide it" bucket: telling the caller to
+    /// pass the variant context sends them looking for a value they cannot supply, since no
+    /// `runs=<whatever>` makes `runs >= twenty` comparable.
+    #[test]
+    fn a_ge_with_a_non_decimal_bound_is_named_not_left_to_a_context() {
+        let fixture = Fixture::new("ge-nondecimal");
+        fixture.claim("REQ-9001", &[]);
+        fixture.claim("REQ-9002", &["runs >= twenty"]);
+        fixture.fill();
+        let out = fixture.gate(&["runs=25"]);
+        assert_eq!(out.code, 3, "{}", out.text);
+        assert!(
+            out.text.contains("runs >= twenty"),
+            "the unreadable bound is quoted: {}",
+            out.text
+        );
+        assert!(
+            out.text.contains("rewrite the predicate"),
+            "and the remedy is to rewrite it, not to pass a context: {}",
+            out.text
         );
     }
 
@@ -723,6 +945,11 @@ fn every_claim_applies_in_at_least_one_declared_release() {
 /// That refusal is pinned by `an_incomplete_context_is_not_green` below, not by the loop here: today's
 /// two lines are complete, so a regression that stopped refusing an undecided dependency would leave
 /// this test green — the negative direction is what makes the doc's claim true.
+///
+/// ADR 0015 does not retire that pin. A `gate` that leaves any claim undecided now exits 3 on the
+/// count alone, so this loop's negative direction has to assert the **policy**, not just the code:
+/// otherwise the undecided-count rule would keep it green while `dependencies_decided` silently
+/// stopped answering.
 #[test]
 fn every_declared_release_is_gate_green() {
     let lines = common::variant_lines();
@@ -735,10 +962,11 @@ fn every_declared_release_is_gate_green() {
             "the declared release `{line}` is not green:\n{}",
             out.text
         );
-        // Green is not enough, and this is the invariant a green gate does not give you: only
-        // `corpus_set` is dependency-guarded, so dropping `set`, `runs`, `deployment_mode` or
-        // `field` leaves that claim **undecided in this release — unexamined** — while the gate
-        // still exits 0. A line is a complete release context, so it must leave nothing undecided.
+        // Green is not enough: a line is a **complete** release context, so it must leave nothing
+        // undecided. Since ADR 0015 an undecided claim also makes the gate exit 3, but the
+        // assertion stays because it names the defect precisely — a line that stopped deciding
+        // every scoped claim must fail here as the *incomplete line* it is, not as a generic
+        // UNVERIFIABLE.
         let headline = out.headline();
         assert!(
             headline.contains(", 0 undecided"),
@@ -769,5 +997,45 @@ fn an_incomplete_context_is_not_green() {
         out.headline().contains("undecided"),
         "and it must say what is undecided rather than skipping it:\n{}",
         out.headline()
+    );
+    // The *dependency* is still what this test is about. Since ADR 0015 the undecided count alone
+    // would keep the exit code at 3, so a regression that stopped refusing an undecided dependency
+    // would now pass a code-only assertion — the policy is asserted so this test still fails for
+    // its own reason.
+    let decided = out.policy("dependencies_decided");
+    assert!(decided.starts_with("[UNVERIFIABLE]"), "{decided}");
+    assert!(
+        decided.contains("REQ-0009 -refines-> REQ-0008"),
+        "the undecided dependency must be named: {decided}"
+    );
+}
+
+/// ADR 0015's falsification, run: a bare `req gate` over this repository's corpus leaves the six
+/// variant-scoped claims undecided, so it exits 3 and **names each one**, with the remedy stated.
+/// `every_declared_release_is_gate_green` above is the other half — a declared release decides
+/// every claim and exits 0. If a bare gate can still exit 0 while the banner counts an undecided
+/// claim, the ADR has not landed.
+#[test]
+fn a_bare_gate_is_unverifiable_and_names_every_undecided_claim() {
+    let out = cli::dogfood(&[]);
+    assert_eq!(out.code, 3, "{}", out.text);
+    assert!(
+        out.headline().contains("15 applying claim(s), 6 undecided"),
+        "{}",
+        out.headline()
+    );
+    let named = out.undecided();
+    for id in [
+        "REQ-0008", "REQ-0009", "REQ-0010", "REQ-0011", "REQ-0012", "REQ-0018",
+    ] {
+        assert!(
+            named.contains(id),
+            "the undecided line must name {id}, which the invocation did not examine: {named}"
+        );
+    }
+    assert!(
+        out.text.contains("remedy:"),
+        "the gate must state the remedy, not only the finding: {}",
+        out.text
     );
 }
