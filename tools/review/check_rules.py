@@ -45,6 +45,8 @@ output).
 """
 import argparse
 import json
+import os
+import tempfile
 import pathlib
 import shutil
 import subprocess
@@ -169,6 +171,92 @@ TOP_LEVEL_KEYS = frozenset({"rules", "exclude"})
 # here because a declaration that can vanish silently is worth nothing.
 SIGNATURE_EXCLUDE = "baselines/*.minisig"
 SIGNATURE_DECLARATION = "outside your view"
+# The *load-bearing* half of the declaration: the instruction the reviewer must carry. Pinning the
+# diagnosis without it would let the instruction be deleted while this script still passed.
+SIGNATURE_INSTRUCTION = (
+    'do not report "no updated signature is part of this change" as a finding'
+)
+
+
+def selection_problems() -> tuple:
+    """Does the CLI *honour* the exclusion? A pinned spelling is not an effect.
+
+    `ocr` is the only implementation of the selection, so the effect is measured on a throwaway
+    repository: a path our exclude does not name must stay reviewable, a signature must not be,
+    and a **probe** exclude naming a reviewable path must take it out with `user_exclude`. The third
+    assertion is the one that catches a future CLI dropping or renaming the top-level key — without
+    it this script would keep passing while the exclusion silently stopped working.
+
+    Returns `(status, problems)`: 0 measured, 3 could not answer.
+    """
+    work = pathlib.Path(tempfile.mkdtemp(prefix="req-review-effect-"))
+    identity = {
+        "GIT_AUTHOR_NAME": "req",
+        "GIT_AUTHOR_EMAIL": "req@localhost",
+        "GIT_COMMITTER_NAME": "req",
+        "GIT_COMMITTER_EMAIL": "req@localhost",
+    }
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=work, check=True, capture_output=True, text=True,
+                       env={**os.environ, **identity})
+
+    def preview(rule: pathlib.Path) -> tuple:
+        proc = subprocess.run(
+            ["ocr", "delegate", "preview", "--format", "json", "--repo", str(work),
+             "--from", "HEAD~1", "--to", "HEAD", "--rule", str(rule)],
+            cwd=work, capture_output=True, text=True,
+        )
+        if proc.returncode != 0:
+            return proc.returncode, proc.stderr.strip()[:200]
+        try:
+            return 0, json.loads(proc.stdout)
+        except Exception as exc:
+            return 3, f"unparsable preview: {exc}"
+
+    try:
+        git("init", "-q", ".")
+        (work / "baselines").mkdir()
+        (work / "src").mkdir()
+        (work / "src" / "keep.rs").write_text("x\n")
+        (work / "baselines" / "manifest.json").write_text("{}\n")
+        (work / "baselines" / "manifest.json.minisig").write_text("sig\n")
+        git("add", "-A")
+        git("commit", "-qm", "base")
+        (work / "src" / "keep.rs").write_text("y\n")
+        (work / "baselines" / "manifest.json").write_text('{"v":3}\n')
+        (work / "baselines" / "manifest.json.minisig").write_text("sig2\n")
+        git("add", "-A")
+        git("commit", "-qm", "head")
+
+        status, base = preview(RULE_FILE)
+        if status != 0:
+            return 3, [f"cannot measure the selection effect: {base}"]
+        reviewable = [f["path"] for f in base.get("reviewable_files", [])]
+        if "src/keep.rs" not in reviewable:
+            return 0, [f"the exclusion is too wide: src/keep.rs is not reviewable ({reviewable})"]
+        if any(path.endswith(".minisig") for path in reviewable):
+            return 0, ["a signature is reviewable — the CLI's filter changed, so the declaration's premise is stale"]
+
+        probe = json.loads(RULE_FILE.read_text(encoding="utf-8"))
+        probe["exclude"] = [SIGNATURE_EXCLUDE, "src/keep.rs"]
+        probe_file = work / "probe-rule.json"
+        probe_file.write_text(json.dumps(probe), encoding="utf-8")
+        status, probed = preview(probe_file)
+        if status != 0:
+            return 3, [f"cannot measure the exclusion effect: {probed}"]
+        excluded = {
+            f["path"]: f.get("exclude_reason") for f in probed.get("excluded_files", [])
+        }
+        if excluded.get("src/keep.rs") != "user_exclude":
+            return 0, [
+                "the top-level exclude key is not honoured by this `ocr` "
+                f"(src/keep.rs is {excluded.get('src/keep.rs')!r}) — the blind spot is no longer "
+                "declared in a way the CLI acts on, and the next signing PR will be flagged"
+            ]
+        return 0, []
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def declared_document_problems(document) -> list:
@@ -337,18 +425,35 @@ def main() -> int:
     # **The declared blind spot.** A signed artefact's review is its signature, and `ocr` cannot
     # read a `.minisig`: the exclusion is explicit here and the `baselines/**` checklist tells the
     # reviewer so, or the next signing PR is flagged for a signature the reviewer was never shown.
-    if SIGNATURE_EXCLUDE not in exclude:
+    # Exact, not "contains": an exclusion is how content is made invisible to review, so adding a
+    # pattern is a decision that must touch this check rather than arrive as a quiet edit.
+    if set(exclude) != {SIGNATURE_EXCLUDE}:
         print(
-            f"FAIL  review/rule.json: {SIGNATURE_EXCLUDE!r} must be excluded — the reviewer "
-            "cannot see a signature, so an implicit blind spot becomes a false blocking finding"
+            f"FAIL  review/rule.json: the exclude list must be exactly [{SIGNATURE_EXCLUDE!r}] — "
+            "an exclusion hides content from review, so widening it is a decision, not an edit"
         )
         return 1
-    if SIGNATURE_DECLARATION not in (texts.get("baselines/**") or ""):
-        print(
-            "FAIL  review/rule.json: the baselines/** checklist must declare that the signature "
-            f"file is {SIGNATURE_DECLARATION!r} — the reviewer reports a missing signature "
-            "otherwise"
-        )
+    declared = texts.get("baselines/**") or ""
+    for phrase, what in (
+        (SIGNATURE_DECLARATION, "declare that the signature file is outside the reviewer's view"),
+        (SIGNATURE_INSTRUCTION, "carry the instruction not to report the missing signature"),
+    ):
+        if phrase not in declared:
+            print(
+                f"FAIL  review/rule.json: the baselines/** checklist must {what} "
+                f"({phrase!r} is missing) — the reviewer reports a missing signature otherwise"
+            )
+            return 1
+
+    # Spelling is not effect: ask the CLI whether it acts on the exclusion.
+    status, selection = selection_problems()
+    if status == 3:
+        for problem in selection:
+            print(f"UNVERIFIABLE  {problem}")
+        return 3
+    if selection:
+        for problem in selection:
+            print(f"FAIL  review/rule.json: {problem}")
         return 1
 
     try:
