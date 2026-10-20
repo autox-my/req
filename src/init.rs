@@ -404,8 +404,9 @@ fn print_next_steps() {
          \x20 2. Add .req/variants beside the corpus: one `key=value ...` gate invocation per\n\
          \x20    line, `#` comments, and a comment-only file while you declare no variants.\n\
          \x20    Every variant gets its own gate invocation — a claim the invocation leaves\n\
-         \x20    undecided is not checked by the gate, and `gate` still exits 0. Add a\n\
-         \x20    variant here in the same commit that adds the `applicability:` that needs it.\n\
+         \x20    undecided is not examined, so `gate` exits 3 (UNVERIFIABLE) and names it.\n\
+         \x20    Add a variant here in the same commit that adds the `applicability:` that\n\
+         \x20    needs it (ADR 0015: the invocation that decides every claim is the gate).\n\
          \x20 3. Add .github/workflows/req.yml (GitHub) or .forgejo/workflows/req.yml (Forgejo —\n\
          \x20    Forgejo reads .github/workflows/ only while no .forgejo/workflows/ exists):\n"
     );
@@ -454,7 +455,7 @@ jobs:
           req --version
       - name: every stored address still recomputes (variant-independent)
         run: req canon --verify
-      - name: the release gate — the unscoped variant first, then every declared one
+      - name: the release gate — every declared variant, and the default when none is declared
         run: |
           set -eu
           # An absent variants file must be red. A failed INPUT REDIRECTION does not stop a
@@ -472,14 +473,22 @@ jobs:
             printf '| `%s` | %s | %s |\n' "${*:-<none>}" "$code" "${verdict:-no verdict line}" >> "$summary"
             [ "$code" -eq 0 ] || rc=$code
           }
-          gate
+          gated=0
           while IFS= read -r line; do
             variant="${line%%#*}"
             [ -n "$variant" ] || continue
             # unquoted on purpose: one line is several key=value arguments
             # shellcheck disable=SC2086
             gate $variant
+            gated=$((gated + 1))
           done < .req/variants
+          # A comment-only file declares one variant — the default — and the bare invocation is
+          # its gate. With a line declared, the loop is the gate: a bare run beside it reports
+          # UNVERIFIABLE on any corpus carrying a selector (ADR 0015), and a false red beside
+          # green variants is how a real red gets ignored.
+          if [ "$gated" -eq 0 ]; then
+            gate
+          fi
           exit $rc
 "#;
 
@@ -524,7 +533,8 @@ invariant. `req canon` re-parses the statement and reports every slot that disag
   not …`) is two claims; split it.
 - **`applicability:` makes a claim variant-scoped.** Gate every variant you declare (one
   `req gate key=value ...` invocation per line in `.req/variants`): a claim the invocation
-  leaves undecided is not checked by that invocation, and the gate still exits 0.
+  leaves undecided is not examined, so `req gate` exits 3 and names it — the invocation that
+  decides every claim is the gate (ADR 0015).
 "#;
 
 /// Today's date in UTC as `YYYY-MM-DD`, from `SystemTime` and the civil-from-days

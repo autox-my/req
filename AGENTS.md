@@ -144,11 +144,12 @@ export OCR_NO_UPDATE=1
   non-zero status. The Baseline step is the exception: it has no SKIP, because
   with minisign missing the verify is UNVERIFIABLE (exit 3), and UNVERIFIABLE
   blocks — `brew install minisign` first. It runs the **release gate** too, once per release declared in
-  `.req/variants`: `req gate` examines only the claims a variant leaves *applying*, so one
-  bare invocation would report `15 applying claim(s), 6 undecided` and exit 0 while six
-  scoped claims in `claims/` went unexamined. Each declared line must decide every key an
-  applying claim depends on, or `dependencies_decided` refuses to answer (exit 3) instead of
-  skipping. Green before every commit and merge.
+  `.req/variants`: `req gate` examines only the claims a variant leaves *applying*, and a bare
+  invocation leaves the six scoped claims undecided, so it exits 3 now (ADR 0015) instead of
+  reporting a PASS while six scoped claims in `claims/` went unexamined. Each declared line
+  must decide every key an applying claim depends on: `dependencies_decided` refuses to answer
+  (exit 3) for the dependency-guarded ones rather than skipping, and the undecided count keeps
+  the rest honest. Green before every commit and merge.
 - Review-rule coverage: `python3 tools/review/check_rules.py` (part of `check.sh` when
   `ocr` is present) — checks both directions between `review/rule.json` and the tracked tree,
   plus the checklist text itself: every entry must still match a tracked file, every tracked
@@ -203,12 +204,15 @@ export OCR_NO_UPDATE=1
   is predicate-aware: a `Ge` key is confirmed by comparison (`runs=100` is legitimate), and a
   real variant the corpus does not describe (`deployment_mode=cloud`) is refused **on
   purpose** — the gate clears only what the model describes, and the friction belongs at the
-  decision boundary (ADR 0006). `gate` exits **0** all passed, **1** a defect, **3** something
-  that cannot be confirmed (an unfilled claim, a relation that does not resolve, a dependency
-  left undecided, an entry the corpus cannot confirm, an empty selection), **2** usage; a
-  **Fail outranks** an Unverifiable, because "we found a problem" is stronger than "we could
-  not tell". Both keep the tri-state honest: a claim the variant **excludes** is not the
-  variant's problem, and an **undecided** one is never treated as absent. An `impact` answer
+  decision boundary (ADR 0006). `gate` exits **0** every policy passed **and** every claim was
+  decided, **1** a defect, **3** something that cannot be confirmed (an unfilled claim, a
+  relation that does not resolve, a dependency left undecided, an entry the corpus cannot
+  confirm, an empty selection) **or any claim left undecided** — the claims are named with the
+  remedy, and a bare `gate` on a corpus carrying a selector is therefore UNVERIFIABLE (ADR
+  0015) — **2** usage; **Fail outranks** an Unverifiable, because "we found a problem" is
+  stronger than "we could not tell", and an undecided claim outranks a pass. Both keep the
+  tri-state honest: a claim the variant **excludes** is not the variant's problem, and an
+  **undecided** one is never treated as absent. An `impact` answer
   that a broken relation could have made incomplete says so (exit 3) instead of quietly
   shortening the list.
 - Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--max-pairs N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [--pairs] [key=value ...]` — the funnel's
@@ -506,11 +510,12 @@ matter:
   CI that runs it (req itself knows nothing about the file): one `key=value ...` release per
   line, `#` comments, blank lines skipped. Two releases are declared because `corpus_set` takes
   two mutually exclusive values — no single context can apply both REQ-0008 and REQ-0010. Each line
-  must decide every scoped claim, and the gate will *not* tell you when one does not: only
-  `corpus_set` is dependency-guarded (REQ-0009/10/11 relate to REQ-0008), so dropping `set`, `runs`,
-  `deployment_mode` or `field` leaves that claim undecided in that release — unexamined — with the
-  gate exiting 0. `tests/release_gate.rs` requires zero undecided claims per declared line, and the
-  step fails if no release was gated at all.
+  must decide every scoped claim: dropping `set`, `runs`, `deployment_mode` or `field` leaves that
+  claim undecided in that release, which since ADR 0015 makes `req gate` exit 3 rather than 0. Only
+  `corpus_set` is dependency-guarded, so `dependencies_decided` refuses (exit 3) for the claims that
+  relate to REQ-0008; for the rest the undecided count is the guard. `tests/release_gate.rs`
+  requires zero undecided claims per declared line, and the step fails if no release was gated at
+  all.
 - `.scratch/` — session scratch, gitignored; never a deliverable.
 - Path facts: there are none to pin, and that is the design. Every subcommand resolves its corpus
   at runtime (ADR 0012) — `--root <dir>`, else `REQ_ROOT`, else the nearest ancestor of the working

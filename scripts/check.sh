@@ -281,10 +281,11 @@ run cargo run -q -- bench bench/corpus/direction-v1.yml
 # because req knows nothing about the file.
 #
 # Each line is a **complete** release context, and "the gate is green" is not the property to rely
-# on: only `corpus_set` is dependency-guarded (REQ-0009/10/11 relate to REQ-0008, so leaving it
-# undecided makes `dependencies_decided` answer UNVERIFIABLE). Drop any other key and that claim is
-# simply undecided in this release — unexamined — with the gate still exiting 0. What keeps a dropped
-# key from passing is `tests/release_gate.rs`, which requires **zero undecided** per declared line.
+# on: since ADR 0015 an undecided claim exits 3, so a dropped `set`, `runs`, `deployment_mode` or
+# `field` reddens this step rather than passing silently. The exit code still says only *that*
+# something is undecided; only `corpus_set` is dependency-guarded (`dependencies_decided` names the
+# REQ-0008 dependency), so `tests/release_gate.rs` remains the precise guard: it requires **zero
+# undecided** per declared line and names the claim a dropped key left unexamined.
 if [ -r "$PWD/.req/variants" ]; then
   variants_gated=0
   # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while still

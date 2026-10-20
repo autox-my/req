@@ -7,10 +7,12 @@
 # mutually exclusive values: no single line can apply both REQ-0008 (parity and adversarial) and
 # REQ-0010 (parity).
 #
-# Do not drop a key from a line because the gate still exits 0. Only `corpus_set` is
-# dependency-guarded (REQ-0009/10/11 relate to REQ-0008, so leaving it undecided makes
-# `dependencies_decided` answer UNVERIFIABLE); drop `set`, `runs`, `deployment_mode` or `field` and
-# that claim is simply undecided in this release — unexamined — while the gate passes. The guard is
-# `tests/release_gate.rs`, which requires zero undecided claims **per declared line**.
+# Do not drop a key from a line and rely on the exit code to tell you which claim it cost. Since
+# ADR 0015 an undecided claim makes `req gate` exit 3, so a dropped `set`, `runs`, `deployment_mode`
+# or `field` reddens the release instead of passing silently — but the code says only *that*
+# something is undecided. Only `corpus_set` is dependency-guarded (REQ-0009/10/11 relate to
+# REQ-0008, so leaving it undecided makes `dependencies_decided` answer UNVERIFIABLE and name the
+# dependency). A line is a complete release context, and `tests/release_gate.rs` requires zero
+# undecided claims **per declared line**, naming the claim a dropped key left unexamined.
 corpus_set=parity_and_adversarial set=direction_gold_structural runs=25 deployment_mode=air_gapped field=value
 corpus_set=parity set=direction_gold_structural runs=25 deployment_mode=air_gapped field=value

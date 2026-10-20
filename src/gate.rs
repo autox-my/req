@@ -15,6 +15,13 @@
 //!
 //! One policy judges the **invocation** rather than a claim: what the `key=value` context
 //! selected, and whether the corpus's own selector predicates confirm it.
+//!
+//! The verdict joins that answer to the selection: a run that leaves **any claim undecided**
+//! is UNVERIFIABLE, because the invocation did not decide what it claims to release — the
+//! claims it skipped are named, with the remedy, rather than merely counted. `Fail` still
+//! outranks that ("we found a problem" is stronger than "we could not tell"), and an undecided
+//! claim outranks a pass (ADR 0015). A bare `gate` is therefore UNVERIFIABLE on any corpus
+//! carrying a selector, and the per-variant invocation is the one that can be green.
 
 use crate::fill::StoredState;
 use crate::select::{Applies, Context, Predicate, parse_predicate};
@@ -269,11 +276,18 @@ pub fn evaluate(rows: &[Row], context: &Context) -> Vec<PolicyResult> {
     vec![addresses, relations, decided, rationale, selectors]
 }
 
-/// The overall verdict of a set of policy results, as an exit code.
-pub fn exit_code(results: &[PolicyResult]) -> i32 {
+/// The overall verdict of a set of policy results **and the selection they were made over**, as
+/// an exit code.
+///
+/// The precedence is the ADR's, not a detail: **Fail (1) > undecided-or-Unverifiable (3) > Pass
+/// (0)**. A definite defect outranks an open question — "we found a problem" is the stronger
+/// statement — while an undecided claim outranks a pass, because a variant that did not decide
+/// what it claims to release has not examined it (ADR 0015). The count is passed in rather than
+/// derived from `results`: no policy over the *applying* claims can see what was not applying.
+pub fn exit_code(results: &[PolicyResult], undecided: usize) -> i32 {
     if results.iter().any(|r| r.outcome == Outcome::Fail) {
         1
-    } else if results.iter().any(|r| r.outcome == Outcome::Unverifiable) {
+    } else if undecided > 0 || results.iter().any(|r| r.outcome == Outcome::Unverifiable) {
         3
     } else {
         0
@@ -282,8 +296,10 @@ pub fn exit_code(results: &[PolicyResult]) -> i32 {
 
 /// `req gate [key=value ...]`
 ///
-/// Exit: **0** every policy passed, **1** a policy failed, **3** a policy could not be
-/// settled, **2** usage. Fail outranks unverifiable.
+/// Exit: **0** every policy passed **and** every claim in the corpus was decided, **1** a policy
+/// failed, **3** a policy could not be settled *or* the selection left a claim undecided (the
+/// claims are named, with the remedy), **2** usage. Fail outranks unverifiable, and an undecided
+/// claim outranks a pass.
 pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut context = Context::new();
     for arg in args {
@@ -305,14 +321,29 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         }
     };
     let applying = rows.iter().filter(|r| r.applies == Applies::Yes).count();
-    let undecided = rows
+    let undecided: Vec<&str> = rows
         .iter()
         .filter(|r| r.applies == Applies::Unknown)
-        .count();
+        .map(|r| r.claim_id.as_str())
+        .collect();
     println!(
-        "# Release gate: {applying} applying claim(s), {undecided} undecided \
-         (an undecided claim is never treated as absent)"
+        "# Release gate: {applying} applying claim(s), {} undecided \
+         (an undecided claim is never treated as absent)",
+        undecided.len()
     );
+    if !undecided.is_empty() {
+        // The disclosure is not the signal — the exit code is — so the claims it skipped are
+        // named beside it, with the one remedy that turns them into examined claims. Without
+        // the names, a caller knows a release is incomplete and not which decision is missing.
+        println!(
+            "  undecided (not examined by this invocation): {}",
+            undecided.join(", ")
+        );
+        println!(
+            "  remedy: pass the variant context that decides them — a complete release context, \
+             as `.req/variants` declares — and gate each declared variant"
+        );
+    }
     let results = evaluate(&rows, &context);
     for result in &results {
         println!("\n[{}] {}", result.outcome.as_str(), result.name);
@@ -321,11 +352,11 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             println!("  - {offender}");
         }
     }
-    let code = exit_code(&results);
+    let code = exit_code(&results, undecided.len());
     println!(
         "\nverdict: {}",
         match code {
-            0 => "PASS — every policy settled in the affirmative",
+            0 => "PASS — every policy settled in the affirmative, and every claim was decided",
             1 => "FAIL — a defect in a claim this variant includes",
             _ => "UNVERIFIABLE — nothing is wrong, but something cannot be confirmed",
         }
