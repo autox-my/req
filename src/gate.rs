@@ -11,7 +11,8 @@
 //! * **Unverifiable** — nothing is known to be wrong, but nothing can be confirmed either:
 //!   an unfilled claim, a relation that does not resolve, a dependency left undecided, a
 //!   context the corpus cannot confirm.
-//! * **Pass** — every policy settled in the affirmative.
+//! * **Pass** — every policy settled in the affirmative **and** every claim in the corpus was
+//!   decided; a selection that leaves a claim undecided is Unverifiable, never Pass.
 //!
 //! One policy judges the **invocation** rather than a claim: what the `key=value` context
 //! selected, and whether the corpus's own selector predicates confirm it.

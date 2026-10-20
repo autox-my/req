@@ -474,12 +474,15 @@ jobs:
             [ "$code" -eq 0 ] || rc=$code
           }
           gated=0
-          while IFS= read -r line; do
-            variant="${line%%#*}"
-            [ -n "$variant" ] || continue
-            # unquoted on purpose: one line is several key=value arguments
-            # shellcheck disable=SC2086
-            gate $variant
+          # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while
+          # still assigning it, and a release appended without one would otherwise be silently
+          # dropped. `read -a` splits on IFS and runs no pathname expansion, so a whitespace-only or
+          # comment-only line yields no element and is skipped rather than becoming a bare run.
+          while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
+            variant_line="${variant_line%$'\r'}"
+            read -r -a release <<< "${variant_line%%#*}"
+            [ "${#release[@]}" -gt 0 ] || continue
+            gate "${release[@]}"
             gated=$((gated + 1))
           done < .req/variants
           # A comment-only file declares one variant — the default — and the bare invocation is

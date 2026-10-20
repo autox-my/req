@@ -212,9 +212,8 @@ export OCR_NO_UPDATE=1
   0015) — **2** usage; **Fail outranks** an Unverifiable, because "we found a problem" is
   stronger than "we could not tell", and an undecided claim outranks a pass. Both keep the
   tri-state honest: a claim the variant **excludes** is not the variant's problem, and an
-  **undecided** one is never treated as absent. An `impact` answer
-  that a broken relation could have made incomplete says so (exit 3) instead of quietly
-  shortening the list.
+  **undecided** one is never treated as absent. An `impact` answer that a broken relation
+  could have made incomplete says so (exit 3) instead of quietly shortening the list.
 - Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--max-pairs N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [--pairs] [key=value ...]` — the funnel's
   deterministic half. It skips pairs Tier-1 already resolved (equal address), **blocks** the
   rest on shared content terms (default 2), and hands only those to a provider. Exit **0**

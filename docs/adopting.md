@@ -134,12 +134,15 @@ jobs:
             [ "$code" -eq 0 ] || rc=$code
           }
           gated=0
-          while IFS= read -r line; do
-            variant="${line%%#*}"
-            [ -n "$variant" ] || continue
-            # unquoted on purpose: one line is several key=value arguments
-            # shellcheck disable=SC2086
-            gate $variant
+          # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while
+          # still assigning it, and a release appended without one would otherwise be silently
+          # dropped. `read -a` splits on IFS and runs no pathname expansion, so a whitespace-only or
+          # comment-only line yields no element and is skipped rather than becoming a bare run.
+          while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
+            variant_line="${variant_line%$'\r'}"
+            read -r -a release <<< "${variant_line%%#*}"
+            [ "${#release[@]}" -gt 0 ] || continue
+            gate "${release[@]}"
             gated=$((gated + 1))
           done < .req/variants
           # A comment-only file declares one variant — the default — and the bare invocation is
@@ -169,9 +172,13 @@ a line that is empty after stripping the comment is skipped. Two rules matter:
 
 One part of the snippet is not verified on a runner: whether the job summary renders above the log.
 The shell logic was run locally against this exact text — an absent `.req/variants` → exit 1
-(`missing .req/variants`); a comment-only file → one row, the bare default variant, and exit 0; one
-declared variant → one row and exit 0, with **no** bare row beside it; a variant the corpus does not
-describe → a row reading `3 | UNVERIFIABLE` and exit 3; no summary variable → no output and exit 0.
+(`missing .req/variants`); a comment-only file → one row, the bare default variant, and exit 0 **on a
+corpus with no selector** (a fresh `req init` corpus; on a corpus with a selector the bare run is
+UNVERIFIABLE, which is the right answer and not a mistake in the step); one declared variant → one
+row and exit 0, with **no** bare row beside it; a release appended without a trailing newline → still
+one row per release; a whitespace-only line → skipped, never a bare run; a variant the corpus does
+not describe → a row reading `3 | UNVERIFIABLE` and exit 3; no summary variable → no output and
+exit 0.
 Confirm the table renders on your first pull request — if it does not, the step is still correct, it
 just loses the summary.
 
