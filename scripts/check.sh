@@ -285,7 +285,8 @@ run cargo run -q -- bench bench/corpus/direction-v1.yml
 # undecided makes `dependencies_decided` answer UNVERIFIABLE). Drop any other key and that claim is
 # simply undecided in this release — unexamined — with the gate still exiting 0. What keeps a dropped
 # key from passing is `tests/release_gate.rs`, which requires **zero undecided** per declared line.
-if [ -f "$PWD/.req/variants" ]; then
+if [ -r "$PWD/.req/variants" ]; then
+  variants_gated=0
   # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while still
   # assigning it, and a release appended without one would otherwise be silently dropped.
   while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
@@ -298,11 +299,20 @@ if [ -f "$PWD/.req/variants" ]; then
     [ "${#release[@]}" -gt 0 ] || continue
     # </dev/null: nothing in the body may consume the remaining releases from this file's stdin.
     run cargo run -q -- gate "${release[@]}" < /dev/null
+    variants_gated=$((variants_gated + 1))
   done < "$PWD/.req/variants"
+  # "Nothing was examined" is not a pass. A file of only comments iterates zero times, and an
+  # unreadable file makes the redirection at `done` fail — the loop then does not execute, its
+  # non-zero status is discarded (`set -e` is off here), and without this the banner would print
+  # PASS with the release gate never run.
+  if [ "$variants_gated" -eq 0 ]; then
+    printf 'FAIL  .req/variants declares no release: nothing was gated, and a skipped check is never a pass\n'
+    fail=1
+  fi
 else
   # Not a SKIP. The file is tracked, so its absence is a defect — and a skipped check is never a
   # pass, which is the invariant this script exists to keep.
-  printf 'FAIL  .req/variants is missing: the release gate cannot run, and a skipped check is never a pass\n'
+  printf 'FAIL  .req/variants is missing or unreadable: the release gate cannot run, and a skipped check is never a pass\n'
   fail=1
 fi
 

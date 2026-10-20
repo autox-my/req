@@ -20,8 +20,9 @@ empty checklist for the engine's own files. The declared side is therefore check
 usable `path` and `rule` and for a duplicated `path` (the CLI resolves one entry per path,
 so every other entry's checklist reaches nobody), and the resolved text must equal the
 declared text verbatim. `.forgejo/**` is the one entry whose text is followed all the way
-into the provider request, by `tools/review/check_review_scope.py`; this file covers the
-other sixteen.
+into the provider request, by `tools/review/check_review_scope.py`; this file covers every
+other entry — no count, because a count in a docstring goes stale the moment an entry is
+added, and this project's docs are claims.
 
 The matcher is deliberately **not** re-implemented here. `fnmatch` does not implement
 gitignore `**` (an attempt reported 58 uncovered paths where the CLI resolves 16), and a

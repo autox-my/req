@@ -1485,77 +1485,126 @@ fn the_default_gate_run_gates_every_declared_release() {
     }
 }
 
-/// A throwaway root holding a copy of `scripts/check.sh`, so a test can vary the tree the script
-/// sees. The script `cd`s to the parent of its own directory, so the fixture root plays "the repo".
+/// A throwaway root holding a copy of `scripts/check.sh` beside a **fake toolchain whose `cargo`
+/// exits 0**, so a test can drive the script to its banner on a tree that is only the script: every
+/// `cargo …` step "passes", and the only thing that can fail the run is the branch under test.
+/// `Fixture` owns the name's uniqueness and the cleanup — including on a panicking assertion.
 #[cfg(unix)]
-fn script_root(tag: &str) -> std::path::PathBuf {
-    let root = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(tag);
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(root.join("scripts")).expect("creates scripts/");
+fn script_fixture(tag: &str) -> Fixture {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::unique(tag);
+    std::fs::create_dir_all(fixture.path().join("scripts")).expect("creates scripts/");
     std::fs::copy(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/check.sh"),
-        root.join("scripts/check.sh"),
+        fixture.path().join("scripts/check.sh"),
     )
     .expect("copies check.sh");
-    root
+    let bin = fixture.path().join("home/.rustup/toolchains/fake/bin");
+    std::fs::create_dir_all(&bin).expect("creates the fake toolchain");
+    std::fs::write(bin.join("cargo"), "#!/bin/sh\nexit 0\n").expect("writes the stub cargo");
+    std::fs::set_permissions(bin.join("cargo"), std::fs::Permissions::from_mode(0o755))
+        .expect("makes the stub executable");
+    fixture
 }
 
-/// `check.sh plan` in `root`, with HOME pointed at this workspace's toolchain home so the script
-/// resolves `cargo` the way the real gate does. `plan` executes no check, which is what lets this run
-/// against a tree that is only a copy of the script.
+/// Run the copied `scripts/check.sh` to its banner. HOME and PATH are the fixture's, not the
+/// developer's: the fake toolchain is what the script resolves, and nothing ambient (an installed
+/// `ocr`, say) leaks into the run, so the fixture is the same tree on a laptop and in CI.
 #[cfg(unix)]
-fn script_plan_at(root: &std::path::Path) -> std::process::Output {
-    let mut command = std::process::Command::new("bash");
-    command
-        .arg(root.join("scripts/check.sh"))
-        .arg("plan")
-        .current_dir(root);
-    point_home_at_toolchain(&mut command);
-    command.output().expect("runs the copied scripts/check.sh")
+fn script_banner(fixture: &Fixture) -> std::process::Output {
+    let bin = fixture.path().join("home/.rustup/toolchains/fake/bin");
+    std::process::Command::new("bash")
+        .arg(fixture.path().join("scripts/check.sh"))
+        .current_dir(fixture.path())
+        .env("HOME", fixture.path().join("home"))
+        .env(
+            "PATH",
+            format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", bin.display()),
+        )
+        .output()
+        .expect("runs the copied scripts/check.sh")
 }
 
-/// The branch nobody reached: with `.req/variants` missing, `skip`-ing would leave `fail=0` and the
-/// run would still end `GATE: PASS` — the mode this script exists to forbid, and the one that would
-/// silently restore the hole the release-gate step closed. Every other reader of the file assumes it
-/// exists (`tests/common::variant_lines` `.expect`s it), so deleting the branch used to keep the
-/// whole suite green. `plan` reaches it without executing a check.
 #[cfg(unix)]
 #[test]
 fn a_missing_variants_file_is_a_failure_not_a_skip() {
-    let root = script_root("req-gate-missing-variants");
-    let out = script_plan_at(&root);
+    // The branch pinned here: with `.req/variants` absent the run must end `GATE: FAIL`, never
+    // `GATE: PASS` with the release gate skipped — "a skipped check is never a pass" is the invariant
+    // this script exists to keep, and this is the branch whose removal would silently restore the hole
+    // the release-gate step closed. It takes the banner to prove, not a message: every other step is
+    // driven to pass by the fixture's stub `cargo`, so whatever flips the banner is this branch.
+    let fixture = script_fixture("req-gate-no-variants");
+    let missing = script_banner(&fixture);
     let text = format!(
         "{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
+        String::from_utf8_lossy(&missing.stdout),
+        String::from_utf8_lossy(&missing.stderr)
     );
     assert!(
-        text.contains("FAIL  .req/variants is missing"),
+        text.contains("FAIL  .req/variants is missing or unreadable"),
         "a missing variants file must be reported as a failure, never skipped:\n{text}"
     );
-    assert_ne!(
-        out.status.code(),
-        Some(0),
-        "a missing variants file must not exit 0:\n{text}"
+    assert!(
+        text.contains("GATE: FAIL"),
+        "and the run must say so in its banner:\n{text}"
+    );
+    assert_eq!(
+        missing.status.code(),
+        Some(1),
+        "a failed run exits 1, not 0 and not the plan's UNVERIFIABLE:\n{text}"
     );
 
-    // And the healthy direction, so the assertion above is not satisfied by a branch that always
-    // runs: with the file in place the same script reports nothing of the kind.
-    std::fs::create_dir_all(root.join(".req")).expect("creates .req/");
+    // The healthy direction: the same script with the file in place ends `GATE: PASS` and gates both
+    // releases, so the assertions above are the branch's doing and not the fixture's.
+    std::fs::create_dir_all(fixture.path().join(".req")).expect("creates .req/");
     std::fs::copy(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".req/variants"),
-        root.join(".req/variants"),
+        fixture.path().join(".req/variants"),
     )
     .expect("copies .req/variants");
-    let healthy = script_plan_at(&root);
+    let healthy = script_banner(&fixture);
     let healthy_text = format!(
         "{}{}",
         String::from_utf8_lossy(&healthy.stdout),
         String::from_utf8_lossy(&healthy.stderr)
     );
     assert!(
+        healthy_text.contains("GATE: PASS"),
+        "a healthy tree passes:\n{healthy_text}"
+    );
+    assert!(
         !healthy_text.contains(".req/variants is missing"),
         "a healthy tree must not report a missing variants file:\n{healthy_text}"
     );
-    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(
+        healthy_text
+            .lines()
+            .filter(|line| line.starts_with("== cargo run -q -- gate"))
+            .count(),
+        2,
+        "both declared releases are gated:\n{healthy_text}"
+    );
+
+    // The other way the step could examine nothing: a file that is *there* and declares no release.
+    // Every line is a comment, so the loop iterates zero times — and a run that examined nothing must
+    // not report PASS.
+    std::fs::write(
+        fixture.path().join(".req/variants"),
+        "# nothing declared yet\n",
+    )
+    .expect("writes a comment-only variants file");
+    let empty = script_banner(&fixture);
+    let empty_text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&empty.stdout),
+        String::from_utf8_lossy(&empty.stderr)
+    );
+    assert!(
+        empty_text.contains("declares no release"),
+        "a variants file with no release must be reported, never treated as a pass:\n{empty_text}"
+    );
+    assert!(
+        empty_text.contains("GATE: FAIL"),
+        "and the run must say so in its banner:\n{empty_text}"
+    );
 }

@@ -505,8 +505,12 @@ matter:
 - `.req/variants` — this repository's own release list, read by `scripts/check.sh` and by any
   CI that runs it (req itself knows nothing about the file): one `key=value ...` release per
   line, `#` comments, blank lines skipped. Two releases are declared because `corpus_set` takes
-  two mutually exclusive values — no single context can apply both REQ-0008 and REQ-0010 — and
-  every other scoped claim must be decided in both, or `dependencies_decided` refuses to answer.
+  two mutually exclusive values — no single context can apply both REQ-0008 and REQ-0010. Each line
+  must decide every scoped claim, and the gate will *not* tell you when one does not: only
+  `corpus_set` is dependency-guarded (REQ-0009/10/11 relate to REQ-0008), so dropping `set`, `runs`,
+  `deployment_mode` or `field` leaves that claim undecided in that release — unexamined — with the
+  gate exiting 0. `tests/release_gate.rs` requires zero undecided claims per declared line, and the
+  step fails if no release was gated at all.
 - `.scratch/` — session scratch, gitignored; never a deliverable.
 - Path facts: there are none to pin, and that is the design. Every subcommand resolves its corpus
   at runtime (ADR 0012) — `--root <dir>`, else `REQ_ROOT`, else the nearest ancestor of the working

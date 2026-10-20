@@ -685,14 +685,26 @@ fn every_claim_applies_in_at_least_one_declared_release() {
         // the same distinction the gate and `select` keep ("an undecided claim is never treated as
         // absent"). `Unknown` means a key is decided but its value matches no line; `No` means no
         // line applies the claim at all.
+        // Three shapes, three remedies. `Unknown` is the context *not deciding* the predicate (a
+        // key no line supplies, or a predicate the grammar does not parse); `No` is the context
+        // deciding it and the value not matching. A claim can be `Unknown` in one line and `No` in
+        // another — common when a new predicate key reaches only some lines — so "every release" is
+        // only true of the all-`Unknown` case.
         let id = &loaded.claim.claim_id;
-        if states.contains(&Applies::Unknown) {
+        let undecided = states.iter().filter(|s| **s == Applies::Unknown).count();
+        if undecided == states.len() {
             unexamined.push(format!(
-                "{id}: undecided in every release — a line must decide it"
+                "{id}: undecided in every release — no line supplies a key its predicate needs"
+            ));
+        } else if undecided > 0 {
+            unexamined.push(format!(
+                "{id}: undecided in {undecided} of {} releases and decided as excluded in the rest \
+                 — one line must supply the missing key, and one must match its value",
+                states.len()
             ));
         } else {
             unexamined.push(format!(
-                "{id}: excluded by every release — no line applies it"
+                "{id}: excluded by every release — every line decides it and no value matches"
             ));
         }
     }
