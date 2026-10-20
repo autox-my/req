@@ -934,6 +934,9 @@ fn run_gate_step_with_codes(fx: &Fixture, script: &str, codes: &[i32]) -> (i32, 
             .join("\n"),
     )
     .expect("writes the stub's answers");
+    // The path is interpolated into generated shell, so it must be shell-escaped for a path
+    // containing a single quote as well as a space: `'''` closes, escapes and reopens the quote.
+    let queue_sh = queue.display().to_string().replace('\'', r"'\''");
     // Pop the next code; when the queue is empty, answer 0.
     std::fs::write(
         bin.join("req"),
@@ -950,7 +953,7 @@ fn run_gate_step_with_codes(fx: &Fixture, script: &str, codes: &[i32]) -> (i32, 
              fi\n\
              echo \"verdict: stub $code\"\n\
              exit $code\n",
-            queue = queue.display()
+            queue = queue_sh
         ),
     )
     .expect("writes the stub req");
@@ -1152,6 +1155,18 @@ fn an_unreadable_variants_file_is_red_not_a_fallback_to_the_bare_gate() {
     let path = fx.join(".req/variants");
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000))
         .expect("makes the variants file unreadable");
+    // `access()` grants R_OK to uid 0 even on a 0o000 regular file, so a root container would
+    // pass the guard and fail this test for an environment reason rather than a product one.
+    // Probe the effect of the chmod and say NOT EXERCISED, as the abort test does.
+    if std::fs::File::open(&path).is_ok() {
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
+            .expect("restores the variants file");
+        eprintln!(
+            "NOT EXERCISED: mode 0o000 is still readable here (running as root?) — the \
+             unreadable-variants guard was not exercised"
+        );
+        return;
+    }
     let (code, text) = run_gate_step(&fx, &script);
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
         .expect("restores the variants file so the fixture can be removed");
@@ -1160,8 +1175,27 @@ fn an_unreadable_variants_file_is_red_not_a_fallback_to_the_bare_gate() {
         "an unreadable variants file is red, never a green bare fallback: {text}"
     );
     assert!(
-        text.contains("missing or unreadable .req/variants"),
+        text.contains("missing, unreadable, or not a regular file .req/variants"),
         "the step says which file and why: {text}"
+    );
+}
+
+/// `[ -r ]` alone passes for a readable **directory**: the redirection then fails, the loop never
+/// runs and the fallback gates the bare variant — the same false green the assertion exists to
+/// prevent. Both halves (`-f` and `-r`) are asserted.
+#[cfg(unix)]
+#[test]
+fn a_directory_at_the_variants_path_is_red() {
+    let script = gate_script();
+    let fx = Fixture::new("ci-gate-step-variants-dir");
+    let init = run_at(fx.path(), &["init"]);
+    assert_eq!(init.code, 0, "{}{}", init.stdout, init.stderr);
+    std::fs::create_dir_all(fx.join(".req/variants")).expect("creates a directory at the path");
+    let (code, text) = run_gate_step(&fx, &script);
+    assert_eq!(code, 1, "a directory is not a release list: {text}");
+    assert!(
+        text.contains("not a regular file"),
+        "the step says what the path is: {text}"
     );
 }
 

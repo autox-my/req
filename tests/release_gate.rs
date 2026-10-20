@@ -826,6 +826,13 @@ relations: []
             "both remedies are named, in that order: {}",
             out.text
         );
+        // The mixed branch's wording was reworded too; the unchanged prefix above would also
+        // match the old text, so the file name is asserted absent here as well.
+        assert!(
+            !out.text.contains(".req/variants"),
+            "neither remedy may name a file req never reads: {}",
+            out.text
+        );
     }
 
     /// A `Ge` whose bound is not a decimal parses — the grammar does not validate the bound — but

@@ -430,10 +430,11 @@ fn print_next_steps() {
 /// `gate()` bookkeeping, `exit $rc`, the readability assertion) would otherwise be free to
 /// diverge with nothing failing.
 ///
-/// The readability assertion is not decoration: a **failed input redirection does not stop a
-/// `set -e` script**, so without it an absent or unreadable `.req/variants` silently skips every
-/// declared variant and the step goes green (or falls back to the bare variant). `[ -f ]` proves
-/// existence, not readability — measured, and the reason the assertion is `[ -r ]`.
+/// The readable-regular-file assertion is not decoration: a **failed input redirection does not
+/// stop a `set -e` script**, so without it an absent, unreadable, or non-regular `.req/variants`
+/// silently skips every declared variant and the step goes green (or falls back to the bare
+/// variant). `[ -f ]` proves a regular file but not readability, and `[ -r ]` proves readability
+/// but also passes for a readable *directory* — both are asserted, measured.
 pub const CI_SNIPPET: &str = r#"name: req
 on:
   pull_request:
@@ -460,12 +461,14 @@ jobs:
       - name: the release gate — every declared variant, and the default when none is declared
         run: |
           set -eu
-          # An absent or unreadable variants file must be red. A failed INPUT REDIRECTION does
-          # not stop a `set -e` script, so the file is checked with `[ -r ]` — `[ -f ]` proves
-          # existence, not readability, and a present-but-unreadable file would make the loop's
-          # redirection fail, skipping every declared variant and letting the fallback below
-          # report a bare run instead.
-          [ -r .req/variants ] || { echo "missing or unreadable .req/variants" >&2; exit 1; }
+          # An absent, unreadable, or non-regular variants file must be red. A failed INPUT
+          # REDIRECTION does not stop a `set -e` script: the loop then never runs and the
+          # fallback below gates the bare variant, so the step can be green with no declared
+          # variant gated. `[ -f ]` proves a regular file, not readability; `[ -r ]` proves
+          # readability, not that a directory is not the path (a readable directory passes it
+          # and the redirection still fails) — so both are asserted.
+          [ -f .req/variants ] && [ -r .req/variants ] \
+            || { echo "missing, unreadable, or not a regular file .req/variants" >&2; exit 1; }
           # A job summary above the log (runner >= 13.2 sets one of these).
           # Absent variable = an older runner: the step must still pass, so the target is /dev/null.
           summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}"
