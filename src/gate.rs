@@ -27,7 +27,9 @@
 //! One case is not fixable by any invocation, and the docs must not imply otherwise: a selector
 //! outside the grammar (`field = value`) or a `Ge` whose bound is not a decimal (`runs >= twenty`)
 //! is decided by no context at all — such a claim can be *excluded* by a context, never made to
-//! apply — so that corpus is UNVERIFIABLE until the predicate is rewritten.
+//! apply — so a variant that does not exclude it stays UNVERIFIABLE until the predicate is
+//! rewritten. An excluded claim is not the variant's problem, which is the one way a corpus
+//! carrying such a predicate can go green without touching the grammar.
 
 use crate::fill::StoredState;
 use crate::select::{Applies, Context, Predicate, parse_predicate};

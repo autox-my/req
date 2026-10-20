@@ -1200,12 +1200,38 @@ fn a_directory_at_the_variants_path_is_red() {
 }
 
 /// The generated stub interpolates the queue path into shell; a fixture (or `TMPDIR`) whose path
-/// contains a space must survive it. This test's fixture name carries one on purpose.
+/// contains a space must survive it. This test's fixture name carries one on purpose — and the
+/// path is asserted to carry it, so a later normalisation of fixture names cannot turn this test
+/// into a green no-op.
 #[cfg(unix)]
 #[test]
 fn the_stub_survives_a_fixture_path_with_a_space() {
     let script = gate_script();
     let fx = Fixture::new("ci gate step spaced");
+    assert!(
+        fx.path().to_string_lossy().contains(' '),
+        "the fixture name must reach the path, or this test checks nothing: {}",
+        fx.path().display()
+    );
+    write_variants(&fx, "deployment_mode=air_gapped\n");
+    let (code, text) = run_gate_step_with_codes(&fx, &script, &[3]);
+    assert_eq!(code, 3, "one row, and its refusal is the step's: {text}");
+    assert_eq!(summary_rows(&text).len(), 1, "one gate run: {text}");
+}
+
+/// The same pin for the escaping branch: a path carrying a single quote must not close the quote
+/// in the generated stub. No other fixture (or `TMPDIR`) carries one, so without this the
+/// `'\''` in `run_gate_step_with_codes` would be unpinned.
+#[cfg(unix)]
+#[test]
+fn the_stub_survives_a_fixture_path_with_a_single_quote() {
+    let script = gate_script();
+    let fx = Fixture::new("ci gate step 'quoted'");
+    assert!(
+        fx.path().to_string_lossy().contains('\''),
+        "the fixture name must reach the path: {}",
+        fx.path().display()
+    );
     write_variants(&fx, "deployment_mode=air_gapped\n");
     let (code, text) = run_gate_step_with_codes(&fx, &script, &[3]);
     assert_eq!(code, 3, "one row, and its refusal is the step's: {text}");
