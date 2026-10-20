@@ -9,7 +9,10 @@
 #   public_key  the key's text, verbatim — the two lines `minisign -G`/`-R` writes, because
 #               `minisign -V -p` wants a key *file*. Public, and a pin like Cargo.lock:
 #               committing it is what lets anyone verify a Baseline offline.
-#   valid_from  the date this key became trusted (ISO-8601, zero-padded, compared as a string).
+#   valid_from  the date this key became trusted (ISO-8601, zero-padded). **Recorded, not
+#               enforced**: verification checks `valid_until` and `revoked_at` only. The lower
+#               bound documents the rotation story; a Baseline claiming a time before it would
+#               not be refused, so treat it as provenance rather than a pin.
 #   valid_until optional. Judged at the Baseline's signing time: a v3 manifest carries
 #               `signed_at`, so a key whose validity ends at or after it verifies even when today
 #               is later, and one already expired then FAILS (ADR 0016). The comparison is by
@@ -20,6 +23,12 @@
 #               calendar date* than the Baseline's signing time still verifies for it, while one
 #               revoked on or before that date FAILS (same-day counts as revoked). Record it the
 #               moment a private key is lost or retired.
+#
+# The signing time is **signer-asserted** (there is no RFC 3161 timestamp): whoever holds the
+# key can mint a fresh signature declaring an earlier `signed_at`, and `--now` overrides the
+# judgement time altogether. Revocation therefore bounds *newly asserted* signing times only —
+# it cannot prove that a signature was made before the key was lost, and it is not a hard stop
+# on a key holder who is willing to lie.
 #
 # Rotating a key means adding an entry beside the old one with its own validity window: old
 # Baselines stay verifiable against the old key, new ones must use the new one.

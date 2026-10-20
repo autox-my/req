@@ -831,8 +831,22 @@ fn a_key_revoked_after_the_signing_time_still_verifies() {
 /// the expected head is the file's own `hash:` value and the expected count is the number of
 /// `DEC-*.yml` files — an oracle the implementation cannot satisfy by agreeing with itself.
 fn committed_decision() -> Decision {
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("decisions/DEC-0001.yml");
-    let text = std::fs::read_to_string(&path).expect("the committed decision reads");
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("decisions");
+    let mut paths: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+        .expect("the decisions directory reads")
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("DEC-") && name.ends_with(".yml"))
+        })
+        .collect();
+    // Zero-padded ids make lexicographic order chronological; emission attests the **last**
+    // record, so that is the record this oracle must name — pinning DEC-0001 would break the
+    // moment a second decision is legitimately recorded.
+    paths.sort();
+    let path = paths.last().expect("the repo has a decision log");
+    let text = std::fs::read_to_string(path).expect("the committed decision reads");
     yaml_serde::from_str(&text).expect("the committed decision parses")
 }
 
@@ -989,14 +1003,46 @@ fn emitting_refuses_a_tampered_decision_log() {
         .expect("runs the compiled binary");
     assert_eq!(init.status.code(), Some(0), "{init:?}");
 
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let text = std::fs::read_to_string(root.join("decisions/DEC-0001.yml"))
-        .expect("the committed decision reads");
-    let tampered = text.replace("date: 2026-10-15", "date: 2026-10-16");
-    assert_ne!(tampered, text, "the date line the tamper edits is present");
+    // Build the tampered record from the *parsed* committed record and re-serialize it, so the
+    // tamper exists whatever the record's wording is; the stored hash is carried over unchanged,
+    // which is exactly the edit-after-recording the chain detects.
+    let record = committed_decision();
+    let mut tampered_record = record.clone();
+    tampered_record.note = format!("{}\n(rewritten after it was recorded)", record.note);
+    let quote = |value: &str| serde_json::to_string(value).expect("quotes a YAML scalar");
+    let tampered = format!(
+        "id: {}\nkind: {}\nclaim_id: {}\naddress: {}\nactor: {}\nrole: {}\ndate: {}\nnote: {}\nprev_hash: {}\nhash: {}\n",
+        quote(&tampered_record.id),
+        quote(&tampered_record.kind),
+        quote(&tampered_record.claim_id),
+        quote(&tampered_record.address),
+        quote(&tampered_record.actor),
+        quote(&tampered_record.role),
+        quote(&tampered_record.date),
+        quote(&tampered_record.note),
+        quote(
+            tampered_record
+                .prev_hash
+                .as_deref()
+                .unwrap_or("req.genesis.v1")
+        ),
+        quote(
+            tampered_record
+                .hash
+                .as_deref()
+                .expect("the committed record is filled")
+        ),
+    );
+    assert_ne!(
+        tampered_record.note, record.note,
+        "the tamper changes the content the stored hash covers"
+    );
     std::fs::create_dir_all(fixture.path().join("decisions")).expect("creates decisions/");
-    std::fs::write(fixture.path().join("decisions/DEC-0001.yml"), tampered)
-        .expect("writes the tampered decision");
+    std::fs::write(
+        fixture.path().join(format!("decisions/{}.yml", record.id)),
+        tampered,
+    )
+    .expect("writes the tampered decision");
 
     let output = std::process::Command::new(req_bin())
         .args(["baseline", "--at", FIXTURE_SIGNED_AT])
@@ -1004,7 +1050,12 @@ fn emitting_refuses_a_tampered_decision_log() {
         .output()
         .expect("runs the compiled binary");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_eq!(output.status.code(), Some(3), "{stderr}");
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "a tampered log is a definite finding, not an environment problem: {stderr}"
+    );
+    assert!(stderr.contains("[FAIL]"), "{stderr}");
     assert!(stderr.contains("does not verify"), "{stderr}");
     assert!(stderr.contains("must not be signed"), "{stderr}");
 }
@@ -1104,7 +1155,7 @@ fn a_key_expired_today_but_valid_at_signing_verifies_through_the_cli() {
     std::fs::write(
         trust_dir.join("trust.yml"),
         format!(
-            "keys:\n  - id: \"req-baseline-1\"\n    scheme: \"minisign\"\n    public_key: |\n{indented}\n    valid_from: \"2026-01-01\"\n    valid_until: \"2026-10-10\"\n"
+            "keys:\n  - id: \"req-baseline-1\"\n    scheme: \"minisign\"\n    public_key: |\n{indented}\n    valid_from: \"2026-01-01\"\n    valid_until: \"2026-10-10\"\n    revoked_at: \"2030-01-01\"\n"
         ),
     )
     .expect("writes the fixture trust anchor");
@@ -1138,6 +1189,77 @@ fn a_key_expired_today_but_valid_at_signing_verifies_through_the_cli() {
     assert!(
         stdout.contains("outside the key's validity window"),
         "{stdout}"
+    );
+
+    // The signature covers `signed_at` and `authority`. Change only `signed_at`, to another
+    // timestamp inside the trust window, so trust and the authority check still pass and the
+    // only reason left for a failure is the signature — the test that would catch a verifier
+    // re-canonicalizing a reduced (v2) shape.
+    let original = std::fs::read_to_string(&manifest_path).expect("reads the emitted manifest");
+    let tampered_text = original.replacen(
+        &format!("\"signed_at\":\"{FIXTURE_SIGNED_AT}\""),
+        "\"signed_at\":\"2026-10-08T09:00:00Z\"",
+        1,
+    );
+    assert_ne!(
+        tampered_text, original,
+        "the emitted manifest carries the fixture signed_at"
+    );
+    let tampered_path = fixture.path().join("tampered.json");
+    std::fs::write(&tampered_path, tampered_text).expect("writes the tampered manifest");
+    std::fs::copy(
+        fixture.path().join("baseline.json.minisig"),
+        fixture.path().join("tampered.json.minisig"),
+    )
+    .expect("copies the signature beside the tampered manifest");
+    let output = std::process::Command::new(req_bin())
+        .arg("--root")
+        .arg(fixture.path())
+        .args(["baseline", "--verify"])
+        .arg(&tampered_path)
+        .output()
+        .expect("runs the compiled binary");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "an edit inside the signed bytes is FAIL: {stdout}"
+    );
+    assert!(stdout.contains("[FAIL]"), "{stdout}");
+    assert!(stdout.contains("signature does not verify"), "{stdout}");
+
+    // A *newer* envelope must not be judged at a `signed_at` this build never validated. If it
+    // were, a far-future value (or an RFC 3339 offset form a future envelope may use) could make
+    // the trust comparison produce a definite FAIL for a manifest this build explicitly says it
+    // cannot judge. Judged on today's clock (2026), the key revoked in 2030 is still trusted and
+    // the only finding is the version.
+    let versioned = std::fs::read_to_string(&manifest_path)
+        .expect("reads the emitted manifest")
+        .replacen("\"version\":3", "\"version\":4", 1)
+        .replacen(
+            &format!("\"signed_at\":\"{FIXTURE_SIGNED_AT}\""),
+            "\"signed_at\":\"2099-01-01T00:00:00Z\"",
+            1,
+        );
+    let newer_path = fixture.path().join("newer.json");
+    std::fs::write(&newer_path, versioned).expect("writes the newer-envelope manifest");
+    let output = std::process::Command::new(req_bin())
+        .arg("--root")
+        .arg(fixture.path())
+        .args(["baseline", "--verify"])
+        .arg(&newer_path)
+        .output()
+        .expect("runs the compiled binary");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "a newer envelope is UNVERIFIABLE, never FAIL on an unvalidated time: {stdout}"
+    );
+    assert!(stdout.contains("newer"), "{stdout}");
+    assert!(
+        !stdout.contains("revoked"),
+        "the unvalidated signed_at must not judge the key: {stdout}"
     );
 }
 

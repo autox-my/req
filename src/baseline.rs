@@ -1324,12 +1324,14 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         match decision::verify_chain(&log) {
             decision::Chain::Valid => {}
             decision::Chain::Tampered(reasons) => {
+                // A stored hash that no longer recomputes is a definite finding (the chain's own
+                // `exit_code` maps Tampered to 1), not an inconclusive environment problem.
                 eprintln!(
-                    "[UNVERIFIABLE] refusing to emit: the decision log does not verify, and a \
-                     manifest that attests a broken chain must not be signed — {}",
+                    "[FAIL] refusing to emit: the decision log does not verify, and a manifest \
+                     that attests a broken chain must not be signed — {}",
                     reasons.join("; ")
                 );
-                return 3;
+                return 1;
             }
             decision::Chain::Unverifiable(reasons) => {
                 eprintln!(
@@ -1414,8 +1416,12 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let judged_at = if explicit_now {
         now
     } else {
+        // Only the envelope whose `signed_at` this build **validates** may supply the judgement
+        // time. A newer manifest's field is not this build's to interpret (and `from_json`
+        // deliberately does not validate it), so its trust verdict stays on today's clock — the
+        // version dispatch already answers UNVERIFIABLE for it.
         match manifest.signed_at.as_deref() {
-            Some(signed_at) if manifest.version >= BASELINE_VERSION => signed_at.to_string(),
+            Some(signed_at) if manifest.version == BASELINE_VERSION => signed_at.to_string(),
             _ => today_utc(),
         }
     };

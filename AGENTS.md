@@ -294,8 +294,9 @@ export OCR_NO_UPDATE=1
   head, the rules version, the selection, and every applying claim's address — which is the exact
   byte string a human signs. The signing time is **authored**: emitting without `--at` is a
   **usage error (exit 2)**, and so is a timestamp req cannot read; req never invents one.
-  Emission also **refuses (exit 3)** when the decision log is absent, unparsable, tampered or
-  empty — a head that attests nothing must not be signed.
+  Emission also **refuses** when the decision log is absent, unparsable or empty — **exit 3**,
+  a head that attests nothing must not be signed — and when the log is **tampered**, which is a
+  definite finding and exits **1** (the same class `verify` and `req decision` give it).
   `cargo run -q -- baseline --verify <file> [--signature <file>] [--key <id>] [--now <date>]`
   verifies one. Exit **0** verified, **1** FAIL, **3** UNVERIFIABLE, **2** usage (including
   `--at` on the verification path — the manifest carries its own time). Verification re-derives
@@ -313,7 +314,9 @@ export OCR_NO_UPDATE=1
   for v3 (today for v2; `--now` is the explicit override): a key whose expiry is **at or after**
   the signing time verifies even when today is later, a key **expired at signing** is FAIL (it
   was not valid when the signature was made), and **revocation is prospective** — a key revoked
-  *after* the signing time still verifies, while one revoked at or before it is FAIL. An unknown key or a
+  *after* the signing time still verifies, while one revoked at or before it is FAIL. Both are
+  judged by calendar date, and the signing time is **signer-asserted** (no RFC 3161), so
+  revocation bounds newly asserted times only; `valid_from` is recorded but not enforced. An unknown key or a
   missing signature is UNVERIFIABLE — a manifest is **not yet a Baseline** until a human signs
   it. The signature check is a **process boundary** to a pinned verifier, so the core links no
   cryptography and still no network; with no verifier installed the outcome is UNVERIFIABLE,
