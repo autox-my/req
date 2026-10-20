@@ -129,8 +129,12 @@ pub fn fill(log: &mut [Decision]) {
 /// the *stored* hash, and a stored hash that no longer recomputes is exactly what an edit after
 /// the fact looks like: signing this value without the judgement would attest an edited record
 /// as the chain's committed head — the failure ADR 0016 exists to close. `baseline`'s emit path
-/// refuses unless the chain is [`Chain::Valid`], and its verify path makes a nonlinear chain a
-/// finding rather than a head to compare.
+/// refuses unless the chain is [`Chain::Valid`].
+///
+/// The value is the log's **present** head. A Baseline attests a *position* as well (`entries`):
+/// it names record `entries - 1`, so a decision recorded afterwards does not move what the
+/// Baseline committed to. Verification therefore locates the attested record rather than
+/// comparing against this function's latest answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Head {
     pub hash: String,

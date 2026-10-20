@@ -252,6 +252,19 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
                 missing.join(" or ")
             ));
         }
+        // **A present `signed_at` must also be a time.** It is fed to `TrustFile::state`, whose
+        // comparisons are lexicographic on the date; an empty or non-date spelling sorts below
+        // every trust date and would skip both the expiry and the revocation check — reading a
+        // revoked key as trusted. This is the one choke point both the library and the CLI use.
+        if let Some(signed_at) = &manifest.signed_at
+            && !valid_signing_time(signed_at)
+        {
+            return Err(format!(
+                "manifest is not readable: `signed_at` {signed_at:?} is not an RFC 3339 UTC \
+                 timestamp, so the key's expiry and revocation cannot be judged; re-issue with \
+                 `req baseline --at <RFC 3339 UTC timestamp>` and re-sign"
+            ));
+        }
     }
     Ok(manifest)
 }
@@ -1047,23 +1060,40 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
                         reasons.join("; ")
                     )),
                     decision::Chain::Valid => {
-                        let derived = decision::head(log)
-                            .expect("a VALID chain is non-empty and ends in a filled hash");
-                        if derived.hash != authority.head {
-                            failed.push(format!(
-                                "authority mismatch: the manifest attests decision-chain head {} \
-                                 but the log's head is {} (ADR 0016)",
-                                short_hash(&authority.head),
-                                short_hash(&derived.hash)
-                            ));
-                        } else if derived.entries != authority.entries {
-                            failed.push(format!(
+                        // **A head is a commitment to a prefix, not to the log's present end.**
+                        // The manifest records `entries`, which says *which* record its head
+                        // names; verification checks that record carries the attested hash and
+                        // that the chain through it verifies. Decisions recorded afterwards are
+                        // ordinary history growth (ADR 0005) and must not invalidate a Baseline
+                        // the human signed before them — equality with the current head would
+                        // do exactly that, on every `req decision --fill`.
+                        match authority
+                            .entries
+                            .checked_sub(1)
+                            .and_then(|position| log.get(position))
+                        {
+                            None => failed.push(format!(
                                 "authority mismatch: the manifest attests {} decision entr{} but \
-                                 the log holds {} (ADR 0016)",
+                                 the log holds {} — the attested prefix is not there (ADR 0016)",
                                 authority.entries,
                                 if authority.entries == 1 { "y" } else { "ies" },
-                                derived.entries
-                            ));
+                                log.len()
+                            )),
+                            Some(record) => match record.hash.as_deref() {
+                                Some(stored) if stored == authority.head => {}
+                                Some(stored) => failed.push(format!(
+                                    "authority mismatch: decision {} carries {} but the manifest \
+                                     attests {} (ADR 0016)",
+                                    authority.entries,
+                                    short_hash(stored),
+                                    short_hash(&authority.head)
+                                )),
+                                None => open.push(format!(
+                                    "the decision at position {} carries no chain hash, so the \
+                                     attested head cannot be located (ADR 0016)",
+                                    authority.entries
+                                )),
+                            },
                         }
                     }
                 },

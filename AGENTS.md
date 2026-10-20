@@ -300,9 +300,11 @@ export OCR_NO_UPDATE=1
   verifies one. Exit **0** verified, **1** FAIL, **3** UNVERIFIABLE, **2** usage (including
   `--at` on the verification path — the manifest carries its own time). Verification re-derives
   every address, so a claim edited after signing is **FAIL** — the same class as a hand-edited
-  digest; a v3 manifest also attests the Decision log's **chain head**, so an edited log or a
-  head that no longer re-derives is **FAIL** (authority mismatch), while an absent or unparsable
-  log is **UNVERIFIABLE**, never FAIL — absence is not tampering. A manifest whose recorded
+  digest; a v3 manifest also attests the Decision log's **chain head at a position**
+  (`entries`), so a rewritten attested prefix, a truncated log or a record whose stored hash no
+  longer recomputes is **FAIL** (authority mismatch) — while decisions appended *after* that
+  prefix do not invalidate an earlier Baseline (history growth is not tampering), and an absent
+  or unparsable log is **UNVERIFIABLE**, never FAIL — absence is not tampering. A manifest whose recorded
   `rules_v` disagrees with this build's is **UNVERIFIABLE** with the re-sign remedy and drift is
   **not judged** — an address is derived from the rules version, so the comparison is void
   rather than inconclusive (an older manifest is re-signed under the current rules; a newer one

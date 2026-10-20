@@ -126,3 +126,14 @@ If any of 1–5 behaves otherwise, this ADR has not landed.
 - **Keep v2 and rely on git history.** Git answers *what changed*; it cannot answer *which authority was
   signed under*, and it cannot answer expiry at signing time. This is the status quo the ADR exists to
   replace.
+
+## Implementation note (2026-10-21): the head names a prefix
+
+Verification locates the attested head at **position `entries`** in the log and checks that
+record's stored hash — it does not compare it with the log's present head. `entries` exists
+precisely to say which record the head names, and equality with the present head would make the
+ordinary act of recording a Decision (ADR 0005) invalidate every Baseline signed before it;
+history growth is not tampering. A log shorter than the attested prefix, a rewritten attested
+prefix, or a record whose stored hash no longer recomputes is still FAIL. Decisions appended
+afterwards do not stop an earlier Baseline verifying, and `req decision --verify` remains the
+judge of the log as it now stands.

@@ -67,6 +67,62 @@ fn the_head_is_the_last_record_and_the_count_is_every_record() {
     );
 }
 
+/// A Baseline attests a **prefix**. Recording a new Decision is the ordinary way authority grows
+/// (ADR 0005), so a Baseline signed before it must keep verifying — otherwise every
+/// `req decision --fill` would force a re-sign with a key req cannot reach. A log shorter than
+/// the attested prefix is still a finding, because the record it names is gone.
+#[test]
+fn a_decision_recorded_after_signing_does_not_invalidate_the_baseline() {
+    let (rows, manifest) = signed_manifest();
+    let mut log = fixture_log(FIXTURE_DECISION_NOTE);
+    let mut appended = log[0].clone();
+    appended.id = "DEC-0002".to_string();
+    appended.note = "a later ratification".to_string();
+    appended.prev_hash = None;
+    appended.hash = None;
+    log.push(appended);
+    decision::fill(&mut log);
+    let outcome = req::baseline::verify(
+        &rows,
+        &manifest,
+        &Verification {
+            signature: Some("sig"),
+            trust: &trust(false, None),
+            key_id: "req-baseline-1",
+            verifier: &Stub(SignatureOutcome::Valid),
+            now: FIXTURE_SIGNED_AT,
+            log: Some(&log),
+        },
+    );
+    assert_eq!(
+        outcome.exit_code(),
+        0,
+        "an appended decision is history: {outcome:?}"
+    );
+
+    // Attest the two-entry log, then show the log cannot be cut back below it.
+    let mut candidate = manifest.clone();
+    let two_entry_head = decision::head(&log).expect("filled");
+    attest(&mut candidate, FIXTURE_SIGNED_AT, &two_entry_head);
+    let truncated = req::baseline::verify(
+        &rows,
+        &candidate,
+        &Verification {
+            signature: Some("sig"),
+            trust: &trust(false, None),
+            key_id: "req-baseline-1",
+            verifier: &Stub(SignatureOutcome::Valid),
+            now: FIXTURE_SIGNED_AT,
+            log: Some(&log[..1]),
+        },
+    );
+    assert_eq!(truncated.exit_code(), 1, "{truncated:?}");
+    assert!(
+        truncated.reasons().join(" ").contains("attested prefix"),
+        "{truncated:?}"
+    );
+}
+
 /// The fixture log's head, as the manifest records it.
 fn fixture_head() -> decision::Head {
     let log = fixture_log(FIXTURE_DECISION_NOTE);
@@ -83,6 +139,14 @@ const EMPTY_RELATIONS_DIGEST: &str =
 /// `printf 'req.rationale.v1\0{"source":"docs/adr/0010-baseline-signing-and-trust.md","date":"2026-10-07","rejected_alternatives":[],"assumptions":[]}' | shasum -a 256` — the fixture rationale every row in this file carries:
 const FIXTURE_RATIONALE_DIGEST: &str =
     "bd57ad973193c6a0537045b60db5890f854b15616391b6ffe0e661c5709185c5";
+
+/// The fixture Decision's chain hash, computed **independently of this crate**:
+/// `sha256("req.decision.v1" \0 "req.genesis.v1" "\n" <canonical decision bytes>)`, where the
+/// canonical bytes are the fixed fixture record with note `the maintainer ratified REQ-A`.
+/// Recomputing it through `decision::fill`/`head` would let a defect in the chain hashing (or in
+/// the accessor's choice of record) agree with itself, which is exactly the pin that matters.
+const FIXTURE_HEAD_HASH: &str = "5cd6c7ff145231c134616228dcc0a8c80ac28e9842d77b20e83f502b59bf6978";
+const FIXTURE_HEAD_ENTRIES: usize = 1;
 
 fn row(id: &str, address: &str, applies: Applies) -> Row {
     // One idiom with every other row fixture (`common::rationale_columns`): the displayed
@@ -237,6 +301,11 @@ fn canonical_bytes_do_not_depend_on_input_order() {
     // rules_v, selection, claims.
     let head = fixture_head();
     assert_eq!(
+        head.hash, FIXTURE_HEAD_HASH,
+        "the fixture head is the independently computed hash"
+    );
+    assert_eq!(head.entries, FIXTURE_HEAD_ENTRIES);
+    assert_eq!(
         canonical_bytes(&forward),
         format!(
             "{{\"version\":3,\"signed_at\":\"{FIXTURE_SIGNED_AT}\",\
@@ -248,12 +317,11 @@ fn canonical_bytes_do_not_depend_on_input_order() {
              {{\"claim_id\":\"REQ-B\",\"address\":\"bbb\",\
              \"relations_hash\":\"{EMPTY_RELATIONS_DIGEST}\",\
              \"rationale_hash\":\"{FIXTURE_RATIONALE_DIGEST}\"}}]}}\n",
-            head.hash, head.entries
-        )
+            FIXTURE_HEAD_HASH, FIXTURE_HEAD_ENTRIES
+        ),
+        "the exact bytes are the stability pin: `canonical_bytes` is pure, so re-calling it \
+         with the same argument would assert nothing"
     );
-    // Byte-stable across runs: the same manifest must serialize to the same bytes every time,
-    // or a signature over one run would not verify against another.
-    assert_eq!(canonical_bytes(&forward), canonical_bytes(&forward));
 }
 
 /// A v2 manifest keeps its historical byte shape — no `signed_at`/`authority` — so an old
@@ -274,6 +342,33 @@ fn a_v2_manifest_keeps_its_legacy_bytes_and_still_parses() {
         text,
         "the v2 bytes are the ones an old signature covers"
     );
+}
+
+/// `signed_at` is fed to `TrustFile::state`, whose comparisons are lexicographic on the date; a
+/// present-but-unreadable value (an empty string, a different format, an impossible date) would
+/// sort below every trust date and skip both the expiry and the revocation check, reading a
+/// revoked key as trusted. The parse choke point rejects it, so neither the library nor the CLI
+/// can be handed one.
+#[test]
+fn a_v3_manifest_with_an_unreadable_signed_at_is_rejected() {
+    for bad in [
+        "",
+        "07/10/2026",
+        "2026-10-07 09:00:00",
+        "2026-02-31T00:00:00Z",
+    ] {
+        let text = format!(
+            "{{\"version\":3,\"signed_at\":\"{bad}\",\
+             \"authority\":{{\"head\":\"{FIXTURE_HEAD_HASH}\",\"entries\":1}},\
+             \"rules_v\":5,\"selection\":{{}},\"claims\":[]}}"
+        );
+        let err = from_json(&text).expect_err("an unreadable signed_at is not a manifest");
+        assert!(
+            err.contains("not an RFC 3339 UTC timestamp"),
+            "{bad:?}: {err}"
+        );
+        assert!(!err.contains("predates"), "{bad:?}: {err}");
+    }
 }
 
 /// A v3 declaration without either attestation is corrupt, not stale, and the message says what
@@ -933,6 +1028,117 @@ fn emitting_refuses_a_corpus_with_no_readable_decision_log() {
     assert_eq!(output.status.code(), Some(3), "{stderr}");
     assert!(stderr.contains("refusing to emit"), "{stderr}");
     assert!(stderr.contains("decision log"), "{stderr}");
+}
+
+/// ADR 0016 case 3, end to end through the CLI: the key is judged at the manifest's
+/// `signed_at`, not at today. The fixture trust anchor expires *after* the fixture signing time
+/// but *before* today (2026-10-21), so `[VERIFIED]` proves `run()` derived the judgement time
+/// from `signed_at`; `--now` after the expiry then FAILs, proving the override is real.
+/// A throwaway key (`minisign -G -W`, no passphrase) signs the fixture manifest: the
+/// maintainer's key is never in a test, and no new seam is needed.
+#[test]
+fn a_key_expired_today_but_valid_at_signing_verifies_through_the_cli() {
+    require_minisign();
+    let fixture = Fixture::new("cli-v3-expiry");
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for (src, dst) in [
+        ("claims/REQ-0001.yml", "claims/REQ-0001.yml"),
+        ("aliases/subjects.yml", "aliases/subjects.yml"),
+        ("decisions/DEC-0001.yml", "decisions/DEC-0001.yml"),
+    ] {
+        let to = fixture.path().join(dst);
+        std::fs::create_dir_all(to.parent().expect("a parent")).expect("creates the directory");
+        std::fs::copy(root.join(src), &to).expect("copies the fixture corpus file");
+    }
+
+    let public_key = fixture.path().join("req.pub");
+    let secret_key = fixture.path().join("req.key");
+    let generated = std::process::Command::new("minisign")
+        .args(["-G", "-W", "-f", "-p"])
+        .arg(&public_key)
+        .arg("-s")
+        .arg(&secret_key)
+        .output()
+        .expect("runs minisign");
+    assert!(
+        generated.status.success(),
+        "throwaway key generation failed: {}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+
+    let manifest_path = fixture.path().join("baseline.json");
+    let emitted = std::process::Command::new(req_bin())
+        .arg("--root")
+        .arg(fixture.path())
+        .args(["baseline", "--at", FIXTURE_SIGNED_AT])
+        .output()
+        .expect("runs the compiled binary");
+    assert_eq!(
+        emitted.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&emitted.stderr)
+    );
+    std::fs::write(&manifest_path, &emitted.stdout).expect("writes the emitted manifest");
+    let signed = std::process::Command::new("minisign")
+        .args(["-Sm"])
+        .arg(&manifest_path)
+        .arg("-s")
+        .arg(&secret_key)
+        .output()
+        .expect("runs minisign");
+    assert!(
+        signed.status.success(),
+        "fixture signing failed: {}",
+        String::from_utf8_lossy(&signed.stderr)
+    );
+
+    let key_text = std::fs::read_to_string(&public_key).expect("reads the fixture public key");
+    let indented = key_text
+        .lines()
+        .map(|line| format!("      {line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let trust_dir = fixture.path().join("baselines");
+    std::fs::create_dir_all(&trust_dir).expect("creates baselines/");
+    std::fs::write(
+        trust_dir.join("trust.yml"),
+        format!(
+            "keys:\n  - id: \"req-baseline-1\"\n    scheme: \"minisign\"\n    public_key: |\n{indented}\n    valid_from: \"2026-01-01\"\n    valid_until: \"2026-10-10\"\n"
+        ),
+    )
+    .expect("writes the fixture trust anchor");
+
+    let run = |now: Option<&str>| {
+        let mut command = std::process::Command::new(req_bin());
+        command
+            .arg("--root")
+            .arg(fixture.path())
+            .args(["baseline", "--verify"])
+            .arg(&manifest_path);
+        if let Some(now) = now {
+            command.args(["--now", now]);
+        }
+        let output = command.output().expect("runs the compiled binary");
+        (
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+        )
+    };
+
+    // Judged at signed_at (2026-10-07), before valid_until 2026-10-10: verified.
+    let (code, stdout) = run(None);
+    assert_eq!(code, Some(0), "{stdout}");
+    assert!(stdout.contains("[VERIFIED]"), "{stdout}");
+
+    // Judged at --now (2026-10-21), after the expiry: the same Baseline FAILS.
+    let (code, stdout) = run(Some("2026-10-21"));
+    assert_eq!(code, Some(1), "{stdout}");
+    assert!(stdout.contains("[FAIL]"), "{stdout}");
+    assert!(
+        stdout.contains("outside the key's validity window"),
+        "{stdout}"
+    );
 }
 
 // --- The canonical rules version, judged before drift -----------------------------------------

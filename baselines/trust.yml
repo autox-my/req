@@ -12,11 +12,14 @@
 #   valid_from  the date this key became trusted (ISO-8601, zero-padded, compared as a string).
 #   valid_until optional. Judged at the Baseline's signing time: a v3 manifest carries
 #               `signed_at`, so a key whose validity ends at or after it verifies even when today
-#               is later, and one already expired then FAILS (ADR 0016). A v2 manifest has no
-#               trusted signing time, so its expiry stays UNVERIFIABLE (ADR 0010).
-#   revoked_at  optional. Revocation is **prospective** (ADR 0016): a key revoked *after* the
-#               Baseline's signing time still verifies for it, while one revoked at or before it
-#               FAILS. Record it the moment a private key is lost or retired.
+#               is later, and one already expired then FAILS (ADR 0016). The comparison is by
+#               **calendar date** (both sides reduced to YYYY-MM-DD), so a same-day expiry still
+#               verifies. A v2 manifest has no trusted signing time, so its expiry stays
+#               UNVERIFIABLE (ADR 0010).
+#   revoked_at  optional. Revocation is **prospective** (ADR 0016): a key revoked on a *later
+#               calendar date* than the Baseline's signing time still verifies for it, while one
+#               revoked on or before that date FAILS (same-day counts as revoked). Record it the
+#               moment a private key is lost or retired.
 #
 # Rotating a key means adding an entry beside the old one with its own validity window: old
 # Baselines stay verifiable against the old key, new ones must use the new one.
