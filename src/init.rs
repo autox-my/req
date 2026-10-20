@@ -422,7 +422,8 @@ fn print_next_steps() {
     );
 }
 
-/// The CI snippet `init` prints. `docs/adopting.md` carries the same block inside its
+/// The CI snippet `init` prints. Public so the execution test (`tests/init.rs`) can run the
+/// exact block an adopter's runner runs, not a copy of it. `docs/adopting.md` carries it inside its
 /// "## CI" section — two copies of advice no adopter can afford to have drift, so the
 /// equality is **asserted** (`the_printed_snippet_is_the_one_the_adopting_doc_carries`,
 /// below) rather than left to review: the parts that matter (the `summary` fallback, the
@@ -432,7 +433,7 @@ fn print_next_steps() {
 /// The presence assertion is not decoration: a **failed input redirection does not stop a
 /// `set -e` script**, so without it an absent `.req/variants` silently skips every declared
 /// variant and the step goes green. Measured, and the reason the assertion is explicit.
-const CI_SNIPPET: &str = r#"name: req
+pub const CI_SNIPPET: &str = r#"name: req
 on:
   pull_request:
   push:

@@ -824,3 +824,168 @@ fn the_adoption_doc_carries_the_verified_install_form_and_the_ci_gate() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// The CI gate step: executed, not just compared with the doc
+// ---------------------------------------------------------------------------
+
+/// The shell body of the CI gate step, extracted from the snippet `req init` prints — the same
+/// bytes an adopter's runner executes. Extracted rather than duplicated: a third copy would be
+/// free to drift, and the point of this test is to run *the* snippet.
+#[cfg(unix)]
+fn gate_script() -> String {
+    let lines: Vec<&str> = req::init::CI_SNIPPET.lines().collect();
+    // The snippet has several `run: |` blocks (install, verify, gate). The gate one is the block
+    // that contains the variants loop, so the loop is the anchor and the opener is the nearest
+    // `run: |` above it — positional, not "the first" or "the last".
+    let loop_at = lines
+        .iter()
+        .position(|line| line.contains("while IFS= read -r variant_line"))
+        .expect("the gate step loops over .req/variants");
+    let at = lines[..loop_at]
+        .iter()
+        .rposition(|line| line.trim() == "run: |")
+        .expect("the loop lives inside a `run: |` block");
+    let run_indent = lines[at].len() - lines[at].trim_start().len();
+    let mut body: Vec<&str> = Vec::new();
+    for line in &lines[at + 1..] {
+        let blank = line.trim().is_empty();
+        let indent = line.len() - line.trim_start().len();
+        if !blank && indent <= run_indent {
+            break;
+        }
+        body.push(line);
+    }
+    let dedent = body
+        .iter()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.len() - line.trim_start().len())
+        .min()
+        .expect("the run block has a body");
+    let mut script = String::new();
+    for line in body {
+        if line.len() > dedent {
+            script.push_str(&line[dedent..]);
+        }
+        script.push('\n');
+    }
+    script
+}
+
+/// Write `.req/variants` with exactly `text`, so a test can control whether the last line is
+/// newline-terminated.
+#[cfg(unix)]
+fn write_variants(fx: &Fixture, text: &str) {
+    std::fs::create_dir_all(fx.join(".req")).expect("creates .req/");
+    std::fs::write(fx.join(".req/variants"), text).expect("writes .req/variants");
+}
+
+/// Run the extracted CI step in `fx`; return its exit code and the job summary it wrote.
+#[cfg(unix)]
+fn run_gate_step(fx: &Fixture, script: &str) -> (i32, String) {
+    let summary = fx.join("step-summary.md");
+    // The step appends its rows; a fresh run must not read the previous case's.
+    let _ = std::fs::remove_file(&summary);
+    let bin_dir = req_bin()
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
+    let path = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let out = Command::new("bash")
+        .arg("-c")
+        .arg(script)
+        .current_dir(fx.path())
+        .env("PATH", path)
+        .env("FORGEJO_STEP_SUMMARY", &summary)
+        .env_remove("REQ_ROOT")
+        .output()
+        .expect("runs the CI gate step");
+    let code = out.status.code().unwrap_or(-1);
+    let rows = std::fs::read_to_string(&summary).unwrap_or_default();
+    let text = format!(
+        "{rows}{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    (code, text)
+}
+
+/// The summary rows the step wrote, one per `gate()` call.
+#[cfg(unix)]
+fn summary_rows(text: &str) -> Vec<&str> {
+    text.lines()
+        .filter(|line| line.starts_with("| `"))
+        .collect()
+}
+
+/// The CI step's loop is load-bearing for every adopter, and until this test nothing executed it:
+/// the snippet was only pinned to `docs/adopting.md`, which cannot catch a broken loop. Four
+/// behaviours decide whether the step protects a release or lies about it:
+/// a comment-only file falls back to the default variant; a declared line is gated *instead*, and
+/// its non-zero exit propagates — even when it is the file's unterminated last line; blank and
+/// comment lines never become a bare run; and an absent file is red.
+#[cfg(unix)]
+#[test]
+fn the_ci_gate_step_script_behaves_as_an_adopter_needs() {
+    let script = gate_script();
+    assert!(
+        script.contains("while IFS= read -r variant_line"),
+        "the snippet still loops over .req/variants:\n{script}"
+    );
+    assert!(
+        script.contains("[ -f .req/variants ]"),
+        "and still fails closed on an absent file:\n{script}"
+    );
+
+    // A corpus, exactly as `req init` leaves it.
+    let fx = Fixture::new("ci-gate-step");
+    let init = run_at(fx.path(), &["init"]);
+    assert_eq!(init.code, 0, "{}{}", init.stdout, init.stderr);
+
+    // (1) A comment-only file declares no release, so the bare invocation is the gate.
+    write_variants(&fx, "# nothing declared yet\n");
+    let (code, text) = run_gate_step(&fx, &script);
+    assert_eq!(
+        code, 0,
+        "a comment-only file falls back to the default variant: {text}"
+    );
+    assert_eq!(summary_rows(&text).len(), 1, "exactly one gate run: {text}");
+    assert!(
+        text.contains("`<none>`"),
+        "the bare run is labelled: {text}"
+    );
+
+    // (2) A declared line is gated *instead*, and its exit propagates — here as the file's last
+    // line with **no trailing newline**, which `read` reports as non-zero while assigning it.
+    write_variants(&fx, "deployment_mode=air_gapped");
+    let (code, text) = run_gate_step(&fx, &script);
+    assert_eq!(
+        code, 3,
+        "the declared line is gated and its refusal is the step's: {text}"
+    );
+    assert_eq!(
+        summary_rows(&text).len(),
+        1,
+        "the loop is the gate; the bare fallback must not also run: {text}"
+    );
+    assert!(text.contains("deployment_mode=air_gapped"), "{text}");
+
+    // (3) Blank and comment-only lines are skipped, never turned into a bare run.
+    write_variants(&fx, "\n   \n# a comment\n\n");
+    let (code, text) = run_gate_step(&fx, &script);
+    assert_eq!(code, 0, "{text}");
+    assert_eq!(summary_rows(&text).len(), 1, "one run: {text}");
+    assert!(
+        text.contains("`<none>`"),
+        "still the default variant: {text}"
+    );
+
+    // (4) An absent variants file is a failure, not a silently green step.
+    std::fs::remove_file(fx.join(".req/variants")).expect("removes the variants file");
+    let (code, text) = run_gate_step(&fx, &script);
+    assert_eq!(code, 1, "an absent variants file is red: {text}");
+}

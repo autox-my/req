@@ -282,11 +282,11 @@ run cargo run -q -- bench bench/corpus/direction-v1.yml
 #
 # Each line is a **complete** release context, and since ADR 0015 a green line means exactly that:
 # an undecided claim exits 3, so a dropped `set`, `runs`, `deployment_mode` or `field` reddens this
-# step instead of passing silently. What no single line can see is the property *across* lines — a
-# claim that applies in no declared release is examined by none of them — and that is what
-# `tests/release_gate.rs` adds: `every_claim_applies_in_at_least_one_declared_release`, plus the
-# `, 0 undecided` assertion as the second half of the per-line property, which fails if `exit_code`
-# ever stops honouring the count.
+# step instead of passing silently — and the gate names the claim it cost. What no single line can
+# see is the property *across* lines — a claim that applies in no declared release is examined by
+# none of them — and that is what `tests/release_gate.rs` adds with
+# `every_claim_applies_in_at_least_one_declared_release`. (Its per-line twin asserts exit 0 and
+# `, 0 undecided` in the headline: that is what fails if `exit_code` ever stops honouring the count.)
 if [ -r "$PWD/.req/variants" ]; then
   variants_gated=0
   # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while still

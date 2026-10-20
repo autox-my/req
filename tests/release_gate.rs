@@ -771,6 +771,31 @@ relations: []
         );
     }
 
+    /// A `Ge` whose bound is not a decimal parses — the grammar does not validate the bound — but
+    /// `select::evaluate` returns UNKNOWN for it because the comparison needs decimals on both
+    /// sides. It therefore belongs in the "no context can decide it" bucket: telling the caller to
+    /// pass the variant context sends them looking for a value they cannot supply, since no
+    /// `runs=<whatever>` makes `runs >= twenty` comparable.
+    #[test]
+    fn a_ge_with_a_non_decimal_bound_is_named_not_left_to_a_context() {
+        let fixture = Fixture::new("ge-nondecimal");
+        fixture.claim("REQ-9001", &[]);
+        fixture.claim("REQ-9002", &["runs >= twenty"]);
+        fixture.fill();
+        let out = fixture.gate(&["runs=25"]);
+        assert_eq!(out.code, 3, "{}", out.text);
+        assert!(
+            out.text.contains("runs >= twenty"),
+            "the unreadable bound is quoted: {}",
+            out.text
+        );
+        assert!(
+            out.text.contains("rewrite the predicate"),
+            "and the remedy is to rewrite it, not to pass a context: {}",
+            out.text
+        );
+    }
+
     // ---- all three outcomes through the public seam ------------------------------------------
 
     /// The third outcome, end to end: an address that does not recompute is a **defect** — FAIL,

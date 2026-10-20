@@ -27,6 +27,7 @@
 use crate::fill::StoredState;
 use crate::select::{Applies, Context, Predicate, parse_predicate};
 use crate::view::Row;
+use rust_decimal::Decimal;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -345,6 +346,13 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                 .map(|text| parse_predicate(text))
                 .filter_map(|predicate| match predicate {
                     Predicate::Unsupported { text } => Some(text),
+                    // A `Ge` whose bound is not a decimal parses (the grammar sees
+                    // `key >= value`) but no evaluation can compare it — `runs >= twenty` is
+                    // unparsable in effect, and "pass the variant context" would be the wrong
+                    // advice for it. The same parse `evaluate` uses decides the bucket.
+                    Predicate::Ge { key, value } if value.parse::<Decimal>().is_err() => {
+                        Some(format!("{key} >= {value}"))
+                    }
                     _ => None,
                 })
                 .collect();
