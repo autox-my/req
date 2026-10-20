@@ -280,12 +280,13 @@ run cargo run -q -- bench bench/corpus/direction-v1.yml
 # repository's own list — one `key=value ...` release per line, and the reader is this script,
 # because req knows nothing about the file.
 #
-# Each line is a **complete** release context, and "the gate is green" is not the property to rely
-# on: since ADR 0015 an undecided claim exits 3, so a dropped `set`, `runs`, `deployment_mode` or
-# `field` reddens this step rather than passing silently. The exit code still says only *that*
-# something is undecided; only `corpus_set` is dependency-guarded (`dependencies_decided` names the
-# REQ-0008 dependency), so `tests/release_gate.rs` remains the precise guard: it requires **zero
-# undecided** per declared line and names the claim a dropped key left unexamined.
+# Each line is a **complete** release context, and since ADR 0015 a green line means exactly that:
+# an undecided claim exits 3, so a dropped `set`, `runs`, `deployment_mode` or `field` reddens this
+# step instead of passing silently. What no single line can see is the property *across* lines — a
+# claim that applies in no declared release is examined by none of them — and that is what
+# `tests/release_gate.rs` adds: `every_claim_applies_in_at_least_one_declared_release`, plus the
+# `, 0 undecided` assertion as the second half of the per-line property, which fails if `exit_code`
+# ever stops honouring the count.
 if [ -r "$PWD/.req/variants" ]; then
   variants_gated=0
   # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while still

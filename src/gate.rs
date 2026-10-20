@@ -332,6 +332,29 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
          (an undecided claim is never treated as absent)",
         undecided.len()
     );
+    // Not every undecided claim is waiting for a context: a predicate the grammar cannot read is
+    // decided by no context at all, so "pass the variant" would send the caller looking for a value
+    // that does not exist. The two cases are named apart, each with its own remedy.
+    let unparsable: Vec<(String, String)> = rows
+        .iter()
+        .filter(|r| r.applies == Applies::Unknown)
+        .filter_map(|r| {
+            let bad: Vec<String> = r
+                .selectors
+                .iter()
+                .map(|text| parse_predicate(text))
+                .filter_map(|predicate| match predicate {
+                    Predicate::Unsupported { text } => Some(text),
+                    _ => None,
+                })
+                .collect();
+            if bad.is_empty() {
+                None
+            } else {
+                Some((r.claim_id.clone(), bad.join("; ")))
+            }
+        })
+        .collect();
     if !undecided.is_empty() {
         // The disclosure is not the signal — the exit code is — so the claims it skipped are
         // named beside it, with the one remedy that turns them into examined claims. Without
@@ -340,10 +363,23 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             "  undecided (not examined by this invocation): {}",
             undecided.join(", ")
         );
-        println!(
-            "  remedy: pass the variant context that decides them — a complete release context, \
-             as `.req/variants` declares — and gate each declared variant"
-        );
+        for (claim, text) in &unparsable {
+            println!(
+                "  - {claim}: `{text}` is not in the selector grammar (`key == value`, \
+                 `key >= number`), so no context can decide it — rewrite the predicate"
+            );
+        }
+        if unparsable.is_empty() {
+            println!(
+                "  remedy: pass the variant context that decides them — a complete release context, \
+                 as `.req/variants` declares — and gate each declared variant"
+            );
+        } else {
+            println!(
+                "  remedy: rewrite the predicate above, then pass the variant context that decides \
+                 the rest — a complete release context, as `.req/variants` declares"
+            );
+        }
     }
     let results = evaluate(&rows, &context);
     for result in &results {

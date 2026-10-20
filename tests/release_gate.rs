@@ -508,6 +508,19 @@ relations: []
             "{}",
             decided.headline()
         );
+        // The negative direction of the disclosure: a decided release must print neither the
+        // "not examined" list nor a remedy. Without this, a regression that printed both lines
+        // unconditionally would keep every assertion above green.
+        assert!(
+            !decided.text.contains("undecided (not examined"),
+            "a decided release must not print the disclosure: {}",
+            decided.text
+        );
+        assert!(
+            !decided.text.contains("remedy:"),
+            "a decided release must not print a remedy: {}",
+            decided.text
+        );
     }
 
     /// Fail still outranks the open question after ADR 0015: a corpus whose bare gate finds a
@@ -742,6 +755,19 @@ relations: []
         assert!(
             !block.contains("no applicability predicate in the corpus mentions"),
             "the gate must not assert absence of a key an unread selector may carry: {block}"
+        );
+        // An unread predicate is decided by no context, so the remedy must say to rewrite it —
+        // not to pass a variant context, which would send the caller looking for a value that
+        // cannot exist.
+        assert!(
+            out.text.contains("is not in the selector grammar"),
+            "the remedy names the unread predicate: {}",
+            out.text
+        );
+        assert!(
+            out.text.contains("rewrite the predicate"),
+            "and says what to do about it: {}",
+            out.text
         );
     }
 
