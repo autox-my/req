@@ -45,6 +45,8 @@ output).
 """
 import argparse
 import json
+import os
+import tempfile
 import pathlib
 import shutil
 import subprocess
@@ -68,6 +70,10 @@ ALLOW_LIST = {
     "bench/corpus/tier2-positives-v1-captures/": "generated capture data — reviewed through its generator, not line by line",
     "tools/ocr/package.json": "the pinned review CLI's own manifest — reviewed at pin time, not by our rule file",
     "tools/ocr/package-lock.json": "lockfile — the review CLI excludes lockfiles (default_path)",
+    "baselines/air-gapped.json.minisig": (
+        "a minisign signature — excluded from review by decision: the CLI cannot read the "
+        "extension, and `req baseline --verify` (in the gate, no SKIP) is what verifies it"
+    ),
 }
 
 
@@ -160,6 +166,159 @@ def _shape(rules: list) -> tuple:
     return paths, len(problems)
 
 
+# The two keys a review document may carry. `ocr` ignores unknown keys silently (Go drops
+# them), so a misspelled "excludes" would be a no-op that still loads — the same trap this
+# script exists to catch in entry fields, one level up.
+TOP_LEVEL_KEYS = frozenset({"rules", "exclude"})
+# The blind spot the `baselines/**` checklist declares: `ocr` cannot see a `.minisig`, so a
+# change to a signed Baseline always looks like it is missing one. The declaration is pinned
+# here because a declaration that can vanish silently is worth nothing.
+SIGNATURE_EXCLUDE = "baselines/*.minisig"
+SIGNATURE_DECLARATION = "outside your view"
+# The *load-bearing* half of the declaration: the instruction the reviewer must carry. Pinning the
+# diagnosis without it would let the instruction be deleted while this script still passed.
+SIGNATURE_INSTRUCTION = (
+    'do not report "no updated signature is part of this change" as a finding'
+)
+
+
+def declared_document_problems(document) -> list:
+    """What is wrong with the document's own shape, before any CLI is consulted."""
+    if not isinstance(document, dict):
+        return ["the document is not a JSON object"]
+    problems = [
+        f"unknown top-level key {key!r} — the CLI ignores unknown keys silently, so a typo "
+        "is a no-op"
+        for key in sorted(set(document) - TOP_LEVEL_KEYS)
+    ]
+    if not isinstance(document.get("rules"), list):
+        problems.append("no 'rules' list")
+    exclude = document.get("exclude", [])
+    if not isinstance(exclude, list):
+        problems.append("'exclude' must be a list of gitignore-style patterns")
+    else:
+        for pattern in exclude:
+            if not isinstance(pattern, str) or not pattern.strip():
+                problems.append(f"'exclude' holds a value that is not a usable pattern: {pattern!r}")
+    return problems
+
+
+def selection_problems(document: dict) -> tuple:
+    """Does the CLI *honour* the exclusion? A pinned spelling is not an effect.
+
+    `ocr` is the only implementation of the selection, so the effect is measured on a throwaway
+    repository: a **probe** exclude naming a reviewable path (`src/keep.rs`) must take it out with
+    `user_exclude`. That is the load-bearing assertion — it goes red if a future CLI drops or
+    renames the top-level key.
+
+    What is deliberately **not** asserted: that a `.minisig` is unreviewable. `ocr` filters that
+    extension already, so the assertion would pass without our exclusion doing anything.
+
+    Returns `(status, problems)`: 0 measured, 1 our own document is unusable, 3 could not answer.
+    """
+    identity = {
+        "GIT_AUTHOR_NAME": "req",
+        "GIT_AUTHOR_EMAIL": "req@localhost",
+        "GIT_COMMITTER_NAME": "req",
+        "GIT_COMMITTER_EMAIL": "req@localhost",
+    }
+    work = None
+    try:
+        work = pathlib.Path(tempfile.mkdtemp(prefix="req-review-effect-"))
+        # **`GIT_*` is stripped.** Run from a git hook (this gate is one), the environment carries
+        # `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` pointing at the caller's repository, and
+        # `git init` here would then operate on *that* repository rather than the throwaway one.
+        env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        env.update(identity)
+
+        def git(*args: str) -> None:
+            # `-c commit.gpgsign=false`: a developer whose global config signs every commit would
+            # otherwise fail this check locally and pass in CI. `core.hooksPath=/dev/null` keeps a
+            # global hook out of a throwaway repository.
+            subprocess.run(
+                ["git", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", *args],
+                cwd=work, check=True, capture_output=True, text=True, env=env,
+            )
+
+        def preview(rule: pathlib.Path) -> tuple:
+            """`(status, payload)`: 0 a usable selection, 1 the CLI rejected this document, 3 the
+            output is not the shape this check understands. The three must not be flattened: a
+            rejected document is our defect, an unreadable one is unanswerable."""
+            proc = subprocess.run(
+                ["ocr", "delegate", "preview", "--format", "json", "--repo", str(work),
+                 "--from", "HEAD~1", "--to", "HEAD", "--rule", str(rule)],
+                cwd=work, capture_output=True, text=True, env=env,
+            )
+            if proc.returncode != 0:
+                return 1, proc.stderr.strip()[:200]
+            try:
+                parsed = json.loads(proc.stdout)
+            except Exception as exc:
+                return 3, f"unparsable preview: {exc}"
+            for key in ("reviewable_files", "excluded_files"):
+                entries = parsed.get(key)
+                if not isinstance(entries, list):
+                    return 3, f"the preview has no {key} list — the CLI's JSON shape changed"
+                if any(
+                    not isinstance(entry, dict) or not isinstance(entry.get("path"), str)
+                    for entry in entries
+                ):
+                    return 3, f"the preview's {key} entries have no string path — the CLI's JSON shape changed"
+            return 0, parsed
+
+        git("init", "-q", ".")
+        (work / "baselines").mkdir()
+        (work / "src").mkdir()
+        (work / "src" / "keep.rs").write_text("x\n")
+        (work / "baselines" / "manifest.json").write_text("{}\n")
+        git("add", "-A")
+        git("commit", "-qm", "base")
+        (work / "src" / "keep.rs").write_text("y\n")
+        (work / "baselines" / "manifest.json").write_text('{"v":3}\n')
+        git("add", "-A")
+        git("commit", "-qm", "head")
+
+        status, base = preview(RULE_FILE)
+        if status == 1:
+            return 1, [
+                f"ocr cannot use review/rule.json: {base} — a rejection of our own document is a "
+                "failure, not a skip"
+            ]
+        if status == 3:
+            return 3, [f"cannot measure the selection: {base}"]
+        if "src/keep.rs" not in [entry["path"] for entry in base["reviewable_files"]]:
+            return 0, ["the exclusion is too wide: src/keep.rs is not reviewable"]
+
+        # The probe is built from the document `main()` already validated, never re-read: a second
+        # read would test bytes nobody checked (and could raise on a file that changed under us).
+        probe = dict(document)
+        probe["exclude"] = [SIGNATURE_EXCLUDE, "src/keep.rs"]
+        probe_file = work / "probe-rule.json"
+        probe_file.write_text(json.dumps(probe), encoding="utf-8")
+        status, probed = preview(probe_file)
+        if status == 1:
+            return 1, [f"ocr rejects the probe rule document: {probed}"]
+        if status == 3:
+            return 3, [f"cannot measure the exclusion effect: {probed}"]
+        excluded = {
+            entry["path"]: entry.get("exclude_reason") for entry in probed["excluded_files"]
+        }
+        if excluded.get("src/keep.rs") != "user_exclude":
+            return 0, [
+                "the top-level exclude key is not honoured by this `ocr` "
+                f"(src/keep.rs is {excluded.get('src/keep.rs')!r}) — the blind spot is no longer "
+                "declared in a way the CLI acts on, and the next signing PR will be flagged"
+            ]
+        return 0, []
+    except (OSError, subprocess.CalledProcessError) as exc:
+        # A missing `git`, a read-only or full `/tmp`, a hook: this check cannot answer, and a
+        # traceback in the gate neither fails with a reason nor stays quiet.
+        return 3, [f"cannot build the throwaway repository: {exc}"]
+    finally:
+        if work is not None:
+            shutil.rmtree(work, ignore_errors=True)
+
+
 def self_check() -> int:
     """Table-drive the pure half. No `ocr`, no git, no review.
 
@@ -226,6 +385,34 @@ def self_check() -> int:
             _shape([{"rule": "x"}, {"path": "a", "rule": "y"}]),
             (["a"], 1),
         ),
+        (
+            "a misspelled top-level key is refused",
+            declared_document_problems({"excludes": [], "rules": []}),
+            [
+                "unknown top-level key 'excludes' — the CLI ignores unknown keys silently, so a "
+                "typo is a no-op"
+            ],
+        ),
+        (
+            "a rules list plus a usable exclude is clean",
+            declared_document_problems({"exclude": ["baselines/*.minisig"], "rules": []}),
+            [],
+        ),
+        (
+            "an exclude that is not a list is refused",
+            declared_document_problems({"exclude": "baselines/*.minisig", "rules": []}),
+            ["'exclude' must be a list of gitignore-style patterns"],
+        ),
+        (
+            "a blank exclude pattern is refused",
+            declared_document_problems({"exclude": ["  "], "rules": []}),
+            ["'exclude' holds a value that is not a usable pattern: '  '"],
+        ),
+        (
+            "a document that is not an object is refused",
+            declared_document_problems([]),
+            ["the document is not a JSON object"],
+        ),
     ]
     failures = 0
     for label, got, want in rows:
@@ -258,16 +445,41 @@ def main() -> int:
     # A document that is not `{"rules": [...]}` is our file being wrong, not the CLI's: the
     # shape is settled here so the reader below can never meet a `null` or a string, and so
     # a malformed rule file is reported as ours instead of as an `ocr` exit nobody chose.
-    rules = document.get("rules") if isinstance(document, dict) else None
-    if not isinstance(rules, list):
-        print(f"FAIL  {RULE_FILE.relative_to(ROOT)} has no 'rules' list")
+    problems = declared_document_problems(document)
+    if problems:
+        for problem in problems:
+            print(f"FAIL  {RULE_FILE.relative_to(ROOT)}: {problem}")
         return 1
+    rules = document["rules"]
+    exclude = document.get("exclude", [])
 
     # The declared side first: it is what the two directions below can even be about, and a
     # defect in our own file needs no CLI to establish.
     paths, texts, problems = read_entries(rules)
     if problems:
         for problem in problems:
+            print(f"FAIL  review/rule.json: {problem}")
+        return 1
+
+    # **The declared blind spot.** A signed artefact's review is its signature, and `ocr` cannot
+    # read a `.minisig`: the exclusion is explicit here and the `baselines/**` checklist tells the
+    # reviewer so, or the next signing PR is flagged for a signature the reviewer was never shown.
+    # Exact, not "contains": an exclusion is how content is made invisible to review, so adding a
+    # pattern is a decision that must touch this check rather than arrive as a quiet edit.
+    if list(exclude) != [SIGNATURE_EXCLUDE]:
+        print(
+            f"FAIL  review/rule.json: the exclude list must be exactly [{SIGNATURE_EXCLUDE!r}] — "
+            "an exclusion hides content from review, so changing it is a decision, not an edit"
+        )
+        return 1
+    # Spelling is not effect: ask the CLI whether it acts on the exclusion.
+    status, selection = selection_problems(document)
+    if status == 3:
+        for problem in selection:
+            print(f"UNVERIFIABLE  {problem}")
+        return 3
+    if selection:
+        for problem in selection:
             print(f"FAIL  review/rule.json: {problem}")
         return 1
 
@@ -304,6 +516,33 @@ def main() -> int:
     except Exception as exc:
         print(f"FAIL  could not read ocr output: {exc}")
         return 3
+
+    # The declaration must reach the reviewer for the **manifest**, whatever spelling the entry's
+    # path uses: assert on the text the CLI resolved for that file, not on the rule file's key.
+    manifest = "baselines/air-gapped.json"
+    resolved_group = next(
+        (group for group in groups if manifest in (group.get("files") or [])), None
+    )
+    if resolved_group is None:
+        print(f"FAIL  review/rule.json: {manifest} resolves to no rule")
+        return 1
+    if resolved_group.get("source") != "custom":
+        print(
+            f"FAIL  review/rule.json: {manifest} falls to the built-in rubric "
+            f"({resolved_group.get('source')}) — the signature declaration reaches nobody"
+        )
+        return 1
+    declared = resolved_group.get("rule") or ""
+    for phrase, what in (
+        (SIGNATURE_DECLARATION, "declare that the signature file is outside the reviewer's view"),
+        (SIGNATURE_INSTRUCTION, "carry the instruction not to report the missing signature"),
+    ):
+        if phrase not in declared:
+            print(
+                f"FAIL  review/rule.json: the checklist resolved for {manifest} must {what} "
+                f"({phrase!r} is missing) — the reviewer reports a missing signature otherwise"
+            )
+            return 1
 
     # Direction 1, rules -> files: a custom group with files is the only proof that an entry
     # took effect. The CLI emits an entry whose glob matches nothing just the same; it simply
