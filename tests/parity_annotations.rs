@@ -34,9 +34,11 @@ fn claim(text: &str) -> ClaimFile {
 /// a property of one or two tests; `text` is generic so a chain of mutations nests.
 fn replaced(text: impl AsRef<str>, from: &str, to: &str) -> String {
     let text = text.as_ref();
-    assert!(
-        text.contains(from),
-        "the fixture does not contain {from:?}: the mutation would be a no-op"
+    let occurrences = text.matches(from).count();
+    assert_eq!(
+        occurrences, 1,
+        "the fixture carries {from:?} {occurrences} time(s): the mutation would be a no-op or would \
+         change more of the fixture than intended"
     );
     text.replace(from, to)
 }
@@ -536,53 +538,12 @@ fn row<'a>(stdout: &'a str, id: &str) -> &'a str {
         .unwrap_or_else(|| panic!("no row for {id} in:\n{stdout}"))
 }
 
-/// The value/unit cell of a report row. `canon::run` pins the column layout as
-/// `{:<9} {:<9} {:<9} {:<12} {:<30} {:<26} {:<9}` with single-space separators, so the fifth
-/// cell begins after the four leading columns. Delimiting it matters: a bare `contains("ann")`
-/// over the whole row is satisfied by a *subject* that happens to carry those letters, and the
-/// same loose test would break the REQ-0007 negative.
-fn value_unit_cell(row: &str) -> &str {
-    const CELL_START: usize = 9 + 1 + 9 + 1 + 9 + 1 + 12 + 1;
-    const CELL_WIDTH: usize = 30;
-    row.get(CELL_START..CELL_START + CELL_WIDTH)
-        .unwrap_or_else(|| panic!("row is shorter than its value/unit cell:\n{row}"))
-}
-
-/// The cell delimiting itself, on a row shaped like the report's: a subject carrying `ann` is
-/// not the annotation, and a sentinel row with the same subject must not be read as one. A
-/// full-row `contains("ann")` would pass the first and fail the second.
-#[test]
-fn the_annotation_cell_is_read_at_its_column_not_matched_across_the_row() {
-    let row = format!(
-        "{:<9} {:<9} {:<9} {:<12} {:<30} {:<26} {:<9}",
-        "REQ-X", "ok", "ok", "ann", "ok -/-", "ok n/a", "ok"
-    );
-    let cell = value_unit_cell(&row);
-    assert!(row.contains("ann"), "the forged subject carries it: {row}");
-    assert!(
-        cell.trim_start().starts_with("ok -/-"),
-        "the reader must land on the fifth column, not the subject column:\n{row}"
-    );
-
-    // ...and the cell ends before the operator column: a slice running to end-of-line would
-    // pick up the FLAG that belongs to the operator cell.
-    let flagged_operator = format!(
-        "{:<9} {:<9} {:<9} {:<12} {:<30} {:<26} {:<9}",
-        "REQ-Y", "ok", "ok", "API", "ok -/-", "FLAG derived", "ok"
-    );
-    assert!(flagged_operator.contains("FLAG"));
-    assert!(
-        !value_unit_cell(&flagged_operator).contains("FLAG"),
-        "the value/unit cell must not swallow the operator column:\n{flagged_operator}"
-    );
-}
-
 #[test]
 fn the_corpus_has_zero_flags_and_sixteen_annotations() {
     let out = corpus(&["canon"]);
     assert_eq!(out.code, 0, "canon exit code:\n{}", out.stderr);
     assert!(
-        out.stdout.contains("discrepancy flags: 0 slot(s)"),
+        out.stdout.contains("discrepancy flags: 0"),
         "a rule that fixed the flags by going silent would fail the annotation half:\n{}",
         out.stdout
     );
@@ -605,11 +566,14 @@ fn the_corpus_has_zero_flags_and_sixteen_annotations() {
         out.stdout
     );
 
-    // The annotation is visible per claim, in a cell distinct from `ok` and from `FLAG`.
+    // The annotation is visible per claim, in its own cell. The exact cell text (with the
+    // spaces that delimit it) is the assertion: `contains("ann")` would be satisfied by a
+    // subject carrying the letters, and a byte-slice of a fixed-width column truncates the
+    // overflowing cells (REQ-0014's is 48 chars in a 30-wide column) and misreads when a
+    // leading column overflows.
     let annotated = row(&out.stdout, "REQ-0001");
-    let annotated_cell = value_unit_cell(annotated);
     assert!(
-        annotated_cell.trim_start().starts_with("ann value claim"),
+        annotated.contains(" ann value claim "),
         "the qualitative triple must be visible in its own cell:\n{annotated}"
     );
     assert!(!annotated.contains("FLAG"), "{annotated}");
@@ -624,17 +588,15 @@ fn the_corpus_has_zero_flags_and_sixteen_annotations() {
         "the parsed side is shown beside the annotation:\n{stray}"
     );
 
-    // REQ-0007's slots are null by design: ok, not flagged and not annotated.
+    // REQ-0007's slots are null by design: its value/unit cell reads `ok -/-`, and the row
+    // carries no FLAG and no annotation at all.
     let unstructured = row(&out.stdout, "REQ-0007");
-    let unstructured_cell = value_unit_cell(unstructured);
     assert!(
-        !unstructured.contains("FLAG"),
-        "the UNSTRUCTURED claim has nothing to report:\n{unstructured}"
+        unstructured.contains(" ok -/- "),
+        "the UNSTRUCTURED claim's value/unit cell must read `ok -/-`:\n{unstructured}"
     );
-    assert!(
-        !unstructured_cell.trim_start().starts_with("ann"),
-        "its value/unit cell must read `ok`, not the subject column:\n{unstructured}"
-    );
+    assert!(!unstructured.contains("FLAG"), "{unstructured}");
+    assert!(!unstructured.contains("ann"), "{unstructured}");
 }
 
 /// No `RULES_V` bump and no address moves: only the *checking* of authored slots changed.

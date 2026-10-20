@@ -1782,7 +1782,7 @@ pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
     }
     let _ = &registry;
     println!(
-        "claims: {checked}; discrepancy flags: {flags_total} slot(s); annotations: \
+        "claims: {checked}; discrepancy flags: {flags_total}; annotations: \
          {annotated_claims} claim(s) \
          (v0 diagnostic: `ann` is an authored value/unit/operator the canonical form does not \
          derive — counted, never a flag, never part of identity; `attribute` is unverified by \
