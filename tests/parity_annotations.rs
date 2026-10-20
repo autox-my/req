@@ -28,11 +28,18 @@ fn claim(text: &str) -> ClaimFile {
 }
 
 /// A registry that resolves the fixtures' subject. It is built once: `Registry::load` reads a
-/// file, and a per-test copy would repeat the same YAML four times.
+/// file, and a per-test copy would repeat the same YAML four times. The directory is unique per
+/// process **and** per call, and removed as soon as the registry is in memory, so the suite does
+/// not leave an orphan behind or reuse a path another run could have planted.
 fn registry() -> &'static Registry {
     static REGISTRY: OnceLock<Registry> = OnceLock::new();
     REGISTRY.get_or_init(|| {
-        let dir = std::env::temp_dir().join(format!("parity-registry-{}", std::process::id()));
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "parity-registry-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
         std::fs::create_dir_all(&dir).expect("creates the registry fixture directory");
         let path = dir.join("subjects.yml");
         std::fs::write(
@@ -40,7 +47,9 @@ fn registry() -> &'static Registry {
             "schema: req.subject_registry/0\nversion: 1\nsubjects:\n  API:\n    label: The API\n    aliases:\n      - the api\n",
         )
         .expect("writes the registry fixture");
-        Registry::load(path.to_str().expect("utf-8 path")).expect("registry loads")
+        let loaded = Registry::load(path.to_str().expect("utf-8 path")).expect("registry loads");
+        std::fs::remove_dir_all(&dir).expect("removes the registry fixture directory");
+        loaded
     })
 }
 
@@ -192,9 +201,14 @@ fn a_qualitative_triple_is_an_annotation_not_a_flag() {
     assert_eq!(v.annotations(), 2, "value and operator are annotations");
 }
 
-/// The annotation class must not become a way to silence a real contradiction. A
-/// qualitative *authoring* of a statement that carries a comparator still disagrees with
-/// the parsed operator — and that is a flag, not an annotation.
+/// A qualitative authoring of a statement the parse measured is still caught, but by the slot
+/// that is compared: the parsed operator disagrees with the authored `EQ`. The **value** slot
+/// deliberately stays an annotation here, because the qualitative convention's parser can also
+/// find a stray number in prose (`exactly one commit` → 1/EQ in REQ-0014, whose authored triple
+/// must stay an annotation for the corpus to read `flags: 0`). The corpus constraint is the
+/// reason the derived value is not compared on a qualitative claim; `attribute` is not compared
+/// at all. A *quantity-shaped* claim that misses a derived slot is a different case and does
+/// flag — see `a_quantity_claim_may_not_author_a_slot_the_parse_never_derived`.
 #[test]
 fn a_qualitative_triple_on_a_measurable_statement_still_flags_the_operator() {
     let authored = QUANTITY
@@ -209,6 +223,66 @@ fn a_qualitative_triple_on_a_measurable_statement_still_flags_the_operator() {
     );
     assert_eq!(v.value_check, SlotCheck::Annotation);
     assert_eq!(v.flags(), 1, "the operator contradiction is not hidden");
+}
+
+/// The unit slot's two failure directions, which the value-slot fixtures do not reach. The
+/// unit has its own sentinel handling (`"none"` is "no unit", never an authored unit), so a
+/// mutation dropping it must fail here rather than pass silently.
+#[test]
+fn a_unit_that_contradicts_the_parse_is_a_flag() {
+    let v = evaluate_claim(&claim(&QUANTITY.replace("unit: s", "unit: ms")), registry());
+    assert_eq!(
+        v.unit_check,
+        SlotCheck::Contradiction,
+        "parsed s, authored ms"
+    );
+    assert_eq!(v.flags(), 1);
+}
+
+#[test]
+fn an_omitted_unit_is_a_flag() {
+    let v = evaluate_claim(
+        &claim(&QUANTITY.replace("unit: s", "unit: null")),
+        registry(),
+    );
+    assert_eq!(
+        v.unit_check,
+        SlotCheck::Omission,
+        "the parse derived s; the author left the unit out"
+    );
+    assert_eq!(v.flags(), 1);
+}
+
+/// And the operator's omission direction: the branch the report renders as
+/// `FLAG missing (…)`, previously reachable by no test at all.
+#[test]
+fn an_omitted_operator_is_a_flag() {
+    let v = evaluate_claim(
+        &claim(&QUANTITY.replace("operator: LE", "operator: null")),
+        registry(),
+    );
+    assert_eq!(
+        v.op_check,
+        SlotCheck::Omission,
+        "the parse derived LE; the author left the operator out"
+    );
+    assert_eq!(v.flags(), 1);
+}
+
+/// A quantity-shaped claim may not author a slot the parse never derived. `in 200 ms` parses
+/// the value and the unit but no comparator, so an authored `operator: LE` would otherwise be
+/// an annotation — and `--fill` would write a form with `operator: null`. Two claims differing
+/// only in LE/GE would then share one address: the false merge this check exists to prevent.
+#[test]
+fn a_quantity_claim_may_not_author_a_slot_the_parse_never_derived() {
+    let text = QUANTITY.replace("within 200 ms.", "in 200 ms.");
+    let v = evaluate_claim(&claim(&text), registry());
+    assert_eq!(
+        v.op_check,
+        SlotCheck::Contradiction,
+        "the authored bound would otherwise leave the address"
+    );
+    assert_eq!(v.flags(), 1);
 }
 
 /// The sentinel regression guard. `Form::operator_str()` returns `"none"`, and the unit is
@@ -438,11 +512,18 @@ fn fill_refuses_an_omitted_value_and_writes_nothing() {
     );
 }
 
-/// The corpus itself, which is all annotations and no contradictions, still fills green: an
-/// annotation is never a refusal.
+/// A corpus that is all annotations and no contradictions still fills green: an annotation is
+/// never a refusal. The corpus is built in a fixture, not the checkout — `run_fill` **writes**
+/// when a claim is stale, so running it against the working tree would rewrite `claims/*.yml`
+/// and race the parallel `canon`/`canon --verify` tests that read the same files.
 #[test]
-fn fill_accepts_the_corpus_that_only_annotates() {
-    let out = corpus(&["canon", "--fill"]);
+fn fill_accepts_a_corpus_that_only_annotates() {
+    let fx = Fixture::new("parity-annotation-fill-ok");
+    let init = run_at(fx.path(), &["init"]);
+    assert_eq!(init.code, 0, "init:\n{}", init.stderr);
+    fx.write("claims/REQ-0001.yml", QUALITATIVE);
+
+    let out = run_at(fx.path(), &["canon", "--fill"]);
     assert_eq!(
         out.code, 0,
         "annotations must not block a fill — only contradictions and omissions do:\n{}",

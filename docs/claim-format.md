@@ -92,11 +92,17 @@ of it. `req canon` re-parses the statement under the current rules and judges `v
 A contradiction or an omission is a lint ERROR — never silently "corrected" in either
 direction, and `req canon --fill` refuses to write an address over it. An annotation is the
 other case: the canonical form carries value/unit/operator **only for quantities**, so a
-qualitative statement's authored slots are recorded rather than refused (ADR 0014's
-Amendment). They appear in a cell of their own (`ann`), are counted in the summary, and were
-never part of the address — reported and counted, never a flag, never silent. `attribute`
-is **unverified by design**: its lexicon has no parser to agree with, so comparing it would
-flag nearly every claim and teach authors to ignore the report.
+qualitative statement's authored triple is recorded rather than refused (ADR 0014's
+Amendment). It appears in a cell of its own (`ann`), is counted in the summary, and was
+never part of the address — reported and counted, never a flag, never silent.
+
+The annotation is **only the qualitative triple** above. A quantity-shaped claim — a numeric
+authored `value`, a comparator other than `EQ`, or an authored `unit` — that authors a slot
+the parse did not derive is still a **contradiction and a flag**: the bound would otherwise
+stay out of the address, and two claims differing only in it would collapse (a false merge).
+`--fill` refuses it, exactly as before the amendment. `attribute` is **unverified by
+design**: its lexicon has no parser to agree with, so comparing it would flag nearly every
+claim and teach authors to ignore the report.
 
 If no deterministic parse exists, the claim is re-filed with `unstructured: true` after lint
 records why. This is the seam where writing a claim file *can be proven* against a

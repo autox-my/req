@@ -1318,12 +1318,21 @@ impl ClaimVerdict {
 
 /// The four-case table ADR 0014's Amendment states, in one place: what the canonical form
 /// derived, what the author wrote, and whether the two agree when both are present.
-fn classify_slot(derived: bool, authored: bool, agree: bool) -> SlotCheck {
+///
+/// `qualitative` is the convention that makes an annotation honest: the corpus's
+/// `attribute = value` triple (`operator: EQ`, `unit: none`, non-numeric value). Only that
+/// shape is an annotation. A **quantity-shaped** claim that authors a slot the parse never
+/// derived is a contradiction and a flag: the bound would stay out of the address, so two
+/// claims differing only in it would collapse — the false merge this check exists to prevent,
+/// and a flag before the amendment. The distinction is what keeps a bound the parse missed
+/// from being silently deleted.
+fn classify_slot(derived: bool, authored: bool, agree: bool, qualitative: bool) -> SlotCheck {
     match (derived, authored) {
         (true, true) if agree => SlotCheck::Ok,
         (true, true) => SlotCheck::Contradiction,
         (true, false) => SlotCheck::Omission,
-        (false, true) => SlotCheck::Annotation,
+        (false, true) if qualitative => SlotCheck::Annotation,
+        (false, true) => SlotCheck::Contradiction,
         (false, false) => SlotCheck::Ok,
     }
 }
@@ -1384,9 +1393,24 @@ pub fn evaluate_claim(claim: &crate::model::ClaimFile, registry: &Registry) -> C
     let authored_u_present = claim.unit.as_deref().is_some_and(|u| u != "none");
     let authored_op_present = !authored_op.is_empty();
 
-    let value_check = classify_slot(value_derived, authored_v_present, v_parsed == authored_v);
-    let unit_check = classify_slot(unit_derived, authored_u_present, u_parsed == authored_u);
-    let op_check = classify_slot(op_derived, authored_op_present, op_parsed == authored_op);
+    let value_check = classify_slot(
+        value_derived,
+        authored_v_present,
+        v_parsed == authored_v,
+        qualitative,
+    );
+    let unit_check = classify_slot(
+        unit_derived,
+        authored_u_present,
+        u_parsed == authored_u,
+        qualitative,
+    );
+    let op_check = classify_slot(
+        op_derived,
+        authored_op_present,
+        op_parsed == authored_op,
+        qualitative,
+    );
 
     // Conditions ARE parsed (T1.8), so they are comparable — and a claim that gains one
     // is a different claim, which makes an authored list that disagrees with the parse a
@@ -1753,11 +1777,17 @@ fn value_unit_cell(v: &ClaimVerdict) -> String {
         }
         return format!("FLAG {}", parts.join("; "));
     }
-    if v.value_check.is_annotation() {
-        return format!("ann value {}", v.authored_v);
-    }
-    if v.unit_check.is_annotation() {
-        return format!("ann unit {}", v.authored_u);
+    if v.value_check.is_annotation() || v.unit_check.is_annotation() {
+        // Both are rendered when both are annotations: one cell hiding the other would be the
+        // invisibility ADR 0014's Amendment exists to remove.
+        let mut parts: Vec<String> = Vec::new();
+        if v.value_check.is_annotation() {
+            parts.push(format!("value {}", v.authored_v));
+        }
+        if v.unit_check.is_annotation() {
+            parts.push(format!("unit {}", v.authored_u));
+        }
+        return format!("ann {}", parts.join("; "));
     }
     // `none` is the canonical no-unit sentinel: name a unit only when one exists.
     if v.u_parsed == "none" && v.authored_u == "none" {

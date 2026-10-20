@@ -122,8 +122,11 @@ export OCR_NO_UPDATE=1
   a slot the author wrote that the canonical form does not derive — the qualitative
   `attribute`/`value` triple (`operator: EQ`, `unit: none`, non-numeric `value`) — is an
   **annotation**, printed as `ann` in its own cell and counted by the summary line, never a
-  flag and never part of identity. `attribute` stays **unverified by design** (its lexicon has
-  no parser to agree with). Exit 3 when the
+  flag and never part of identity. The annotation is **only the qualitative triple**: a
+  quantity-shaped claim (a numeric authored value, a comparator other than `EQ`, or an authored
+  unit) that authors a slot the parse did not derive is still a **contradiction and a flag**,
+  because a bound the parse missed would silently leave the address (a false merge).
+  `attribute` stays **unverified by design** (its lexicon has no parser to agree with). Exit 3 when the
   registry or a claim file cannot be read, and when a file's declared `schema:` is not the
   `req.claim/<n>` value this build writes (`CLAIM_SCHEMA_V`, reported by `--version` as
   `claim_schema`): the file's parse is **NOT JUDGED** — an older schema is a migration candidate
