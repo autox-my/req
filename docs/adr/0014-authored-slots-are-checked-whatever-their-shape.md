@@ -191,13 +191,23 @@ to be drawn somewhere else.
 
 **The implemented rule keys on the claim's authored shape.** A claim is *qualitative* when it is authored
 as the corpus's convention — `operator: EQ`, `unit: none`, a non-numeric `value`. Everything else is
-*quantity-shaped*.
+*quantity-shaped*. (A missing operator is the third spelling of the no-operator marker; the dated note
+below records that amendment.)
 
 | the claim is | value/unit compared against the parse? | a slot the parse does not carry |
 |---|---|---|
 | **qualitative** | **no** — the parse's derived value and unit are ignored (`value_derived = !qualitative && form.value.is_some()`) | **annotation** — reported, counted, never identity |
 | **quantity-shaped** | yes | **contradiction** — a flag |
 | operator, any shape | against the `"none"` sentinel (`op_derived = op_parsed != "none"`) | annotation for a qualitative claim; contradiction otherwise |
+
+*Amended 2026-10-20 — the no-operator spellings.* The operator slot has three equivalent spellings of
+"no operator": `EQ` (the corpus's authoring form), the canonical sentinel `none`, and an **absent**
+operator (`operator: null`). Reading the absent form as quantity-shaped flagged the value of a claim that
+carries no bound at all — the false-split direction, but still noise — and made two spellings of one triple
+disagree. The quantity direction is unchanged: a numeric authored value, a comparator other than `EQ`, or an
+authored unit is still a contradiction when it authors a slot the parse missed, and an **omitted** operator
+on a parsed quantity is still an omission. Pinned by
+`a_missing_operator_is_the_no_operator_marker_on_a_qualitative_claim` and `an_omitted_operator_is_a_flag`.
 
 The asymmetry is the project's own: a **bound the parse missed must never leave the address** — two claims
 differing only in that bound would collapse, which is the false merge this check exists to prevent, so a

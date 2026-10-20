@@ -30,7 +30,10 @@ fn claim(text: &str) -> ClaimFile {
 /// `str::replace` silently returns its input when the needle is absent, so a fixture mutation
 /// whose needle has drifted leaves the *unmutated* claim in place and the assertion passes
 /// without testing anything. Assert the fixture still carries the text before replacing it.
-fn replaced(text: &str, from: &str, to: &str) -> String {
+/// Every fixture mutation in this file goes through it, so the guarantee is uniform rather than
+/// a property of one or two tests; `text` is generic so a chain of mutations nests.
+fn replaced(text: impl AsRef<str>, from: &str, to: &str) -> String {
+    let text = text.as_ref();
     assert!(
         text.contains(from),
         "the fixture does not contain {from:?}: the mutation would be a no-op"
@@ -167,7 +170,7 @@ relations: []
 #[test]
 fn a_non_numeric_value_that_contradicts_a_quantity_is_a_flag() {
     let v = evaluate_claim(
-        &claim(&QUANTITY.replace("value: \"0.2\"", "value: present")),
+        &claim(&replaced(QUANTITY, "value: \"0.2\"", "value: present")),
         registry(),
     );
     assert_eq!(
@@ -183,7 +186,7 @@ fn a_non_numeric_value_that_contradicts_a_quantity_is_a_flag() {
 #[test]
 fn an_omitted_value_on_a_quantity_is_a_flag() {
     let v = evaluate_claim(
-        &claim(&QUANTITY.replace("value: \"0.2\"", "value: \"\"")),
+        &claim(&replaced(QUANTITY, "value: \"0.2\"", "value: \"\"")),
         registry(),
     );
     assert_eq!(
@@ -222,10 +225,15 @@ fn a_qualitative_triple_is_an_annotation_not_a_flag() {
 /// flag — see `a_quantity_claim_may_not_author_a_slot_the_parse_never_derived`.
 #[test]
 fn a_qualitative_triple_on_a_measurable_statement_still_flags_the_operator() {
-    let authored = QUANTITY
-        .replace("operator: LE", "operator: EQ")
-        .replace("value: \"0.2\"", "value: absent")
-        .replace("unit: s", "unit: none");
+    let authored = replaced(
+        replaced(
+            replaced(QUANTITY, "operator: LE", "operator: EQ"),
+            "value: \"0.2\"",
+            "value: absent",
+        ),
+        "unit: s",
+        "unit: none",
+    );
     let v = evaluate_claim(&claim(&authored), registry());
     assert_eq!(
         v.op_check,
@@ -241,7 +249,10 @@ fn a_qualitative_triple_on_a_measurable_statement_still_flags_the_operator() {
 /// mutation dropping it must fail here rather than pass silently.
 #[test]
 fn a_unit_that_contradicts_the_parse_is_a_flag() {
-    let v = evaluate_claim(&claim(&QUANTITY.replace("unit: s", "unit: ms")), registry());
+    let v = evaluate_claim(
+        &claim(&replaced(QUANTITY, "unit: s", "unit: ms")),
+        registry(),
+    );
     assert_eq!(
         v.unit_check,
         SlotCheck::Contradiction,
@@ -253,7 +264,7 @@ fn a_unit_that_contradicts_the_parse_is_a_flag() {
 #[test]
 fn an_omitted_unit_is_a_flag() {
     let v = evaluate_claim(
-        &claim(&QUANTITY.replace("unit: s", "unit: null")),
+        &claim(&replaced(QUANTITY, "unit: s", "unit: null")),
         registry(),
     );
     assert_eq!(
@@ -269,7 +280,7 @@ fn an_omitted_unit_is_a_flag() {
 #[test]
 fn an_omitted_operator_is_a_flag() {
     let v = evaluate_claim(
-        &claim(&QUANTITY.replace("operator: LE", "operator: null")),
+        &claim(&replaced(QUANTITY, "operator: LE", "operator: null")),
         registry(),
     );
     assert_eq!(
@@ -286,7 +297,7 @@ fn an_omitted_operator_is_a_flag() {
 /// only in LE/GE would then share one address: the false merge this check exists to prevent.
 #[test]
 fn a_quantity_claim_may_not_author_a_slot_the_parse_never_derived() {
-    let text = QUANTITY.replace("within 200 ms.", "in 200 ms.");
+    let text = replaced(QUANTITY, "within 200 ms.", "in 200 ms.");
     let v = evaluate_claim(&claim(&text), registry());
     assert_eq!(
         v.op_check,
@@ -321,7 +332,11 @@ fn a_digit_leading_state_name_is_a_qualitative_annotation() {
 fn a_non_canonical_numeral_is_still_a_quantity_not_an_annotation() {
     for value in ["\"1_000\"", "\"200ms\"", "\"0.2s\""] {
         let v = evaluate_claim(
-            &claim(&QUALITATIVE.replace("value: claim", &format!("value: {value}"))),
+            &claim(&replaced(
+                QUALITATIVE,
+                "value: claim",
+                &format!("value: {value}"),
+            )),
             registry(),
         );
         assert_eq!(
@@ -339,7 +354,7 @@ fn a_non_canonical_numeral_is_still_a_quantity_not_an_annotation() {
 #[test]
 fn a_unit_the_parse_never_derived_is_a_contradiction() {
     let v = evaluate_claim(
-        &claim(&QUALITATIVE.replace("unit: none", "unit: s")),
+        &claim(&replaced(QUALITATIVE, "unit: none", "unit: s")),
         registry(),
     );
     assert_eq!(v.unit_check, SlotCheck::Contradiction);
@@ -351,7 +366,7 @@ fn a_unit_the_parse_never_derived_is_a_contradiction() {
 #[test]
 fn operator_none_is_the_no_operator_sentinel() {
     let v = evaluate_claim(
-        &claim(&QUALITATIVE.replace("operator: EQ", "operator: none")),
+        &claim(&replaced(QUALITATIVE, "operator: EQ", "operator: none")),
         registry(),
     );
     assert_eq!(v.op_check, SlotCheck::Ok, "no operator was authored");
@@ -388,15 +403,27 @@ fn a_missing_operator_is_the_no_operator_marker_on_a_qualitative_claim() {
 /// the Amendment's falsification is really about.
 #[test]
 fn a_prohibition_is_an_annotation_until_it_is_authored_as_a_quantity() {
-    let prohibition = QUANTITY
-        .replace(
-            "shall respond to a health check within 200 ms.",
-            "shall not operate a continuous synchronization bridge.",
-        )
-        .replace("value: \"0.2\"", "value: absent")
-        .replace("operator: LE", "operator: EQ")
-        .replace("unit: s", "unit: none")
-        .replace("modality: SHALL", "modality: SHALL-NOT");
+    let prohibition = replaced(
+        replaced(
+            replaced(
+                replaced(
+                    replaced(
+                        QUANTITY,
+                        "shall respond to a health check within 200 ms.",
+                        "shall not operate a continuous synchronization bridge.",
+                    ),
+                    "value: \"0.2\"",
+                    "value: absent",
+                ),
+                "operator: LE",
+                "operator: EQ",
+            ),
+            "unit: s",
+            "unit: none",
+        ),
+        "modality: SHALL",
+        "modality: SHALL-NOT",
+    );
     let v = evaluate_claim(&claim(&prohibition), registry());
     assert_eq!(v.value_check, SlotCheck::Annotation);
     assert_eq!(v.op_check, SlotCheck::Annotation);
@@ -407,7 +434,7 @@ fn a_prohibition_is_an_annotation_until_it_is_authored_as_a_quantity() {
     );
 
     // The same statement authored quantity-shaped: a comparator the parse never derived.
-    let quantity_shaped = prohibition.replace("operator: EQ", "operator: LT");
+    let quantity_shaped = replaced(&prohibition, "operator: EQ", "operator: LT");
     let v = evaluate_claim(&claim(&quantity_shaped), registry());
     assert_eq!(v.value_check, SlotCheck::Contradiction);
     assert!(
@@ -516,8 +543,9 @@ fn row<'a>(stdout: &'a str, id: &str) -> &'a str {
 /// same loose test would break the REQ-0007 negative.
 fn value_unit_cell(row: &str) -> &str {
     const CELL_START: usize = 9 + 1 + 9 + 1 + 9 + 1 + 12 + 1;
-    row.get(CELL_START..)
-        .unwrap_or_else(|| panic!("row is shorter than its four leading columns:\n{row}"))
+    const CELL_WIDTH: usize = 30;
+    row.get(CELL_START..CELL_START + CELL_WIDTH)
+        .unwrap_or_else(|| panic!("row is shorter than its value/unit cell:\n{row}"))
 }
 
 /// The cell delimiting itself, on a row shaped like the report's: a subject carrying `ann` is
@@ -532,8 +560,20 @@ fn the_annotation_cell_is_read_at_its_column_not_matched_across_the_row() {
     let cell = value_unit_cell(&row);
     assert!(row.contains("ann"), "the forged subject carries it: {row}");
     assert!(
-        !cell.trim_start().starts_with("ann"),
-        "the sentinel's value/unit cell is `ok`, not the subject column:\n{row}"
+        cell.trim_start().starts_with("ok -/-"),
+        "the reader must land on the fifth column, not the subject column:\n{row}"
+    );
+
+    // ...and the cell ends before the operator column: a slice running to end-of-line would
+    // pick up the FLAG that belongs to the operator cell.
+    let flagged_operator = format!(
+        "{:<9} {:<9} {:<9} {:<12} {:<30} {:<26} {:<9}",
+        "REQ-Y", "ok", "ok", "API", "ok -/-", "FLAG derived", "ok"
+    );
+    assert!(flagged_operator.contains("FLAG"));
+    assert!(
+        !value_unit_cell(&flagged_operator).contains("FLAG"),
+        "the value/unit cell must not swallow the operator column:\n{flagged_operator}"
     );
 }
 
@@ -588,8 +628,12 @@ fn the_corpus_has_zero_flags_and_sixteen_annotations() {
     let unstructured = row(&out.stdout, "REQ-0007");
     let unstructured_cell = value_unit_cell(unstructured);
     assert!(
-        !unstructured_cell.contains("FLAG") && !unstructured_cell.trim_start().starts_with("ann"),
+        !unstructured.contains("FLAG"),
         "the UNSTRUCTURED claim has nothing to report:\n{unstructured}"
+    );
+    assert!(
+        !unstructured_cell.trim_start().starts_with("ann"),
+        "its value/unit cell must read `ok`, not the subject column:\n{unstructured}"
     );
 }
 
@@ -653,7 +697,7 @@ fn fill_refuses_a_contradicted_quantity_and_writes_nothing() {
     let init = run_at(fx.path(), &["init"]);
     assert_eq!(init.code, 0, "init:\n{}", init.stderr);
 
-    let contradicted = QUANTITY.replace("value: \"0.2\"", "value: present");
+    let contradicted = replaced(QUANTITY, "value: \"0.2\"", "value: present");
     fx.write("claims/REQ-0001.yml", &contradicted);
 
     let out = run_at(fx.path(), &["canon", "--fill"]);
@@ -681,7 +725,7 @@ fn fill_refuses_an_omitted_value_and_writes_nothing() {
     let init = run_at(fx.path(), &["init"]);
     assert_eq!(init.code, 0, "init:\n{}", init.stderr);
 
-    let omitted = QUANTITY.replace("value: \"0.2\"", "value: \"\"");
+    let omitted = replaced(QUANTITY, "value: \"0.2\"", "value: \"\"");
     fx.write("claims/REQ-0001.yml", &omitted);
 
     let out = run_at(fx.path(), &["canon", "--fill"]);

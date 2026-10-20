@@ -1226,7 +1226,8 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
 /// a slot the parse derived and the author contradicts, or omits, is a flag. An authored slot
 /// the canonical form does not *carry* is an **annotation** — reported and counted, never a
 /// flag and never silent — but only when the claim is authored as the qualitative triple
-/// (`operator: EQ`, `unit: none`, a non-numeric value). A quantity-shaped claim that authors a
+/// (`unit: none`, a non-numeric value, and either `operator: EQ` or no operator at all: `none`
+/// and an absent/`null` operator are the same no-operator marker). A quantity-shaped claim that authors a
 /// slot the parse missed is a contradiction: the bound would otherwise leave the address, and
 /// that is a false merge. A qualitative claim's derived value/unit are not compared either —
 /// the parser can find a stray number in prose (REQ-0014's `exactly one commit` yields
