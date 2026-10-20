@@ -85,6 +85,34 @@ If either is not exit 0, the corpus is not yours yet — report it with the comm
    claims cannot be told from every claim having vanished, so never "clean up" a corpus down to
    nothing; delete a requirement by deleting its claim, deliberately.
 
+## Sign the Baseline
+
+`req baseline` prints the canonical manifest — the exact bytes a signature covers — and **req never
+signs**: the signature is the human's act, and a key the tool could reach would prove nothing (ADR 0010).
+A manifest with no valid signature over it is *not yet a Baseline*, and verification says so.
+
+```bash
+req baseline > baselines/release.json           # the manifest goes to stdout; the resolved
+                                                # `corpus root:` line goes to stderr
+minisign -Sm baselines/release.json             # signs it; prompts for the secret key's passphrase
+req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not yet a Baseline" before
+```
+
+- **`-Sm` is `-S` (sign) with `-m <manifest>`**, and its default output name is `<manifest>.minisig` —
+  exactly the file `--verify` looks for. Name it otherwise with `-x <path>` and pass `--signature <path>`.
+- **Sign the bytes `req baseline` emitted.** Do not reformat the file: the signature covers those bytes,
+  and verification compares them to the corpus as well.
+- **The secret key is yours and is not in the repository.** minisign reads `~/.minisign/minisign.key` by
+  default, or `-s <secret key>`; `req` has no flag for it and needs none.
+- **`baselines/trust.yml` must carry the matching public key**, or verification is UNVERIFIABLE — an
+  unknown key is never a pass. Rotate by adding a key beside the old one with its own validity window
+  (`valid_from`, `expires`, `revoked_at`): old Baselines stay verifiable against the old key, and a
+  revoked key's signatures FAIL.
+- **An edit after signing is FAIL, not drift**: verification re-derives every address, so a claim edited
+  once the manifest was signed is the same class as a hand-edited digest.
+- **A `rules_v` mismatch is UNVERIFIABLE** with the re-sign remedy: an address is derived from the rules
+  version, so the comparison is void rather than failed.
+
 ## CI
 
 Save this as `.github/workflows/req.yml` (GitHub) or `.forgejo/workflows/req.yml` (Forgejo — Forgejo
