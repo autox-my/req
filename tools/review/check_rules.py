@@ -70,6 +70,10 @@ ALLOW_LIST = {
     "bench/corpus/tier2-positives-v1-captures/": "generated capture data — reviewed through its generator, not line by line",
     "tools/ocr/package.json": "the pinned review CLI's own manifest — reviewed at pin time, not by our rule file",
     "tools/ocr/package-lock.json": "lockfile — the review CLI excludes lockfiles (default_path)",
+    "baselines/air-gapped.json.minisig": (
+        "a minisign signature — excluded from review by decision: the CLI cannot read the "
+        "extension, and `req baseline --verify` (in the gate, no SKIP) is what verifies it"
+    ),
 }
 
 
@@ -178,87 +182,6 @@ SIGNATURE_INSTRUCTION = (
 )
 
 
-def selection_problems() -> tuple:
-    """Does the CLI *honour* the exclusion? A pinned spelling is not an effect.
-
-    `ocr` is the only implementation of the selection, so the effect is measured on a throwaway
-    repository: a path our exclude does not name must stay reviewable, a signature must not be,
-    and a **probe** exclude naming a reviewable path must take it out with `user_exclude`. The third
-    assertion is the one that catches a future CLI dropping or renaming the top-level key — without
-    it this script would keep passing while the exclusion silently stopped working.
-
-    Returns `(status, problems)`: 0 measured, 3 could not answer.
-    """
-    work = pathlib.Path(tempfile.mkdtemp(prefix="req-review-effect-"))
-    identity = {
-        "GIT_AUTHOR_NAME": "req",
-        "GIT_AUTHOR_EMAIL": "req@localhost",
-        "GIT_COMMITTER_NAME": "req",
-        "GIT_COMMITTER_EMAIL": "req@localhost",
-    }
-
-    def git(*args: str) -> None:
-        subprocess.run(["git", *args], cwd=work, check=True, capture_output=True, text=True,
-                       env={**os.environ, **identity})
-
-    def preview(rule: pathlib.Path) -> tuple:
-        proc = subprocess.run(
-            ["ocr", "delegate", "preview", "--format", "json", "--repo", str(work),
-             "--from", "HEAD~1", "--to", "HEAD", "--rule", str(rule)],
-            cwd=work, capture_output=True, text=True,
-        )
-        if proc.returncode != 0:
-            return proc.returncode, proc.stderr.strip()[:200]
-        try:
-            return 0, json.loads(proc.stdout)
-        except Exception as exc:
-            return 3, f"unparsable preview: {exc}"
-
-    try:
-        git("init", "-q", ".")
-        (work / "baselines").mkdir()
-        (work / "src").mkdir()
-        (work / "src" / "keep.rs").write_text("x\n")
-        (work / "baselines" / "manifest.json").write_text("{}\n")
-        (work / "baselines" / "manifest.json.minisig").write_text("sig\n")
-        git("add", "-A")
-        git("commit", "-qm", "base")
-        (work / "src" / "keep.rs").write_text("y\n")
-        (work / "baselines" / "manifest.json").write_text('{"v":3}\n')
-        (work / "baselines" / "manifest.json.minisig").write_text("sig2\n")
-        git("add", "-A")
-        git("commit", "-qm", "head")
-
-        status, base = preview(RULE_FILE)
-        if status != 0:
-            return 3, [f"cannot measure the selection effect: {base}"]
-        reviewable = [f["path"] for f in base.get("reviewable_files", [])]
-        if "src/keep.rs" not in reviewable:
-            return 0, [f"the exclusion is too wide: src/keep.rs is not reviewable ({reviewable})"]
-        if any(path.endswith(".minisig") for path in reviewable):
-            return 0, ["a signature is reviewable — the CLI's filter changed, so the declaration's premise is stale"]
-
-        probe = json.loads(RULE_FILE.read_text(encoding="utf-8"))
-        probe["exclude"] = [SIGNATURE_EXCLUDE, "src/keep.rs"]
-        probe_file = work / "probe-rule.json"
-        probe_file.write_text(json.dumps(probe), encoding="utf-8")
-        status, probed = preview(probe_file)
-        if status != 0:
-            return 3, [f"cannot measure the exclusion effect: {probed}"]
-        excluded = {
-            f["path"]: f.get("exclude_reason") for f in probed.get("excluded_files", [])
-        }
-        if excluded.get("src/keep.rs") != "user_exclude":
-            return 0, [
-                "the top-level exclude key is not honoured by this `ocr` "
-                f"(src/keep.rs is {excluded.get('src/keep.rs')!r}) — the blind spot is no longer "
-                "declared in a way the CLI acts on, and the next signing PR will be flagged"
-            ]
-        return 0, []
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
-
-
 def declared_document_problems(document) -> list:
     """What is wrong with the document's own shape, before any CLI is consulted."""
     if not isinstance(document, dict):
@@ -278,6 +201,105 @@ def declared_document_problems(document) -> list:
             if not isinstance(pattern, str) or not pattern.strip():
                 problems.append(f"'exclude' holds a value that is not a usable pattern: {pattern!r}")
     return problems
+
+
+def selection_problems() -> tuple:
+    """Does the CLI *honour* the exclusion? A pinned spelling is not an effect.
+
+    `ocr` is the only implementation of the selection, so the effect is measured on a throwaway
+    repository: a **probe** exclude naming a reviewable path (`src/keep.rs`) must take it out with
+    `user_exclude`. That is the one load-bearing assertion — it goes red if a future CLI drops or
+    renames the top-level key, which is the silent reopening this check exists to prevent.
+
+    What is deliberately **not** asserted here: that a `.minisig` is unreviewable. `ocr` filters that
+    extension already, so the assertion would pass without our exclusion doing anything — a green
+    light for the wrong reason. The probe is what proves the mechanism; the extension filter is the
+    CLI's business.
+
+    Returns `(status, problems)`: 0 measured, 1 our own document is unusable, 3 could not answer.
+    """
+    work = pathlib.Path(tempfile.mkdtemp(prefix="req-review-effect-"))
+    identity = {
+        "GIT_AUTHOR_NAME": "req",
+        "GIT_AUTHOR_EMAIL": "req@localhost",
+        "GIT_COMMITTER_NAME": "req",
+        "GIT_COMMITTER_EMAIL": "req@localhost",
+    }
+
+    def git(*args: str) -> None:
+        # `-c commit.gpgsign=false`: a user whose global config signs every commit would otherwise
+        # make this check fail on their machine and pass in CI — and `core.hooksPath=/dev/null`
+        # keeps a global hook out of a throwaway repository.
+        subprocess.run(
+            ["git", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", *args],
+            cwd=work, check=True, capture_output=True, text=True,
+            env={**os.environ, **identity},
+        )
+
+    def preview(rule: pathlib.Path) -> tuple:
+        proc = subprocess.run(
+            ["ocr", "delegate", "preview", "--format", "json", "--repo", str(work),
+             "--from", "HEAD~1", "--to", "HEAD", "--rule", str(rule)],
+            cwd=work, capture_output=True, text=True,
+        )
+        if proc.returncode != 0:
+            return proc.returncode, proc.stderr.strip()[:200]
+        try:
+            document = json.loads(proc.stdout)
+        except Exception as exc:
+            return 3, f"unparsable preview: {exc}"
+        # The shape is asserted rather than defaulted: `.get(key, [])` would turn a renamed key
+        # into "nothing was selected" and report the wrong diagnosis below.
+        for key in ("reviewable_files", "excluded_files"):
+            if not isinstance(document.get(key), list):
+                return 3, f"the preview has no {key} list — the CLI's JSON shape changed"
+        return 0, document
+
+    try:
+        git("init", "-q", ".")
+        (work / "baselines").mkdir()
+        (work / "src").mkdir()
+        (work / "src" / "keep.rs").write_text("x\n")
+        (work / "baselines" / "manifest.json").write_text("{}\n")
+        git("add", "-A")
+        git("commit", "-qm", "base")
+        (work / "src" / "keep.rs").write_text("y\n")
+        (work / "baselines" / "manifest.json").write_text('{"v":3}\n')
+        git("add", "-A")
+        git("commit", "-qm", "head")
+
+        status, base = preview(RULE_FILE)
+        if status != 0:
+            # The unmodified document is the one under test: a CLI that rejects it is our defect,
+            # not "cannot tell".
+            return 1, [
+                f"ocr cannot use review/rule.json (exit {status}): {base} — a rejection of our own "
+                "document is a failure, not a skip"
+            ]
+        if "src/keep.rs" not in [f["path"] for f in base["reviewable_files"]]:
+            return 0, ["the exclusion is too wide: src/keep.rs is not reviewable"]
+
+        probe = json.loads(RULE_FILE.read_text(encoding="utf-8"))
+        probe["exclude"] = [SIGNATURE_EXCLUDE, "src/keep.rs"]
+        probe_file = work / "probe-rule.json"
+        probe_file.write_text(json.dumps(probe), encoding="utf-8")
+        status, probed = preview(probe_file)
+        if status != 0:
+            return 3, [f"cannot measure the exclusion effect: {probed}"]
+        excluded = {f["path"]: f.get("exclude_reason") for f in probed["excluded_files"]}
+        if excluded.get("src/keep.rs") != "user_exclude":
+            return 0, [
+                "the top-level exclude key is not honoured by this `ocr` "
+                f"(src/keep.rs is {excluded.get('src/keep.rs')!r}) — the blind spot is no longer "
+                "declared in a way the CLI acts on, and the next signing PR will be flagged"
+            ]
+        return 0, []
+    except (OSError, subprocess.CalledProcessError) as exc:
+        # A missing `git`, a read-only `/tmp`, a hook: this check cannot answer, and a traceback
+        # in the gate is the worst of both worlds — it neither fails with a reason nor stays quiet.
+        return 3, [f"cannot build the throwaway repository: {exc}"]
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def self_check() -> int:
@@ -427,20 +449,20 @@ def main() -> int:
     # reviewer so, or the next signing PR is flagged for a signature the reviewer was never shown.
     # Exact, not "contains": an exclusion is how content is made invisible to review, so adding a
     # pattern is a decision that must touch this check rather than arrive as a quiet edit.
-    if set(exclude) != {SIGNATURE_EXCLUDE}:
+    if list(exclude) != [SIGNATURE_EXCLUDE]:
         print(
             f"FAIL  review/rule.json: the exclude list must be exactly [{SIGNATURE_EXCLUDE!r}] — "
-            "an exclusion hides content from review, so widening it is a decision, not an edit"
+            "an exclusion hides content from review, so changing it is a decision, not an edit"
         )
         return 1
-    declared = texts.get("baselines/**") or ""
+    declared = texts.get("baselines/*.json") or ""
     for phrase, what in (
         (SIGNATURE_DECLARATION, "declare that the signature file is outside the reviewer's view"),
         (SIGNATURE_INSTRUCTION, "carry the instruction not to report the missing signature"),
     ):
         if phrase not in declared:
             print(
-                f"FAIL  review/rule.json: the baselines/** checklist must {what} "
+                f"FAIL  review/rule.json: the baselines/*.json checklist must {what} "
                 f"({phrase!r} is missing) — the reviewer reports a missing signature otherwise"
             )
             return 1
