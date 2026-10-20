@@ -1,4 +1,5 @@
-//! The Baseline: a signed statement of which addresses were ratified (ADR 0005, ADR 0010).
+//! The Baseline: a signed statement of which addresses were ratified (ADR 0005, ADR 0010,
+//! ADR 0016).
 //!
 //! A Baseline is a **manifest** — the rules version, the selection context, and every
 //! applying claim's address — over which a human places one signature. Verification
@@ -6,15 +7,23 @@
 //! rather than quietly passing; and the signature check is a **process boundary** to a pinned
 //! verifier, so the core crate gains no cryptography and still no network.
 //!
+//! Envelope v3 (ADR 0016) attests two more facts inside the signed bytes: the **Decision log's
+//! chain head** (`authority`), which ties the signature to the authority that ratified those
+//! addresses, and the **signing time** (`signed_at`), which adjudicates the *key* — expiry and
+//! prospective revocation are judged at signing time, never at today's clock.
+//!
 //! The rules version is judged **before** drift ([`rules_mismatch`]), because drift is derived
 //! from it: a manifest written under a different canonical rules version is UNVERIFIABLE, with
 //! the remedy in the direction of the mismatch, rather than a per-claim tampering report.
 //!
 //! Three outcomes, as everywhere else. **Revoked** trust is FAIL (a human withdrew trust);
-//! **expired** trust is UNVERIFIABLE (a Baseline is historical and no trusted signing time
-//! exists, so the question is unanswerable rather than answered badly); an unknown key or a
-//! missing signature is UNVERIFIABLE, never a silent pass.
+//! **expired** trust is UNVERIFIABLE (a v2 Baseline is historical and no trusted signing time
+//! exists; a v3 Baseline records one, so the expiry is judged at it — still never a silent
+//! pass); an unknown key or a missing signature is UNVERIFIABLE. A v3 manifest whose recorded
+//! authority no longer re-derives from `decisions/` is FAIL — the same class as a hand-edited
+//! digest.
 
+use crate::decision;
 use crate::select::{Applies, Context};
 use crate::view::Row;
 use serde::Deserialize;
@@ -23,9 +32,10 @@ use std::path::{Path, PathBuf};
 
 /// The manifest format's own version — distinct from `RULES_V`, because the *envelope* and
 /// the *rules* move independently.
-/// The manifest schema this build writes and verifies. v2 attests the audit surface
-/// (ADR 0013); a v1 manifest is stale and must be re-issued and re-signed by the human.
-pub const BASELINE_VERSION: u32 = 2;
+/// The manifest schema this build writes and verifies. v3 attests the Decision log's chain head
+/// and the signer's timestamp (ADR 0016); v2 attests the audit surface (ADR 0013); an older
+/// manifest is stale and must be re-issued and re-signed by the human.
+pub const BASELINE_VERSION: u32 = 3;
 
 /// Where the committed trust anchor lives. Data, reviewed like a corpus (ADR 0010).
 pub const TRUST_PATH: &str = "baselines/trust.yml";
@@ -41,9 +51,28 @@ pub struct ManifestClaim {
     pub rationale_hash: String,
 }
 
+/// The authority a v3 signature is tied to (ADR 0016): the Decision log's chain head and how
+/// many entries the log holds. `entries` rides beside `head` because a head alone cannot
+/// distinguish "one entry" from a log rebuilt to one entry with the same head — impossible in
+/// principle, cheap to state in fact.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Authority {
+    pub head: String,
+    pub entries: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Manifest {
     pub version: u32,
+    /// The signer's RFC 3339 UTC timestamp. Present in a v3 manifest, **inside the signed
+    /// bytes**; absent (v2) means the envelope predates ADR 0016. `Option` so a v2 manifest
+    /// still parses.
+    #[serde(default)]
+    pub signed_at: Option<String>,
+    /// The Decision log's chain head (v3). `Option` for the same reason: a v2 manifest is not
+    /// required to carry an authority it never attested.
+    #[serde(default)]
+    pub authority: Option<Authority>,
     pub rules_v: u32,
     /// The variant this Baseline is over — empty means every applying claim with no context.
     pub selection: BTreeMap<String, String>,
@@ -52,6 +81,11 @@ pub struct Manifest {
 
 /// Build a manifest from the claims that apply in `selection`, sorted by id and deduplicated
 /// so the bytes never depend on input order.
+///
+/// The result is an **unattested** v3 envelope: `signed_at` and `authority` are filled by
+/// [`attest`], which only the emit path calls (`req baseline --at <ts>`). A draft is never
+/// emitted — [`canonical_bytes`] leaves the attestation out until it is present, and
+/// [`from_json`] rejects a v3 manifest that lacks it.
 pub fn manifest(rows: &[Row], rules_v: u32, selection: &Context) -> Manifest {
     let mut claims: Vec<ManifestClaim> = rows
         .iter()
@@ -67,15 +101,33 @@ pub fn manifest(rows: &[Row], rules_v: u32, selection: &Context) -> Manifest {
     claims.dedup_by(|a, b| a.claim_id == b.claim_id);
     Manifest {
         version: BASELINE_VERSION,
+        signed_at: None,
+        authority: None,
         rules_v,
         selection: selection.clone(),
         claims,
     }
 }
 
+/// Fill the two v3 attestations into a manifest. `signed_at` is the signer's assertion, never a
+/// clock req invents; `head` is the Decision log's chain head, re-derived from `decisions/`.
+pub fn attest(manifest: &mut Manifest, signed_at: &str, head: &decision::Head) {
+    manifest.signed_at = Some(signed_at.to_string());
+    manifest.authority = Some(Authority {
+        head: head.hash.clone(),
+        entries: head.entries,
+    });
+}
+
 /// The **exact bytes a signature covers**: fixed key order, sorted selection and claims, no
 /// incidental whitespace, one trailing newline. The same discipline as the address path —
 /// what is signed must be reproducible byte for byte by anyone.
+///
+/// v3's fixed key order is `version, signed_at, authority, rules_v, selection, claims`
+/// (ADR 0016), and it is pinned by a test because this byte string is what the human signs.
+/// A **v2** manifest keeps its historical shape (no `signed_at`/`authority` keys), so an old
+/// signature still verifies over the bytes it was made over and the stale envelope is reported
+/// as *predates*, never as a signature failure.
 pub fn canonical_bytes(manifest: &Manifest) -> String {
     let selection = manifest
         .selection
@@ -97,8 +149,20 @@ pub fn canonical_bytes(manifest: &Manifest) -> String {
         })
         .collect::<Vec<_>>()
         .join(",");
+    // The attested fields are emitted only for v3, and only once both are present: an
+    // unattested draft serializes in the v2 shape, which `from_json` rejects for a v3
+    // declaration — it is never a signable string.
+    let attestation = match (manifest.signed_at.as_deref(), &manifest.authority) {
+        (Some(signed_at), Some(authority)) if manifest.version >= 3 => format!(
+            "\"signed_at\":{},\"authority\":{{\"head\":{},\"entries\":{}}},",
+            json_string(signed_at),
+            json_string(&authority.head),
+            authority.entries
+        ),
+        _ => String::new(),
+    };
     format!(
-        "{{\"version\":{},\"rules_v\":{},\"selection\":{{{selection}}},\"claims\":[{claims}]}}\n",
+        "{{\"version\":{},{attestation}\"rules_v\":{},\"selection\":{{{selection}}},\"claims\":[{claims}]}}\n",
         manifest.version, manifest.rules_v
     )
 }
@@ -137,8 +201,14 @@ const REISSUE_ADVICE: &str = "re-issue and re-sign (ADR 0013)";
 
 /// Parse a manifest back. Reading is not the address path, so the ordinary JSON reader is
 /// fine here — only the *emitted* bytes have to be canonical.
+///
+/// A **v3** manifest must attest both `signed_at` and `authority`; one that declares v3 and
+/// lacks either is corrupt, not stale, and is rejected with a message that says what a v3
+/// envelope carries and how to produce one. v2 manifests parse without them (the fields are
+/// `Option`), so the envelope-version dispatch in [`verify`] can report *predates* — never a
+/// parse error, and never a signature failure over bytes the old build did not write.
 pub fn from_json(text: &str) -> Result<Manifest, String> {
-    serde_json::from_str(text).map_err(|e| {
+    let manifest: Manifest = serde_json::from_str(text).map_err(|e| {
         let detail = e.to_string();
         // Branch on the *declared envelope version*, recovered by a lenient parse that
         // survives the missing fields serde is complaining about. Not on serde's message text,
@@ -165,7 +235,25 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
         } else {
             format!("manifest is not readable: {detail}")
         }
-    })
+    })?;
+    if manifest.version == BASELINE_VERSION {
+        let missing: Vec<&str> = [
+            ("signed_at", manifest.signed_at.is_none()),
+            ("authority", manifest.authority.is_none()),
+        ]
+        .into_iter()
+        .filter_map(|(field, absent)| absent.then_some(field))
+        .collect();
+        if !missing.is_empty() {
+            return Err(format!(
+                "manifest is not readable: this manifest declares version {BASELINE_VERSION} but \
+                 does not attest {} — a v3 envelope carries both `signed_at` and `authority`; \
+                 emit one with `req baseline --at <RFC 3339 UTC timestamp>`, then re-sign",
+                missing.join(" or ")
+            ));
+        }
+    }
+    Ok(manifest)
 }
 
 /// What the working tree says about a signed manifest.
@@ -367,19 +455,30 @@ impl TrustFile {
         self.keys.iter().find(|key| key.id == id)
     }
 
-    /// `at` is an ISO-8601 date; ISO dates compare correctly as strings, so no date library
-    /// and no locale enters this path.
+    /// `at` is the time the key is judged at: the manifest's `signed_at` for a v3 Baseline, or
+    /// today for a v2 one (ADR 0016). It may be a full RFC 3339 timestamp or a bare ISO date;
+    /// both compare correctly as strings once reduced to their date, so no date library and no
+    /// locale enters this path.
+    ///
+    /// **Revocation is prospective** (ADR 0016): a key revoked *after* `at` was still trusted
+    /// when the Baseline was signed. Expiry likewise: a key valid **until at or after** `at`
+    /// verifies, even when today is later.
     pub fn state(&self, id: &str, at: &str) -> TrustState {
         let Some(key) = self.key(id) else {
             return TrustState::Unknown;
         };
-        if let Some(revoked_at) = &key.revoked_at {
+        // `YYYY-MM-DD` is the prefix of both spellings; comparing dates as strings avoids
+        // reading a same-day expiry as already past because the timestamp carries a clock.
+        let at_date = at.get(..10).unwrap_or(at);
+        if let Some(revoked_at) = &key.revoked_at
+            && at_date >= revoked_at.as_str()
+        {
             return TrustState::Revoked(format!("revoked at {revoked_at}"));
         }
         if let Some(valid_until) = &key.valid_until
-            && at > valid_until.as_str()
+            && at_date > valid_until.as_str()
         {
-            return TrustState::Expired(format!("valid until {valid_until}, verifying at {at}"));
+            return TrustState::Expired(format!("valid until {valid_until}, judging at {at}"));
         }
         TrustState::Trusted
     }
@@ -869,16 +968,38 @@ impl Outcome {
     }
 }
 
-/// Verify a manifest against the working tree, a signature, and the trust anchor.
-pub fn verify(
-    rows: &[Row],
-    manifest: &Manifest,
-    signature: Option<&str>,
-    trust: &TrustFile,
-    key_id: &str,
-    verifier: &dyn SignatureVerifier,
-    now: &str,
-) -> Outcome {
+/// The inputs verification judges beside the claims: the signature, the trust anchor, the
+/// verifier process, the time the **key** is judged at, and — for a v3 envelope — the Decision
+/// log whose chain head it attests.
+///
+/// Bundled because they travel together and a `verify` with eight positional arguments is a call
+/// site waiting to be misread; the tests construct one directly, which is also the seam that
+/// keeps a fixture key, an explicit signing time and a fixture log out of the filesystem.
+#[derive(Clone, Copy)]
+pub struct Verification<'a> {
+    pub signature: Option<&'a str>,
+    pub trust: &'a TrustFile,
+    pub key_id: &'a str,
+    pub verifier: &'a dyn SignatureVerifier,
+    /// The time the key is judged at: a v3 manifest's `signed_at`, or today for v2 (ADR 0016).
+    pub now: &'a str,
+    /// The decision log as read from `decisions/`, or `None` when it could not be read at all
+    /// (absent directory, unreadable or unparsable file). An absent log is UNVERIFIABLE, never
+    /// FAIL: "cannot tell" and "tampered" are different claims, and only a head that
+    /// *re-derives differently* is the definite finding ADR 0016 calls for.
+    pub log: Option<&'a [decision::Decision]>,
+}
+
+/// Verify a manifest against the working tree and the checks in [`Verification`].
+pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> Outcome {
+    let Verification {
+        signature,
+        trust,
+        key_id,
+        verifier,
+        now,
+        log,
+    } = *checks;
     let mut failed: Vec<String> = Vec::new();
     let mut open: Vec<String> = Vec::new();
 
@@ -899,41 +1020,113 @@ pub fn verify(
             manifest.version
         ));
     }
+
+    // **v3 attests the authority it was signed under (ADR 0016).** Re-derive the Decision log's
+    // chain head and compare it with the one the manifest records. A definite disagreement is
+    // FAIL — the same class as a hand-edited digest — while a log that cannot be read is
+    // UNVERIFIABLE: the chain's own `verify_chain` distinguishes "the content moved" from
+    // "there is nothing to judge", and both answers must not be flattened into one.
+    if manifest.version >= BASELINE_VERSION {
+        match (&manifest.signed_at, &manifest.authority) {
+            (Some(_), Some(authority)) => match log {
+                None => open.push(
+                    "the decision log cannot be read, so the authority this manifest attests \
+                     cannot be re-derived"
+                        .to_string(),
+                ),
+                Some(log) => match decision::verify_chain(log) {
+                    decision::Chain::Tampered(reasons) => failed.push(format!(
+                        "the authority this manifest attests does not verify: {} — the decision \
+                         log was edited after it was recorded (ADR 0016)",
+                        reasons.join("; ")
+                    )),
+                    decision::Chain::Unverifiable(reasons) => open.push(format!(
+                        "the authority this manifest attests cannot be re-derived: {}",
+                        reasons.join("; ")
+                    )),
+                    decision::Chain::Valid => {
+                        let derived = decision::head(log)
+                            .expect("a VALID chain is non-empty and ends in a filled hash");
+                        if derived.hash != authority.head {
+                            failed.push(format!(
+                                "authority mismatch: the manifest attests decision-chain head {} \
+                                 but the log's head is {} (ADR 0016)",
+                                short_hash(&authority.head),
+                                short_hash(&derived.hash)
+                            ));
+                        } else if derived.entries != authority.entries {
+                            failed.push(format!(
+                                "authority mismatch: the manifest attests {} decision entr{} but \
+                                 the log holds {} (ADR 0016)",
+                                authority.entries,
+                                if authority.entries == 1 { "y" } else { "ies" },
+                                derived.entries
+                            ));
+                        }
+                    }
+                },
+            },
+            _ => open.push(format!(
+                "manifest declares version {} but does not attest signed_at and authority — a v3 \
+                 envelope carries both; re-issue with `req baseline --at <ts>` and re-sign",
+                manifest.version
+            )),
+        }
+    }
+
     match trust.state(key_id, now) {
         TrustState::Trusted => {}
         TrustState::Revoked(reason) => failed.push(format!("key {key_id} is {reason}")),
-        TrustState::Expired(reason) => open.push(format!(
-            "key {key_id} is {reason} — a Baseline is historical and no trusted signing time \
-             exists, so this cannot be decided"
-        )),
+        // A v3 manifest records its signing time, so expiry is judged *at that time* (ADR
+        // 0016) rather than left unanswerable; it is still never a pass. A v2 Manifest has no
+        // trusted signing time at all, which is the older ADR 0010 answer.
+        TrustState::Expired(reason) => open.push(if manifest.version >= BASELINE_VERSION {
+            format!(
+                "key {key_id} is {reason} — the signing time is the manifest's signed_at, and it \
+                 falls outside the key's validity window, so this Baseline was not signed under \
+                 a trusted key"
+            )
+        } else {
+            format!(
+                "key {key_id} is {reason} — a Baseline is historical and no trusted signing time \
+                 exists, so this cannot be decided"
+            )
+        }),
         TrustState::Unknown => open.push(format!("key {key_id} is not in the trust file")),
     }
 
-    match signature {
-        None => open.push(
-            "no signature: this is a manifest, not yet a Baseline (nothing is ratified until \
-             a human signs it)"
-                .to_string(),
-        ),
-        Some(signature) => {
-            if let Some(key) = trust.key(key_id) {
-                if key.scheme != verifier.scheme() {
-                    open.push(format!(
-                        "key {key_id} is declared for scheme {} but the verifier is {}",
-                        key.scheme,
-                        verifier.scheme()
-                    ));
-                } else {
-                    match verifier.verify(
-                        canonical_bytes(manifest).as_bytes(),
-                        signature,
-                        &key.public_key,
-                    ) {
-                        SignatureOutcome::Valid => {}
-                        SignatureOutcome::Invalid(why) => {
-                            failed.push(format!("the signature does not verify: {why}"))
+    // A newer envelope's signed bytes are not reconstructable by this build: its canonical shape
+    // may carry fields this code has never seen, and checking a signature over a guessed shape
+    // would FAIL a manifest the build cannot read. The version dispatch above already answered
+    // UNVERIFIABLE with the "verify with a build that writes it" remedy, so the signature is left
+    // unjudged rather than misjudged.
+    if manifest.version <= BASELINE_VERSION {
+        match signature {
+            None => open.push(
+                "no signature: this is a manifest, not yet a Baseline (nothing is ratified until \
+                 a human signs it)"
+                    .to_string(),
+            ),
+            Some(signature) => {
+                if let Some(key) = trust.key(key_id) {
+                    if key.scheme != verifier.scheme() {
+                        open.push(format!(
+                            "key {key_id} is declared for scheme {} but the verifier is {}",
+                            key.scheme,
+                            verifier.scheme()
+                        ));
+                    } else {
+                        match verifier.verify(
+                            canonical_bytes(manifest).as_bytes(),
+                            signature,
+                            &key.public_key,
+                        ) {
+                            SignatureOutcome::Valid => {}
+                            SignatureOutcome::Invalid(why) => {
+                                failed.push(format!("the signature does not verify: {why}"))
+                            }
+                            SignatureOutcome::Unverifiable(why) => open.push(why),
                         }
-                        SignatureOutcome::Unverifiable(why) => open.push(why),
                     }
                 }
             }
@@ -981,9 +1174,11 @@ pub fn verify(
     }
 }
 
-/// `req baseline [--verify <file>] [--signature <file>] [--key <id>] [--now <date>] [k=v ...]`
+/// `req baseline --at <ts> [--verify <file>] [--signature <file>] [--key <id>] [--now <date>] [k=v ...]`
 ///
-/// With no `--verify`, prints the canonical manifest to stdout — the bytes a human signs.
+/// With no `--verify`, prints the canonical manifest to stdout — the bytes a human signs. The
+/// signing time is **authored** (`--at`), never a clock req invents; emitting without one is a
+/// usage error (ADR 0016).
 /// Exit: **0** verified (or emitted), **1** FAIL, **3** UNVERIFIABLE, **2** usage.
 pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut context = Context::new();
@@ -991,6 +1186,8 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut signature_path: Option<String> = None;
     let mut key_id = "req-baseline-1".to_string();
     let mut now = today_utc();
+    let mut explicit_now = false;
+    let mut at_value: Option<String> = None;
     let mut index = 0;
     while index < args.len() {
         let arg = args[index].clone();
@@ -1012,7 +1209,14 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                 None => return 2,
             },
             "--now" => match take("--now") {
-                Some(value) => now = value,
+                Some(value) => {
+                    now = value;
+                    explicit_now = true;
+                }
+                None => return 2,
+            },
+            "--at" => match take("--at") {
+                Some(value) => at_value = Some(value),
                 None => return 2,
             },
             other => match other.split_once('=') {
@@ -1021,7 +1225,8 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                 }
                 _ => {
                     eprintln!(
-                        "usage: req baseline [--verify <file>] [--signature <file>] [--key <id>] [--now <date>] [key=value ...]"
+                        "usage: req baseline --at <RFC 3339 UTC timestamp> [--verify <file>] \
+                         [--signature <file>] [--key <id>] [--now <date>] [key=value ...]"
                     );
                     return 2;
                 }
@@ -1030,6 +1235,26 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     }
 
     let Some(path) = verify_path else {
+        // The signing act's time is the signer's assertion: req never invents one (ADR 0016), so
+        // an emission without `--at` is a usage error, not a defaulted field.
+        let Some(at) = at_value else {
+            eprintln!(
+                "req baseline needs --at <RFC 3339 UTC timestamp>, e.g. \
+                 --at 2026-10-20T18:30:00Z: req never invents a signing time (ADR 0016)"
+            );
+            return 2;
+        };
+        if explicit_now {
+            eprintln!("--now is a verification override; emission takes its time from --at");
+            return 2;
+        }
+        if !valid_signing_time(&at) {
+            eprintln!(
+                "--at must be an RFC 3339 UTC timestamp with a `Z` offset, e.g. \
+                 2026-10-20T18:30:00Z: {at}"
+            );
+            return 2;
+        }
         let rows = match crate::view::load_rows(&context, root) {
             Ok(rows) => rows,
             Err(e) => {
@@ -1037,10 +1262,50 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                 return 3;
             }
         };
-        let manifest = manifest(&rows, crate::canon::RULES_V, &context);
+        // A head that attests nothing must not be signed: the manifest would claim an authority
+        // the log cannot supply. Absent, unparsable and tampered logs are all refusals here,
+        // with the reason the chain gives.
+        let log = match read_decisions(root) {
+            Ok(log) => log,
+            Err(e) => {
+                eprintln!("[UNVERIFIABLE] refusing to emit: {e}");
+                return 3;
+            }
+        };
+        match decision::verify_chain(&log) {
+            decision::Chain::Valid => {}
+            decision::Chain::Tampered(reasons) => {
+                eprintln!(
+                    "[UNVERIFIABLE] refusing to emit: the decision log does not verify, and a \
+                     manifest that attests a broken chain must not be signed — {}",
+                    reasons.join("; ")
+                );
+                return 3;
+            }
+            decision::Chain::Unverifiable(reasons) => {
+                eprintln!(
+                    "[UNVERIFIABLE] refusing to emit: the decision log cannot be judged, and a \
+                     head that attests nothing must not be signed — {}",
+                    reasons.join("; ")
+                );
+                return 3;
+            }
+        }
+        let head = decision::head(&log)
+            .expect("a VALID decision chain is non-empty and ends in a filled hash");
+        let mut manifest = manifest(&rows, crate::canon::RULES_V, &context);
+        attest(&mut manifest, &at, &head);
         print!("{}", canonical_bytes(&manifest));
         return 0;
     };
+
+    if at_value.is_some() {
+        eprintln!(
+            "--at is an emission flag: a Baseline's signing time is carried in the manifest \
+             (`signed_at`), and verification judges the key at it"
+        );
+        return 2;
+    }
 
     let text = match std::fs::read_to_string(&path) {
         Ok(text) => text,
@@ -1091,26 +1356,129 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             return 3;
         }
     };
+    // The Decision log is read even for a v2 manifest — cheap, and `verify` ignores it there.
+    // An unreadable log becomes `None`, which a v3 manifest reports as UNVERIFIABLE rather than
+    // FAIL (absence is not tampering).
+    let log = read_decisions(root).ok();
+    // The time the **key** is judged at (ADR 0016): the signer's `signed_at` for a v3 Baseline,
+    // today for a v2 one, and `--now` as the explicit override in either case.
+    let judged_at = if explicit_now {
+        now
+    } else {
+        match manifest.signed_at.as_deref() {
+            Some(signed_at) if manifest.version >= BASELINE_VERSION => signed_at.to_string(),
+            _ => today_utc(),
+        }
+    };
 
     let outcome = verify(
         &rows,
         &manifest,
-        signature.as_deref(),
-        &trust,
-        &key_id,
-        &MinisignCli,
-        &now,
+        &Verification {
+            signature: signature.as_deref(),
+            trust: &trust,
+            key_id: &key_id,
+            verifier: &MinisignCli,
+            now: &judged_at,
+            log: log.as_deref(),
+        },
     );
-    println!(
-        "# Baseline {path}: {} claim(s), rules v{}, key {key_id}, verified at {now}",
-        manifest.claims.len(),
-        manifest.rules_v
-    );
+    match manifest.signed_at.as_deref() {
+        Some(signed_at) => println!(
+            "# Baseline {path}: {} claim(s), rules v{}, key {key_id}, signed at {signed_at}, \
+             verified at {judged_at}",
+            manifest.claims.len(),
+            manifest.rules_v
+        ),
+        None => println!(
+            "# Baseline {path}: {} claim(s), rules v{}, key {key_id}, verified at {judged_at}",
+            manifest.claims.len(),
+            manifest.rules_v
+        ),
+    }
     println!("[{}]", outcome.as_str());
     for reason in outcome.reasons() {
         println!("  - {reason}");
     }
     outcome.exit_code()
+}
+
+/// The Decision log as `decisions/` holds it, in chain order. One loader, so emission and
+/// verification attest and re-derive the same way.
+fn read_decisions(root: &Path) -> Result<Vec<decision::Decision>, String> {
+    let paths = decision::log_paths(root)?;
+    let log = decision::read_log(&paths)?;
+    Ok(log.into_iter().map(|(_, decision)| decision).collect())
+}
+
+/// The first characters of a digest, for a reason a human reads. Never decides anything: the
+/// full values are compared, and only the message is shortened.
+fn short_hash(hash: &str) -> &str {
+    &hash[..12.min(hash.len())]
+}
+
+/// An RFC 3339 UTC timestamp with a `Z` offset — the only shape `--at` accepts. req never
+/// invents a signing time, so a value it cannot read is a usage error rather than a defaulted
+/// field (ADR 0016). Fractional seconds are accepted (and preserved verbatim, because they are
+/// inside the signed bytes); a leap second is not.
+fn valid_signing_time(value: &str) -> bool {
+    let Some(body) = value.strip_suffix('Z') else {
+        return false;
+    };
+    let (core, fraction) = match body.split_once('.') {
+        Some((core, fraction)) => (core, Some(fraction)),
+        None => (body, None),
+    };
+    let b = core.as_bytes();
+    if b.len() != 19
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || b[10] != b'T'
+        || b[13] != b':'
+        || b[16] != b':'
+    {
+        return false;
+    }
+    let is_digits = |bytes: &[u8]| bytes.iter().all(u8::is_ascii_digit);
+    let fields = [
+        &b[0..4],
+        &b[5..7],
+        &b[8..10],
+        &b[11..13],
+        &b[14..16],
+        &b[17..19],
+    ];
+    if !fields.iter().all(|field| is_digits(field)) {
+        return false;
+    }
+    if let Some(fraction) = fraction
+        && (fraction.is_empty() || fraction.len() > 9 || !is_digits(fraction.as_bytes()))
+    {
+        return false;
+    }
+    let number = |field: &[u8]| {
+        std::str::from_utf8(field)
+            .ok()
+            .and_then(|text| text.parse::<u32>().ok())
+    };
+    match (
+        number(&b[0..4]),
+        number(&b[5..7]),
+        number(&b[8..10]),
+        number(&b[11..13]),
+        number(&b[14..16]),
+        number(&b[17..19]),
+    ) {
+        (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) => {
+            year >= 1970
+                && (1..=12).contains(&month)
+                && (1..=31).contains(&day)
+                && hour < 24
+                && minute < 60
+                && second < 60
+        }
+        _ => false,
+    }
 }
 
 /// The selection a Baseline is verified (and audited) under: **the one the manifest records**.
@@ -1145,8 +1513,8 @@ pub fn resolve_selection(explicit: &Context, manifest: &Manifest) -> Result<Cont
 }
 
 /// Today's date in UTC as `YYYY-MM-DD`, by integer arithmetic — no date library, no locale,
-/// no float. Expiry is evaluated at verification because no trusted signing time exists
-/// (ADR 0010); the limitation is stated in the reason it produces, not hidden.
+/// no float. It is the judgement time for a **v2** Baseline, which carries no trusted signing
+/// time (ADR 0010); a v3 one is judged at its manifest's `signed_at` (ADR 0016).
 fn today_utc() -> String {
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

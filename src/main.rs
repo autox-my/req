@@ -12,8 +12,9 @@
 //!   req [--root <dir>] impact <claim-id>   — what depends on that claim, transitively
 //!   req [--root <dir>] gate k=v [...]      — may this selection ship? (policies over applying claims)
 //!   req [--root <dir>] propose             — the Tier-2 funnel: blocking, then provider adjudication
-//!   req [--root <dir>] baseline            — emit the canonical manifest a human signs (ADR 0010)
-//!   req [--root <dir>] baseline --verify F — verify a signed Baseline: drift, trust, signature
+//!   req [--root <dir>] baseline --at <ts>   — emit the canonical manifest a human signs (ADR 0016)
+//!   req [--root <dir>] baseline --verify F — verify a signed Baseline: drift, authority, trust,
+//!                                             signature, with the key judged at its signed_at
 //!   req [--root <dir>] audit [--baseline F] — the audit packet: coverage, provenance, undecided
 //!   req [--root <dir>] decision [--fill]   — the decision log and its hash chain (step 8)
 //!   req init                               — create a corpus in the working directory
@@ -54,7 +55,8 @@ usage: req [--root <dir>] <command> [args]
   impact <claim-id>               what depends on that claim, transitively
   init                            create a corpus in the current directory (no root lookup)
   propose                         the Tier-2 funnel: blocking, then provider adjudication
-  baseline [--verify <file>]      the manifest a human signs, or verify one
+  baseline --at <ts>              the manifest a human signs (--at is the signing time)
+  baseline --verify <file>        verify one (its signed_at judges the key)
   audit [--baseline <file>]       the audit packet: coverage, provenance, undecided
   decision [--fill | --verify]    the decision log and its hash chain
   --version | -V                  the versions that decide a verdict, and the build identity
