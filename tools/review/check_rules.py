@@ -160,6 +160,38 @@ def _shape(rules: list) -> tuple:
     return paths, len(problems)
 
 
+# The two keys a review document may carry. `ocr` ignores unknown keys silently (Go drops
+# them), so a misspelled "excludes" would be a no-op that still loads — the same trap this
+# script exists to catch in entry fields, one level up.
+TOP_LEVEL_KEYS = frozenset({"rules", "exclude"})
+# The blind spot the `baselines/**` checklist declares: `ocr` cannot see a `.minisig`, so a
+# change to a signed Baseline always looks like it is missing one. The declaration is pinned
+# here because a declaration that can vanish silently is worth nothing.
+SIGNATURE_EXCLUDE = "baselines/*.minisig"
+SIGNATURE_DECLARATION = "outside your view"
+
+
+def declared_document_problems(document) -> list:
+    """What is wrong with the document's own shape, before any CLI is consulted."""
+    if not isinstance(document, dict):
+        return ["the document is not a JSON object"]
+    problems = [
+        f"unknown top-level key {key!r} — the CLI ignores unknown keys silently, so a typo "
+        "is a no-op"
+        for key in sorted(set(document) - TOP_LEVEL_KEYS)
+    ]
+    if not isinstance(document.get("rules"), list):
+        problems.append("no 'rules' list")
+    exclude = document.get("exclude", [])
+    if not isinstance(exclude, list):
+        problems.append("'exclude' must be a list of gitignore-style patterns")
+    else:
+        for pattern in exclude:
+            if not isinstance(pattern, str) or not pattern.strip():
+                problems.append(f"'exclude' holds a value that is not a usable pattern: {pattern!r}")
+    return problems
+
+
 def self_check() -> int:
     """Table-drive the pure half. No `ocr`, no git, no review.
 
@@ -226,6 +258,34 @@ def self_check() -> int:
             _shape([{"rule": "x"}, {"path": "a", "rule": "y"}]),
             (["a"], 1),
         ),
+        (
+            "a misspelled top-level key is refused",
+            declared_document_problems({"excludes": [], "rules": []}),
+            [
+                "unknown top-level key 'excludes' — the CLI ignores unknown keys silently, so a "
+                "typo is a no-op"
+            ],
+        ),
+        (
+            "a rules list plus a usable exclude is clean",
+            declared_document_problems({"exclude": ["baselines/*.minisig"], "rules": []}),
+            [],
+        ),
+        (
+            "an exclude that is not a list is refused",
+            declared_document_problems({"exclude": "baselines/*.minisig", "rules": []}),
+            ["'exclude' must be a list of gitignore-style patterns"],
+        ),
+        (
+            "a blank exclude pattern is refused",
+            declared_document_problems({"exclude": ["  "], "rules": []}),
+            ["'exclude' holds a value that is not a usable pattern: '  '"],
+        ),
+        (
+            "a document that is not an object is refused",
+            declared_document_problems([]),
+            ["the document is not a JSON object"],
+        ),
     ]
     failures = 0
     for label, got, want in rows:
@@ -258,10 +318,13 @@ def main() -> int:
     # A document that is not `{"rules": [...]}` is our file being wrong, not the CLI's: the
     # shape is settled here so the reader below can never meet a `null` or a string, and so
     # a malformed rule file is reported as ours instead of as an `ocr` exit nobody chose.
-    rules = document.get("rules") if isinstance(document, dict) else None
-    if not isinstance(rules, list):
-        print(f"FAIL  {RULE_FILE.relative_to(ROOT)} has no 'rules' list")
+    problems = declared_document_problems(document)
+    if problems:
+        for problem in problems:
+            print(f"FAIL  {RULE_FILE.relative_to(ROOT)}: {problem}")
         return 1
+    rules = document["rules"]
+    exclude = document.get("exclude", [])
 
     # The declared side first: it is what the two directions below can even be about, and a
     # defect in our own file needs no CLI to establish.
@@ -269,6 +332,23 @@ def main() -> int:
     if problems:
         for problem in problems:
             print(f"FAIL  review/rule.json: {problem}")
+        return 1
+
+    # **The declared blind spot.** A signed artefact's review is its signature, and `ocr` cannot
+    # read a `.minisig`: the exclusion is explicit here and the `baselines/**` checklist tells the
+    # reviewer so, or the next signing PR is flagged for a signature the reviewer was never shown.
+    if SIGNATURE_EXCLUDE not in exclude:
+        print(
+            f"FAIL  review/rule.json: {SIGNATURE_EXCLUDE!r} must be excluded — the reviewer "
+            "cannot see a signature, so an implicit blind spot becomes a false blocking finding"
+        )
+        return 1
+    if SIGNATURE_DECLARATION not in (texts.get("baselines/**") or ""):
+        print(
+            "FAIL  review/rule.json: the baselines/** checklist must declare that the signature "
+            f"file is {SIGNATURE_DECLARATION!r} — the reviewer reports a missing signature "
+            "otherwise"
+        )
         return 1
 
     try:
