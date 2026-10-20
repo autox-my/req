@@ -484,16 +484,33 @@ impl TrustFile {
         // a timestamp-valued trust entry (the shape a v3 manifest now uses) must fire on its own
         // day, and a timestamp-valued judgement time must not read a same-day expiry as past
         // because a clock came along.
+        // A malformed anchor spelling must fail **closed**: `date_of` truncates without checking
+        // the shape, so a typo'd month, an unpadded day or a human date would yield a prefix that
+        // sorts below every real judgement date — reading a revoked key as trusted. An
+        // unreadable `revoked_at` is therefore treated as revoked, and an unreadable
+        // `valid_until` as expired; both refuse rather than pass.
         let at_date = date_of(at);
-        if let Some(revoked_at) = &key.revoked_at
-            && at_date >= date_of(revoked_at)
-        {
-            return TrustState::Revoked(format!("revoked at {revoked_at}"));
+        if let Some(revoked_at) = &key.revoked_at {
+            if !valid_judgement_time(revoked_at) {
+                return TrustState::Revoked(format!(
+                    "revoked at {revoked_at}, which is not an ISO date or RFC 3339 timestamp — \
+                     treated as revoked, never as trusted"
+                ));
+            }
+            if at_date >= date_of(revoked_at) {
+                return TrustState::Revoked(format!("revoked at {revoked_at}"));
+            }
         }
-        if let Some(valid_until) = &key.valid_until
-            && at_date > date_of(valid_until)
-        {
-            return TrustState::Expired(format!("valid until {valid_until}, judging at {at}"));
+        if let Some(valid_until) = &key.valid_until {
+            if !valid_judgement_time(valid_until) {
+                return TrustState::Expired(format!(
+                    "valid until {valid_until}, which is not an ISO date or RFC 3339 timestamp — \
+                     treated as expired, never as trusted"
+                ));
+            }
+            if at_date > date_of(valid_until) {
+                return TrustState::Expired(format!("valid until {valid_until}, judging at {at}"));
+            }
         }
         TrustState::Trusted
     }
@@ -998,11 +1015,12 @@ pub struct Verification<'a> {
     pub verifier: &'a dyn SignatureVerifier,
     /// The time the key is judged at: a v3 manifest's `signed_at`, or today for v2 (ADR 0016).
     pub now: &'a str,
-    /// The decision log as read from `decisions/`, or `None` when it could not be read at all
-    /// (absent directory, unreadable or unparsable file). An absent log is UNVERIFIABLE, never
-    /// FAIL: "cannot tell" and "tampered" are different claims, and only a head that
-    /// *re-derives differently* is the definite finding ADR 0016 calls for.
-    pub log: Option<&'a [decision::Decision]>,
+    /// The decision log as read from `decisions/`, or the loader's reason when it could not be
+    /// read (absent directory, unreadable or unparsable file). An absent log is UNVERIFIABLE,
+    /// never FAIL: "cannot tell" and "tampered" are different claims, and only a head that
+    /// *re-derives differently* is the definite finding ADR 0016 calls for. The reason travels
+    /// so a broken log is as actionable when verifying as when emitting.
+    pub log: Result<&'a [decision::Decision], &'a str>,
 }
 
 /// Verify a manifest against the working tree and the checks in [`Verification`].
@@ -1044,12 +1062,17 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
     if manifest.version == BASELINE_VERSION {
         match (&manifest.signed_at, &manifest.authority) {
             (Some(_), Some(authority)) => match log {
-                None => open.push(
+                Err(why) => open.push(format!(
                     "the decision log cannot be read, so the authority this manifest attests \
-                     cannot be re-derived"
-                        .to_string(),
-                ),
-                Some(log) => match decision::verify_chain(log) {
+                     cannot be re-derived: {why}"
+                )),
+                Ok(log) => {
+                    // Judge the **attested prefix**, not the log's present end: an unfilled or
+                    // hand-edited decision recorded *after* `entries` is `req decision --verify`'s
+                    // finding, not a reason to demote or fail a Baseline the human already
+                    // signed. (The prefix's existence and head are checked below.)
+                    let attested = &log[..authority.entries.min(log.len())];
+                    match decision::verify_chain(attested) {
                     decision::Chain::Tampered(reasons) => failed.push(format!(
                         "the authority this manifest attests does not verify: {} — the decision \
                          log was edited after it was recorded (ADR 0016)",
@@ -1096,7 +1119,8 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
                             },
                         }
                     }
-                },
+                    }
+                }
             },
             _ => open.push(format!(
                 "manifest declares version {} but does not attest signed_at and authority — a v3 \
@@ -1410,7 +1434,11 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     // The Decision log is read even for a v2 manifest — cheap, and `verify` ignores it there.
     // An unreadable log becomes `None`, which a v3 manifest reports as UNVERIFIABLE rather than
     // FAIL (absence is not tampering).
-    let log = read_decisions(root).ok();
+    let decisions = read_decisions(root);
+    let log = decisions
+        .as_ref()
+        .map(|log| log.as_slice())
+        .map_err(|error| error.as_str());
     // The time the **key** is judged at (ADR 0016): the signer's `signed_at` for a v3 Baseline,
     // today for a v2 one, and `--now` as the explicit override in either case.
     let judged_at = if explicit_now {
@@ -1435,7 +1463,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             key_id: &key_id,
             verifier: &MinisignCli,
             now: &judged_at,
-            log: log.as_deref(),
+            log,
         },
     );
     match manifest.signed_at.as_deref() {

@@ -22,8 +22,10 @@
 #               time, so its expiry stays UNVERIFIABLE (ADR 0010).
 #   revoked_at  optional. Revocation is prospective (ADR 0016): a key revoked on a later
 #               calendar date than the Baseline's signing time still verifies for it; revoked
-#               on or before that date FAILS (same-day counts as revoked). Record this the
-#               moment a private key is lost or retired. The signing time is signer-asserted
+#               on or before that date FAILS (same-day counts as revoked). A **v2** Baseline has
+#               no signing time, so it is judged at today and a revocation at or before today
+#               FAILS it. An unreadable date is treated as revoked, never as trusted. Record this
+#               the moment a private key is lost or retired. The signing time is signer-asserted
 #               (no RFC 3161), so this bounds newly asserted times only; `--now` overrides the
 #               judgement time on the command line.
 #

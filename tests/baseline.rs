@@ -91,13 +91,47 @@ fn a_decision_recorded_after_signing_does_not_invalidate_the_baseline() {
             key_id: "req-baseline-1",
             verifier: &Stub(SignatureOutcome::Valid),
             now: FIXTURE_SIGNED_AT,
-            log: Some(&log),
+            log: Ok(&log),
         },
     );
     assert_eq!(
         outcome.exit_code(),
         0,
         "an appended decision is history: {outcome:?}"
+    );
+
+    // The `--fill` workflow's transient state: a record appended but not yet filled. The
+    // attested prefix is intact, so the Baseline still verifies; the unfilled tail is
+    // `req decision --verify`'s finding, not the manifest's.
+    let mut unfilled = fixture_log(FIXTURE_DECISION_NOTE);
+    unfilled.push(Decision {
+        id: "DEC-0002".to_string(),
+        kind: "accept".to_string(),
+        claim_id: "REQ-B".to_string(),
+        address: "bbb".to_string(),
+        actor: "the maintainer".to_string(),
+        role: "maintainer".to_string(),
+        date: "2026-10-08".to_string(),
+        note: "not yet filled".to_string(),
+        prev_hash: None,
+        hash: None,
+    });
+    let unfilled_outcome = req::baseline::verify(
+        &rows,
+        &manifest,
+        &Verification {
+            signature: Some("sig"),
+            trust: &trust(false, None),
+            key_id: "req-baseline-1",
+            verifier: &Stub(SignatureOutcome::Valid),
+            now: FIXTURE_SIGNED_AT,
+            log: Ok(&unfilled),
+        },
+    );
+    assert_eq!(
+        unfilled_outcome.exit_code(),
+        0,
+        "an unfilled tail does not demote the attested prefix: {unfilled_outcome:?}"
     );
 
     // Attest the two-entry log, then show the log cannot be cut back below it.
@@ -113,7 +147,7 @@ fn a_decision_recorded_after_signing_does_not_invalidate_the_baseline() {
             key_id: "req-baseline-1",
             verifier: &Stub(SignatureOutcome::Valid),
             now: FIXTURE_SIGNED_AT,
-            log: Some(&log[..1]),
+            log: Ok(&log[..1]),
         },
     );
     assert_eq!(truncated.exit_code(), 1, "{truncated:?}");
@@ -265,7 +299,7 @@ fn verify(
             key_id,
             verifier,
             now,
-            log: Some(&log),
+            log: Ok(&log),
         },
     )
 }
@@ -687,7 +721,7 @@ fn editing_a_decision_after_signing_fails_on_the_authority() {
             key_id: "req-baseline-1",
             verifier: &Stub(SignatureOutcome::Valid),
             now: FIXTURE_SIGNED_AT,
-            log: Some(&edited),
+            log: Ok(&edited),
         },
     );
     assert_eq!(tampered.exit_code(), 1, "{tampered:?}");
@@ -706,7 +740,7 @@ fn editing_a_decision_after_signing_fails_on_the_authority() {
             key_id: "req-baseline-1",
             verifier: &Stub(SignatureOutcome::Valid),
             now: FIXTURE_SIGNED_AT,
-            log: Some(&refilled),
+            log: Ok(&refilled),
         },
     );
     assert_eq!(mismatch.exit_code(), 1, "{mismatch:?}");
@@ -732,7 +766,7 @@ fn an_absent_decision_log_is_unverifiable_never_tampered() {
             key_id: "req-baseline-1",
             verifier: &Stub(SignatureOutcome::Valid),
             now: FIXTURE_SIGNED_AT,
-            log: None,
+            log: Err("decisions/ is absent"),
         },
     );
     assert_eq!(outcome.exit_code(), 3, "{outcome:?}");
@@ -827,6 +861,53 @@ fn a_key_revoked_after_the_signing_time_still_verifies() {
     assert_eq!(same_day.exit_code(), 1, "{same_day:?}");
 }
 
+/// A malformed anchor spelling fails **closed**. `date_of` truncates blindly, so a typo'd
+/// month or a human date would sort below every judgement time and read a revoked key as
+/// trusted; both bounds refuse rather than pass.
+#[test]
+fn a_malformed_trust_date_fails_closed() {
+    let (rows, manifest) = signed_manifest();
+    let mut revoked = trust(false, None);
+    revoked.keys[0].revoked_at = Some("2026-13-01".to_string());
+    let revoked_outcome = verify(
+        &rows,
+        &manifest,
+        Some("sig"),
+        &revoked,
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        FIXTURE_SIGNED_AT,
+    );
+    assert_eq!(revoked_outcome.exit_code(), 1, "{revoked_outcome:?}");
+    assert!(
+        revoked_outcome
+            .reasons()
+            .join(" ")
+            .contains("not an ISO date"),
+        "{revoked_outcome:?}"
+    );
+
+    let mut expired = trust(false, None);
+    expired.keys[0].valid_until = Some("Oct 20 2026".to_string());
+    let expired_outcome = verify(
+        &rows,
+        &manifest,
+        Some("sig"),
+        &expired,
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        FIXTURE_SIGNED_AT,
+    );
+    assert_eq!(expired_outcome.exit_code(), 1, "{expired_outcome:?}");
+    assert!(
+        expired_outcome
+            .reasons()
+            .join(" ")
+            .contains("not an ISO date"),
+        "{expired_outcome:?}"
+    );
+}
+
 /// The committed Decision record, parsed by the test rather than through `decision::head`, so
 /// the expected head is the file's own `hash:` value and the expected count is the number of
 /// `DEC-*.yml` files — an oracle the implementation cannot satisfy by agreeing with itself.
@@ -911,7 +992,7 @@ fn an_authority_with_the_right_head_but_the_wrong_entry_count_fails() {
             key_id: "req-baseline-1",
             verifier: &Stub(SignatureOutcome::Valid),
             now: FIXTURE_SIGNED_AT,
-            log: Some(&log),
+            log: Ok(&log),
         },
     );
     assert_eq!(outcome.exit_code(), 1, "{outcome:?}");
@@ -1155,7 +1236,7 @@ fn a_key_expired_today_but_valid_at_signing_verifies_through_the_cli() {
     std::fs::write(
         trust_dir.join("trust.yml"),
         format!(
-            "keys:\n  - id: \"req-baseline-1\"\n    scheme: \"minisign\"\n    public_key: |\n{indented}\n    valid_from: \"2026-01-01\"\n    valid_until: \"2026-10-10\"\n    revoked_at: \"2030-01-01\"\n"
+            "keys:\n  - id: \"req-baseline-1\"\n    scheme: \"minisign\"\n    public_key: |\n{indented}\n    valid_from: \"2026-01-01\"\n    valid_until: \"2026-10-10\"\n    revoked_at: \"2098-01-01\"\n"
         ),
     )
     .expect("writes the fixture trust anchor");
@@ -1231,14 +1312,15 @@ fn a_key_expired_today_but_valid_at_signing_verifies_through_the_cli() {
     // A *newer* envelope must not be judged at a `signed_at` this build never validated. If it
     // were, a far-future value (or an RFC 3339 offset form a future envelope may use) could make
     // the trust comparison produce a definite FAIL for a manifest this build explicitly says it
-    // cannot judge. Judged on today's clock (2026), the key revoked in 2030 is still trusted and
-    // the only finding is the version.
+    // cannot judge. The horizons are deliberately out of the clock's reach: a wrong verifier
+    // judging at `signed_at` (9999) trips the 2098 revocation, while the correct one judges at
+    // today and reports only the version.
     let versioned = std::fs::read_to_string(&manifest_path)
         .expect("reads the emitted manifest")
         .replacen("\"version\":3", "\"version\":4", 1)
         .replacen(
             &format!("\"signed_at\":\"{FIXTURE_SIGNED_AT}\""),
-            "\"signed_at\":\"2099-01-01T00:00:00Z\"",
+            "\"signed_at\":\"9999-01-01T00:00:00Z\"",
             1,
         );
     let newer_path = fixture.path().join("newer.json");

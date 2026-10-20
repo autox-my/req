@@ -21,8 +21,11 @@
 #               UNVERIFIABLE (ADR 0010).
 #   revoked_at  optional. Revocation is **prospective** (ADR 0016): a key revoked on a *later
 #               calendar date* than the Baseline's signing time still verifies for it, while one
-#               revoked on or before that date FAILS (same-day counts as revoked). Record it the
-#               moment a private key is lost or retired.
+#               revoked on or before that date FAILS (same-day counts as revoked). The v3 rule
+#               needs a signing time: a **v2** Baseline has none, so it is judged at *today* and
+#               a key revoked at or before today FAILS it — the older ADR 0010 answer. Record it
+#               the moment a private key is lost or retired. An unreadable date is treated as
+#               revoked, never as trusted.
 #
 # The signing time is **signer-asserted** (there is no RFC 3161 timestamp): whoever holds the
 # key can mint a fresh signature declaring an earlier `signed_at`, and `--now` overrides the
