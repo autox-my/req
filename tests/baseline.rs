@@ -1022,6 +1022,19 @@ fn check_sh_env(args: &[&std::ffi::OsStr], req_gate_bin: &std::path::Path) -> st
     // HOME is left exactly as the developer or CI set it (CI installs the pinned channel into
     // $HOME/.rustup and means it). Neither present is a failure named here, not check.sh's
     // generic exit 2.
+    point_home_at_toolchain(&mut command);
+    command.output().expect("runs scripts/check.sh")
+}
+
+/// Point `command`'s HOME at the toolchain home `scripts/check.sh` should see.
+///
+/// The workspace's `.tools/home` when it has one, **else the ambient HOME** — CI installs the pinned
+/// channel into `$HOME/.rustup` and means it. One copy of this decision, because a second that
+/// assumed the developer's layout panicked in CI while the gate was green locally (the failure this
+/// helper was extracted from).
+#[cfg(unix)]
+fn point_home_at_toolchain(command: &mut std::process::Command) {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let home_has_rustup = std::env::var_os("HOME")
         .is_some_and(|h| std::path::Path::new(&h).join(".rustup/toolchains").exists());
     match workspace_toolchain_home(&root) {
@@ -1034,7 +1047,6 @@ fn check_sh_env(args: &[&std::ffi::OsStr], req_gate_bin: &std::path::Path) -> st
              and $HOME/.rustup/toolchains does not exist either (see .tools/README.md)"
         ),
     }
-    command.output().expect("runs scripts/check.sh")
 }
 
 /// The toolchain home this checkout keeps for `scripts/check.sh`, when it has one: `.tools/home`
@@ -1498,12 +1510,7 @@ fn script_plan_at(root: &std::path::Path) -> std::process::Output {
         .arg(root.join("scripts/check.sh"))
         .arg("plan")
         .current_dir(root);
-    match workspace_toolchain_home(&std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))) {
-        Some(home) => {
-            command.env("HOME", home);
-        }
-        None => panic!("no toolchain home for the copied gate (see .tools/README.md)"),
-    }
+    point_home_at_toolchain(&mut command);
     command.output().expect("runs the copied scripts/check.sh")
 }
 
