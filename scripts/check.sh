@@ -274,6 +274,27 @@ run cargo run -q -- bench bench/corpus/external-v3.yml
 # fails, exactly as a false merge does. See docs/canonical-hashing.md 6.3.
 run cargo run -q -- bench bench/corpus/direction-v1.yml
 
+# The release gate over this repository's own corpus. `req gate` was the one subcommand the gate
+# never invoked, so the six variant-scoped claims in `claims/` were never examined by CI while a
+# bare `gate` printed PASS (`15 applying claim(s), 6 undecided`, measured). `.req/variants` is this
+# repository's own list — one `key=value ...` release per line, and the reader is this script,
+# because req knows nothing about the file. Each line has to decide every key an applying claim
+# depends on, or `dependencies_decided` refuses to answer rather than skipping (measured: a context
+# carrying only `set` makes REQ-0009 exit 3, since REQ-0009 refines REQ-0008).
+if [ -f "$PWD/.req/variants" ]; then
+  while IFS= read -r variant_line; do
+    variant="${variant_line%%#*}"
+    # Trim, so an indented or trailing-space line still names a context.
+    variant="$(printf '%s' "${variant}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    [ -n "${variant}" ] || continue
+    # Unquoted on purpose: one line is several key=value arguments.
+    # shellcheck disable=SC2086
+    run cargo run -q -- gate ${variant}
+  done < "$PWD/.req/variants"
+else
+  skip "no .req/variants: the release gate was not run"
+fi
+
 # The rule-file checks decide from `git ls-files` output and from the shape of review/rule.json,
 # and that decision logic needs neither `ocr` nor a review run — so it is table-driven here,
 # ahead of the review-tool probe, rather than behind a check that can SKIP into looking green.

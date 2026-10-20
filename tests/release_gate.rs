@@ -632,3 +632,91 @@ relations: []
         assert!(out.text.contains("verdict: FAIL"), "{}", out.text);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Dogfood: the gate over this repository's own corpus, once per declared release
+// ---------------------------------------------------------------------------
+
+/// The releases this corpus declares, as raw `key=value ...` lines.
+fn variant_lines() -> Vec<String> {
+    std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".req/variants"),
+    )
+    .expect(".req/variants declares this corpus's releases")
+    .lines()
+    .map(|line| line.split('#').next().unwrap_or("").trim().to_string())
+    .filter(|line| !line.is_empty())
+    .collect()
+}
+
+/// What `req gate` would be handed for one line.
+fn context_of(line: &str) -> Context {
+    let mut context = Context::new();
+    for pair in line.split_whitespace() {
+        let (key, value) = pair
+            .split_once('=')
+            .unwrap_or_else(|| panic!("a release line is key=value pairs, not {line:?}"));
+        context.insert(key.to_string(), value.to_string());
+    }
+    context
+}
+
+/// Coverage, not counting: a claim that applies in **no** declared release is a claim the gate
+/// never examines — which is the whole failure the variants list exists to prevent. Being
+/// excluded in one release and applied in another is what a variant *is*, so this asks only
+/// that every claim is applied somewhere.
+#[test]
+fn every_claim_applies_in_at_least_one_declared_release() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let claims = req::canon::load_claims(&root).expect("loads this repository's corpus");
+    let contexts: Vec<Context> = variant_lines().iter().map(|l| context_of(l)).collect();
+    assert!(!contexts.is_empty(), ".req/variants must declare a release");
+
+    let mut uncovered = Vec::new();
+    for loaded in &claims {
+        let predicates: Vec<_> = loaded
+            .claim
+            .applicability
+            .iter()
+            .map(|text| req::select::parse_predicate(text))
+            .collect();
+        if !contexts
+            .iter()
+            .any(|context| req::select::applies(&predicates, context) == Applies::Yes)
+        {
+            uncovered.push(loaded.claim.claim_id.clone());
+        }
+    }
+    assert!(
+        uncovered.is_empty(),
+        "these claims apply in no declared release, so `req gate` never examines them: {uncovered:?}"
+    );
+}
+
+/// Each declared release is green through the binary the gate would actually run — the check
+/// that catches a badly-chosen context. Measured before this existed: a context carrying only
+/// `set` makes REQ-0009 exit 3, because REQ-0009 refines REQ-0008 and REQ-0008 is then
+/// undecided; the gate refuses to answer instead of skipping.
+#[test]
+fn every_declared_release_is_gate_green() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let binary = std::env::var_os("CARGO_BIN_EXE_req")
+        .map(std::path::PathBuf::from)
+        .expect("integration tests run with CARGO_BIN_EXE_req set");
+    for line in variant_lines() {
+        let out = std::process::Command::new(&binary)
+            .arg("gate")
+            .args(line.split_whitespace())
+            .current_dir(&root)
+            .env_remove("REQ_ROOT")
+            .output()
+            .expect("runs `req gate`");
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "the declared release `{line}` is not green:\n{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}

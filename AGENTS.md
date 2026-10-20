@@ -143,7 +143,12 @@ export OCR_NO_UPDATE=1
   prints `SKIP` (never `PASS`) for missing tooling, and fails on the first
   non-zero status. The Baseline step is the exception: it has no SKIP, because
   with minisign missing the verify is UNVERIFIABLE (exit 3), and UNVERIFIABLE
-  blocks — `brew install minisign` first. Green before every commit and merge.
+  blocks — `brew install minisign` first. It runs the **release gate** too, once per release declared in
+  `.req/variants`: `req gate` examines only the claims a variant leaves *applying*, so one
+  bare invocation would report `15 applying claim(s), 6 undecided` and exit 0 while six
+  scoped claims in `claims/` went unexamined. Each declared line must decide every key an
+  applying claim depends on, or `dependencies_decided` refuses to answer (exit 3) instead of
+  skipping. Green before every commit and merge.
 - Review-rule coverage: `python3 tools/review/check_rules.py` (part of `check.sh` when
   `ocr` is present) — checks both directions between `review/rule.json` and the tracked tree,
   plus the checklist text itself: every entry must still match a tracked file, every tracked
@@ -497,6 +502,11 @@ matter:
 - `review/rule.json` — the review rules we own: one checklist per path class, passed
   to every `ocr` invocation. Its shape and the two CLI behaviours worth knowing are
   documented under **Review** above.
+- `.req/variants` — this repository's own release list, read by `scripts/check.sh` and by any
+  CI that runs it (req itself knows nothing about the file): one `key=value ...` release per
+  line, `#` comments, blank lines skipped. Two releases are declared because `corpus_set` takes
+  two mutually exclusive values — no single context can apply both REQ-0008 and REQ-0010 — and
+  every other scoped claim must be decided in both, or `dependencies_decided` refuses to answer.
 - `.scratch/` — session scratch, gitignored; never a deliverable.
 - Path facts: there are none to pin, and that is the design. Every subcommand resolves its corpus
   at runtime (ADR 0012) — `--root <dir>`, else `REQ_ROOT`, else the nearest ancestor of the working

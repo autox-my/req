@@ -66,6 +66,10 @@
     {
       "path": "rust-toolchain.toml",
       "rule": "The toolchain is a pin. Verify at pin time; a bump is a Tier-1 rules bump (RULES_V changes, addresses become re-canonicalization candidates, the gate's `canon --verify` exits 3 until the corpus is re-filled). The toolchain directory is resolved from this file, never hardcoded — rustfmt/clippy live in the pinned toolchain, not in `stable`.\n\nAlso apply the built-in system rubric (its general checklist: correctness, security, performance, maintainability, test coverage): a custom rule REPLACES the system rubric for matched paths — a pin is reviewed too. Run `ocr delegate rule --format json rust-toolchain.toml` without --rule to see the built-in checklist."
+    },
+    {
+      "path": ".req/**",
+      "rule": "This file decides what the release gate **examines**. `scripts/check.sh` reads it and runs `req gate` once per line, and `req gate` checks only the claims a context leaves *applying* — so a line that leaves a key undecided leaves the claims that depend on it unexamined, and the gate still exits 0. Two invariants, both broken silently by a plausible edit: every claim in `claims/` applies in **at least one** line (a claim that applies nowhere is never gated), and every line decides the keys its applying claims depend on (otherwise `dependencies_decided` answers UNVERIFIABLE, exit 3). Pinned in `tests/release_gate.rs` by `every_claim_applies_in_at_least_one_declared_release` and `every_declared_release_is_gate_green`, and wired into the gate by `tests/baseline.rs::the_default_gate_run_gates_every_declared_release`. A new claim carrying an `applicability` predicate needs a line that decides it, in the same commit. Two releases are declared because `corpus_set` takes two mutually exclusive values: no single context can apply both REQ-0008 and REQ-0010.\n\nAlso apply the built-in system rubric (its general checklist: correctness, security, performance, maintainability, test coverage): a custom rule REPLACES the system rubric for matched paths. Run `ocr delegate rule --format json .req/variants` without --rule to see it."
     }
   ]
 }

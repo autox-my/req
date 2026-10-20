@@ -1439,3 +1439,40 @@ fn a_fixture_removes_its_directory_on_drop() {
         "dropping the fixture removes its directory: {dir:?}"
     );
 }
+
+/// The release gate over this repository's own corpus. `scripts/check.sh` must run `req gate`
+/// once per declared release: it was the one subcommand the gate never invoked, which is how
+/// six variant-scoped claims in `claims/` went unchecked while a bare `gate` printed PASS
+/// (`15 applying, 6 undecided`, measured). Pinned from the same plan output as the Baseline
+/// wiring above, so a refactor that drops the step fails here instead of passing silently.
+#[cfg(unix)]
+#[test]
+fn the_default_gate_run_gates_every_declared_release() {
+    let variants: Vec<String> = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".req/variants"),
+    )
+    .expect(".req/variants declares this corpus's releases")
+    .lines()
+    .map(|line| line.split('#').next().unwrap_or("").trim().to_string())
+    .filter(|line| !line.is_empty())
+    .collect();
+    assert!(
+        !variants.is_empty(),
+        ".req/variants must declare at least one release, or the gate examines no variant"
+    );
+
+    let plan = check_sh_args(&["plan".as_ref()]);
+    let stdout = String::from_utf8_lossy(&plan.stdout);
+    let planned: Vec<String> = stdout
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect();
+    for variant in &variants {
+        assert!(
+            planned.iter().any(|line| line.starts_with("PLAN ")
+                && line.contains(" gate ")
+                && line.ends_with(variant)),
+            "the default run must gate the declared release `{variant}`:\n{stdout}"
+        );
+    }
+}
