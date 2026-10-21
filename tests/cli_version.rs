@@ -344,6 +344,13 @@ fn help_page(cwd: &Path, command: &str) -> String {
         "`req {command} --help` resolves no root and must not name one:\n{}",
         out.stderr
     );
+    // The marker belongs on stderr today; if it moved to (or were copied onto) stdout, the
+    // page text would be polluted for the reader who pipes it, and the caller must see that.
+    assert!(
+        !out.stdout.contains("corpus root:"),
+        "`req {command} --help` must not print a root line on stdout either:\n{}",
+        out.stdout
+    );
     out.stdout
 }
 
@@ -367,17 +374,27 @@ fn usage_verbs(usage: &str) -> Vec<String> {
         .filter_map(|line| line.strip_prefix("  "))
         .collect();
 
-    // Where the rows put their descriptions: the most common end of a 2+ space run.
+    // Where the rows put their descriptions: the strict-majority end of a 2+ space run. A
+    // tie means the text has no single description column, and picking one would let prose
+    // choose the column (and then reject the legitimate rows) — a loud failure is the only
+    // honest answer, because a guessed column can hide a verb.
     let mut offsets: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
     for line in &indented {
         if let Some(offset) = description_offset(line) {
             *offsets.entry(offset).or_default() += 1;
         }
     }
-    let description_column = offsets
+    let described: usize = offsets.values().sum();
+    let (column, count) = offsets
         .into_iter()
-        .max_by_key(|&(offset, count)| (count, std::cmp::Reverse(offset)))
-        .map(|(offset, _)| offset);
+        .max_by_key(|&(offset, count)| (count, offset))
+        .unwrap_or((0, 0));
+    assert!(
+        described > 0 && count * 2 > described,
+        "USAGE has no single description column ({count} line(s) at offset {column}, \
+         {described} described line(s)) — fix the layout or teach the scraper"
+    );
+    let description_column = Some(column);
 
     let mut unclassifiable: Vec<&str> = Vec::new();
     let mut verbs: Vec<String> = Vec::new();
@@ -444,6 +461,25 @@ fn first_line_names_command(page: &str, command: &str) -> bool {
 }
 
 #[test]
+fn the_usage_line_check_enforces_the_command_boundary_and_the_empty_synopsis() {
+    // The strip_prefix rule is load-bearing: without the boundary, `render` would accept
+    // `usage: req rendering …` and the `render|trace` line. The empty synopsis is `init`'s.
+    assert!(first_line_names_command(
+        "usage: req render [k=v ...]\n",
+        "render"
+    ));
+    assert!(first_line_names_command("usage: req init\n", "init"));
+    assert!(
+        !first_line_names_command("usage: req rendering [k=v ...]\n", "render"),
+        "a longer verb sharing the prefix is not this command"
+    );
+    assert!(
+        !first_line_names_command("usage: req render|trace [k=v ...]\n", "render"),
+        "a combined usage line is not either command's page"
+    );
+}
+
+#[test]
 fn the_usage_scrape_reads_the_verb_column_and_never_prose() {
     // A description column is derived from the text (every row's prose starts at the same
     // offset). These are the shapes that made a naive "split on two spaces" parser read prose
@@ -467,16 +503,32 @@ The corpus root is resolved at runtime.";
 }
 
 #[test]
-#[should_panic(expected = "cannot classify")]
-fn the_usage_scrape_refuses_a_line_it_cannot_place() {
-    // A wrapped description carrying its own double-space run is indistinguishable from a
-    // misaligned verb row without a lexicon. Dropping it silently could hide a verb from the
-    // scrape, so the helper fails loudly and makes the maintainer fix the layout or the parser.
+#[should_panic(expected = "no single description column")]
+fn the_usage_scrape_refuses_text_without_a_description_column() {
+    // One row and one prose wrap are a tie: there is no column to anchor on, and picking one
+    // would let the prose choose it and reject the legitimate row. Fail loudly instead.
     let usage = "\
 usage: req x
 
   bench [corpus.yml]              the FMR gate
   the variant  projections and the release gate
+
+The corpus root is resolved at runtime.";
+    let _ = usage_verbs(usage);
+}
+
+#[test]
+#[should_panic(expected = "cannot classify")]
+fn the_usage_scrape_names_a_misaligned_row_it_cannot_place() {
+    // With a clear majority column, a row whose description sits elsewhere is a layout bug the
+    // oracle must name rather than skip: a silent skip could hide a verb from the scrape.
+    let usage = "\
+usage: req x
+
+  bench [corpus.yml]              the FMR gate
+  canon [--fill | --verify]       parse diagnostics
+  compare <a.yml> <b.yml>         what kind of change
+  reject [--force]  reject a claim
 
 The corpus root is resolved at runtime.";
     let _ = usage_verbs(usage);
@@ -632,9 +684,15 @@ fn every_page_carries_an_exit_line() {
     let fx = NoCorpus::new("req-page-exit-line");
     for command in ALL_COMMANDS {
         let page = help_page(fx.path(), command);
+        let exit = page
+            .lines()
+            .find(|line| line.starts_with("exit:"))
+            .unwrap_or_else(|| {
+                panic!("`req {command} --help` must carry an `exit:` line:\n{page}")
+            });
         assert!(
-            page.lines().any(|line| line.starts_with("exit:")),
-            "`req {command} --help` must carry an `exit:` line:\n{page}"
+            exit.starts_with("exit: 0 "),
+            "`req {command} --help`'s `exit:` line must carry the codes, starting with 0:\n{exit}"
         );
     }
 }

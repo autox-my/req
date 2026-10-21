@@ -99,12 +99,17 @@ fn version_text() -> String {
 /// A subcommand's handler: its own arguments (`--root` already stripped) and the corpus.
 type Handler = fn(&[String], &Path) -> i32;
 
-/// Whether these arguments ask for a page: `--help` and `-h` are one request.
+/// Whether one argument asks for a page: `--help` and `-h` are one request.
 ///
-/// One definition rather than a comparison repeated at each call site: the table's answer and
-/// `init`'s must not be able to disagree about what counts as asking for help.
+/// One definition rather than the literal spellings repeated at each call site, so a future
+/// spelling cannot reach the table's answer and miss `init`'s (or the reverse).
+fn is_help_flag(arg: &str) -> bool {
+    arg == "--help" || arg == "-h"
+}
+
+/// Whether any argument asks for a page.
 fn help_requested(args: &[String]) -> bool {
-    args.iter().any(|arg| arg == "--help" || arg == "-h")
+    args.iter().any(|arg| is_help_flag(arg))
 }
 
 /// A subcommand: its name, the handler that runs it, and the page `<name> --help` prints.
@@ -435,8 +440,7 @@ fn main() {
             // positional argument and `--root` are usage errors, help flag or not — `init`
             // takes neither, the page says so, and a user who got the invocation wrong is
             // exactly the one who needs the error rather than a page.
-            let only_help =
-                !rest.is_empty() && rest.iter().all(|arg| arg == "--help" || arg == "-h");
+            let only_help = !rest.is_empty() && rest.iter().all(|arg| is_help_flag(arg));
             if cli_root.is_none() && only_help {
                 println!("{}", INIT_HELP);
                 exit(0);
