@@ -439,6 +439,17 @@ else
   fi
 fi
 
+# The document extractor's pure half (tools/adopt.py): the two conventions, the heading scope,
+# the skip reasons, the id-ignored rule, the next-free-number scan and the draft template. It is
+# table-driven and needs no filesystem, no git and no `req`, so `--fast` keeps it — the contract
+# it encodes is the claim format itself, and its filesystem half is `tests/adopt.rs`. A missing
+# python3 or script prints SKIP, never PASS.
+if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/adopt.py" ] && command -v python3 >/dev/null 2>&1; }; then
+  run python3 "$PWD/tools/adopt.py" --self-check
+else
+  skip "python3 or tools/adopt.py missing: cannot self-check the document extractor"
+fi
+
 # The rule-file checks decide from `git ls-files` output and from the shape of review/rule.json,
 # and that decision logic needs neither `ocr` nor a review run — so it is table-driven here,
 # ahead of the review-tool probe, rather than behind a check that can SKIP into looking green.
