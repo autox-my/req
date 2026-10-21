@@ -90,7 +90,11 @@ export OCR_NO_UPDATE=1
   section. Every one of them is answered where the subcommand is looked up, **before** the
   corpus root is resolved, so they work in any directory (help is what you read before the
   corpus exists — `init --help` included), print no `corpus root:` line, and exit **0** — while
-  bare `req`, an unknown subcommand and an unknown flag stay **2**. `rules_v` is the axis that
+  bare `req`, an unknown subcommand and an unknown flag stay **2**. Among a corpus-reading
+  command's arguments a help flag wins **wherever it appears**: written where an option expects
+  a value it is still a request for the page, not that value, so `<command> --help` is the shape
+  to use. (`init` is the exception — it answers the page only for an otherwise valid invocation,
+  so a positional argument and `--root` stay usage errors even beside the flag.) `rules_v` is the axis that
   makes a stored address current, so it is the first thing to check when a verdict surprises
   you; `built from` is the short git SHA the binary was built from, or `unknown` when the
   commit itself cannot be resolved (no `.git`, no `git`). A resolved commit carries `-dirty` when a
