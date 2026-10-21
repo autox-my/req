@@ -85,11 +85,18 @@ export OCR_NO_UPDATE=1
 - What this binary is: `cargo run -q -- --version` (`-V`) prints the versions that decide a
   verdict — the crate, `rules_v`, the Baseline envelope, the decision chain and the claim file
   schema — and the build identity. The first line stays single-line and greppable; `--help`
-  (`-h`) prints `USAGE`. Both are answered where the subcommand is looked up, **before** the
-  corpus root is resolved, so they work in any directory, print no `corpus root:` line, and exit
-  **0** — while bare `req`, an unknown subcommand and an unknown flag stay **2**. `rules_v` is
-  the axis that makes a stored address current, so it is the first thing to check when a verdict
-  surprises you; `built from` is the short git SHA the binary was built from, or `unknown` when the
+  (`-h`) prints `USAGE`, and `<command> --help` (or `-h`) prints that command's page — its
+  usage, one paragraph of what it does, its own `exit:` contract, and the anchor into this
+  section. Every one of them is answered where the subcommand is looked up, **before** the
+  corpus root is resolved, so they work in any directory (help is what you read before the
+  corpus exists — `init --help` included), print no `corpus root:` line, and exit **0** — while
+  bare `req`, an unknown subcommand and an unknown flag stay **2**. Among a corpus-reading
+  command's arguments a help flag wins **wherever it appears**: written where an option expects
+  a value it is still a request for the page, not that value, so `<command> --help` is the shape
+  to use. (`init` is the exception — it answers the page only for an otherwise valid invocation,
+  so a positional argument and `--root` stay usage errors even beside the flag.) `rules_v` is the axis that
+  makes a stored address current, so it is the first thing to check when a verdict surprises
+  you; `built from` is the short git SHA the binary was built from, or `unknown` when the
   commit itself cannot be resolved (no `.git`, no `git`). A resolved commit carries `-dirty` when a
   tracked file is modified and `-cleanliness-unknown` when the cleanliness probe could not answer —
   the commit is a fact git gave us even then — so a bare SHA always means *clean*, never "clean as
@@ -199,12 +206,13 @@ export OCR_NO_UPDATE=1
   applies / undecided / outside-the-selection with each claim's address, modality,
   statement, selector and outgoing relations; `trace` prints the edges, the **derived**
   incoming edges (REQ-0020 stores each relation once, on the outgoing side), and its
-  findings. Exit **0** settled, **3** anything an undecided claim or a missing claim
-  leaves open, **2** usage. Two rules carry over and must not be relaxed: an undecided
-  claim is **shown in its own section** (never dropped), and every edge that leaves the
-  selection is **named** — to an excluded claim (legitimate, reported) or to an undecided
-  one (a gap needing a decision). A relation pointing at a claim that is not in the corpus
-  is `UNVERIFIABLE`, never ignored.
+  findings. Exit **0** settled, **3** something left open — `render` answers 3 for any claim
+  the selection leaves undecided, `trace` for any edge into a claim the corpus does not hold
+  or one the variant leaves undecided — **2** usage. Two rules carry over and must not be
+  relaxed: `render` shows an undecided claim **in its own section** (never dropped), and
+  `trace` **names** every edge that leaves the selection — to an excluded claim (legitimate,
+  reported) or to an undecided one (a gap needing a decision) — and names a relation to a
+  claim not in the corpus `UNVERIFIABLE`, never ignored.
 - Impact and release gate: `cargo run -q -- impact <claim-id> [key=value ...]` walks the
   relations **backwards** (derived, REQ-0020) and reports every dependent nearest-first
   with its selection state; `cargo run -q -- gate [key=value ...]` runs five policies —
