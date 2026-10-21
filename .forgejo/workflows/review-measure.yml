@@ -1,0 +1,152 @@
+# A **measurement** run of the review, dispatched by hand. Not a verdict and not a check:
+# this workflow is `workflow_dispatch` only, its job name is distinct from review.yml's, and
+# it runs no gate. A run of this file is evidence about duration and findings, never a pass.
+#
+# Why a second file rather than a second event on review.yml: the required check's context
+# (`OCR Review / ocr-review`) must mean exactly one thing — the verdict on a pull request.
+# A dispatched run that failed (a provider hiccup, a cancelled attempt) would otherwise paint
+# that context red on `main` and read as a finding about the code.
+#
+# The provider configuration is the same repository variables and secret as review.yml, and the
+# rule file is taken from `origin/main` for the same reason: a run judged by rules from its own
+# checkout could be told to be lenient.
+#
+# Usage: POST /repos/fdx/req/actions/workflows/review-measure.yml/dispatches with
+#   {"ref":"main","inputs":{"to_sha":"<sha>","label":"C1","from_ref":"origin/main"}}
+name: OCR measure
+
+on:
+  workflow_dispatch:
+    inputs:
+      to_sha:
+        description: the head to review (a full SHA that exists in the fetched history)
+        required: true
+        type: string
+      label:
+        description: a short name for this measurement ("C1", "M1", …)
+        required: true
+        type: string
+      from_ref:
+        description: the base of the diff (origin/main for a full review; a previous head for a delta)
+        required: false
+        default: origin/main
+        type: string
+      max_tools:
+        description: passed to --max-tools only when it is not 0 (the CLI floor is 50)
+        required: false
+        default: "0"
+        type: string
+      no_filter:
+        description: "true adds --no-filter (skip the LLM post-filter pass)"
+        required: false
+        default: "false"
+        type: string
+      exclude:
+        description: gitignore-style patterns, merged with the rule file's excludes
+        required: false
+        default: "bench/corpus/**,bench/results/**"
+        type: string
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: checkout, with the history the diff needs
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.to_sha }}
+
+      - name: the review CLI, installed from the committed lockfile
+        run: |
+          set -eu
+          npm --prefix tools/ocr ci --no-fund --no-audit --cache "$GITHUB_WORKSPACE/.npm-cache"
+          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          if ! command -v ocr >/dev/null 2>&1; then
+            echo "::error::ocr did not install, so nothing can be measured"
+            exit 1
+          fi
+          ocr --version
+
+      - name: the provider answers
+        env:
+          OCR_LLM_URL: ${{ vars.OCR_LLM_URL }}
+          OCR_LLM_PROTOCOL: ${{ vars.OCR_LLM_PROTOCOL }}
+          OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_TOKEN }}
+          OCR_LLM_MODEL: ${{ vars.OCR_LLM_MODEL }}
+          OCR_LLM_AUTH_HEADER: x-api-key
+        run: |
+          set -eu
+          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          if [ -z "${OCR_LLM_TOKEN:-}" ]; then
+            echo "::error::OCR_LLM_TOKEN is not set (Settings, Actions, Secrets)"
+            exit 1
+          fi
+          echo "measure env: protocol=${OCR_LLM_PROTOCOL:-unset} model=${OCR_LLM_MODEL:-unset} token_len=${#OCR_LLM_TOKEN}"
+          ocr llm test
+
+      - name: one review attempt, measured
+        env:
+          OCR_LLM_URL: ${{ vars.OCR_LLM_URL }}
+          OCR_LLM_PROTOCOL: ${{ vars.OCR_LLM_PROTOCOL }}
+          OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_TOKEN }}
+          OCR_LLM_MODEL: ${{ vars.OCR_LLM_MODEL }}
+          OCR_LLM_AUTH_HEADER: x-api-key
+        run: |
+          set -eu
+          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          RULE_PATH=review/rule.json
+          if ! git cat-file -e "origin/main:$RULE_PATH" 2>/dev/null; then
+            echo "::error::origin/main has no $RULE_PATH — fail closed, never fall back to this checkout"
+            exit 1
+          fi
+          RULE="$RUNNER_TEMP/ocr_rule_trusted.json"
+          git show "origin/main:$RULE_PATH" > "$RULE"
+          echo "measuring with rules from $RULE_PATH at origin/main"
+
+          set +e
+          started=$(date +%s)
+          # A measurement is a single attempt: riding out a bad window would average two
+          # different things together and call it a number.
+          extra=""
+          if [ "${{ inputs.max_tools }}" != "0" ]; then extra="$extra --max-tools ${{ inputs.max_tools }}"; fi
+          if [ "${{ inputs.no_filter }}" = "true" ]; then extra="$extra --no-filter"; fi
+          # shellcheck disable=SC2086
+          ocr review \
+            --from "${{ inputs.from_ref }}" \
+            --to "${{ inputs.to_sha }}" \
+            --format json \
+            --output ocr-result.json \
+            --rule "$RULE" \
+            --effort low \
+            --timeout 20 \
+            --exclude "${{ inputs.exclude }}" \
+            $extra > /tmp/measure.log 2>&1
+          rc=$?
+          elapsed=$(( $(date +%s) - started ))
+          set -e
+          printf '%s\n' "$rc" > /tmp/measure.rc
+          printf '%s\n' "$elapsed" > /tmp/measure.elapsed
+          echo "review finished rc=${rc} elapsed=${elapsed}s"
+          # The log is the evidence, so print it; the MEASURE line comes next and is what the
+          # comparison table is built from.
+          cat /tmp/measure.log
+          exit "$rc"
+
+      - name: MEASURE
+        if: always()
+        run: |
+          set -eu
+          rc=$(cat /tmp/measure.rc 2>/dev/null || echo "no-attempt")
+          elapsed=$(cat /tmp/measure.elapsed 2>/dev/null || echo "0")
+          rounds=$(grep -c '▶' /tmp/measure.log 2>/dev/null || true)
+          rounds=${rounds:-0}
+          if [ -f ocr-result.json ]; then
+            tokens=$(python3 -c "import json;print(json.load(open('ocr-result.json')).get('total_tokens',0))")
+            findings=$(python3 -c "import json,collections;d=json.load(open('ocr-result.json'));c=collections.Counter(str(x.get('severity','')).strip().lower() for x in (d.get('comments') or []));print('/'.join(str(c.get(s,0)) for s in ('critical','high','medium','low')))")
+          else
+            tokens=none
+            findings=none
+          fi
+          echo "MEASURE label=${{ inputs.label }} to=${{ inputs.to_sha }} from=${{ inputs.from_ref }} max_tools=${{ inputs.max_tools }} no_filter=${{ inputs.no_filter }} exclude='${{ inputs.exclude }}' rc=${rc} elapsed_s=${elapsed} rounds=${rounds} tokens=${tokens} findings=${findings}"

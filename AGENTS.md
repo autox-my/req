@@ -425,6 +425,16 @@ apply to the review that blocks merges, and a change cannot supply the rules tha
 CI review does send the diff to the configured provider. REQ-0012 governs the product's runtime,
 not the review of this repository's own changes: req itself still requires no network.
 
+A **measurement** run of the review is a separate, dispatch-only workflow:
+`.forgejo/workflows/review-measure.yml` reviews a chosen `to_sha` through a chosen `from_ref`, once, with
+the provider settings as inputs (`max_tools`, `no_filter`, `exclude`), and prints a single `MEASURE …`
+line (elapsed, rounds, tokens, findings by severity) — the record a duration comparison is built from.
+It deliberately has **its own job name**, so the required check's context (`OCR Review / ocr-review`)
+keeps meaning exactly one thing: the verdict on a pull request. A dispatched run is evidence about
+duration and findings and is **never a verdict**: it takes the rule file from `origin/main` (same trust
+boundary), makes one attempt (riding out a bad window would average two different things), and runs no
+gate.
+
 `ocr` is installed **locally and pinned** (a global install would land in
 `/usr`, which is root-owned and read-only here, and would not be lockfile-pinned):
 
