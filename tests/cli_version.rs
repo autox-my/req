@@ -567,6 +567,52 @@ fn every_commands_help_answers_with_no_corpus_and_prints_no_root_line() {
 }
 
 #[test]
+fn render_and_trace_usage_errors_name_the_invoked_verb() {
+    // The pages made `render` and `trace` two verbs; the shared usage error must not keep
+    // naming a pair that exists nowhere else. It is still a usage error, not a page.
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for command in ["render", "trace"] {
+        let out = run_at(corpus, &[command, "--bogus"]);
+        assert_eq!(
+            out.code, 2,
+            "`{command} --bogus` is a usage error:\n{}",
+            out.stderr
+        );
+        assert!(
+            out.stderr
+                .contains(&format!("usage: req {command} [key=value ...]")),
+            "the error names the invoked verb, not the pair:\n{}",
+            out.stderr
+        );
+        assert!(
+            !out.stderr.contains("render|trace"),
+            "the combined line is gone from the error path:\n{}",
+            out.stderr
+        );
+    }
+}
+
+#[test]
+fn a_help_flag_wins_in_a_non_leading_position() {
+    // AGENTS.md states the contract: among a command's arguments a help flag wins wherever it
+    // appears. A regression to `args.first().map(is_help_flag)` would keep every other test in
+    // this file green, so one non-leading case is pinned here.
+    let fx = NoCorpus::new("req-help-non-leading");
+    let out = run_at(fx.path(), &["propose", "--gold", "--help"]);
+    assert_eq!(
+        out.code, 0,
+        "a help flag after an option value is still help:\n{}",
+        out.stderr
+    );
+    assert!(
+        first_line_names_command(&out.stdout, "propose"),
+        "the page for the invoked verb is printed:\n{}",
+        out.stdout
+    );
+    assert!(!out.stderr.contains("corpus root:"), "{}", out.stderr);
+}
+
+#[test]
 fn a_help_request_for_an_unknown_verb_stays_a_usage_error() {
     // The failure direction of the lookup: help must not turn a typo into an answer. A
     // regression that printed some page for any first argument would pass every test above.
@@ -666,6 +712,18 @@ fn init_help_does_not_swallow_init_s_usage_errors() {
         "the error names the offending argument:\n{}",
         with_argument.stderr
     );
+    let help_first = run_at(fx.path(), &["init", "--help", "junk"]);
+    assert_eq!(
+        help_first.code, 2,
+        "`init --help junk` is still a usage error:\n{}\n{}",
+        help_first.stdout, help_first.stderr
+    );
+    assert!(
+        help_first.stderr.contains("unexpected argument: junk"),
+        "the error names the actual bad argument, not the help flag:\n{}",
+        help_first.stderr
+    );
+
     assert!(
         !fx.path().join("claims").exists(),
         "a refused help request creates nothing"
@@ -707,8 +765,12 @@ fn every_page_carries_an_exit_line() {
             .unwrap_or_else(|| {
                 panic!("`req {command} --help` must carry an `exit:` line:\n{page}")
             });
-        assert!(
-            exit.starts_with("exit: 0 "),
+        let first_code = exit
+            .strip_prefix("exit: ")
+            .and_then(|codes| codes.split_whitespace().next());
+        assert_eq!(
+            first_code,
+            Some("0"),
             "`req {command} --help`'s `exit:` line must carry the codes, starting with 0:\n{exit}"
         );
     }

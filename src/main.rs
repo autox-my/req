@@ -447,6 +447,10 @@ fn main() {
                 println!("{}", INIT_HELP);
                 exit(0);
             }
+            // The help flag is not an argument `init` should blame: when the invocation is
+            // otherwise invalid, drop it so `init::run` names the actual offender (`junk` in
+            // `init --help junk`), not the request for a page.
+            rest.retain(|arg| !is_help_flag(arg));
             exit(init::run(&rest, cli_root.as_deref()));
         }
         _ => {}
