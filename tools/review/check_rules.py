@@ -36,12 +36,14 @@ pure half — the tree listing, the membership rule, the entry reader, and the p
 shape — and runs no review, so it is testable with no `ocr` and no git, which is exactly
 where the rest of this script can only SKIP.
 
-**Two steps, two attributions.** `ocr delegate rule` is where a document this CLI cannot use
-is attested: it exits non-zero, and that is a failure of our own file. The `ocr delegate
-preview` call answers a different question — the *selection* — so its non-zero exit is
-UNVERIFIABLE here: it can be an unknown flag, a crash, or a throwaway repository that broke,
-and none of those is a finding about `review/rule.json`. A preview whose JSON is not the
-object shape `preview_shape_problems` accepts is UNVERIFIABLE for the same reason.
+**Two steps, two attributions.** `ocr delegate rule` runs **first** in this check, and it is
+where a document this CLI cannot use is attested: a non-zero exit there is a failure of our own
+file. The `ocr delegate preview` probe runs afterwards and answers a different question — the
+*selection* — so its non-zero exit is UNVERIFIABLE here: it can be an unknown flag, a crash, or a
+throwaway repository that broke, and none of those is a finding about `review/rule.json`. A
+preview whose JSON is not the object shape `preview_shape_problems` accepts is UNVERIFIABLE for
+the same reason; the probe is last precisely so this attribution is not a claim about an order
+that does not hold.
 
 Exit codes: 0 every entry matched a tracked file with its text arriving verbatim AND every
 tracked file resolved to a custom rule or a listed exception; 1 a real gap (an entry with
@@ -283,8 +285,8 @@ def selection_problems(document: dict) -> tuple:
             A non-zero exit is **not** a verdict on `rule`. It can be an unknown flag, a crash, or
             a throwaway repository that broke under us, and only one of those is about our
             document — so attributing it to the document here would be a false finding. The
-            document's own usability is attested one step earlier by `ocr delegate rule` (the
-            caller reads its exit 1 as a failure); what this call answers is the **selection**, and
+            document's own usability is attested by the `ocr delegate rule` step, which this
+            check runs **before** this probe; what this call answers is the **selection**, and
             "could not answer" is the honest answer when it cannot measure it.
 
             `cwd=work` alone selects the throwaway repository: `--repo` is not part of the preview
@@ -482,6 +484,22 @@ def self_check() -> int:
             preview_shape_problems({"reviewable_files": [], "excluded_files": "none"}),
             ["the preview has no excluded_files list — the CLI's JSON shape changed"],
         ),
+        (
+            "a preview entry that is not an object is refused",
+            preview_shape_problems({"reviewable_files": [1], "excluded_files": []}),
+            [
+                "the preview's reviewable_files entries have no string path — the CLI's JSON "
+                "shape changed"
+            ],
+        ),
+        (
+            "a preview missing both lists reports both, and the caller joins them",
+            preview_shape_problems({}),
+            [
+                "the preview has no reviewable_files list — the CLI's JSON shape changed",
+                "the preview has no excluded_files list — the CLI's JSON shape changed",
+            ],
+        ),
     ]
     failures = 0
     for label, got, want in rows:
@@ -541,23 +559,11 @@ def main() -> int:
             "an exclusion hides content from review, so changing it is a decision, not an edit"
         )
         return 1
-    # Spelling is not effect: ask the CLI whether it acts on the exclusion. The **status** is
-    # authoritative — 1 means a measured defect, 3 means the measurement could not be made — and
-    # the problem list is checked as well, because status 0 with problems is exactly the split
-    # this contract used to have: a caller that trusted the code alone would report a pass over
-    # a defect, and a measured problem must never be able to pass because a status said 0.
-    status, selection = selection_problems(document)
-    if status == 3:
-        for problem in selection:
-            print(f"UNVERIFIABLE  {problem}")
-        return 3
-    if status != 0 or selection:
-        for problem in selection or [
-            "the selection check measured a defect without naming it — a status-only pass"
-        ]:
-            print(f"FAIL  review/rule.json: {problem}")
-        return 1
-
+    # **The order is the attribution.** `ocr delegate rule` (below) runs before the effect probe
+    # (at the end): that step is where a document the CLI cannot use is attested as OUR failure.
+    # By the time the probe runs, the document has already been accepted, so a non-zero preview
+    # exit cannot be attributed to it — the honest class is UNVERIFIABLE (3), because an unknown
+    # flag, a crash or a throwaway repository that broke is not a finding about review/rule.json.
     try:
         tracked = parse_tracked(
             subprocess.run(
@@ -668,6 +674,23 @@ def main() -> int:
         print(f"FAIL  allow-list entry matches no tracked file: {entry}")
 
     if dead or mismatched or uncovered or stale:
+        return 1
+
+    # Spelling is not effect: ask the CLI whether it acts on the exclusion. The **status** is
+    # authoritative — 1 means a measured defect, 3 means the measurement could not be made — and
+    # the problem list is checked as well, because status 0 with problems is exactly the split
+    # this contract used to have: a caller that trusted the code alone would report a pass over
+    # a defect, and a measured problem must never be able to pass because a status said 0.
+    status, selection = selection_problems(document)
+    if status == 3:
+        for problem in selection:
+            print(f"UNVERIFIABLE  {problem}")
+        return 3
+    if status != 0 or selection:
+        for problem in selection or [
+            "the selection check measured a defect without naming it — a status-only pass"
+        ]:
+            print(f"FAIL  review/rule.json: {problem}")
         return 1
 
     print(

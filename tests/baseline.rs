@@ -979,6 +979,37 @@ fn a_revocation_this_build_cannot_judge_is_unverifiable_never_fail() {
         reasons.contains("revocation cannot be decided here"),
         "the reason must name the undecidable judgement, not just the revocation: {reasons}"
     );
+
+    // ...but a **broken anchor** is not a judgement about a time: it fails closed on every
+    // envelope, a newer one included. Demoting it would print the state's own "treated as
+    // revoked, never as trusted" and then "cannot be decided" in the same line, and the remedy
+    // ("verify with a newer build") would send the reader away from the actual fix, the anchor.
+    let mut broken = trust(false, None);
+    broken.keys[0].revoked_at = Some("2026-13-01".to_string());
+    let broken_outcome = verify(
+        &rows,
+        &newer,
+        Some("sig"),
+        &broken,
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        "2026-10-21",
+    );
+    assert_eq!(
+        broken_outcome.exit_code(),
+        1,
+        "a time-independent anchor defect is FAIL on any envelope: {broken_outcome:?}"
+    );
+    let reasons = broken_outcome.reasons().join(" ");
+    assert!(reasons.contains("not an ISO date"), "{reasons}");
+    assert!(
+        reasons.contains("the trust anchor itself cannot be read"),
+        "{reasons}"
+    );
+    assert!(
+        !reasons.contains("cannot judge"),
+        "a broken anchor is decidable: {reasons}"
+    );
 }
 
 /// A malformed anchor spelling fails **closed**. `date_of` truncates blindly, so a typo'd

@@ -19,7 +19,10 @@
 //! Three outcomes, as everywhere else. **Revoked** trust is FAIL **when this build can judge the
 //! time the key is judged at** (a human withdrew trust); an envelope *newer* than this build's
 //! records a signing time this build may not interpret, so the same revocation cannot become a
-//! definite finding there — it is UNVERIFIABLE, and the version dispatch has already said so.
+//! definite finding there — it is UNVERIFIABLE, and the version dispatch has already said so. A
+//! trust anchor whose own `revoked_at` cannot be read is a separate, **time-independent** case
+//! ([`TrustState::RevokedAnchor`]): it fails closed on every envelope, because the defect is the
+//! anchor and not the envelope's signing time.
 //! **Expired** trust is UNVERIFIABLE (a v2 Baseline is historical and no trusted signing time
 //! exists; a v3 Baseline records one, so the expiry is judged at it — still never a silent
 //! pass); an unknown key or a missing signature is UNVERIFIABLE. A v3 manifest whose recorded
@@ -478,7 +481,14 @@ pub struct TrustFile {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TrustState {
     Trusted,
+    /// A revocation **dated** at or before the time the key is judged at.
     Revoked(String),
+    /// The anchor's own `revoked_at` cannot be read, so the key is treated as revoked (fail
+    /// closed). Kept apart from [`TrustState::Revoked`] because this is **not a judgement about a
+    /// time**: it stays a definite finding on every envelope version, including a newer one whose
+    /// signing time this build cannot interpret. Folding the two together would let a newer
+    /// envelope turn "your trust anchor is broken" into "we cannot tell", with the wrong remedy.
+    RevokedAnchor(String),
     Expired(String),
     Unknown,
 }
@@ -512,14 +522,16 @@ impl TrustFile {
         // accepts only a calendar-valid `YYYY-MM-DD` (month 1-12, the month's real last day, year
         // >= 1970) or an RFC 3339 timestamp whose date part is valid. Anything else — a typo'd
         // month (`2026-13-01`), an unpadded day (`2026-10-1`), a human spelling (`Oct 20 2026`) —
-        // is reported as **revoked** (for `revoked_at`) or **expired** (for `valid_until`), never
-        // as trusted. `date_of` truncates blindly, so without that check a malformed spelling
-        // would sort below every real date and read a revoked key as trusted; the check is why it
-        // cannot. Pinned by `tests/baseline.rs::a_malformed_trust_date_fails_closed`.
+        // is reported as **revoked** (for `revoked_at`, as [`TrustState::RevokedAnchor`], because
+        // the defect is the anchor and not a judgement about a time) or **expired** (for
+        // `valid_until`), never as trusted. `date_of` truncates blindly, so without that check a
+        // malformed spelling would sort below every real date and read a revoked key as trusted;
+        // the check is why it cannot. Pinned by
+        // `tests/baseline.rs::a_malformed_trust_date_fails_closed`.
         let at_date = date_of(at);
         if let Some(revoked_at) = &key.revoked_at {
             if !valid_judgement_time(revoked_at) {
-                return TrustState::Revoked(format!(
+                return TrustState::RevokedAnchor(format!(
                     "revoked at {revoked_at}, which is not an ISO date or RFC 3339 timestamp — \
                      treated as revoked, never as trusted"
                 ));
@@ -1185,6 +1197,14 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
                 ));
             }
         }
+        // **A broken anchor is not a judgement about a time**, so no envelope version can make it
+        // "cannot tell": it fails closed on every manifest this build reads, a newer one included.
+        // Reporting it as UNVERIFIABLE would also hand out the wrong remedy — a build that writes
+        // the newer envelope reads the same unreadable `baselines/trust.yml`.
+        TrustState::RevokedAnchor(reason) => failed.push(format!(
+            "key {key_id} is {reason} — the trust anchor itself cannot be read, so this is not a \
+             question about the envelope's signing time"
+        )),
         // A v3 manifest records its signing time, so expiry is judged *at that time* (ADR
         // 0016): a key that had already expired then was not trusted when the Baseline was
         // signed, which is a definite finding — symmetric with revocation at/before the signing
