@@ -173,7 +173,7 @@ export OCR_NO_UPDATE=1
   handed, so a blank `rule` is an inert checklist that passes both directions — the effect is
   checked (`source: custom`, and the text), never the exit status. Its `--self-check`
   table-drives the pure half (the `git ls-files -z` listing, the allow-list membership rule,
-  the entry reader) and needs no `ocr`.
+  the entry reader, and the preview's JSON shape) and needs no `ocr`.
 - Direction: `cargo run -q -- compare <a.yml> <b.yml>` — classifies the change
   (`modality_weakening`, `numeric_tightening`, `polarity_flip`, `scope_divergence`, …),
   exit **3** when a side has no structured form to compare, and when a side declares a

@@ -32,16 +32,24 @@ second implementation is free to drift from the one that decides — the defect
 
 This is a check of a file we own, so a missing `ocr` is UNVERIFIABLE (exit 3), never a
 pass: the same three-state rule as the rest of the gate. `--self-check` table-drives the
-pure half — the tree listing, the membership rule, the entry reader — and runs no review,
-so it is testable with no `ocr` and no git, which is exactly where the rest of this script
-can only SKIP.
+pure half — the tree listing, the membership rule, the entry reader, and the preview's JSON
+shape — and runs no review, so it is testable with no `ocr` and no git, which is exactly
+where the rest of this script can only SKIP.
+
+**Two steps, two attributions.** `ocr delegate rule` is where a document this CLI cannot use
+is attested: it exits non-zero, and that is a failure of our own file. The `ocr delegate
+preview` call answers a different question — the *selection* — so its non-zero exit is
+UNVERIFIABLE here: it can be an unknown flag, a crash, or a throwaway repository that broke,
+and none of those is a finding about `review/rule.json`. A preview whose JSON is not the
+object shape `preview_shape_problems` accepts is UNVERIFIABLE for the same reason.
 
 Exit codes: 0 every entry matched a tracked file with its text arriving verbatim AND every
 tracked file resolved to a custom rule or a listed exception; 1 a real gap (an entry with
 no usable path or text, a duplicated path, a text that did not arrive verbatim, an entry
-matching no tracked file, a file left to the built-in rubric, or an allow-list entry that
-has gone stale); 3 could not answer (no `ocr`, no tracked files, or unparseable CLI
-output).
+matching no tracked file, a file left to the built-in rubric, an allow-list entry that has
+gone stale, or an exclusion the CLI does not honour); 3 could not answer (no `ocr`, no
+tracked files, a preview that exited non-zero or answered an unexpected JSON shape, or
+unparseable CLI output).
 """
 import argparse
 import json
@@ -203,6 +211,32 @@ def declared_document_problems(document) -> list:
     return problems
 
 
+def preview_shape_problems(parsed) -> list:
+    """What is wrong with a preview payload's own shape, before any entry is read.
+
+    Pure, so `--self-check` can table-drive every shape the CLI could answer. A preview that is
+    not a JSON object is not "a selection with no files": indexing it was an `AttributeError`
+    raised **outside** the `json.loads` try, which the outer handler does not catch — a
+    traceback in the gate instead of a verdict.
+    """
+    if not isinstance(parsed, dict):
+        return ["the preview is not a JSON object — the CLI's JSON shape changed"]
+    problems = []
+    for key in ("reviewable_files", "excluded_files"):
+        entries = parsed.get(key)
+        if not isinstance(entries, list):
+            problems.append(f"the preview has no {key} list — the CLI's JSON shape changed")
+            continue
+        if any(
+            not isinstance(entry, dict) or not isinstance(entry.get("path"), str)
+            for entry in entries
+        ):
+            problems.append(
+                f"the preview's {key} entries have no string path — the CLI's JSON shape changed"
+            )
+    return problems
+
+
 def selection_problems(document: dict) -> tuple:
     """Does the CLI *honour* the exclusion? A pinned spelling is not an effect.
 
@@ -214,7 +248,10 @@ def selection_problems(document: dict) -> tuple:
     What is deliberately **not** asserted: that a `.minisig` is unreviewable. `ocr` filters that
     extension already, so the assertion would pass without our exclusion doing anything.
 
-    Returns `(status, problems)`: 0 measured, 1 our own document is unusable, 3 could not answer.
+    Returns `(status, problems)`: **0** measured clean, **1** a defect in our document or its
+    effect, **3** could not answer. The three are not interchangeable: a defect is ours to fix, an
+    unanswerable measurement is not a pass, and the caller must not read 0 as "no problems" while
+    a list is non-empty — which is why 1 is returned wherever a real problem is found.
     """
     identity = {
         "GIT_AUTHOR_NAME": "req",
@@ -241,29 +278,33 @@ def selection_problems(document: dict) -> tuple:
             )
 
         def preview(rule: pathlib.Path) -> tuple:
-            """`(status, payload)`: 0 a usable selection, 1 the CLI rejected this document, 3 the
-            output is not the shape this check understands. The three must not be flattened: a
-            rejected document is our defect, an unreadable one is unanswerable."""
+            """`(status, payload)`: 0 a usable selection, 3 could not answer.
+
+            A non-zero exit is **not** a verdict on `rule`. It can be an unknown flag, a crash, or
+            a throwaway repository that broke under us, and only one of those is about our
+            document — so attributing it to the document here would be a false finding. The
+            document's own usability is attested one step earlier by `ocr delegate rule` (the
+            caller reads its exit 1 as a failure); what this call answers is the **selection**, and
+            "could not answer" is the honest answer when it cannot measure it.
+
+            `cwd=work` alone selects the throwaway repository: `--repo` is not part of the preview
+            surface this project documents, and a hidden dependency on it would silently preview
+            the *real* repository if a future CLI dropped the flag.
+            """
             proc = subprocess.run(
-                ["ocr", "delegate", "preview", "--format", "json", "--repo", str(work),
+                ["ocr", "delegate", "preview", "--format", "json",
                  "--from", "HEAD~1", "--to", "HEAD", "--rule", str(rule)],
                 cwd=work, capture_output=True, text=True, env=env,
             )
             if proc.returncode != 0:
-                return 1, proc.stderr.strip()[:200]
+                return 3, f"the preview exited {proc.returncode}: {proc.stderr.strip()[:200]}"
             try:
                 parsed = json.loads(proc.stdout)
             except Exception as exc:
                 return 3, f"unparsable preview: {exc}"
-            for key in ("reviewable_files", "excluded_files"):
-                entries = parsed.get(key)
-                if not isinstance(entries, list):
-                    return 3, f"the preview has no {key} list — the CLI's JSON shape changed"
-                if any(
-                    not isinstance(entry, dict) or not isinstance(entry.get("path"), str)
-                    for entry in entries
-                ):
-                    return 3, f"the preview's {key} entries have no string path — the CLI's JSON shape changed"
+            problems = preview_shape_problems(parsed)
+            if problems:
+                return 3, "; ".join(problems)
             return 0, parsed
 
         git("init", "-q", ".")
@@ -279,15 +320,10 @@ def selection_problems(document: dict) -> tuple:
         git("commit", "-qm", "head")
 
         status, base = preview(RULE_FILE)
-        if status == 1:
-            return 1, [
-                f"ocr cannot use review/rule.json: {base} — a rejection of our own document is a "
-                "failure, not a skip"
-            ]
         if status == 3:
             return 3, [f"cannot measure the selection: {base}"]
         if "src/keep.rs" not in [entry["path"] for entry in base["reviewable_files"]]:
-            return 0, ["the exclusion is too wide: src/keep.rs is not reviewable"]
+            return 1, ["the exclusion is too wide: src/keep.rs is not reviewable"]
 
         # The probe is built from the document `main()` already validated, never re-read: a second
         # read would test bytes nobody checked (and could raise on a file that changed under us).
@@ -296,15 +332,13 @@ def selection_problems(document: dict) -> tuple:
         probe_file = work / "probe-rule.json"
         probe_file.write_text(json.dumps(probe), encoding="utf-8")
         status, probed = preview(probe_file)
-        if status == 1:
-            return 1, [f"ocr rejects the probe rule document: {probed}"]
         if status == 3:
             return 3, [f"cannot measure the exclusion effect: {probed}"]
         excluded = {
             entry["path"]: entry.get("exclude_reason") for entry in probed["excluded_files"]
         }
         if excluded.get("src/keep.rs") != "user_exclude":
-            return 0, [
+            return 1, [
                 "the top-level exclude key is not honoured by this `ocr` "
                 f"(src/keep.rs is {excluded.get('src/keep.rs')!r}) — the blind spot is no longer "
                 "declared in a way the CLI acts on, and the next signing PR will be flagged"
@@ -325,7 +359,9 @@ def self_check() -> int:
     The listing and the membership rule are pure functions, and the entry reader is handed
     hand-authored documents — so every shape it can meet is a row here. The second row is
     why it reads `-z`; the blank-text rows are the inert checklist both directions above
-    used to pass.
+    used to pass. The preview's shape check is pure too, and it must not spawn anything:
+    an `ocr` or `git` case belongs in the real run, which is where a subprocess can actually
+    answer.
     """
     rows = [
         ("the listing is NUL-separated", parse_tracked("a\0b\0"), ["a", "b"]),
@@ -413,6 +449,39 @@ def self_check() -> int:
             declared_document_problems([]),
             ["the document is not a JSON object"],
         ),
+        (
+            "a well-formed preview has no shape problem",
+            preview_shape_problems(
+                {
+                    "reviewable_files": [{"path": "src/keep.rs"}],
+                    "excluded_files": [{"path": "baselines/x.json.minisig"}],
+                }
+            ),
+            [],
+        ),
+        (
+            "a preview that is a JSON array is refused, not indexed",
+            preview_shape_problems([]),
+            ["the preview is not a JSON object — the CLI's JSON shape changed"],
+        ),
+        (
+            "a preview with no reviewable list is refused",
+            preview_shape_problems({"excluded_files": []}),
+            ["the preview has no reviewable_files list — the CLI's JSON shape changed"],
+        ),
+        (
+            "a preview entry with no string path is refused",
+            preview_shape_problems({"reviewable_files": [{"path": 7}], "excluded_files": []}),
+            [
+                "the preview's reviewable_files entries have no string path — the CLI's JSON "
+                "shape changed"
+            ],
+        ),
+        (
+            "a preview whose excluded list is not a list is refused",
+            preview_shape_problems({"reviewable_files": [], "excluded_files": "none"}),
+            ["the preview has no excluded_files list — the CLI's JSON shape changed"],
+        ),
     ]
     failures = 0
     for label, got, want in rows:
@@ -472,14 +541,20 @@ def main() -> int:
             "an exclusion hides content from review, so changing it is a decision, not an edit"
         )
         return 1
-    # Spelling is not effect: ask the CLI whether it acts on the exclusion.
+    # Spelling is not effect: ask the CLI whether it acts on the exclusion. The **status** is
+    # authoritative — 1 means a measured defect, 3 means the measurement could not be made — and
+    # the problem list is checked as well, because status 0 with problems is exactly the split
+    # this contract used to have: a caller that trusted the code alone would report a pass over
+    # a defect, and a measured problem must never be able to pass because a status said 0.
     status, selection = selection_problems(document)
     if status == 3:
         for problem in selection:
             print(f"UNVERIFIABLE  {problem}")
         return 3
-    if selection:
-        for problem in selection:
+    if status != 0 or selection:
+        for problem in selection or [
+            "the selection check measured a defect without naming it — a status-only pass"
+        ]:
             print(f"FAIL  review/rule.json: {problem}")
         return 1
 
