@@ -169,6 +169,32 @@ fn adopt(cwd: &Path, args: &[&str]) -> Outcome {
     }
 }
 
+/// `tools/adopt.py` with `REQ_ROOT` naming the corpus (the other root-resolution branch).
+fn adopt_with_req_root(cwd: &Path, args: &[&str], root: &Path) -> Outcome {
+    let mut path_value = req_bin()
+        .parent()
+        .expect("the binary has a parent")
+        .as_os_str()
+        .to_os_string();
+    if let Some(existing) = std::env::var_os("PATH") {
+        path_value.push(":");
+        path_value.push(existing);
+    }
+    let output = Command::new(python3())
+        .arg(adopt_py())
+        .args(args)
+        .current_dir(cwd)
+        .env("REQ_ROOT", root)
+        .env("PATH", path_value)
+        .output()
+        .expect("runs tools/adopt.py");
+    Outcome {
+        code: output.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    }
+}
+
 /// `req --version`'s `rules_v` and `claim_schema`, the values a draft must carry. Read from the
 /// binary rather than restated, because a literal here would be a second copy of the axis that
 /// decides what a stored address means.
@@ -197,6 +223,10 @@ A paragraph that is not a requirement is not a candidate and is not reported.
 - The copilot reads each submitted document before judging it.
 - The copilot cites every source it quotes.
 - 
+
+```text
+- A fenced sample is code, not a requirement.
+```
 ";
 
 /// One claim file's field, by exact whole-line prefix. The template is argued over byte for
@@ -273,14 +303,16 @@ fn the_draft_path_is_green_end_to_end() {
     // `--fill` rewrites and `address` is `null`. `--fill` itself is the independent oracle
     // below — `filled 2` is only possible if the tool derived nothing.
     let (rules_v, schema) = version_axes();
-    for (path, statement) in [
+    for (path, statement, source_line) in [
         (
             "claims/REQ-0002.yml",
             "The copilot reads each submitted document before judging it.",
+            5,
         ),
         (
             "claims/REQ-0003.yml",
             "The copilot cites every source it quotes.",
+            6,
         ),
     ] {
         let text = fx.read(path);
@@ -319,8 +351,9 @@ fn the_draft_path_is_green_end_to_end() {
             "{path} must carry its statement from the document:\n{text}"
         );
         assert!(
-            text.contains("source: docs/capabilities.md#L"),
-            "{path} must carry the document and line it came from:\n{text}"
+            text.contains(&format!("source: \"docs/capabilities.md#L{source_line}\"")),
+            "{path} must carry the document and the exact line it came from (marker line, not \
+             the joined item's last line):\n{text}"
         );
         assert!(
             text.contains("date: 2026-10-21"),
@@ -502,26 +535,22 @@ fn a_date_absent_from_the_source_and_from_git_is_a_usage_error() {
     );
 }
 
-/// The date is **authored**: `--date` or the source document's last commit, never "today".
-///
-/// The repository below is created **inside the fixture**, under the system temp dir, and is
-/// removed with it: this repository's history is never touched, and the identity and dates are
-/// scaffolding for that throwaway repository (set through the environment, never by rewriting
-/// anything of ours). They are pinned because `%cs` is the committer date: a fixture that read
-/// the wall clock would pass today and fail tomorrow.
-#[test]
-fn the_date_defaults_to_the_sources_last_commit_and_never_to_today() {
-    let fx = Fixture::new("req-adopt-gitdate");
-    fx.write("docs/capabilities.md", CAPABILITIES);
-    req(fx.path(), &["init"]).assert_code(0, "req init");
+/// A throwaway repository **inside the fixture**, with identity and dates pinned through the
+/// environment: this repository's history is never touched, and the fixture's goes with it.
+/// Global git config is isolated so a developer's `commit.gpgsign` or `core.hooksPath` cannot
+/// fail the test, and so the pinned dates are the only thing that decides the outcome.
+fn git_commit_all(fx: &Fixture, message: &str) {
     for args in [
         vec!["init", "-q"],
-        vec!["add", "docs/capabilities.md", "claims", "aliases"],
-        vec!["commit", "-q", "-m", "the source document"],
+        vec!["add", "-A"],
+        vec!["commit", "-q", "-m", message],
     ] {
         let output = Command::new("git")
             .args(&args)
             .current_dir(fx.path())
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_AUTHOR_NAME", "req adopt test")
             .env("GIT_AUTHOR_EMAIL", "adopt@example.invalid")
             .env("GIT_COMMITTER_NAME", "req adopt test")
@@ -537,6 +566,15 @@ fn the_date_defaults_to_the_sources_last_commit_and_never_to_today() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+/// The date is **authored**: `--date` or the source document's last commit, never "today".
+#[test]
+fn the_date_defaults_to_the_sources_last_commit_and_never_to_today() {
+    let fx = Fixture::new("req-adopt-gitdate");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    git_commit_all(&fx, "the source document");
 
     let out = adopt(
         fx.path(),
@@ -553,6 +591,152 @@ fn the_date_defaults_to_the_sources_last_commit_and_never_to_today() {
     assert!(
         draft.contains("date: 2020-01-02"),
         "the draft must carry the source's commit date, not today's:\n{draft}"
+    );
+}
+
+/// A document changed since its last commit has no commit that describes its text: borrowing
+/// that date would name a revision the drafted text does not exist in.
+#[test]
+fn a_tracked_document_with_uncommitted_changes_has_no_date_to_borrow() {
+    let fx = Fixture::new("req-adopt-dirty");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    git_commit_all(&fx, "the source document");
+    fx.write(
+        "docs/capabilities.md",
+        &format!("{CAPABILITIES}\n- A bullet added after the commit.\n"),
+    );
+
+    let blocked = adopt(
+        fx.path(),
+        &["--from", "docs/capabilities.md", "--subject", "system"],
+    );
+    blocked.assert_code(2, "a changed document with no --date");
+    assert!(
+        blocked.stderr.contains("--date") && blocked.stderr.contains("uncommitted"),
+        "the remedy is the flag that supplies a date:\n{}",
+        blocked.stderr
+    );
+
+    // The authored date is the remedy, and the run then succeeds.
+    let dated = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+        ],
+    );
+    dated.assert_code(0, "the same document with an authored date");
+}
+
+/// `req init`'s starter claim names `docs/requirements.md` as a pencil sketch, not as an
+/// adoption: treating that as an earlier draft would refuse the document an adopter is most
+/// likely to have.
+#[test]
+fn the_init_starter_placeholder_does_not_block_adoption_from_that_document() {
+    let fx = Fixture::new("req-adopt-starter");
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    fx.write(
+        "docs/requirements.md",
+        "# Requirements\n\n- The adopter's own first requirement.\n",
+    );
+    let out = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/requirements.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
+    );
+    out.assert_code(0, "adopting from the document the starter claim names");
+    assert!(
+        fx.exists("claims/REQ-0002.yml"),
+        "the starter claim is not evidence of an earlier draft:\n{}\n{}",
+        out.stdout,
+        out.stderr
+    );
+    assert!(
+        fx.read("claims/REQ-0001.yml")
+            .contains("claim_id: REQ-0001"),
+        "the starter claim is left alone"
+    );
+}
+
+/// A run from a subdirectory: `--root`/`REQ_ROOT` name the corpus, a relative `--from` is
+/// resolved against it, and the provenance is recorded root-relative — one basis for writing
+/// and for reading back, so the guard still refuses a second run from the same place.
+#[test]
+fn a_run_from_a_subdirectory_uses_the_named_root_and_one_provenance_basis() {
+    let fx = Fixture::new("req-adopt-subdir");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    fx.write(
+        "docs/more.md",
+        "# More\n\n- A second document's requirement.\n",
+    );
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    fs::create_dir_all(fx.path().join("sub")).expect("creates the subdirectory");
+    let sub = fx.path().join("sub");
+
+    let args = [
+        "--root",
+        "..",
+        "--from",
+        "docs/capabilities.md",
+        "--subject",
+        "system",
+        "--date",
+        "2026-10-21",
+        "--write",
+    ];
+    let out = adopt(&sub, &args);
+    out.assert_code(0, "a run from a subdirectory with --root");
+    assert!(
+        fx.exists("claims/REQ-0002.yml"),
+        "the drafts land in the named root:\n{}\n{}",
+        out.stdout,
+        out.stderr
+    );
+    let draft = fx.read("claims/REQ-0002.yml");
+    assert!(
+        draft.contains("source: \"docs/capabilities.md#L5\""),
+        "the provenance is root-relative, so writing and reading share one basis:\n{draft}"
+    );
+
+    let second = adopt(&sub, &args);
+    second.assert_code(1, "a second --write from the same subdirectory");
+    assert!(
+        second.stderr.contains("already drafted"),
+        "the guard must read the same basis the write recorded:\n{}",
+        second.stderr
+    );
+
+    // $REQ_ROOT names the root just as --root does, and a relative --from resolves against it.
+    fs::create_dir_all(fx.path().join("sub2")).expect("creates a second subdirectory");
+    let env_run = adopt_with_req_root(
+        &fx.path().join("sub2"),
+        &[
+            "--from",
+            "docs/more.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+        ],
+        fx.path(),
+    );
+    env_run.assert_code(0, "REQ_ROOT resolves the document against the corpus root");
+    assert!(
+        env_run.stdout.contains("drafted: 1"),
+        "the second document drafts from the named root:\n{}",
+        env_run.stdout
     );
 }
 

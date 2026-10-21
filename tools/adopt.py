@@ -16,7 +16,7 @@ and neither is a heuristic:
 
   bullets    each markdown list item (`- `, `* `, `1. `) under `--under` (or the whole
              document) is one candidate statement — its text, trimmed, wrapped lines joined
-             onto one line.
+             onto one line. A list item inside a fenced code block is code, not a candidate.
   req-lines  each line matching `- REQ-<n>: <text>` is one candidate: the text after the
              colon. The source's id is **ignored** — req allocates the claim id — and the
              report says so.
@@ -24,14 +24,21 @@ and neither is a heuristic:
 A line that looks like a candidate and is not drafted is **named with its reason** and
 counted: an empty item, a `req-lines` item with no id, an item outside the named heading. A
 skipped line is never silent, because a requirement silently dropped at adoption is the
-failure this project exists to prevent.
+failure this project exists to prevent. (`bullets` cannot tell a four-space-indented code
+sample from a nested item without a Markdown parser; the dry run is where a human sees one.)
+
+The provenance a draft records is `<document>#L<line>`, **relative to the corpus root**, and
+the date is either `--date` or the source document's last commit date — with the commit named
+in the report. A document with uncommitted changes has no commit that describes its text, so
+the run asks for `--date` rather than borrowing a revision that does not contain it.
 
 Exit codes, the same three-state discipline as req:
 
   0  drafted (dry run, or written with --write)
   1  a definite problem — nothing extracted, the target already exists, or the document is
      already drafted into this corpus; nothing was written
-  2  usage — a missing `--from`/`--subject`, an unreadable `--date`, or no date at all
+  2  usage — a missing `--from`/`--subject`, an unreadable `--date`, or no date the tool can
+     honestly borrow (not in git, or changed since its last commit)
   3  UNVERIFIABLE — the document, the corpus, the subject registry, or `req` itself cannot be
      read, so nothing can be drafted honestly
 
@@ -103,7 +110,7 @@ canonical:
   form: ""
 address: null
 rationale:
-  source: {source}
+  source: {quoted_source}
   date: {date}
   rejected_alternatives: []
   assumptions: []
@@ -114,7 +121,8 @@ HELP_EPILOG = """\
 conventions (no heuristics, no model):
   bullets    (default) each markdown list item — `- `, `* `, `1. ` — under --under (or the
              whole document) is one candidate statement: its text, trimmed, its wrapped lines
-             joined onto one line.
+             joined onto one line. Fenced code blocks are code: their lines are never
+             candidates.
   req-lines  each line matching `- REQ-<n>: <text>` is one candidate: the text after the
              colon. The source's id is IGNORED — req allocates the claim id.
 
@@ -124,8 +132,9 @@ conventions (no heuristics, no model):
   --subject is required: one decision per document, not per claim, and the value is used
   verbatim in the claim (an unregistered surface stays literal, so aliasing it is a later,
   deliberate act).
-  --date is the rationale date; without it the source document's last git commit date is used.
-  A date is never invented — with no --date and no commit to borrow, the run is a usage error.
+  --date is the rationale date; without it the source document's last git commit date is used,
+  and the report names the commit. A date is never invented: no commit to borrow — untracked,
+  or changed since its last commit — is a usage error asking for --date.
 
 the draft this writes: an `unstructured: true` claim with its statement and provenance, and
 NOTHING derived — `canonical.form` is the empty placeholder and `address` is null. `req canon`
@@ -133,8 +142,10 @@ accepts it, `req canon --fill` completes it, and the structured slots stay the h
 
 The corpus root is --root, else $REQ_ROOT, else the working directory — never an ancestor: this
 tool writes claims, so a run inside a subdirectory must not draft into a parent you never
-named. A document already drafted into the corpus is refused (exit 1), so a second run over the
-same document writes nothing.
+named. A relative --from is resolved against that root, and the provenance is recorded
+root-relative, so a run from a subdirectory with --root records the same path the next run
+compares. A document already drafted into the corpus is refused (exit 1), so a second run over
+the same document writes nothing.
 
 exit: 0 drafted (dry run, or written) · 1 a definite problem, nothing written (nothing
 extracted, the target already exists, or the document is already drafted into this corpus) ·
@@ -169,15 +180,47 @@ def heading(line):
     return len(match.group("marks")), text
 
 
+def fence_state(lines):
+    """Per line: is it inside (or is it the boundary of) a fenced code block?
+
+    A list item inside a fence is a code sample, not a markdown list item, and a `#` there is
+    not a heading — so the conventions below never look at these lines. A fence opens on a
+    line whose first three characters are ``` or ~~~ and closes on the next such line.
+    Indented (four-space) code blocks are deliberately not guessed at: an indented line that
+    looks like a list item is a nested item in this tool's stated convention, and the dry run
+    is where a human sees it.
+    """
+    inside = []
+    fence = None
+    for line in lines:
+        stripped = line.strip()
+        marker = stripped[:3]
+        if fence is None:
+            if marker in ("```", "~~~"):
+                fence = marker
+                inside.append(True)
+            else:
+                inside.append(False)
+        else:
+            inside.append(True)
+            if marker == fence:
+                fence = None
+    return inside
+
+
 def heading_scope(lines, wanted):
     """The half-open [start, end) line range under the heading named `wanted`, or None.
 
     A heading's scope runs to the next heading of the same or a higher level, so a subsection
     is under it. The text is compared after trimming, case-insensitively: a heading is a label
-    a human typed twice, not an identifier.
+    a human typed twice, not an identifier. A heading inside a fenced code block is a line of
+    code, not a heading.
     """
+    fenced = fence_state(lines)
     start = level = None
     for index, line in enumerate(lines):
+        if fenced[index]:
+            continue
         current = heading(line)
         if current is None:
             continue
@@ -205,7 +248,12 @@ def joined_item(lines, index, indent):
     cursor = index + 1
     while cursor < len(lines):
         line = lines[cursor]
-        if not line.strip() or heading(line) or ANY_BULLET_RE.match(line):
+        if (
+            not line.strip()
+            or heading(line)
+            or ANY_BULLET_RE.match(line)
+            or line.strip()[:3] in ("```", "~~~")
+        ):
             break
         if len(line) - len(line.lstrip(" \t")) <= indent:
             break
@@ -230,10 +278,15 @@ def extract(lines, convention, under=None):
     def in_scope(index):
         return scope is None or scope[0] < index < scope[1]
 
+    fenced = fence_state(lines)
     drafts, skips = [], []
     index = 0
     while index < len(lines):
         line = lines[index]
+        if fenced[index]:
+            # A line inside a fence is code: not a candidate, and not a skip to explain.
+            index += 1
+            continue
         if convention == "bullets":
             if not BULLET_RE.match(line):
                 index += 1
@@ -338,8 +391,30 @@ def valid_date(text):
 
 
 def yaml_quote(text):
-    """A YAML double-quoted scalar: the statement is the only freely-authored value."""
-    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    """A YAML double-quoted scalar, for every freely-authored value.
+
+    Quotes and backslashes alone are not enough: a statement carrying a control character
+    (a NUL pasted in from a table, a stray bell) would produce a file the loader cannot parse
+    while the tool still reported success. A backslash-x escape is YAML's own form for those, and the
+    loader parses it back to the same character.
+    """
+    out = []
+    for char in text:
+        if char == "\\":
+            out.append("\\\\")
+        elif char == '"':
+            out.append('\\"')
+        elif char == "\n":
+            out.append("\\n")
+        elif char == "\t":
+            out.append("\\t")
+        elif char == "\r":
+            out.append("\\r")
+        elif ord(char) < 0x20 or ord(char) == 0x7F:
+            out.append(f"\\x{ord(char):02x}")
+        else:
+            out.append(char)
+    return '"' + "".join(out) + '"'
 
 
 def render_claim(document, source, statement, date, subject, claim_id, rules_v, registry_v, schema):
@@ -357,7 +432,7 @@ def render_claim(document, source, statement, date, subject, claim_id, rules_v, 
         subject=subject,
         rules_v=rules_v,
         registry_v=registry_v,
-        source=source,
+        quoted_source=yaml_quote(source),
         date=date,
     )
 
@@ -389,16 +464,23 @@ def resolve_root(flag):
     return root.resolve()
 
 
-def resolve_source(value, root):
-    """A stored `rationale.source` as an absolute path, for comparing documents."""
+def parse_source(value, root):
+    """A stored `rationale.source` as `(absolute path, carries a line number)`.
+
+    The line number is what makes a source *this tool's* provenance: `req init`'s starter claim
+    carries a pencil sketch (`source: docs/requirements.md`) that no adoption produced, and
+    treating it as an earlier draft would refuse the very document an adopter is most likely to
+    have. Only `<doc>#L<n>` is evidence that the document was drafted here before.
+    """
     text = value.strip()
     if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
         text = text[1:-1]
+    has_line = SOURCE_LINE_SUFFIX_RE.search(text) is not None
     text = SOURCE_LINE_SUFFIX_RE.sub("", text)
     path = pathlib.Path(text).expanduser()
     if not path.is_absolute():
         path = root / path
-    return path.resolve()
+    return path.resolve(), has_line
 
 
 def read_corpus(root):
@@ -444,7 +526,9 @@ def read_corpus(root):
             used.add(named)
         source = CLAIM_SOURCE_RE.search(text)
         if source is not None:
-            sources[claim_id] = resolve_source(source.group("value"), root)
+            path, from_a_draft = parse_source(source.group("value"), root)
+            if from_a_draft:
+                sources[claim_id] = path
 
     registry = root / REGISTRY_PATH
     try:
@@ -498,10 +582,11 @@ def read_axes():
 
 
 def git_date(document):
-    """The document's last commit date (`YYYY-MM-DD`), or None.
+    """The document's last commit date and short SHA, or None.
 
     The same discipline as `req baseline --at`: a time is *authored*, never invented. `%cs` is
-    the committer date — a date, not a wall-clock reading.
+    the committer date — a date, not a wall-clock reading — and the SHA is reported with it so
+    the draft says which revision its date describes.
     """
     try:
         completed = subprocess.run(
@@ -511,7 +596,7 @@ def git_date(document):
                 str(document.parent),
                 "log",
                 "-1",
-                "--format=%cs",
+                "--format=%cs %h",
                 "--",
                 document.name,
             ],
@@ -523,22 +608,59 @@ def git_date(document):
         return None
     if completed.returncode != 0:
         return None
-    value = completed.stdout.strip()
-    return value if valid_date(value) else None
+    parts = completed.stdout.split()
+    if len(parts) != 2 or not valid_date(parts[0]):
+        return None
+    return parts[0], parts[1]
+
+
+def git_dirty(document):
+    """Whether the document differs from its last commit; None when git cannot answer."""
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(document.parent),
+                "status",
+                "--porcelain",
+                "--",
+                document.name,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    return bool(completed.stdout.strip())
 
 
 def headings_of(lines):
     """The document's headings, for the 'heading not found' message."""
-    found = [f'"{text}"' for level, text in (heading(line) or (0, "") for line in lines) if level]
+    fenced = fence_state(lines)
+    found = [
+        f'"{text}"'
+        for index, line in enumerate(lines)
+        if not fenced[index]
+        for level, text in [heading(line) or (0, "")]
+        if level
+    ]
     if not found:
         return "  the document has no markdown headings"
     return "  headings found: " + ", ".join(found)
 
 
-def report(args, corpus, drafts, skips, targets, written, rules_v):
-    """Print what was drafted, what was skipped and why, and what was written."""
+def report(args, corpus, source, drafts, skips, targets, written, rules_v):
+    """Print what was drafted, what was skipped and why, and what was written.
+
+    `source` is the provenance label the claims record — relative to the corpus root — so the
+    report and the claim files name one path, whichever directory the run happened in.
+    """
     scope = f'under the heading "{args.under}"' if args.under else "whole document"
-    print(f"source: {args.document} ({args.convention}, {scope})")
+    print(f"source: {source} ({args.convention}, {scope})")
     print(f"subject: {args.subject}")
     print(f"date: {args.date} ({args.date_origin})")
     print(f"root: {corpus.root}")
@@ -550,10 +672,10 @@ def report(args, corpus, drafts, skips, targets, written, rules_v):
         )
     print()
     for (line, statement), (claim_id, target) in zip(drafts, targets):
-        print(f"draft  {claim_id}  {relative(corpus.root, target)}  {args.document}#L{line}")
+        print(f"draft  {claim_id}  {relative(corpus.root, target)}  {source}#L{line}")
         print(f"       statement: {statement}")
     for line, reason in skips:
-        print(f"skip   {args.document}#L{line}  {reason}")
+        print(f"skip   {source}#L{line}  {reason}")
     print()
     print(f"drafted: {len(drafts)}")
     print(f"skipped: {len(skips)}")
@@ -630,23 +752,34 @@ def run(args):
     """Draft, report, and (with --write) write. Returns the exit code."""
     corpus = read_corpus(resolve_root(args.root))
 
+    # The document is resolved against the **corpus root**, not the working directory, and the
+    # provenance is recorded root-relative. One basis for writing and for reading back: a run
+    # from a subdirectory with `--root ..` records `docs/x.md#L3`, and the next run's guard
+    # compares the same absolute path. Reading the document relative to the cwd while recording
+    # the path relative to the root was a real bug — the guard then never matched, and a second
+    # `--write` re-drafted the document under fresh ids.
     document = pathlib.Path(args.document).expanduser()
+    if not document.is_absolute():
+        document = corpus.root / document
     try:
         text = document.read_text(encoding="utf-8")
     except OSError as error:
-        raise Unverifiable(f"cannot read the document {document}: {error}") from error
+        raise Unverifiable(f"cannot read the document {args.document}: {error}") from error
     document = document.resolve()
+    source = relative(corpus.root, document)
 
     # A document already adopted is refused before anything else: the drafts are in the
     # corpus, and drafting them again would duplicate claims (two claims sharing a statement
     # and a subject share an address). This is what makes a second `--write` over the same
-    # document refuse and overwrite nothing.
+    # document refuse and overwrite nothing. Only this tool's own `<doc>#L<n>` provenance is
+    # evidence of an earlier draft — `req init`'s starter claim carries a pencil sketch
+    # (`source: docs/requirements.md`) that no adoption produced.
     already = sorted(
-        claim_id for claim_id, source in corpus.sources.items() if source == document
+        claim_id for claim_id, stored in corpus.sources.items() if stored == document
     )
     if already:
         raise Problem(
-            f"refusing to draft: {args.document} is already drafted into this corpus "
+            f"refusing to draft: {source} is already drafted into this corpus "
             f"({', '.join(already)}).\n"
             "  edit those claims, or delete them deliberately, before drafting from this "
             "document again — or copy this script and adjust the mapping"
@@ -660,10 +793,14 @@ def run(args):
                 "pass --date YYYY-MM-DD. A date is authored, never invented — this tool will "
                 "not stamp today's."
             )
-        args.date = borrowed
-        args.date_origin = f"the last commit touching {args.document}"
-    elif args.date_origin is None:
-        args.date_origin = "--date"
+        if git_dirty(document):
+            raise Usage(
+                f"{source} has uncommitted changes, so its last commit date ({borrowed[0]}) "
+                "does not describe the text being drafted: pass --date YYYY-MM-DD. A date is "
+                "authored, never borrowed from a revision that does not contain the text."
+            )
+        args.date = borrowed[0]
+        args.date_origin = f"the last commit touching {source}: {borrowed[1]}"
 
     rules_v, schema = read_axes()
 
@@ -675,11 +812,9 @@ def run(args):
         scope = f"under {args.under!r}" if args.under else "whole document"
         # The skipped lines are named even here: "nothing extracted" is the finding, and *why*
         # each candidate was skipped is its remedy.
-        reasons = "".join(
-            f"\n  skip {args.document}#L{line}  {reason}" for line, reason in skips
-        )
+        reasons = "".join(f"\n  skip {source}#L{line}  {reason}" for line, reason in skips)
         raise Problem(
-            f"nothing extracted from {args.document} ({args.convention}, {scope})\n"
+            f"nothing extracted from {source} ({args.convention}, {scope})\n"
             "  bullets are `- `, `* ` and `1. `; req-lines are `- REQ-<n>: text`" + reasons
         )
 
@@ -690,8 +825,8 @@ def run(args):
         targets.append((claim_id, corpus.root / CLAIMS_DIR / f"{claim_id}.yml"))
         texts.append(
             render_claim(
-                document=args.document,
-                source=f"{args.document}#L{line}",
+                document=source,
+                source=f"{source}#L{line}",
                 statement=statement,
                 date=args.date,
                 subject=args.subject,
@@ -713,7 +848,7 @@ def run(args):
     else:
         written = []
 
-    report(args, corpus, drafts, skips, targets, written, rules_v)
+    report(args, corpus, source, drafts, skips, targets, written, rules_v)
     return 0
 
 
@@ -859,6 +994,25 @@ def self_check():
             extract(doc, "bullets", "Absent")[2],
             'the heading "Absent" does not appear in the document',
         ),
+        (
+            "fences: a list item inside a fenced code block is code, not a candidate",
+            extract(["```", "- not a list item", "```", "- real"], "bullets"),
+            ([(4, "real")], [], None),
+        ),
+        (
+            "fences: a heading inside a fence does not scope",
+            extract(
+                ["```", "# Capabilities", "```", "# Capabilities", "- in"],
+                "bullets",
+                "Capabilities",
+            )[0],
+            [(5, "in")],
+        ),
+        (
+            "draft: a control character is escaped, never emitted raw",
+            yaml_quote("a\x00b"),
+            '"a\\x00b"',
+        ),
         ("ids: claim 8 from a file name", claim_number_from_name("REQ-0008.yml"), 8),
         ("ids: a leading dot is not part of the stem", claim_number_from_name(".REQ-0008"), 8),
         (
@@ -918,7 +1072,7 @@ def self_check():
         (
             "draft: the provenance is the document and the line it came from",
             field(draft, "  source: "),
-            "source: docs/capabilities.md#L3",
+            'source: "docs/capabilities.md#L3"',
         ),
     ]
 
@@ -946,7 +1100,10 @@ def parse_args(argv):
         dest="document",
         required=True,
         metavar="<doc>",
-        help="the markdown document to read (its path is recorded as the rationale source)",
+        help=(
+            "the markdown document to read; a relative path is resolved against the corpus "
+            "root and recorded root-relative as the rationale source"
+        ),
     )
     parser.add_argument(
         "--under",
@@ -973,7 +1130,10 @@ def parse_args(argv):
     parser.add_argument(
         "--root",
         metavar="<dir>",
-        help="the corpus root (default: $REQ_ROOT, else the working directory)",
+        help=(
+            "the corpus root (default: $REQ_ROOT, else the working directory) — a relative "
+            "--from is resolved against it"
+        ),
     )
     parser.add_argument(
         "--write", action="store_true", help="write the drafts (the default is a dry run)"

@@ -267,6 +267,7 @@ fn init_creates_a_filled_corpus_in_the_current_directory() {
         "refused",
         "address",
         "tools/adopt.py",
+        "--write", // the runnable form: the extractor is a dry run until --write
     ] {
         assert!(
             readme.contains(required),

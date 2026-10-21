@@ -72,7 +72,8 @@ A project usually starts with prose: a `spec.md`, a backlog, a capabilities tabl
 you a corpus, not those requirements, and a tool that guessed `modality`, `value` or `operator` from
 a sentence would be the one path that can enshrine a contradicted parse. What *is* honest to draft
 is the part the claim format already sanctions: an **`unstructured: true` claim** — the statement,
-its provenance (the document **and the line**), and every structured slot absent.
+its provenance (the document **and the line**, recorded relative to the corpus root), and every
+structured slot absent.
 
 req ships no importer and no `adopt` subcommand (issue #44): the mapping from a document to claims
 is per-project. `tools/adopt.py` in req's repository is therefore a **starting point to copy and
@@ -101,15 +102,18 @@ Two conventions are built in, and neither is a heuristic:
 
 | `--convention` | what one claim is |
 | --- | --- |
-| `bullets` (default) | each markdown list item (`- `, `* `, `1. `) under `--under`, or in the whole document: the item's text, trimmed, its wrapped lines joined onto one line |
+| `bullets` (default) | each markdown list item (`- `, `* `, `1. `) under `--under`, or in the whole document: the item's text, trimmed, its wrapped lines joined onto one line. A list item inside a fenced code block is code, never a candidate |
 | `req-lines` | each line matching `- REQ-<n>: <text>`: the text after the colon. The source's id is **ignored** — req allocates `REQ-NNNN` — and the report says so |
 
-`--under <heading>` limits the run to one section (a heading's subsections are under it).
+`--under <heading>` limits the run to one section (a heading's subsections are under it, and a
+heading inside a fenced code block is not a heading).
 `--subject <id>` is required and is the whole document's subject — one decision per document, not
 per claim — and it is written verbatim into each claim: an unregistered surface stays literal in
 the parse, so aliasing it is a later, deliberate act. `--date` is the rationale date; without it the
-source document's **last git commit date** is used, and with neither the run is a usage error
-(exit 2) — a date is authored, never invented, exactly as `req baseline --at` is.
+source document's **last git commit date** is used, and the report names the commit it borrowed.
+A document with **uncommitted changes** has no commit that describes its text, so that run is a
+usage error asking for `--date`; with no commit at all it is the same. A date is authored, never
+invented, exactly as `req baseline --at` is.
 
 **Every skipped line is named with its reason and counted.** A line that looks like a candidate and
 is not drafted — an empty item, a `req-lines` item with no id, an item outside the named heading —
@@ -121,9 +125,12 @@ The defaults are the safe direction: a **dry run** prints each draft, the file i
 (`claims/REQ-NNNN.yml`, the next free number) and the skips, and writes nothing; `--write` writes
 them. It never overwrites — an existing path is exit **1**, nothing written — and a document already
 drafted into the corpus is refused (exit **1**) with the claims it produced named: draft that
-document again only after deliberately deleting them, or copy the script and adjust it. Exit **0**
-drafted (dry or written), **1** a definite problem, **2** usage, **3** the document, the corpus, the
-subject registry or `req` cannot be read — no `claims/` means run `req init` first.
+document again only after deliberately deleting them, or copy the script and adjust it. Only a
+source carrying the extractor's own `<doc>#L<n>` shape counts as an earlier draft — `req init`'s
+starter claim names `docs/requirements.md` as a pencil sketch, and that does not block adopting
+from it. Exit **0** drafted (dry or written), **1** a definite problem, **2** usage (including a
+date the tool will not borrow), **3** the document, the corpus, the subject registry or `req`
+cannot be read — no `claims/` means run `req init` first.
 
 ## The document your project can commit
 
