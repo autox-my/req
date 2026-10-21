@@ -349,27 +349,44 @@ fn help_page(cwd: &Path, command: &str) -> String {
 
 /// The verbs named in the `USAGE` text's verb column, scraped from the text **as it is** —
 /// never a second hand-maintained list, and never by changing `USAGE`'s layout to suit this
-/// parser. The column is the part of a line before the description, and descriptions are
-/// separated from it by a run of spaces; within the column, `|` separates alternatives and
-/// the verb list ends at the first flag, placeholder or `k=v` argument.
+/// parser. Within the column, `|` separates alternatives and the verb list ends at the first
+/// flag, placeholder or `k=v` argument.
 ///
-/// A line is a verb row only when it is a verb column **followed by a description**, or an
-/// `a | b` alternatives row. Prose that wraps into the margin is not a verb row: its first
-/// words are lowercase and would otherwise read as verbs, and this function is the oracle
-/// behind `every_verb_named_in_usage_has_a_page`.
+/// The description column is **derived from the text**, not hardcoded: it is the commonest
+/// offset at which a run of two or more spaces ends among the indented lines, which is where
+/// the rows put their prose. A line is a verb row only when its description starts there, or
+/// when it is an `a | b` alternatives row (which carries no description). Prose that wraps
+/// back into the margin is therefore never parsed as verbs — a wrapped word is not at the
+/// description column — and a deliberate relayout moves the anchor with the text instead of
+/// silently misreading the column. This is the oracle behind
+/// `every_verb_named_in_usage_has_a_page`, so its failure mode must be "no verbs found",
+/// never "prose demanded pages".
 fn usage_verbs(usage: &str) -> Vec<String> {
-    let mut verbs: Vec<String> = Vec::new();
-    for line in usage.lines() {
-        let Some(indented) = line.strip_prefix("  ") else {
-            continue;
-        };
-        // The verb column ends where the description column begins: two or more spaces.
-        let column = indented.split("  ").next().unwrap_or("");
-        let has_description = column.len() < indented.len();
-        let has_alternatives = column.contains(" | ");
-        if !has_description && !has_alternatives {
-            continue;
+    let indented: Vec<&str> = usage
+        .lines()
+        .filter_map(|line| line.strip_prefix("  "))
+        .collect();
+
+    // Where the rows put their descriptions: the most common end of a 2+ space run.
+    let mut offsets: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
+    for line in &indented {
+        if let Some(offset) = description_offset(line) {
+            *offsets.entry(offset).or_default() += 1;
         }
+    }
+    let description_column = offsets
+        .into_iter()
+        .max_by_key(|&(offset, count)| (count, std::cmp::Reverse(offset)))
+        .map(|(offset, _)| offset);
+
+    let mut verbs: Vec<String> = Vec::new();
+    for line in &indented {
+        let column = match description_column {
+            Some(column) if description_offset(line) == Some(column) => line[..column].trim_end(),
+            // An alternatives row has no description column; its whole line is the column.
+            _ if line.contains(" | ") && description_offset(line).is_none() => line.trim_end(),
+            _ => continue,
+        };
         for token in column.split_whitespace() {
             if token == "|" {
                 continue;
@@ -389,6 +406,18 @@ fn usage_verbs(usage: &str) -> Vec<String> {
     verbs
 }
 
+/// Where a line's description starts (the index in `line` of the first non-space after the
+/// first run of two or more spaces), or `None` when the line has no such run.
+fn description_offset(line: &str) -> Option<usize> {
+    let bytes = line.as_bytes();
+    let start = bytes.windows(2).position(|pair| pair == b"  ".as_slice())?;
+    let after_spaces = bytes[start..]
+        .iter()
+        .position(|byte| !byte.is_ascii_whitespace())
+        .map(|index| start + index)?;
+    Some(after_spaces)
+}
+
 /// Whether a page's first line is that command's usage line, with the command boundary
 /// intact: `render` must not be satisfied by `usage: req rendering …`, and the synopsis may
 /// be absent (a command taking no arguments) or separated by whitespace.
@@ -397,6 +426,30 @@ fn first_line_names_command(page: &str, command: &str) -> bool {
     first
         .strip_prefix(&format!("usage: req {command}"))
         .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+}
+
+#[test]
+fn the_usage_scrape_reads_the_verb_column_and_never_prose() {
+    // A description column is derived from the text (every row's prose starts at the same
+    // offset). These are the shapes that made a naive "split on two spaces" parser read prose
+    // as verbs: a wrapped description re-entering the margin, one wrapped with its own
+    // double-space run, and the `a | b` alternatives row that carries no description at all.
+    let usage = "\
+usage: req [--root <dir>] <command> [args]
+
+  bench [corpus.yml]              the FMR gate
+  select | render | trace | gate k=v [...]
+                                  the variant projections and the release gate
+  the variant  projections and the release gate
+  init                            create a corpus
+  --version | -V                  the versions
+  --help | -h                     this text
+
+The corpus root is resolved at runtime.";
+    assert_eq!(
+        usage_verbs(usage),
+        ["bench", "select", "render", "trace", "gate", "init"]
+    );
 }
 
 #[test]
@@ -451,12 +504,19 @@ fn init_help_is_answered_before_the_init_handler_sees_it() {
 }
 
 #[test]
-fn every_page_starts_with_usage_its_own_name() {
-    // R5's "one line each" row, pinned separately from the no-corpus loop so a page that
-    // started with a different verb's usage line is still caught when the corpus exists.
-    let fx = NoCorpus::new("req-page-usage-line");
+fn every_page_starts_with_usage_its_own_name_where_the_root_would_resolve() {
+    // R5's "one line each" row. The no-corpus loop above proves help needs no root; this arm
+    // runs where the root *would* resolve, which is the failure the no-corpus fixture cannot
+    // see: a help path that resolved the corpus first would print `corpus root:` and still
+    // exit 0. `help_page` asserts that line is absent, so this is coverage, not a duplicate.
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR"));
+    assert!(
+        req::root::is_corpus_root(corpus),
+        "this arm needs a directory where root resolution would succeed: {}",
+        corpus.display()
+    );
     for command in ALL_COMMANDS {
-        let page = help_page(fx.path(), command);
+        let page = help_page(corpus, command);
         assert!(
             first_line_names_command(&page, command),
             "the first line of `req {command} --help` must be `usage: req {command} <synopsis>`:\n{}",
