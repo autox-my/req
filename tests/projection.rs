@@ -602,6 +602,7 @@ fn out_and_check_together_are_a_usage_error() {
 #[test]
 fn an_equals_spelled_flag_is_a_usage_error_not_a_selection() {
     let corpus = Corpus::new("equals-flag");
+    // An argument shaped like a flag is an unknown flag, and the error names it.
     for argv in [
         &["render", "--out=spec.md"][..],
         &["render", "--check=spec.md"][..],
@@ -620,8 +621,21 @@ fn an_equals_spelled_flag_is_a_usage_error_not_a_selection() {
             out.stderr
         );
     }
+    // A value that is shaped like a flag is a missing value, not a file to write.
+    for argv in [
+        &["render", "--out", "-x"][..],
+        &["render", "--check", "-check"][..],
+    ] {
+        let out = corpus.out(argv);
+        assert_eq!(out.code, 2, "`{argv:?}` is usage:\n{}", out.stderr);
+        assert!(
+            out.stderr.contains("needs a path"),
+            "the error says the value is the problem:\n{}",
+            out.stderr
+        );
+    }
     assert!(
-        !corpus.path().join("spec.md").exists(),
+        !corpus.path().join("spec.md").exists() && !corpus.path().join("-x").exists(),
         "a refused `--out` writes nothing"
     );
 }
@@ -688,9 +702,45 @@ fn editing_only_the_headers_selection_is_stale() {
     let corpus = Corpus::new("header-selection");
     assert_eq!(corpus.out(&["render", "--out", "spec.md"]).code, 0);
     let text = corpus.read("spec.md");
+
+    // A header field that leaves the body untouched must still be part of the compared artefact.
+    // `selection=` changes the body's own `# Selection:` line too, so on its own it does not
+    // prove the header is compared: an implementation that compared `fresh_view` with the stored
+    // body (while honouring the header's selection) would pass. `claims=` and `identity=` do not
+    // move the body at all — each hand-edit must be reported as stale (1).
+    let claims_edit = text.replacen("claims=2", "claims=3", 1);
+    assert_ne!(claims_edit, text);
+    corpus.write("spec.md", &claims_edit);
+    let checked = corpus.out(&["render", "--check", "spec.md"]);
+    assert_eq!(
+        checked.code, 1,
+        "an edited `claims=` is a hand-edit, not a current projection:\n{}\n{}",
+        checked.stdout, checked.stderr
+    );
+
+    let (head, tail) = text
+        .split_once("identity=sha256:")
+        .expect("the header carries the digest");
+    let mut flipped: Vec<char> = tail.chars().take(64).collect();
+    assert_eq!(flipped.len(), 64);
+    flipped[0] = if flipped[0] == '0' { '1' } else { '0' };
+    let identity_edit = format!(
+        "{head}identity=sha256:{}{}",
+        flipped.into_iter().collect::<String>(),
+        &tail[64..]
+    );
+    assert_ne!(identity_edit, text);
+    corpus.write("spec.md", &identity_edit);
+    let checked = corpus.out(&["render", "--check", "spec.md"]);
+    assert_eq!(
+        checked.code, 1,
+        "an edited `identity=` is a hand-edit, not a current projection:\n{}\n{}",
+        checked.stdout, checked.stderr
+    );
+
+    // The selection edit: the header names one context while the body was written under `none`.
     let edited = text.replacen("selection=none", "selection=field=value", 1);
     corpus.write("spec.md", &edited);
-
     let checked = corpus.out(&["render", "--check", "spec.md"]);
     assert_eq!(
         checked.code, 1,
@@ -763,8 +813,10 @@ fn the_help_pages_carry_the_projection_flags_and_classes() {
                 page.stdout
             );
         }
+        // The clause, not a bare `1 `: a substring that loose survives deleting the class.
+        let normalized = page.stdout.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(
-            page.stdout.contains("1 "),
+            normalized.contains("1 a committed projection is stale"),
             "the page carries the `--check` exit 1 class:\n{}",
             page.stdout
         );
@@ -831,7 +883,15 @@ impl ScriptFixture {
             .expect("copies .req/variants");
         let bin = dir.join("home/.rustup/toolchains/fake/bin");
         fs::create_dir_all(&bin).expect("creates the fake toolchain");
-        fs::write(bin.join("cargo"), "#!/bin/sh\nexit 0\n").expect("writes the stub cargo");
+        // Every cargo step passes, except the projection check: its verdict is read from
+        // `PROJECTION_STUB_EXIT`, so the fixture can drive the step's wiring for 0/1/3 without a
+        // second `cargo` invocation (the real binary is exercised by the test beside this one).
+        let stub = "#!/bin/sh\n\
+                    case \"$*\" in\n\
+                      *\" render --check \"*) exit \"${PROJECTION_STUB_EXIT:-0}\" ;;\n\
+                    esac\n\
+                    exit 0\n";
+        fs::write(bin.join("cargo"), stub).expect("writes the stub cargo");
         fs::set_permissions(bin.join("cargo"), fs::Permissions::from_mode(0o755))
             .expect("makes the stub executable");
         ScriptFixture(dir)
@@ -852,8 +912,14 @@ impl ScriptFixture {
     /// Run the copied script to its banner, with HOME and PATH the fixture's own: the fake
     /// toolchain is what it resolves, and nothing ambient leaks in.
     fn banner(&self) -> std::process::Output {
+        self.banner_with(None)
+    }
+
+    /// The same, with the stub `cargo`'s projection verdict set to `exit_code` (0 when `None`).
+    fn banner_with(&self, projection_exit: Option<&str>) -> std::process::Output {
         let bin = self.path().join("home/.rustup/toolchains/fake/bin");
-        Command::new("bash")
+        let mut command = Command::new("bash");
+        command
             .arg(self.path().join("scripts/check.sh"))
             .current_dir(self.path())
             .env("HOME", self.path().join("home"))
@@ -861,9 +927,11 @@ impl ScriptFixture {
                 "PATH",
                 format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", bin.display()),
             )
-            .env_remove("REQ_ROOT")
-            .output()
-            .expect("runs the copied scripts/check.sh")
+            .env_remove("REQ_ROOT");
+        if let Some(code) = projection_exit {
+            command.env("PROJECTION_STUB_EXIT", code);
+        }
+        command.output().expect("runs the copied scripts/check.sh")
     }
 }
 
@@ -913,6 +981,23 @@ fn a_missing_listed_projection_fails_the_gate() {
     );
     assert!(healthy_text.contains("GATE: PASS"), "{healthy_text}");
     assert_eq!(healthy.status.code(), Some(0), "{healthy_text}");
+
+    // The wiring R4 is actually about: a projection that is stale (1) or one the check cannot
+    // judge (3) must make the *gate* fail, not merely the command. The stub `cargo` answers the
+    // configured verdict for the `render --check` invocation only.
+    for code in ["1", "3"] {
+        let failed = fixture.banner_with(Some(code));
+        let failed_text = banner_text(&failed);
+        assert!(
+            failed_text.contains(&format!("render --check docs/spec.md (exit {code})")),
+            "the step must mark the check's exit {code} as a failure:\n{failed_text}"
+        );
+        assert!(
+            failed_text.contains("GATE: FAIL"),
+            "exit {code} from a pinned projection makes the gate red:\n{failed_text}"
+        );
+        assert_eq!(failed.status.code(), Some(1), "{failed_text}");
+    }
 }
 
 /// R4: a pinned list that checks nothing is a FAIL, never a pass, and a line with more than one
@@ -955,8 +1040,21 @@ fn a_pinned_list_that_cannot_be_read_fails_the_gate() {
     let out = fixture.banner();
     let text = banner_text(&out);
     assert!(
-        text.contains("FAIL  .req/projections is present but cannot be read"),
+        text.contains("FAIL  .req/projections is present but is not a readable regular file"),
         "a pinned list that cannot be examined is a failure, not 'nothing pinned':\n{text}"
+    );
+    assert!(text.contains("GATE: FAIL"), "{text}");
+    assert_eq!(out.status.code(), Some(1), "{text}");
+
+    // A directory is the other shape of "present but unusable": `-r` alone accepts it, the loop's
+    // redirection then fails at the shell, and the step would blame "pins no projection".
+    let fixture = ScriptFixture::new("projection-directory");
+    std::fs::create_dir_all(fixture.path().join(".req/projections")).expect("makes a directory");
+    let out = fixture.banner();
+    let text = banner_text(&out);
+    assert!(
+        text.contains("FAIL  .req/projections is present but is not a readable regular file"),
+        "a directory is not a pinned list:\n{text}"
     );
     assert!(text.contains("GATE: FAIL"), "{text}");
     assert_eq!(out.status.code(), Some(1), "{text}");

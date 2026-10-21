@@ -472,8 +472,9 @@ fn parse_invocation(args: &[String], command: &str) -> Result<Invocation, i32> {
                 return Err(2);
             };
             // An option-shaped value is a missing value, not a file named like a flag: writing
-            // to `--check` would be a silent answer to a question nobody asked.
-            if value.is_empty() || value.starts_with("--") {
+            // to `--check`, or to `-x` after a `--out` typo, would be a silent answer to a
+            // question nobody asked. Paths beginning with `-` are not supported on purpose.
+            if value.is_empty() || value.starts_with('-') {
                 eprintln!("{}\n`{arg}` needs a path, not {value:?}", usage());
                 return Err(2);
             }

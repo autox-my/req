@@ -343,11 +343,13 @@ fi
 projections_file="$PWD/.req/projections"
 if [ ! -e "$projections_file" ] && [ ! -L "$projections_file" ]; then
   printf 'projections: none pinned (.req/projections absent; nothing to check)\n'
-elif [ ! -r "$projections_file" ]; then
-  # Present but unreadable is not absent: a pinned list that cannot be examined must be red, or
-  # the gate reports "nothing pinned" about a file that is right there. `-L` covers a dangling
-  # link, which `-e` cannot see through.
-  printf 'FAIL  .req/projections is present but cannot be read: the pinned list cannot be examined, and a skipped check is never a pass\n'
+elif [ ! -f "$projections_file" ] || [ ! -r "$projections_file" ]; then
+  # Present but unusable is not absent: a pinned list that cannot be examined must be red, or the
+  # gate reports "nothing pinned" about a path that is right there. `-L` covers a dangling link
+  # (`-e` cannot see through it), and `-f` refuses a directory, FIFO or device — a directory would
+  # otherwise fail the loop's redirection with a raw bash error and be blamed as "pins no
+  # projection", and a FIFO would block the gate forever.
+  printf 'FAIL  .req/projections is present but is not a readable regular file: the pinned list cannot be examined, and a skipped check is never a pass\n'
   fail=1
 else
   projections_checked=0
