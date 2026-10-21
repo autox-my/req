@@ -41,8 +41,23 @@ jobs:
           set -eu
           # The lockfile is the pin: npm ci verifies integrity against it, which a global
           # install of `latest` cannot do. This repository pins its review CLI deliberately.
-          npm --prefix tools/ocr ci --no-fund --no-audit --cache "$GITHUB_WORKSPACE/.npm-cache"
-          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          # The CLI comes from `origin/main`, never from this checkout: the review of a change must not
+          # execute the tool that change supplies, in a step that holds the provider token. The pin's
+          # package.json and lockfile are trusted material, exactly like the gate and the rule file.
+          TOOL_DIR="$RUNNER_TEMP/ocr-tool"
+          mkdir -p "$TOOL_DIR"
+          for f in package.json package-lock.json; do
+            if ! git cat-file -e "origin/main:tools/ocr/$f" 2>/dev/null; then
+              echo "::error::origin/main has no tools/ocr/$f — fail closed, never install the tool from this checkout"
+              exit 1
+            fi
+            git show "origin/main:tools/ocr/$f" > "$TOOL_DIR/$f"
+          done
+          npm --prefix "$TOOL_DIR" ci --no-fund --no-audit --cache "$GITHUB_WORKSPACE/.npm-cache"
+          # The remaining steps find it through the environment; a per-step `export` would be three
+          # copies of one path, free to drift.
+          echo "OCR_BIN=$TOOL_DIR/node_modules/.bin" >> "$GITHUB_ENV"
+          export PATH="$TOOL_DIR/node_modules/.bin:$PATH"
           if ! command -v ocr >/dev/null 2>&1; then
             echo "::error::ocr did not install, so no review can run"
             exit 1
@@ -60,7 +75,11 @@ jobs:
           OCR_LLM_MODEL: ${{ vars.OCR_LLM_MODEL }}
           OCR_LLM_AUTH_HEADER: x-api-key
         run: |
-          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          if [ -z "${OCR_BIN:-}" ]; then
+            echo "::error::OCR_BIN is not set — the runner did not carry $GITHUB_ENV to this step"
+            exit 1
+          fi
+          export PATH="$OCR_BIN:$PATH"
           if [ -z "${OCR_LLM_TOKEN:-}" ]; then
             echo "::error::OCR_LLM_TOKEN is not set (Settings, Actions, Secrets)"
             exit 1
@@ -81,7 +100,11 @@ jobs:
           # in this repository, while the SHA always resolves after a full checkout.
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          if [ -z "${OCR_BIN:-}" ]; then
+            echo "::error::OCR_BIN is not set — the runner did not carry $GITHUB_ENV to this step"
+            exit 1
+          fi
+          export PATH="$OCR_BIN:$PATH"
           # The rules that judge this diff come from origin/main too — the same trust
           # boundary as the gate below. A pull request runs *its own* workflow file, so a
           # rule file read from this checkout would let the change under review weaken or
