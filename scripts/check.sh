@@ -5,7 +5,7 @@
 # a check that cannot run is not a passing check, and the commit message must say
 # so. The first non-zero status fails the gate.
 #
-# Usage: scripts/check.sh [all] | [baseline [file]] | [decision] | [plan]
+# Usage: scripts/check.sh [--fast] [all|plan] | [baseline [file]] | [decision]
 #   no argument, or `all`
 #                      every check (the default; CI uses the no-argument form)
 #   baseline [file]    only the Baseline step (file defaults to
@@ -20,6 +20,15 @@
 #                      The same shape as `baseline`: tests/decision.rs drives it
 #                      against a tampered and an empty log, and it reports
 #                      `DECISION STEP: PASS/FAIL`, never the gate's banner.
+#   --fast             run the full gate without the checks that cost the most to *run*
+#                      and tell you the least mid-iteration: `clippy`, the external
+#                      corpora (v1-v3) and the direction gold set, and the review-rule
+#                      and review-scope checks. Measured on the maintainer's machine:
+#                      85s -> ~60s. **Iteration only.** The banner reads `GATE: PASS
+#                      (FAST …)`, never the plain one, and a commit still requires the
+#                      full run — a fast green is not a merge verdict. Rejected beside
+#                      `baseline`/`decision` (one check is not the gate, and neither is
+#                      fast) and unknown flags stay usage errors.
 #   plan               print the command of every check the default run would execute,
 #                      from the same call sites, and execute no check. The probes that
 #                      gate a check are not consulted, so the plan lists a check whose
@@ -62,6 +71,12 @@ fail=0
 dry=0
 say()  { printf '\n== %s\n' "$*"; }
 skip() { printf 'SKIP  %s\n' "$1"; }
+fastskip() {
+  # A check `--fast` deliberately did not run. Not a SKIP — the tooling is there — and
+  # never a pass: the banner says the run was fast, so a scrollback cannot mistake it
+  # for a merge verdict.
+  printf 'FAST  %s — skipped: iteration only (run scripts/check.sh before a commit)\n' "$1"
+}
 run()  {
   # A plan prints what the default run would execute and executes nothing, so the
   # Baseline step's *default-run* call site is testable without running the gate.
@@ -85,13 +100,18 @@ run()  {
 # is a usage error (exit 2), never a quiet run of a different scope: an unknown step
 # name, an extra positional, or a second file are all rejected.
 usage() {
-  printf 'usage: scripts/check.sh [all] | [baseline [file]] | [decision] | [plan]\n' >&2
+  printf 'usage: scripts/check.sh [--fast] [all|plan] | [baseline [file]] | [decision]\n' >&2
 }
 
 # One home for the committed Baseline the gate verifies: the full run and the standalone
 # step both default to it, so the two can never drift apart.
 baseline_default="baselines/air-gapped.json"
 baseline_file="$baseline_default"
+fast=0
+if [ "${1:-}" = "--fast" ]; then
+  fast=1
+  shift
+fi
 step="all"
 if [ $# -gt 0 ]; then
   step="$1"
@@ -124,6 +144,14 @@ case $step in
 esac
 if [ $# -gt 0 ]; then
   printf 'unexpected argument: %s\n' "$1" >&2
+  usage
+  exit 2
+fi
+# `--fast` scopes the full run (and its plan). A single-step invocation is already one
+# check, so the flag would be a no-op there — and a no-op flag is how a caller comes to
+# believe they ran something they did not.
+if [ "$fast" -eq 1 ] && [ "$step" != all ] && [ "$step" != plan ]; then
+  printf -- '--fast applies to the full run or its plan, not to the %s step\n' "$step" >&2
   usage
   exit 2
 fi
@@ -200,7 +228,11 @@ finish() {
   printf '\n----------------------------------------\n'
   if [ "$dry" -eq 1 ]; then
     # No check was executed, so nothing was checked: exit 3, and never a pass.
-    printf 'GATE: UNVERIFIABLE (plan only: no check was executed)\n'
+    if [ "$fast" -eq 1 ]; then
+      printf 'GATE: UNVERIFIABLE (fast plan only: no check was executed)\n'
+    else
+      printf 'GATE: UNVERIFIABLE (plan only: no check was executed)\n'
+    fi
     exit 3
   fi
   if [ "$step" = baseline ] || [ "$step" = decision ]; then
@@ -215,7 +247,13 @@ finish() {
     exit $fail
   fi
   if [ $fail -eq 0 ]; then
-    printf 'GATE: PASS (skips above are not passes)\n'
+    if [ "$fast" -eq 1 ]; then
+      # Not the plain banner: a fast run did not check clippy, the external corpora or the
+      # review rules, so it is an iteration verdict and must not be quoted as a merge one.
+      printf 'GATE: PASS (FAST: iteration only — clippy, the external corpora and direction bench, and the review-rule checks did not run; a full scripts/check.sh is required before a commit)\n'
+    else
+      printf 'GATE: PASS (skips above are not passes)\n'
+    fi
   else
     printf 'GATE: FAIL\n'
   fi
@@ -241,7 +279,9 @@ else
   skip "rustfmt not installed (rustup component add rustfmt)"
 fi
 
-if [ "$dry" -eq 1 ] || command -v cargo-clippy >/dev/null 2>&1; then
+if [ "$fast" -eq 1 ]; then
+  fastskip "clippy --all-targets -- -D warnings"
+elif [ "$dry" -eq 1 ] || command -v cargo-clippy >/dev/null 2>&1; then
   run cargo clippy --all-targets -- -D warnings
 else
   skip "clippy not installed (rustup component add clippy)"
@@ -263,16 +303,23 @@ run cargo run -q -- bench   # seed parity corpus: 0 PASS / 1 FAIL / 3 UNVERIFIAB
 # External corpora (other projects' real requirement prose, labelled by
 # construction). Same hard gate; see docs/canonical-hashing.md 6.3. v2 adds the
 # predicate-swap class, which caught a silent false merge during rules v2.
-run cargo run -q -- bench bench/corpus/external-v1.yml
-run cargo run -q -- bench bench/corpus/external-v2.yml
-# v3 widens the prose: the PROMISE NFR set (deterministic sample of 969 statements
-# across 47 project ids) plus StrictDoc and Doorstop, and adds the digit-grouping and
-# exact unit-scale equivalence classes. It caught the "may not" false merge (rules v4).
-run cargo run -q -- bench bench/corpus/external-v3.yml
-# The direction gold set: same hard FMR gate plus the direction gate — a loosening
-# reported as no change (or as the opposite direction) is a dangerous confusion and
-# fails, exactly as a false merge does. See docs/canonical-hashing.md 6.3.
-run cargo run -q -- bench bench/corpus/direction-v1.yml
+  # `--fast` skips these four here, and only here: they are the gate's largest *runtime*
+  # cost (~19s of an 85s run, measured), and their corpora do not move mid-iteration.
+  # The seed parity bench above is not skipped — it is the gate that matters, and it is 1s.
+  if [ "$fast" -eq 1 ]; then
+    fastskip "the external corpora (v1-v3) and the direction gold set"
+  else
+  run cargo run -q -- bench bench/corpus/external-v1.yml
+  run cargo run -q -- bench bench/corpus/external-v2.yml
+  # v3 widens the prose: the PROMISE NFR set (deterministic sample of 969 statements
+  # across 47 project ids) plus StrictDoc and Doorstop, and adds the digit-grouping and
+  # exact unit-scale equivalence classes. It caught the "may not" false merge (rules v4).
+  run cargo run -q -- bench bench/corpus/external-v3.yml
+  # The direction gold set: same hard FMR gate plus the direction gate — a loosening
+  # reported as no change (or as the opposite direction) is a dangerous confusion and
+  # fails, exactly as a false merge does. See docs/canonical-hashing.md 6.3.
+  run cargo run -q -- bench bench/corpus/direction-v1.yml
+  fi
 
 # The release gate over this repository's own corpus. `req gate` was the one subcommand the gate
 # never invoked, so the six variant-scoped claims in `claims/` were never examined by CI while a
@@ -395,7 +442,9 @@ fi
 # The rule-file checks decide from `git ls-files` output and from the shape of review/rule.json,
 # and that decision logic needs neither `ocr` nor a review run — so it is table-driven here,
 # ahead of the review-tool probe, rather than behind a check that can SKIP into looking green.
-if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/review/check_rules.py" ] && command -v python3 >/dev/null 2>&1; }; then
+if [ "$fast" -eq 1 ]; then
+  fastskip "the review-rule self-check (check_rules.py --self-check)"
+elif [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/review/check_rules.py" ] && command -v python3 >/dev/null 2>&1; }; then
   run python3 "$PWD/tools/review/check_rules.py" --self-check
 else
   skip "python3 or tools/review/check_rules.py missing: cannot self-check the rule-file checks"
@@ -404,7 +453,11 @@ fi
 # OCR is a review tool, not a gate: report the pin so version drift is visible. A plan
 # reports the rule-check it would run, but probes nothing — so `plan` executes no command
 # at all beyond the environment setup above.
-if [ "$dry" -eq 1 ] || command -v ocr >/dev/null 2>&1; then
+if [ "$fast" -eq 1 ]; then
+  # The review-rule effect probe spawns `ocr` twice; a review-configuration check, not a
+  # claim check — a claim edit cannot move it.
+  fastskip "the review-rule and review-scope checks (check_rules.py, check_review_scope.py)"
+elif [ "$dry" -eq 1 ] || command -v ocr >/dev/null 2>&1; then
   if [ "$dry" -eq 0 ]; then
     say "ocr (review tool, not a gate)"
     ocr --version | head -1
