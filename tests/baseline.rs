@@ -2317,6 +2317,94 @@ fn the_default_gate_run_verifies_the_committed_baseline() {
     assert!(stdout.contains("GATE: UNVERIFIABLE"), "{stdout}");
 }
 
+/// `--fast` is the iteration mode: it plans strictly fewer checks, its banner cannot be quoted
+/// as the gate's verdict, and where it could only be a no-op it is a usage error. Measured on the
+/// maintainer's machine: a warm full run is 59s, a fast one 25s.
+#[cfg(unix)]
+#[test]
+fn the_fast_run_skips_the_expensive_checks_and_never_reads_as_the_gate() {
+    let fast = check_sh_args(&["--fast".as_ref(), "plan".as_ref()]);
+    let fast_out = String::from_utf8_lossy(&fast.stdout);
+    let fast_lines: Vec<String> = fast_out
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect();
+    assert_eq!(
+        fast.status.code(),
+        Some(3),
+        "a plan executes nothing, so it is UNVERIFIABLE, never a pass:\n{fast_out}"
+    );
+
+    // Each dropped step is NAMED as skipped (FAST, not SKIP: the tooling is present)...
+    for skipped in [
+        "FAST clippy --all-targets -- -D warnings",
+        "FAST the external corpora (v1-v3) and the direction gold set",
+        "FAST the review-rule self-check",
+        "FAST the review-rule and review-scope checks",
+    ] {
+        assert!(
+            fast_lines.iter().any(|line| line.starts_with(skipped)),
+            "the fast plan must name `{skipped}` as skipped:\n{fast_out}"
+        );
+    }
+    // ...the steps that decide behaviour are still planned...
+    for kept in [
+        "PLAN cargo test",
+        "PLAN cargo run -q -- canon",
+        "PLAN cargo run -q -- bench",
+        "PLAN cargo run -q -- gate",
+        "PLAN cargo run -q -- render --check docs/spec.md",
+    ] {
+        assert!(
+            fast_lines.iter().any(|line| line.starts_with(kept)),
+            "the fast plan must keep `{kept}`:\n{fast_out}"
+        );
+    }
+    // ...and the banner is the fast one, so a scrollback cannot mistake it for the gate's.
+    assert!(
+        fast_out.contains("GATE: UNVERIFIABLE (fast plan only"),
+        "a fast plan must not print the plain banner:\n{fast_out}"
+    );
+
+    // The full plan still plans what fast drops: the difference is the flag, not a changed script.
+    let full = check_sh_args(&["plan".as_ref()]);
+    let full_out = String::from_utf8_lossy(&full.stdout);
+    let full_lines: Vec<String> = full_out
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect();
+    for planned in [
+        "PLAN cargo clippy",
+        "external-v1",
+        "direction-v1",
+        "check_rules.py",
+    ] {
+        assert!(
+            full_lines.iter().any(|line| line.contains(planned)),
+            "the full plan must still plan `{planned}`:\n{full_out}"
+        );
+    }
+
+    // Where the flag could only be a no-op, or is unknown, it is rejected rather than ignored.
+    for args in [
+        ["--fast", "baseline"],
+        ["--fast", "decision"],
+        ["--fat", "plan"],
+    ] {
+        let out = check_sh_args(&args.map(std::ffi::OsStr::new));
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "{args:?} must be a usage error, not a quiet run of a different scope"
+        );
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("usage:"),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
 /// The step-name contract fails fast: an unknown step, or an argument the contract does
 /// not define, exits 2 with usage on stderr — never a quiet run of a different scope.
 #[cfg(unix)]

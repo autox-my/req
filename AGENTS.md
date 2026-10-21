@@ -170,6 +170,17 @@ export OCR_NO_UPDATE=1
   must decide every key an applying claim depends on: `dependencies_decided` refuses to answer
   (exit 3) for the dependency-guarded ones rather than skipping, and the undecided count keeps
   the rest honest. Green before every commit and merge.
+  **`scripts/check.sh --fast` is the iteration mode**, measured rather than asserted: a warm
+  full run is 59s and a fast one 25s on the maintainer's machine (~34s saved per iteration),
+  because the steps it drops are the ones whose *runtime* dominates — `clippy`, the external
+  corpora (v1-v3) and the direction gold set, and the review-rule/review-scope checks. It keeps
+  `fmt`, `test`, `canon`, the seed parity bench, the Baseline and decision steps, the release
+  gate and the projection check. It cannot be mistaken for the gate: each skipped step prints
+  **`FAST`** (never `SKIP`, because the tooling is there) and the banner reads
+  `GATE: PASS (FAST: …)`, so a fast green is an iteration verdict — **the full run is required
+  before a commit**, and CI always runs the full one. `--fast` composes with `plan`; beside
+  `baseline` or `decision` it is a usage error (exit 2), because one check is not the gate and
+  neither is fast.
 - Review-rule coverage: `python3 tools/review/check_rules.py` (part of `check.sh` when
   `ocr` is present) — checks both directions between `review/rule.json` and the tracked tree,
   plus the checklist text itself: every entry must still match a tracked file, every tracked
