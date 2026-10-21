@@ -63,7 +63,8 @@ fn baseline_for(rows: &[Row]) -> req::baseline::Manifest {
             hash: "a".repeat(64),
             entries: 1,
         },
-    );
+    )
+    .expect("the fixture signing time is a valid attestation");
     manifest
 }
 

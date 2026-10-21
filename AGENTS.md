@@ -173,7 +173,7 @@ export OCR_NO_UPDATE=1
   handed, so a blank `rule` is an inert checklist that passes both directions — the effect is
   checked (`source: custom`, and the text), never the exit status. Its `--self-check`
   table-drives the pure half (the `git ls-files -z` listing, the allow-list membership rule,
-  the entry reader) and needs no `ocr`.
+  the entry reader, and the preview's JSON shape) and needs no `ocr`.
 - Direction: `cargo run -q -- compare <a.yml> <b.yml>` — classifies the change
   (`modality_weakening`, `numeric_tightening`, `polarity_flip`, `scope_divergence`, …),
   exit **3** when a side has no structured form to compare, and when a side declares a
@@ -316,7 +316,12 @@ export OCR_NO_UPDATE=1
   was not valid when the signature was made), and **revocation is prospective** — a key revoked
   *after* the signing time still verifies, while one revoked at or before it is FAIL. Both are
   judged by calendar date, and the signing time is **signer-asserted** (no RFC 3161), so
-  revocation bounds newly asserted times only; `valid_from` is recorded but not enforced. An unknown key or a
+  revocation bounds newly asserted times only; `valid_from` is recorded but not enforced. An
+  envelope **newer** than this build's is a separate case: its `signed_at` is not a spelling this
+  build validates, so a **dated** revocation is not a definite finding there — it stays
+  UNVERIFIABLE, with the remedy of a build that writes that envelope — while an anchor whose own
+  `revoked_at` cannot be read still fails closed on every envelope, because that is not a
+  question about a time. An unknown key or a
   missing signature is UNVERIFIABLE — a manifest is **not yet a Baseline** until a human signs
   it. The signature check is a **process boundary** to a pinned verifier, so the core links no
   cryptography and still no network; with no verifier installed the outcome is UNVERIFIABLE,

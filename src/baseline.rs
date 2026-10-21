@@ -16,8 +16,14 @@
 //! from it: a manifest written under a different canonical rules version is UNVERIFIABLE, with
 //! the remedy in the direction of the mismatch, rather than a per-claim tampering report.
 //!
-//! Three outcomes, as everywhere else. **Revoked** trust is FAIL (a human withdrew trust);
-//! **expired** trust is UNVERIFIABLE (a v2 Baseline is historical and no trusted signing time
+//! Three outcomes, as everywhere else. **Revoked** trust is FAIL **when this build can judge the
+//! time the key is judged at** (a human withdrew trust); an envelope *newer* than this build's
+//! records a signing time this build may not interpret, so the same revocation cannot become a
+//! definite finding there — it is UNVERIFIABLE, and the version dispatch has already said so. A
+//! trust anchor whose own `revoked_at` cannot be read is a separate, **time-independent** case
+//! ([`TrustState::RevokedAnchor`]): it fails closed on every envelope, because the defect is the
+//! anchor and not the envelope's signing time.
+//! **Expired** trust is UNVERIFIABLE (a v2 Baseline is historical and no trusted signing time
 //! exists; a v3 Baseline records one, so the expiry is judged at it — still never a silent
 //! pass); an unknown key or a missing signature is UNVERIFIABLE. A v3 manifest whose recorded
 //! authority no longer re-derives from `decisions/` is FAIL — the same class as a hand-edited
@@ -111,12 +117,33 @@ pub fn manifest(rows: &[Row], rules_v: u32, selection: &Context) -> Manifest {
 
 /// Fill the two v3 attestations into a manifest. `signed_at` is the signer's assertion, never a
 /// clock req invents; `head` is the Decision log's chain head, re-derived from `decisions/`.
-pub fn attest(manifest: &mut Manifest, signed_at: &str, head: &decision::Head) {
+///
+/// **The time is validated here, not only at the CLI.** `from_json` rejects a v3 manifest whose
+/// `signed_at` is not an RFC 3339 UTC timestamp — the shape is inside the signed bytes, and
+/// `TrustFile::state` compares dates lexicographically, so an unreadable spelling would sort
+/// below every trust date and read a revoked key as trusted. The CLI validates `--at` before it
+/// gets here, but `attest` is a **library** entry point: without this check a caller could emit
+/// an "attestation" that the only reader of a v3 manifest refuses, and the failure would surface
+/// as a parse error at verification time with nothing to point at. An invalid time writes
+/// nothing, so a rejected call leaves the manifest unattested rather than half-filled.
+pub fn attest(
+    manifest: &mut Manifest,
+    signed_at: &str,
+    head: &decision::Head,
+) -> Result<(), String> {
+    if !valid_signing_time(signed_at) {
+        return Err(format!(
+            "`signed_at` {signed_at:?} is not an RFC 3339 UTC timestamp with a `Z` offset, so it \
+             cannot be attested — the value is inside the signed bytes and adjudicates the key's \
+             expiry and revocation; pass the signer's `--at` value (e.g. 2026-10-20T18:30:00Z)"
+        ));
+    }
     manifest.signed_at = Some(signed_at.to_string());
     manifest.authority = Some(Authority {
         head: head.hash.clone(),
         entries: head.entries,
     });
+    Ok(())
 }
 
 /// The **exact bytes a signature covers**: fixed key order, sorted selection and claims, no
@@ -454,7 +481,14 @@ pub struct TrustFile {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TrustState {
     Trusted,
+    /// A revocation **dated** at or before the time the key is judged at.
     Revoked(String),
+    /// The anchor's own `revoked_at` cannot be read, so the key is treated as revoked (fail
+    /// closed). Kept apart from [`TrustState::Revoked`] because this is **not a judgement about a
+    /// time**: it stays a definite finding on every envelope version, including a newer one whose
+    /// signing time this build cannot interpret. Folding the two together would let a newer
+    /// envelope turn "your trust anchor is broken" into "we cannot tell", with the wrong remedy.
+    RevokedAnchor(String),
     Expired(String),
     Unknown,
 }
@@ -488,14 +522,16 @@ impl TrustFile {
         // accepts only a calendar-valid `YYYY-MM-DD` (month 1-12, the month's real last day, year
         // >= 1970) or an RFC 3339 timestamp whose date part is valid. Anything else — a typo'd
         // month (`2026-13-01`), an unpadded day (`2026-10-1`), a human spelling (`Oct 20 2026`) —
-        // is reported as **revoked** (for `revoked_at`) or **expired** (for `valid_until`), never
-        // as trusted. `date_of` truncates blindly, so without that check a malformed spelling
-        // would sort below every real date and read a revoked key as trusted; the check is why it
-        // cannot. Pinned by `tests/baseline.rs::a_malformed_trust_date_fails_closed`.
+        // is reported as **revoked** (for `revoked_at`, as [`TrustState::RevokedAnchor`], because
+        // the defect is the anchor and not a judgement about a time) or **expired** (for
+        // `valid_until`), never as trusted. `date_of` truncates blindly, so without that check a
+        // malformed spelling would sort below every real date and read a revoked key as trusted;
+        // the check is why it cannot. Pinned by
+        // `tests/baseline.rs::a_malformed_trust_date_fails_closed`.
         let at_date = date_of(at);
         if let Some(revoked_at) = &key.revoked_at {
             if !valid_judgement_time(revoked_at) {
-                return TrustState::Revoked(format!(
+                return TrustState::RevokedAnchor(format!(
                     "revoked at {revoked_at}, which is not an ISO date or RFC 3339 timestamp — \
                      treated as revoked, never as trusted"
                 ));
@@ -1139,7 +1175,36 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
 
     match trust.state(key_id, now) {
         TrustState::Trusted => {}
-        TrustState::Revoked(reason) => failed.push(format!("key {key_id} is {reason}")),
+        // **A revocation is judged at a time this build must be able to interpret.** For a v2
+        // manifest the judged time is today and for a v3 one it is the attested `signed_at`
+        // (ADR 0016), so a key revoked at or before it was not trusted when the human signed —
+        // a definite finding, symmetric with expiry at signing. An envelope **newer** than this
+        // build's records a signing time this build does not validate (and the CLI falls back to
+        // today for it), so the same revocation cannot be turned into a definite FAIL: the
+        // version dispatch above already answered UNVERIFIABLE with the remedy of verifying under
+        // a build that writes it, and a FAIL here would outrank it and misdiagnose the change.
+        // Gating on `==` instead of `<=` would break the documented v2 answer, which is still
+        // "judged at today".
+        TrustState::Revoked(reason) => {
+            if manifest.version <= BASELINE_VERSION {
+                failed.push(format!("key {key_id} is {reason}"));
+            } else {
+                open.push(format!(
+                    "key {key_id} is {reason} — a newer envelope (v{}) records a signing time this \
+                     build cannot judge, so the revocation cannot be decided here; verify with a \
+                     build that writes that envelope",
+                    manifest.version
+                ));
+            }
+        }
+        // **A broken anchor is not a judgement about a time**, so no envelope version can make it
+        // "cannot tell": it fails closed on every manifest this build reads, a newer one included.
+        // Reporting it as UNVERIFIABLE would also hand out the wrong remedy — a build that writes
+        // the newer envelope reads the same unreadable `baselines/trust.yml`.
+        TrustState::RevokedAnchor(reason) => failed.push(format!(
+            "key {key_id} is {reason} — the trust anchor itself cannot be read, so this is not a \
+             question about the envelope's signing time"
+        )),
         // A v3 manifest records its signing time, so expiry is judged *at that time* (ADR
         // 0016): a key that had already expired then was not trusted when the Baseline was
         // signed, which is a definite finding — symmetric with revocation at/before the signing
@@ -1376,7 +1441,14 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         let head = decision::head(&log)
             .expect("a VALID decision chain is non-empty and ends in a filled hash");
         let mut manifest = manifest(&rows, crate::canon::RULES_V, &context);
-        attest(&mut manifest, &at, &head);
+        // `--at` was validated above, so this cannot fail on this path; it is handled rather
+        // than unwrapped because a panic here would be a traceback instead of a verdict, and
+        // the CLI's validation is not `attest`'s contract (a library caller gets the same
+        // refusal, not a manifest that `from_json` would reject).
+        if let Err(e) = attest(&mut manifest, &at, &head) {
+            eprintln!("[UNVERIFIABLE] {e}");
+            return 3;
+        }
         print!("{}", canonical_bytes(&manifest));
         return 0;
     };
