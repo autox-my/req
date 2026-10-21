@@ -379,13 +379,23 @@ fn usage_verbs(usage: &str) -> Vec<String> {
         .max_by_key(|&(offset, count)| (count, std::cmp::Reverse(offset)))
         .map(|(offset, _)| offset);
 
+    let mut unclassifiable: Vec<&str> = Vec::new();
     let mut verbs: Vec<String> = Vec::new();
     for line in &indented {
         let column = match description_column {
             Some(column) if description_offset(line) == Some(column) => line[..column].trim_end(),
             // An alternatives row has no description column; its whole line is the column.
             _ if line.contains(" | ") && description_offset(line).is_none() => line.trim_end(),
-            _ => continue,
+            _ => {
+                // An indented line with a description run this oracle cannot place is an
+                // ambiguity it must not swallow: silently omitting a misaligned row would drop
+                // a verb from the scrape, and the set-equality guard would agree with the
+                // omission. Fail loudly instead, naming the line.
+                if description_offset(line).is_some() {
+                    unclassifiable.push(line);
+                }
+                continue;
+            }
         };
         for token in column.split_whitespace() {
             if token == "|" {
@@ -403,6 +413,11 @@ fn usage_verbs(usage: &str) -> Vec<String> {
             }
         }
     }
+    assert!(
+        unclassifiable.is_empty(),
+        "the USAGE scrape cannot classify these indented lines — fix their layout or teach the \
+         scraper (a silent skip could hide a verb):\n{unclassifiable:#?}"
+    );
     verbs
 }
 
@@ -440,7 +455,6 @@ usage: req [--root <dir>] <command> [args]
   bench [corpus.yml]              the FMR gate
   select | render | trace | gate k=v [...]
                                   the variant projections and the release gate
-  the variant  projections and the release gate
   init                            create a corpus
   --version | -V                  the versions
   --help | -h                     this text
@@ -450,6 +464,22 @@ The corpus root is resolved at runtime.";
         usage_verbs(usage),
         ["bench", "select", "render", "trace", "gate", "init"]
     );
+}
+
+#[test]
+#[should_panic(expected = "cannot classify")]
+fn the_usage_scrape_refuses_a_line_it_cannot_place() {
+    // A wrapped description carrying its own double-space run is indistinguishable from a
+    // misaligned verb row without a lexicon. Dropping it silently could hide a verb from the
+    // scrape, so the helper fails loudly and makes the maintainer fix the layout or the parser.
+    let usage = "\
+usage: req x
+
+  bench [corpus.yml]              the FMR gate
+  the variant  projections and the release gate
+
+The corpus root is resolved at runtime.";
+    let _ = usage_verbs(usage);
 }
 
 #[test]
@@ -468,14 +498,48 @@ fn every_commands_help_answers_with_no_corpus_and_prints_no_root_line() {
 }
 
 #[test]
+fn a_help_request_for_an_unknown_verb_stays_a_usage_error() {
+    // The failure direction of the lookup: help must not turn a typo into an answer. A
+    // regression that printed some page for any first argument would pass every test above.
+    let fx = NoCorpus::new("req-unknown-verb-help");
+    let out = run_at(fx.path(), &["not-a-command", "--help"]);
+    assert_eq!(
+        out.code, 2,
+        "an unknown verb is a usage error even with --help:\n{}\n{}",
+        out.stdout, out.stderr
+    );
+    assert!(
+        !out.stdout.contains("usage: req not-a-command"),
+        "an unknown verb must not receive a page:\n{}",
+        out.stdout
+    );
+    assert!(
+        out.stderr
+            .contains("unrecognized subcommand: not-a-command"),
+        "the usage error names the unknown verb:\n{}",
+        out.stderr
+    );
+    assert!(
+        !out.stderr.contains("corpus root:"),
+        "the lookup fails before the root is resolved:\n{}",
+        out.stderr
+    );
+}
+
+#[test]
 fn the_short_help_flag_is_the_same_page_for_every_command() {
     let fx = NoCorpus::new("req-no-corpus-per-command-short-help");
     for command in ALL_COMMANDS {
-        let long = run_at(fx.path(), &[command, "--help"]);
+        let long = help_page(fx.path(), command);
         let short = run_at(fx.path(), &[command, "-h"]);
         assert_eq!(short.code, 0, "`req {command} -h`:\n{}", short.stderr);
+        assert!(
+            !short.stderr.contains("corpus root:"),
+            "`req {command} -h` resolves no root, exactly like the long form:\n{}",
+            short.stderr
+        );
         assert_eq!(
-            short.stdout, long.stdout,
+            short.stdout, long,
             "`req {command} -h` and `req {command} --help` are one answer, not two"
         );
     }
@@ -500,6 +564,42 @@ fn init_help_is_answered_before_the_init_handler_sees_it() {
     assert!(
         !fx.path().join("claims").exists() && !fx.path().join("aliases").exists(),
         "a help request must not create a corpus"
+    );
+}
+
+#[test]
+fn init_help_does_not_swallow_init_s_usage_errors() {
+    // The page says `init` takes no arguments and no `--root` (exit 2), and AGENTS.md says the
+    // same. A help flag must not turn either into a page: a user who got the invocation wrong
+    // is exactly the one who needs the error.
+    let fx = NoCorpus::new("req-init-help-usage");
+    let root = fx.path().to_str().expect("fixture path is UTF-8");
+    let with_root = run_at(fx.path(), &["init", "--root", root, "--help"]);
+    assert_eq!(
+        with_root.code, 2,
+        "`init --root … --help` is still a usage error:\n{}\n{}",
+        with_root.stdout, with_root.stderr
+    );
+    assert!(
+        with_root.stderr.contains("takes no --root"),
+        "the error names the offending flag:\n{}",
+        with_root.stderr
+    );
+
+    let with_argument = run_at(fx.path(), &["init", "junk", "--help"]);
+    assert_eq!(
+        with_argument.code, 2,
+        "`init junk --help` is still a usage error:\n{}\n{}",
+        with_argument.stdout, with_argument.stderr
+    );
+    assert!(
+        with_argument.stderr.contains("unexpected argument: junk"),
+        "the error names the offending argument:\n{}",
+        with_argument.stderr
+    );
+    assert!(
+        !fx.path().join("claims").exists(),
+        "a refused help request creates nothing"
     );
 }
 

@@ -431,7 +431,13 @@ fn main() {
         // `init::run` with `--help` would answer a help request as a usage error.
         "init" => {
             rest.remove(0);
-            if help_requested(&rest) {
+            // `init` answers `--help` only for an invocation that is otherwise valid: a
+            // positional argument and `--root` are usage errors, help flag or not — `init`
+            // takes neither, the page says so, and a user who got the invocation wrong is
+            // exactly the one who needs the error rather than a page.
+            let only_help =
+                !rest.is_empty() && rest.iter().all(|arg| arg == "--help" || arg == "-h");
+            if cli_root.is_none() && only_help {
                 println!("{}", INIT_HELP);
                 exit(0);
             }
