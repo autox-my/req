@@ -1,7 +1,8 @@
 # 0017. External requirement sets are sources, not corpora
 
-**Status: proposed** — drafted by the agent on 2026-10-21 in answer to [issue #44]. Acceptance is the
-maintainer's act; nothing here is implemented. Date proposed: 2026-10-21.
+**Status: accepted** — proposed by the agent, ratified by the maintainer on 2026-10-21. The decision
+answers [issue #44]. Nothing here is implemented yet: the decision stands, and the reader, the manifest
+and the drift check are separate work. Date proposed: 2026-10-21.
 
 ## Context
 
