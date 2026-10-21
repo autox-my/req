@@ -423,7 +423,9 @@ fn main() {
             print!("{}", version_text());
             exit(0);
         }
-        "--help" | "-h" => {
+        // The flags are matched through the same predicate every subcommand's page uses, so a
+        // spelling added there cannot reach `req gate <flag>` and miss `req <flag>`.
+        flag if is_help_flag(flag) => {
             println!("{USAGE}");
             exit(0);
         }

@@ -404,11 +404,11 @@ fn usage_verbs(usage: &str) -> Vec<String> {
             // An alternatives row has no description column; its whole line is the column.
             _ if line.contains(" | ") && description_offset(line).is_none() => line.trim_end(),
             _ => {
-                // An indented line with a description run this oracle cannot place is an
-                // ambiguity it must not swallow: silently omitting a misaligned row would drop
-                // a verb from the scrape, and the set-equality guard would agree with the
-                // omission. Fail loudly instead, naming the line.
-                if description_offset(line).is_some() {
+                // An indented, non-empty line this oracle cannot place is an ambiguity it
+                // must not swallow: a misaligned row, or a bare verb row with no description
+                // at all, would otherwise vanish from the scrape and the set-equality guard
+                // would agree with the omission. Fail loudly instead, naming the line.
+                if !line.trim().is_empty() {
                     unclassifiable.push(line);
                 }
                 continue;
@@ -477,6 +477,23 @@ fn the_usage_line_check_enforces_the_command_boundary_and_the_empty_synopsis() {
         !first_line_names_command("usage: req render|trace [k=v ...]\n", "render"),
         "a combined usage line is not either command's page"
     );
+}
+
+#[test]
+#[should_panic(expected = "cannot classify")]
+fn the_usage_scrape_names_a_bare_verb_row_it_cannot_place() {
+    // A row with no description and no alternatives is still a row: skipping it silently could
+    // hide an advertised verb, which is exactly what this oracle exists to catch.
+    let usage = "\
+usage: req x
+
+  bench [corpus.yml]              the FMR gate
+  canon [--fill | --verify]       parse diagnostics
+  compare <a.yml> <b.yml>         what kind of change
+  newverb
+
+The corpus root is resolved at runtime.";
+    let _ = usage_verbs(usage);
 }
 
 #[test]
