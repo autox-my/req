@@ -17,6 +17,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod common;
+
 /// The absolute path of the compiled binary, so the test does not depend on `$PATH`.
 fn req_bin() -> PathBuf {
     std::env::var_os("CARGO_BIN_EXE_req")
@@ -125,6 +127,10 @@ impl Corpus {
                 "statement: \"The API shall log a health check within 200 ms.\"",
             );
         assert_ne!(second, first, "the second claim must be a real edit");
+        assert!(
+            second.contains("The API shall log a health check within 200 ms."),
+            "the fixture must actually move the statement, not only the claim id"
+        );
         fs::write(self.claim_path("REQ-0002"), second).expect("writes the second claim");
         // The derived fields are the derivation's to write: the statement moved, so the
         // address must be re-derived exactly as a human would do it.
@@ -503,7 +509,7 @@ fn a_projection_under_another_rules_version_is_unverifiable() {
 /// empty file (nothing to parse).
 #[test]
 fn a_file_without_a_header_is_not_a_projection() {
-    let corpus = Corpus::new("no-header");
+    let corpus = Corpus::new("bare-print");
     let plain = corpus.out(&["render"]);
     corpus.write("spec.md", &plain.stdout);
 
@@ -513,8 +519,17 @@ fn a_file_without_a_header_is_not_a_projection() {
         "a bare print is not a committed projection:\n{}\n{}",
         checked.stdout, checked.stderr
     );
+    // On the message, not the whole of stderr: the resolved `corpus root:` line carries the
+    // fixture's own name, so a substring assert over stderr could be satisfied by a directory
+    // called `no-header` while the diagnostic says nothing about a header (that false pass is
+    // exactly what the tag rename above prevents).
+    let message = checked
+        .stderr
+        .lines()
+        .find(|line| line.contains("is not a projection"))
+        .unwrap_or_else(|| panic!("the verdict names the problem:\n{}", checked.stderr));
     assert!(
-        checked.stderr.contains("header"),
+        message.contains("header"),
         "the message names what is missing:\n{}",
         checked.stderr
     );
@@ -526,8 +541,13 @@ fn a_file_without_a_header_is_not_a_projection() {
         "an empty file has no header to judge:\n{}\n{}",
         empty.stdout, empty.stderr
     );
+    let empty_message = empty
+        .stderr
+        .lines()
+        .find(|line| line.contains("is not a projection"))
+        .unwrap_or_else(|| panic!("the verdict names the problem:\n{}", empty.stderr));
     assert!(
-        empty.stderr.contains("header"),
+        empty_message.contains("header"),
         "the message names what is missing:\n{}",
         empty.stderr
     );
@@ -537,7 +557,7 @@ fn a_file_without_a_header_is_not_a_projection() {
 /// empty context and comparing would report stale/current about a different question.
 #[test]
 fn an_unparsable_selection_is_unverifiable() {
-    let corpus = Corpus::new("bad-selection");
+    let corpus = Corpus::new("unparsable-pair");
     assert_eq!(corpus.out(&["render", "--out", "spec.md"]).code, 0);
     let text = corpus.read("spec.md");
     let edited = text.replacen("selection=none", "selection=garbage", 1);
@@ -754,16 +774,22 @@ fn the_help_pages_carry_the_projection_flags_and_classes() {
 /// R4: the gate actually runs the check for every pinned path. The oracle is `scripts/check.sh
 /// plan` — the same one `tests/baseline.rs` uses for the release-gate wiring — so deleting the
 /// step from the default run reddens here even though `render --check` itself still works.
+#[cfg(unix)]
 #[test]
 fn the_gate_plans_the_committed_projection_check() {
+    // HOME is pointed at the toolchain the gate resolves, the same way every other gate test in
+    // this suite does it (`tests/common::point_home_at_toolchain`): with the ambient HOME the
+    // script exits 2 on a checkout whose toolchain lives in `.tools/home`, and the failure would
+    // look like a missing projection step.
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let planned = Command::new("bash")
+    let mut command = Command::new("bash");
+    command
         .arg("scripts/check.sh")
         .arg("plan")
         .current_dir(root)
-        .env_remove("REQ_ROOT")
-        .output()
-        .expect("runs the gate's plan");
+        .env_remove("REQ_ROOT");
+    common::point_home_at_toolchain(&mut command);
+    let planned = command.output().expect("runs the gate's plan");
     let stdout = String::from_utf8_lossy(&planned.stdout);
     assert_eq!(
         planned.status.code(),
@@ -914,6 +940,26 @@ fn a_projection_list_that_checks_nothing_fails_the_gate() {
     );
     assert!(two_words_text.contains("GATE: FAIL"), "{two_words_text}");
     assert_eq!(two_words.status.code(), Some(1), "{two_words_text}");
+}
+
+/// R4: a pinned list that is **present but unusable** is not the tolerated "absent" state. A
+/// dangling symlink is the portable way to be in that state (a mode-000 file depends on the
+/// runner's uid): `-e` cannot see through it and `-r` is false, so a `[ -r ]`-only test would
+/// report "nothing pinned" about a file that is right there and leave the gate green.
+#[cfg(unix)]
+#[test]
+fn a_pinned_list_that_cannot_be_read_fails_the_gate() {
+    let fixture = ScriptFixture::new("projection-dangling");
+    let path = fixture.path().join(".req/projections");
+    std::os::unix::fs::symlink("no-such-target", &path).expect("creates the dangling link");
+    let out = fixture.banner();
+    let text = banner_text(&out);
+    assert!(
+        text.contains("FAIL  .req/projections is present but cannot be read"),
+        "a pinned list that cannot be examined is a failure, not 'nothing pinned':\n{text}"
+    );
+    assert!(text.contains("GATE: FAIL"), "{text}");
+    assert_eq!(out.status.code(), Some(1), "{text}");
 }
 
 /// R4: this repository's own adoption — `docs/spec.md` is committed and current. A corpus

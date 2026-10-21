@@ -331,12 +331,25 @@ fi
 # *deliverable*, not as a cache of every view, and adding a path is a decision.
 #
 # Conditional on purpose: a project that commits no projection has nothing to check, so an absent
-# `.req/projections` is not a failed check. Once the file exists the step is the gate's, and two
-# conditions make "nothing was checked" red instead of green — the release-gate step's lesson:
-# a listed path that no longer exists (a projection that vanished is silent decay), and a list
-# that yielded no path at all (a comment-only file examined nothing). The step prints how many
-# projections it checked, so neither case can read as a pass.
-if [ -r "$PWD/.req/projections" ]; then
+# `.req/projections` is not a failed check. But "no list" and "a list this script cannot read" are
+# different states: a file that exists and is not readable (mode 000, a dangling link, a bad mount)
+# is a **pinned list that became unusable**, and it must be red — the `.req/variants` step makes the
+# same distinction beside it, and `[ -r ]` alone would fold the two into the tolerated one. Once the
+# list is readable the step is the gate's, and two conditions make "nothing was checked" red
+# instead of green — the release-gate step's lesson: a listed path that no longer exists (a
+# projection that vanished is silent decay), and a list that yielded no path at all (a comment-only
+# file examined nothing). The step prints how many projections it checked, so neither case can read
+# as a pass.
+projections_file="$PWD/.req/projections"
+if [ ! -e "$projections_file" ] && [ ! -L "$projections_file" ]; then
+  printf 'projections: none pinned (.req/projections absent; nothing to check)\n'
+elif [ ! -r "$projections_file" ]; then
+  # Present but unreadable is not absent: a pinned list that cannot be examined must be red, or
+  # the gate reports "nothing pinned" about a file that is right there. `-L` covers a dangling
+  # link, which `-e` cannot see through.
+  printf 'FAIL  .req/projections is present but cannot be read: the pinned list cannot be examined, and a skipped check is never a pass\n'
+  fail=1
+else
   projections_checked=0
   projection_entries=0
   while IFS= read -r projection_line || [ -n "${projection_line}" ]; do
@@ -361,7 +374,7 @@ if [ -r "$PWD/.req/projections" ]; then
     # </dev/null: nothing in the body may consume the remaining paths from this file's stdin.
     run cargo run -q -- render --check "$projection_path" < /dev/null
     projections_checked=$((projections_checked + 1))
-  done < "$PWD/.req/projections"
+  done < "$projections_file"
   if [ "$dry" -eq 1 ]; then
     # `plan` executes nothing, so it must not report a count that reads as checks performed.
     printf 'projections planned: %d (nothing executed)\n' "$projections_checked"
@@ -375,8 +388,6 @@ if [ -r "$PWD/.req/projections" ]; then
     printf 'FAIL  .req/projections pins no projection: nothing was checked, and a skipped check is never a pass\n'
     fail=1
   fi
-else
-  printf 'projections: none pinned (.req/projections absent; nothing to check)\n'
 fi
 
 # The rule-file checks decide from `git ls-files` output and from the shape of review/rule.json,

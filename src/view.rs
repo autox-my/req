@@ -435,6 +435,10 @@ fn first_difference(stored: &str, fresh: &str) -> String {
             fresh_lines.len() + 1,
             stored_lines[fresh_lines.len()]
         )
+    } else if stored.replace("\r\n", "\n") == fresh.replace("\r\n", "\n") {
+        // `str::lines()` strips a trailing `\r`, so a CRLF checkout reaches this branch with
+        // every line agreeing; naming a missing final newline there would blame the wrong byte.
+        "the lines agree but their line endings differ (CRLF vs LF)".to_string()
     } else {
         "the lines agree but the trailing bytes differ (a missing final newline)".to_string()
     }
@@ -648,8 +652,9 @@ fn run_check(
         Ok(header) => header,
         Err(reason) => {
             eprintln!(
-                "[UNVERIFIABLE] {} is not a projection: {reason}\nwrite one with \
-                 `{command} --out {}`; a projection is generated, never hand-written",
+                "[UNVERIFIABLE] {} is not a projection: its header is not the grammar this \
+                 build writes — {reason}\nwrite one with `{command} --out {}`; a projection is \
+                 generated, never hand-written",
                 path.display(),
                 path.display()
             );
