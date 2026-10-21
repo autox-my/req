@@ -295,6 +295,7 @@ def extract(lines, convention, under=None):
 
     fenced = fence_state(lines)
     drafts, skips = [], []
+    seen = {}
     index = 0
     while index < len(lines):
         line = lines[index]
@@ -314,7 +315,12 @@ def extract(lines, convention, under=None):
             text, following = joined_item(lines, index, indent)
             if not text:
                 skips.append((index + 1, "empty text"))
+            elif text in seen:
+                # Two claims with the same statement, subject and modality share an address:
+                # drafting the repeat would create a duplicate claim under a second id.
+                skips.append((index + 1, f"duplicate of #L{seen[text]}"))
             else:
+                seen[text] = index + 1
                 drafts.append((index + 1, text))
             index = following
             continue
@@ -332,10 +338,13 @@ def extract(lines, convention, under=None):
             skips.append((index + 1, 'no id (expected `- REQ-<n>: text`)'))
         else:
             text = normalize(match.group("text"))
-            if text:
-                drafts.append((index + 1, text))
-            else:
+            if not text:
                 skips.append((index + 1, "empty text"))
+            elif text in seen:
+                skips.append((index + 1, f"duplicate of #L{seen[text]}"))
+            else:
+                seen[text] = index + 1
+                drafts.append((index + 1, text))
         index += 1
     return drafts, skips, None
 
@@ -409,9 +418,9 @@ def yaml_quote(text):
     """A YAML double-quoted scalar, for every freely-authored value.
 
     Quotes and backslashes alone are not enough: a statement carrying a control character
-    (a NUL pasted in from a table, a stray bell) would produce a file the loader cannot parse
-    while the tool still reported success. A backslash-x escape is YAML's own form for those, and the
-    loader parses it back to the same character.
+    (a NUL pasted in from a table, a C1 control from a Windows-sourced paste) would produce a
+    file the loader cannot parse while the tool still reported success. A backslash-x escape is
+    YAML's own form for those, and the loader parses it back to the same character.
     """
     out = []
     for char in text:
@@ -425,7 +434,7 @@ def yaml_quote(text):
             out.append("\\t")
         elif char == "\r":
             out.append("\\r")
-        elif ord(char) < 0x20 or ord(char) == 0x7F:
+        elif ord(char) < 0x20 or 0x7F <= ord(char) <= 0x9F:
             out.append(f"\\x{ord(char):02x}")
         else:
             out.append(char)
@@ -440,7 +449,9 @@ def render_claim(document, source, statement, date, subject, claim_id, rules_v, 
     whose provenance cannot be followed back to a line is a claim nobody can check.
     """
     return CLAIM_TEMPLATE.format(
-        document=document,
+        # The path in the header comment is text, not YAML: a newline (legal in a Unix path)
+        # would end the comment and inject a line into the draft.
+        document=" ".join(document.splitlines()),
         schema=schema,
         claim_id=claim_id,
         statement=yaml_quote(statement),
@@ -513,7 +524,7 @@ def read_corpus(root):
         # A directory (or a link to one) is refused *before* the name filter: `claims/` is flat,
         # the loader refuses the corpus, and a subdirectory called `archive/` would otherwise be
         # silently ignored while the run reported drafts it wrote into a corpus that is already red.
-        if entry.is_dir() or (entry.is_symlink() and entry.is_dir()):
+        if entry.is_dir():
             raise Unverifiable(
                 f"{entry}: `{CLAIMS_DIR}/` is flat, one claim per file — a directory here is an "
                 "error, not a place a claim can live"
@@ -660,11 +671,22 @@ def undraftable(drafts, corpus, source, date, subject, rules_v, schema):
             match = re.match(r"^(REQ-\d+)[ \t]+REFUSED\b", output)
             if match and match.group(1) in line_of:
                 refused.add(line_of[match.group(1)])
-        # The summary's count is the cross-check: if the report named a refusal it did not
-        # attribute, the candidate check is not understood, and writing anything would be a
-        # guess about legality.
+        # The summary is the verdict, and it is required: `--fill` exits 3 for a refusal *and*
+        # for a corpus it could not read, printing only stderr in the latter case. No summary
+        # therefore means nothing was judged — which must be UNVERIFIABLE, never "every
+        # candidate is legal" (that is the false success this check exists to prevent).
         summary = re.search(r"refused (\d+)", completed.stdout)
-        if summary is not None and int(summary.group(1)) != len(refused):
+        if summary is None:
+            detail = (
+                completed.stderr.strip()
+                or completed.stdout.strip()
+                or "no output"
+            )
+            raise Unverifiable(
+                "the candidate check produced no verdict (`req canon --fill` printed no "
+                f"`refused <n>` summary, so nothing was judged): {detail}"
+            )
+        if int(summary.group(1)) != len(refused):
             raise Unverifiable(
                 "the candidate check reported a refusal this run could not attribute to a line:"
                 f"\n{completed.stdout.strip()}"
@@ -683,6 +705,7 @@ def git_date(document):
         completed = subprocess.run(
             [
                 "git",
+                "--literal-pathspecs",
                 "-C",
                 str(document.parent),
                 "log",
@@ -711,6 +734,7 @@ def git_dirty(document):
         completed = subprocess.run(
             [
                 "git",
+                "--literal-pathspecs",
                 "-C",
                 str(document.parent),
                 "status",
@@ -852,11 +876,15 @@ def run(args):
     document = pathlib.Path(args.document).expanduser()
     if not document.is_absolute():
         document = corpus.root / document
+    # Normalised, not resolved: the git queries must name the path **as it is tracked**, so a
+    # symlinked document is looked up by its link name. Only the provenance comparison resolves,
+    # and it resolves both sides.
+    document = pathlib.Path(os.path.normpath(str(document)))
     try:
         text = document.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as error:
         raise Unverifiable(f"cannot read the document {args.document}: {error}") from error
-    document = document.resolve()
+    resolved = document.resolve()
     source = relative(corpus.root, document)
 
     # A document already adopted is refused before anything else: the drafts are in the
@@ -866,7 +894,7 @@ def run(args):
     # evidence of an earlier draft — `req init`'s starter claim carries a pencil sketch
     # (`source: docs/requirements.md`) that no adoption produced.
     already = sorted(
-        claim_id for claim_id, stored in corpus.sources.items() if stored == document
+        claim_id for claim_id, stored in corpus.sources.items() if stored == resolved
     )
     if already:
         raise Problem(
@@ -1183,6 +1211,16 @@ def self_check():
             "draft: the claim is unstructured, which is what makes it legal as written",
             (field(draft, "modality: "), field(draft, "unstructured: ")),
             ("modality: UNSTRUCTURED", "unstructured: true"),
+        ),
+        (
+            "duplicates: a repeated statement is skipped, never drafted twice",
+            extract(["- Same.", "- Same.", "- Other."], "bullets"),
+            ([(1, "Same."), (3, "Other.")], [(2, "duplicate of #L1")], None),
+        ),
+        (
+            "draft: a C1 control is escaped, like the C0 range",
+            yaml_quote("a\u0085b"),
+            '"a\\x85b"',
         ),
         (
             "draft: the subject is a quoted string, so `null` cannot become the YAML null",

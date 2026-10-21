@@ -82,8 +82,8 @@ change it to fit your document.
 
 ```bash
 # from the corpus root (the directory holding claims/), with adopt.py copied into your project
-python3 tools/adopt.py --from docs/capabilities.md --subject system             # dry run
-python3 tools/adopt.py --from docs/capabilities.md --subject system --write     # the drafts
+python3 tools/adopt.py --from docs/capabilities.md --subject system --date YYYY-MM-DD           # dry run
+python3 tools/adopt.py --from docs/capabilities.md --subject system --date YYYY-MM-DD --write   # the drafts
 req canon                # exit 0, "discrepancy flags: 0" — every draft the tool wrote is legal as written
 req canon --fill         # derives canonical.form and address
 req canon --verify       # exit 0 — the drafts are complete claims

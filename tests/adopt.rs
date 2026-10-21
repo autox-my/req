@@ -70,6 +70,29 @@ impl Outcome {
 /// Distinguishes fixtures within one process; the process id extends that across processes.
 static FIXTURE_SEQ: AtomicU64 = AtomicU64::new(0);
 
+/// A base directory the suite controls: `TMPDIR` when it is outside any checkout, else `/tmp`,
+/// else `/var/tmp`. A sandboxed CI may set `TMPDIR` inside the workspace, and a fixture under it
+/// would inherit this repository's `claims/`/`.git` and stop testing what it says.
+fn fixture_base() -> PathBuf {
+    let mut candidates = vec![std::env::temp_dir()];
+    candidates.push(PathBuf::from("/tmp"));
+    candidates.push(PathBuf::from("/var/tmp"));
+    for base in candidates {
+        if !base.is_dir() {
+            continue;
+        }
+        let clean = !base
+            .ancestors()
+            .any(|dir| req::root::is_corpus_root(dir) || dir.join(".git").exists());
+        if clean {
+            return base;
+        }
+    }
+    panic!(
+        "no fixture base outside a checkout: TMPDIR, /tmp and /var/tmp all sit under a          directory holding claims/ or .git"
+    );
+}
+
 /// A directory with **no `claims/` and no `.git` ancestor**: the extractor's root resolution
 /// (`--root`, else `REQ_ROOT`, else the working directory) and its `--date` fallback (the
 /// source's last commit) both walk outwards, so a fixture that inherited either would check
@@ -79,7 +102,7 @@ struct Fixture(PathBuf);
 impl Fixture {
     fn new(name: &str) -> Self {
         let seq = FIXTURE_SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("{name}-{}-{seq}", std::process::id()));
+        let dir = fixture_base().join(format!("{name}-{}-{seq}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("creates the fixture directory");
         if let Some(found) = dir.ancestors().find(|d| req::root::is_corpus_root(d)) {
@@ -150,6 +173,29 @@ fn adopt(cwd: &Path, args: &[&str]) -> Outcome {
         .expect("the binary has a parent")
         .as_os_str()
         .to_os_string();
+    if let Some(existing) = std::env::var_os("PATH") {
+        path_value.push(":");
+        path_value.push(existing);
+    }
+    let output = Command::new(python3())
+        .arg(adopt_py())
+        .args(args)
+        .current_dir(cwd)
+        .env_remove("REQ_ROOT")
+        .env("PATH", path_value)
+        .output()
+        .expect("runs tools/adopt.py");
+    Outcome {
+        code: output.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    }
+}
+
+/// `tools/adopt.py` with `bin_dir` first on `PATH` — the seam a fake `req` needs.
+#[cfg(unix)]
+fn adopt_with_bin_dir(cwd: &Path, args: &[&str], bin_dir: &Path) -> Outcome {
+    let mut path_value = bin_dir.as_os_str().to_os_string();
     if let Some(existing) = std::env::var_os("PATH") {
         path_value.push(":");
         path_value.push(existing);
@@ -499,6 +545,13 @@ fn an_unreadable_document_is_unverifiable() {
         ],
     );
     out.assert_code(3, "a document that is not there");
+    assert!(
+        out.stderr.contains("cannot read the document")
+            && out.stderr.contains("docs/absent.md")
+            && !out.stderr.contains("internal error"),
+        "the missing file must be named, not reported as an internal error:\n{}",
+        out.stderr
+    );
 }
 
 #[test]
@@ -755,6 +808,107 @@ fn a_structured_statement_is_reported_and_never_drafted() {
     assert!(
         !fx.exists("claims/REQ-0003.yml"),
         "nothing is written when no candidate is draftable"
+    );
+}
+
+/// Two identical statements would become two claims with one address — a duplicate under a
+/// second id. The second occurrence is named as skipped, never drafted.
+#[test]
+fn a_duplicate_candidate_is_named_and_not_drafted_twice() {
+    let fx = Fixture::new("req-adopt-duplicate");
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    fx.write(
+        "docs/capabilities.md",
+        "# Capabilities\n\n- The copilot cites every source it quotes.\n- The copilot cites every source it quotes.\n",
+    );
+    let out = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
+    );
+    out.assert_code(0, "the duplicate is skipped, the first is drafted");
+    assert!(
+        out.stdout.contains("drafted: 1")
+            && out.stdout.contains("skipped: 1")
+            && out.stdout.contains("duplicate of #L3"),
+        "the repeat is named with the line it duplicates:\n{}",
+        out.stdout
+    );
+    assert!(
+        fx.exists("claims/REQ-0002.yml"),
+        "the first occurrence drafts"
+    );
+    assert!(
+        !fx.exists("claims/REQ-0003.yml"),
+        "the duplicate is not written as a second claim"
+    );
+    req(fx.path(), &["canon"]).assert_code(0, "the written draft is legal");
+}
+
+/// `req canon --fill` exits 3 both for a refusal *and* for a corpus it could not read, printing
+/// only stderr in the latter case. A candidate check with no `refused <n>` summary judged
+/// nothing, and treating that as "every candidate is legal" is the false success the check
+/// exists to prevent: it must be UNVERIFIABLE, and nothing may be written.
+#[cfg(unix)]
+#[test]
+fn a_candidate_check_with_no_verdict_is_unverifiable_not_a_pass() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fx = Fixture::new("req-adopt-nosummary");
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+
+    // A `req` that answers `--version` like this build but fails the candidate check the way
+    // `--fill` does when it cannot read the corpus: exit 3, a message on stderr, no summary.
+    let fake_dir = fx.path().join("fake-bin");
+    fs::create_dir_all(&fake_dir).expect("creates the fake bin directory");
+    let fake = fake_dir.join("req");
+    fs::write(
+        &fake,
+        "#!/bin/sh\n\
+         if [ \"$1\" = \"--version\" ]; then\n\
+         \x20 printf 'req 0.1.0\\n  rules_v            5\\n  claim_schema       req.claim/0\\n'\n\
+         \x20 exit 0\n\
+         fi\n\
+         echo 'cannot read the corpus registry' >&2\n\
+         exit 3\n",
+    )
+    .expect("writes the fake req");
+    let mut permissions = fs::metadata(&fake)
+        .expect("the fake req exists")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake, permissions).expect("makes the fake req executable");
+
+    let out = adopt_with_bin_dir(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
+        &fake_dir,
+    );
+    out.assert_code(3, "a candidate check that judged nothing");
+    assert!(
+        out.stderr.contains("no verdict") || out.stderr.contains("no `refused"),
+        "the unknown is reported as UNVERIFIABLE, naming what was missing:\n{}",
+        out.stderr
+    );
+    assert!(
+        !fx.exists("claims/REQ-0002.yml"),
+        "nothing is written when the candidates were not judged"
     );
 }
 
@@ -1072,12 +1226,28 @@ fn the_self_check_passes_and_is_wired_into_the_gate() {
         .arg("--self-check")
         .output()
         .expect("runs tools/adopt.py --self-check");
+    let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(
         out.status.code(),
         Some(0),
-        "--self-check must pass with no corpus, no git and no req:\n{}\n{}",
-        String::from_utf8_lossy(&out.stdout),
+        "--self-check must pass with no corpus, no git and no req:\n{stdout}\n{}",
         String::from_utf8_lossy(&out.stderr)
+    );
+    // The table is the test: an empty or gutted one must redden this, so its size and its
+    // summary are pinned, not only the exit code.
+    let cases: usize = stdout
+        .split("adopt --self-check: ")
+        .nth(1)
+        .and_then(|rest| rest.split(' ').next())
+        .and_then(|count| count.parse().ok())
+        .unwrap_or_else(|| panic!("the self-check summary is missing:\n{stdout}"));
+    assert!(
+        cases >= 30,
+        "the self-check table has lost rows ({cases} case(s)):\n{stdout}"
+    );
+    assert!(
+        stdout.contains("0 failure(s)"),
+        "every row must pass:\n{stdout}"
     );
 
     // The gate's plan prints the default run's commands from the same call sites and executes

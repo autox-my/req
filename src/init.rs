@@ -530,13 +530,14 @@ invariant. `req canon` re-parses the statement and reports every slot that disag
 
 A `spec.md`, a backlog or a capabilities table can seed this corpus instead of transcribing it:
 copy `tools/adopt.py` from req's repository, adjust its mapping to your document, and run it from
-this corpus's root with `--from <doc> --subject <id>` first — a dry run that writes nothing and
-names every draft and every skipped line. Then add `--date YYYY-MM-DD` (the tool will not invent
-one, and requires it while the document has uncommitted changes) and `--write` to draft one
-`unstructured: true` claim per prose-only candidate — a markdown list item (the default `bullets`
-convention) or, with `--convention req-lines`, a `- REQ-<n>:` line. A sentence that parses as a
-structured claim (typically `shall …`) is reported as skipped, because its slots are yours to
-author. Then `req canon --fill`; the slots are still yours.
+this corpus's root with `python3 tools/adopt.py --from <doc> --subject <id> --date YYYY-MM-DD`
+first — a dry run that writes nothing and names every draft and every skipped line. (`--date` is
+required when the document is untracked or changed since its last commit; the tool never invents
+one.) Then add `--write` to draft one `unstructured: true` claim per prose-only candidate — a
+markdown list item (the default `bullets` convention) or, with `--convention req-lines`, a
+`- REQ-<n>:` line. A sentence that parses as a structured claim (typically `shall …`) is reported
+as skipped, because its slots are yours to author. Then `req canon --fill`; the slots are still
+yours.
 
 ## The authoring loop
 
