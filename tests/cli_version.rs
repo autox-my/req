@@ -1,7 +1,8 @@
-//! `req --version` / `--help`: the tool's own flags, answered where the subcommand lookup
-//! happens — before the corpus root is resolved. They must therefore work **anywhere**,
-//! including a directory with no `claims/` ancestor, and must never print a `corpus root:`
-//! line: an answer that needed a corpus would be a different claim.
+//! `req --version` / `--help` / `<cmd> --help`: the tool's own flags and every subcommand's
+//! page, answered where the subcommand lookup happens — before the corpus root is resolved.
+//! They must therefore work **anywhere**, including a directory with no `claims/` ancestor,
+//! and must never print a `corpus root:` line: an answer that needed a corpus would be a
+//! different claim (and a verb's help may be read to find out how to create one).
 //!
 //! The axes are asserted against the constants **by name** (`RULES_V`, `BASELINE_VERSION`,
 //! `DECISION_VERSION`, `claim_schema()`), never against a re-typed literal: a deliberate bump
@@ -310,6 +311,218 @@ fn bare_req_and_unknown_arguments_stay_usage_errors() {
             out.code, 2,
             "{argv:?} is not a command and not a flag this tool knows:\n{}\n{}",
             out.stdout, out.stderr
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Per-command help: `<cmd> --help` is answered where the verb is looked up
+// ---------------------------------------------------------------------------
+
+/// Every verb the tool has, written down once here so a loop can ask each one for its page.
+///
+/// This list is **not** the completeness check — the help table makes a verb without a page
+/// fail to compile, and `every_verb_named_in_usage_has_a_page` scrapes `USAGE` for the verbs
+/// the tool advertises. It exists because two tests need a concrete list (the mutation
+/// `init` case is outside the table, and a loop that ran zero times would pass silently).
+const ALL_COMMANDS: &[&str] = &[
+    "audit", "baseline", "bench", "canon", "compare", "decision", "gate", "impact", "init",
+    "propose", "render", "select", "trace",
+];
+
+/// The page `<command> --help` prints, or a failure that names the command and its output.
+fn help_page(cwd: &Path, command: &str) -> String {
+    let out = run_at(cwd, &[command, "--help"]);
+    assert_eq!(
+        out.code, 0,
+        "`req {command} --help` must be a request that was answered, not a usage error or a \
+         corpus lookup (exit {}):\nstdout:\n{}\nstderr:\n{}",
+        out.code, out.stdout, out.stderr
+    );
+    assert!(
+        !out.stderr.contains("corpus root:"),
+        "`req {command} --help` resolves no root and must not name one:\n{}",
+        out.stderr
+    );
+    out.stdout
+}
+
+/// The verbs named in the `USAGE` text's verb column, scraped from the text **as it is** —
+/// never a second hand-maintained list, and never by changing `USAGE`'s layout to suit this
+/// parser. The column is the part of a line before the description, and descriptions are
+/// separated from it by a run of spaces; within the column, `|` separates alternatives and
+/// the verb list ends at the first flag, placeholder or `k=v` argument.
+fn usage_verbs(usage: &str) -> Vec<String> {
+    let mut verbs: Vec<String> = Vec::new();
+    for line in usage.lines() {
+        let Some(indented) = line.strip_prefix("  ") else {
+            continue;
+        };
+        // The verb column ends where the description column begins: two or more spaces.
+        let column = indented.split("  ").next().unwrap_or("");
+        for token in column.split_whitespace() {
+            if token == "|" {
+                continue;
+            }
+            let is_verb = token.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+                && token
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+            if !is_verb {
+                break;
+            }
+            if !verbs.iter().any(|verb| verb == token) {
+                verbs.push(token.to_string());
+            }
+        }
+    }
+    verbs
+}
+
+#[test]
+fn every_commands_help_answers_with_no_corpus_and_prints_no_root_line() {
+    // Fact 2's bug: `req canon --help` used to resolve the root first and answer
+    // `[UNVERIFIABLE] no claims/ directory …` with exit 3. A help page must be readable in a
+    // directory with no corpus — help is exactly what you read before creating one.
+    let fx = NoCorpus::new("req-no-corpus-per-command-help");
+    for command in ALL_COMMANDS {
+        let page = help_page(fx.path(), command);
+        assert!(
+            page.starts_with(&format!("usage: req {command}")),
+            "`req {command} --help` must begin with its own usage line, not another verb's:\n{page}"
+        );
+    }
+}
+
+#[test]
+fn the_short_help_flag_is_the_same_page_for_every_command() {
+    let fx = NoCorpus::new("req-no-corpus-per-command-short-help");
+    for command in ALL_COMMANDS {
+        let long = run_at(fx.path(), &[command, "--help"]);
+        let short = run_at(fx.path(), &[command, "-h"]);
+        assert_eq!(short.code, 0, "`req {command} -h`:\n{}", short.stderr);
+        assert_eq!(
+            short.stdout, long.stdout,
+            "`req {command} -h` and `req {command} --help` are one answer, not two"
+        );
+    }
+}
+
+#[test]
+fn init_help_is_answered_before_the_init_handler_sees_it() {
+    // Fact 5's bug: `init` is special-cased before the table, so `--help` reached it as a
+    // command-line argument and answered `usage: req init` + `unexpected argument: --help`,
+    // exit 2. Asking for help must never run the command, and here it also must not create a
+    // corpus as a side effect of being asked.
+    let fx = NoCorpus::new("req-no-corpus-init-help");
+    let page = help_page(fx.path(), "init");
+    assert!(
+        page.starts_with("usage: req init"),
+        "`req init --help` must print the init page:\n{page}"
+    );
+    assert!(
+        page.contains("exit:"),
+        "the page carries its exit contract:\n{page}"
+    );
+    assert!(
+        !fx.path().join("claims").exists() && !fx.path().join("aliases").exists(),
+        "a help request must not create a corpus"
+    );
+}
+
+#[test]
+fn every_page_starts_with_usage_its_own_name() {
+    // R5's "one line each" row, pinned separately from the no-corpus loop so a page that
+    // started with a different verb's usage line is still caught when the corpus exists.
+    let fx = NoCorpus::new("req-page-usage-line");
+    for command in ALL_COMMANDS {
+        let page = help_page(fx.path(), command);
+        let first = page.lines().next().unwrap_or_default();
+        let expected = format!("usage: req {command}");
+        let carries_synopsis = first
+            .strip_prefix(&expected)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace));
+        assert!(
+            carries_synopsis,
+            "the first line of `req {command} --help` must be `usage: req {command} <synopsis>`:\n{first}"
+        );
+    }
+}
+
+#[test]
+fn every_page_carries_an_exit_line() {
+    // The exit contract is the payload a bare usage line cannot carry — the thing issue #45
+    // is actually about. Deleting one page's `exit:` line must redden this test.
+    let fx = NoCorpus::new("req-page-exit-line");
+    for command in ALL_COMMANDS {
+        let page = help_page(fx.path(), command);
+        assert!(
+            page.lines().any(|line| line.starts_with("exit:")),
+            "`req {command} --help` must carry an `exit:` line:\n{page}"
+        );
+    }
+}
+
+#[test]
+fn render_and_trace_pages_differ_and_each_names_its_projection() {
+    // Fact 4's bug: both printed `usage: req render|trace [key=value ...]`. Two different
+    // projections need two different pages, and each must say which one it is.
+    let fx = NoCorpus::new("req-render-trace-pages");
+    let render = help_page(fx.path(), "render");
+    let trace = help_page(fx.path(), "trace");
+
+    assert_ne!(
+        render, trace,
+        "`render` and `trace` are different projections and must not share one page"
+    );
+    assert!(
+        render.contains("spec view"),
+        "render's page names the spec view it projects:\n{render}"
+    );
+    assert!(
+        trace.contains("traceability") && trace.contains("incoming"),
+        "trace's page names the traceability matrix and its derived incoming edges:\n{trace}"
+    );
+    for (command, page) in [("render", &render), ("trace", &trace)] {
+        assert!(
+            page.contains("undecided"),
+            "{command}'s page says an undecided claim is shown in its own section:\n{page}"
+        );
+        assert!(page.contains("projection"), "{command}'s page:\n{page}");
+    }
+}
+
+#[test]
+fn every_verb_named_in_usage_has_a_page() {
+    // Fact 7: the advertised verb list is `USAGE`'s verb column. Scrape it from the text the
+    // tool actually prints, so a verb that exists only in the table (or only in `USAGE`)
+    // cannot hide. The table makes a *table* verb without a page a compile error; this test
+    // is what catches a verb added to `USAGE` alone, and a scrape that silently found nothing.
+    let fx = NoCorpus::new("req-usage-verbs");
+    let usage = run_at(fx.path(), &["--help"]);
+    assert_eq!(usage.code, 0, "{}", usage.stderr);
+
+    let verbs = usage_verbs(&usage.stdout);
+    for known in ALL_COMMANDS {
+        assert!(
+            verbs.contains(&known.to_string()),
+            "the USAGE scrape missed `{known}` — the parser or the layout changed:\n{}",
+            usage.stdout
+        );
+    }
+    // An empty (or nearly empty) scrape would make the loop below vacuous. `USAGE` cannot
+    // advertise fewer verbs than the tool has.
+    assert!(
+        verbs.len() >= ALL_COMMANDS.len(),
+        "scraped only {verbs:?} from USAGE — the verb column could not be read:\n{}",
+        usage.stdout
+    );
+
+    for verb in &verbs {
+        let page = help_page(fx.path(), verb);
+        assert!(
+            page.starts_with(&format!("usage: req {verb}")),
+            "`USAGE` advertises `{verb}`, so it must have a page:\n{page}"
         );
     }
 }
