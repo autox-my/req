@@ -673,9 +673,14 @@ def run(args):
         raise Problem(f"nothing extracted: {error}\n{headings_of(lines)}")
     if not drafts:
         scope = f"under {args.under!r}" if args.under else "whole document"
+        # The skipped lines are named even here: "nothing extracted" is the finding, and *why*
+        # each candidate was skipped is its remedy.
+        reasons = "".join(
+            f"\n  skip {args.document}#L{line}  {reason}" for line, reason in skips
+        )
         raise Problem(
             f"nothing extracted from {args.document} ({args.convention}, {scope})\n"
-            "  bullets are `- `, `* ` and `1. `; req-lines are `- REQ-<n>: text`"
+            "  bullets are `- `, `* ` and `1. `; req-lines are `- REQ-<n>: text`" + reasons
         )
 
     number = next_claim_number(corpus.used)

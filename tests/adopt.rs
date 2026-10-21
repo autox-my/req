@@ -646,9 +646,10 @@ fn the_heading_scope_is_respected_and_everything_outside_it_is_named() {
 }
 
 #[test]
-fn nothing_extracted_is_a_definite_problem() {
+fn nothing_extracted_is_a_definite_problem_and_names_why() {
     let fx = Fixture::new("req-adopt-nothing");
     req(fx.path(), &["init"]).assert_code(0, "req init");
+    // No candidates at all is a definite problem, not an empty draft list.
     fx.write(
         "docs/capabilities.md",
         "# Capabilities\n\nNo list items at all.\n",
@@ -666,6 +667,32 @@ fn nothing_extracted_is_a_definite_problem() {
         ],
     );
     out.assert_code(1, "a document with nothing to draft");
+    assert!(
+        !fx.exists("claims/REQ-0002.yml"),
+        "nothing extracted writes nothing"
+    );
+
+    // Candidates that were all skipped are still named with their reasons: the finding is
+    // "nothing extracted", and why each line was skipped is its remedy.
+    fx.write("docs/skips-only.md", "# Capabilities\n\n- \n");
+    let skipped = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/skips-only.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
+    );
+    skipped.assert_code(1, "a document whose only candidate is skipped");
+    assert!(
+        skipped.stderr.contains("empty text") && skipped.stderr.contains("#L3"),
+        "the skipped line must be named even when nothing is drafted:\n{}",
+        skipped.stderr
+    );
     assert!(
         !fx.exists("claims/REQ-0002.yml"),
         "nothing extracted writes nothing"
