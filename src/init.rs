@@ -530,9 +530,9 @@ invariant. `req canon` re-parses the statement and reports every slot that disag
 
 A `spec.md`, a backlog or a capabilities table can seed this corpus instead of transcribing it:
 copy `tools/adopt.py` from req's repository, adjust its mapping to your document, and run it with
-`--from <doc> --subject <id> --write` to draft one `unstructured: true` claim per candidate (a
-markdown list item, or a `- REQ-<n>:` line), then `req canon --fill` — the slots are still yours to
-author.
+`--from <doc> --subject <id> --write` to draft one `unstructured: true` claim per candidate — a
+markdown list item (the default `bullets` convention) or, with `--convention req-lines`, a
+`- REQ-<n>:` line — then `req canon --fill`; the slots are still yours to author.
 
 ## The authoring loop
 

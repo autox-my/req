@@ -222,7 +222,7 @@ A paragraph that is not a requirement is not a candidate and is not reported.
 
 - The copilot reads each submitted document before judging it.
 - The copilot cites every source it quotes.
-- 
+- \x20
 
 ```text
 - A fenced sample is code, not a requirement.
@@ -667,6 +667,98 @@ fn the_init_starter_placeholder_does_not_block_adoption_from_that_document() {
         fx.read("claims/REQ-0001.yml")
             .contains("claim_id: REQ-0001"),
         "the starter claim is left alone"
+    );
+}
+
+/// A subject id that YAML would otherwise resolve to a non-string (`null`, `true`, `1.5`) must
+/// still arrive as a string, or the draft is a file the strict `ClaimFile` cannot deserialize
+/// while the tool reports success.
+#[test]
+fn a_yaml_shaped_subject_is_still_a_string_in_the_claim() {
+    let fx = Fixture::new("req-adopt-subject");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    let out = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--subject",
+            "null",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
+    );
+    out.assert_code(0, "a subject YAML would otherwise resolve to null");
+    let draft = fx.read("claims/REQ-0002.yml");
+    assert!(
+        draft.contains("subject: \"null\""),
+        "the subject is a quoted string, not the YAML null scalar:\n{draft}"
+    );
+    req(fx.path(), &["canon"]).assert_code(0, "the draft parses");
+}
+
+/// A directory in `claims/` makes the corpus one `req` refuses (the corpus is flat). Drafting
+/// into it would leave a tree that is red and that this tool reported writing successfully.
+#[test]
+fn a_directory_in_claims_is_a_corpus_error_not_a_silent_skip() {
+    let fx = Fixture::new("req-adopt-claimsdir");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    fs::create_dir_all(fx.path().join("claims/archive")).expect("creates a directory in claims/");
+    let out = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
+    );
+    out.assert_code(3, "a corpus `req` refuses is not a corpus to draft into");
+    assert!(
+        out.stderr.contains("claims/"),
+        "the error names the directory that is not a claim:\n{}",
+        out.stderr
+    );
+    assert!(
+        !fx.exists("claims/REQ-0002.yml"),
+        "nothing is written into a corpus that is already red"
+    );
+}
+
+/// A document that is not UTF-8 is UNVERIFIABLE naming the file — never an "internal error"
+/// from a decode that slipped past the I/O handler.
+#[test]
+fn a_non_utf8_document_is_unverifiable_and_named() {
+    let fx = Fixture::new("req-adopt-nonutf8");
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    fs::create_dir_all(fx.path().join("docs")).expect("creates the docs directory");
+    fs::write(
+        fx.path().join("docs/capabilities.md"),
+        b"# Capabilities\n\n- caf\xe9\n",
+    )
+    .expect("writes raw bytes");
+    let out = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+        ],
+    );
+    out.assert_code(3, "a document that is not UTF-8");
+    assert!(
+        out.stderr.contains("cannot read the document"),
+        "the file is named, not reported as an internal error:\n{}",
+        out.stderr
     );
 }
 

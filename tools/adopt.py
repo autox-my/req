@@ -101,7 +101,7 @@ schema: {schema}
 claim_id: {claim_id}
 statement: {statement}
 modality: UNSTRUCTURED
-subject: {subject}
+subject: {quoted_subject}
 applicability: []
 unstructured: true
 canonical:
@@ -429,7 +429,7 @@ def render_claim(document, source, statement, date, subject, claim_id, rules_v, 
         schema=schema,
         claim_id=claim_id,
         statement=yaml_quote(statement),
-        subject=subject,
+        quoted_subject=yaml_quote(subject),
         rules_v=rules_v,
         registry_v=registry_v,
         quoted_source=yaml_quote(source),
@@ -495,6 +495,14 @@ def read_corpus(root):
     used = set()
     sources = {}
     for entry in sorted(claims_dir.iterdir(), key=lambda path: path.name):
+        # A directory (or a link to one) is refused *before* the name filter: `claims/` is flat,
+        # the loader refuses the corpus, and a subdirectory called `archive/` would otherwise be
+        # silently ignored while the run reported drafts it wrote into a corpus that is already red.
+        if entry.is_dir() or (entry.is_symlink() and entry.is_dir()):
+            raise Unverifiable(
+                f"{entry}: `{CLAIMS_DIR}/` is flat, one claim per file — a directory here is an "
+                "error, not a place a claim can live"
+            )
         if not is_claim_candidate(entry.name):
             continue
         if not entry.is_file() or entry.is_symlink():
@@ -506,7 +514,7 @@ def read_corpus(root):
             )
         try:
             text = entry.read_text(encoding="utf-8")
-        except OSError as error:
+        except (OSError, UnicodeDecodeError) as error:
             raise Unverifiable(f"cannot read {entry}: {error}") from error
         match = CLAIM_ID_RE.search(text)
         if match is None:
@@ -533,7 +541,7 @@ def read_corpus(root):
     registry = root / REGISTRY_PATH
     try:
         registry_text = registry.read_text(encoding="utf-8")
-    except OSError as error:
+    except (OSError, UnicodeDecodeError) as error:
         raise Unverifiable(
             f"cannot read the subject registry ({registry}): {error} — run `req init` here "
             "first"
@@ -763,7 +771,7 @@ def run(args):
         document = corpus.root / document
     try:
         text = document.read_text(encoding="utf-8")
-    except OSError as error:
+    except (OSError, UnicodeDecodeError) as error:
         raise Unverifiable(f"cannot read the document {args.document}: {error}") from error
     document = document.resolve()
     source = relative(corpus.root, document)
@@ -793,7 +801,14 @@ def run(args):
                 "pass --date YYYY-MM-DD. A date is authored, never invented — this tool will "
                 "not stamp today's."
             )
-        if git_dirty(document):
+        dirty = git_dirty(document)
+        if dirty is None:
+            raise Unverifiable(
+                f"cannot tell whether {source} has uncommitted changes (git status did not "
+                "answer) — pass --date YYYY-MM-DD rather than borrowing a date that may "
+                "describe a different text"
+            )
+        if dirty:
             raise Usage(
                 f"{source} has uncommitted changes, so its last commit date ({borrowed[0]}) "
                 "does not describe the text being drafted: pass --date YYYY-MM-DD. A date is "
@@ -1063,6 +1078,11 @@ def self_check():
             "draft: the claim is unstructured, which is what makes it legal as written",
             (field(draft, "modality: "), field(draft, "unstructured: ")),
             ("modality: UNSTRUCTURED", "unstructured: true"),
+        ),
+        (
+            "draft: the subject is a quoted string, so `null` cannot become the YAML null",
+            field(draft, "subject: "),
+            'subject: "system"',
         ),
         (
             "draft: a statement's quotes and backslashes are escaped for YAML",
