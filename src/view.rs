@@ -488,6 +488,14 @@ fn parse_invocation(args: &[String], command: &str) -> Result<Invocation, i32> {
             index += 2;
             continue;
         }
+        // An option-shaped argument is a usage error, never a context pair. Without this,
+        // `--out=spec.md` would be read as the selection `--out == spec.md`: the invocation
+        // asked for a *write*, got a plain print, and was answered with exit 0 — the "written"
+        // class as a false green, and `--check=spec.md` the same for "current".
+        if arg.starts_with('-') {
+            eprintln!("{}\nunrecognized flag: {arg}", usage());
+            return Err(2);
+        }
         match arg.split_once('=') {
             Some((key, value)) if !key.is_empty() => {
                 context.insert(key.to_string(), value.to_string());

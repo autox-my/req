@@ -338,6 +338,7 @@ fi
 # projections it checked, so neither case can read as a pass.
 if [ -r "$PWD/.req/projections" ]; then
   projections_checked=0
+  projection_entries=0
   while IFS= read -r projection_line || [ -n "${projection_line}" ]; do
     # A CRLF checkout would otherwise ask for a path ending in `\r`.
     projection_line="${projection_line%$'\r'}"
@@ -346,6 +347,7 @@ if [ -r "$PWD/.req/projections" ]; then
     # silently truncated to its first word, and the step would check a file nobody listed.
     read -r projection_path projection_rest <<< "${projection_line%%#*}"
     [ -n "$projection_path" ] || continue
+    projection_entries=$((projection_entries + 1))
     if [ -n "$projection_rest" ]; then
       printf 'FAIL  .req/projections line names more than one word (one repo-relative path per line): %s\n' "$projection_line"
       fail=1
@@ -360,8 +362,16 @@ if [ -r "$PWD/.req/projections" ]; then
     run cargo run -q -- render --check "$projection_path" < /dev/null
     projections_checked=$((projections_checked + 1))
   done < "$PWD/.req/projections"
-  printf 'projections checked: %d\n' "$projections_checked"
-  if [ "$projections_checked" -eq 0 ]; then
+  if [ "$dry" -eq 1 ]; then
+    # `plan` executes nothing, so it must not report a count that reads as checks performed.
+    printf 'projections planned: %d (nothing executed)\n' "$projections_checked"
+  else
+    printf 'projections checked: %d\n' "$projections_checked"
+  fi
+  # "Nothing was examined" is not a pass, and the reason is the *list*, not a missing file: a
+  # comment-only list iterates zero times. A list whose every entry was reported missing already
+  # failed above, and saying "pins no projection" there would name the wrong reason twice.
+  if [ "$projection_entries" -eq 0 ]; then
     printf 'FAIL  .req/projections pins no projection: nothing was checked, and a skipped check is never a pass\n'
     fail=1
   fi

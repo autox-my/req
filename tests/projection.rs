@@ -576,6 +576,36 @@ fn out_and_check_together_are_a_usage_error() {
     assert_eq!(missing.code, 2, "{}", missing.stderr);
 }
 
+/// An option-shaped argument is never a context pair. Without this, `--out=spec.md` becomes the
+/// selection `--out == spec.md`, the command prints instead of writing, and exit 0 reads as
+/// "written" — a false green on exactly the question the flag was asking.
+#[test]
+fn an_equals_spelled_flag_is_a_usage_error_not_a_selection() {
+    let corpus = Corpus::new("equals-flag");
+    for argv in [
+        &["render", "--out=spec.md"][..],
+        &["render", "--check=spec.md"][..],
+        &["render", "--bogus=1"][..],
+        &["render", "-x"][..],
+    ] {
+        let out = corpus.out(argv);
+        assert_eq!(
+            out.code, 2,
+            "`{argv:?}` is usage, not a context pair:\n{}\n{}",
+            out.stdout, out.stderr
+        );
+        assert!(
+            out.stderr.contains("unrecognized flag"),
+            "the error names the offending argument:\n{}",
+            out.stderr
+        );
+    }
+    assert!(
+        !corpus.path().join("spec.md").exists(),
+        "a refused `--out` writes nothing"
+    );
+}
+
 /// R1: `--out` to a path that cannot be written is UNVERIFIABLE — not a silent success.
 #[test]
 fn out_to_an_unwritable_path_is_unverifiable() {
@@ -745,9 +775,145 @@ fn the_gate_plans_the_committed_projection_check() {
         "the default gate must check the pinned projection:\n{stdout}"
     );
     assert!(
-        stdout.contains("projections checked: 1"),
-        "the step reports how many projections it checked:\n{stdout}"
+        stdout.contains("projections planned: 1 (nothing executed)"),
+        "the step reports what it would check, and says nothing ran:\n{stdout}"
     );
+}
+
+/// A throwaway root holding a copy of `scripts/check.sh`, the repository's `.req/variants` (so the
+/// release-gate step is not the one failing), and a **fake toolchain whose `cargo` exits 0** — the
+/// same fixture shape `tests/baseline.rs` uses. Every `cargo …` step "passes", so whatever flips
+/// the banner is the branch under test. Without this, deleting either projection FAIL branch would
+/// leave the suite green: the release-gate lesson, applied to R4.
+#[cfg(unix)]
+struct ScriptFixture(PathBuf);
+
+#[cfg(unix)]
+impl ScriptFixture {
+    fn new(tag: &str) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let dir = unique_dir(tag);
+        fs::create_dir_all(dir.join("scripts")).expect("creates scripts/");
+        fs::copy(
+            manifest.join("scripts/check.sh"),
+            dir.join("scripts/check.sh"),
+        )
+        .expect("copies check.sh");
+        fs::create_dir_all(dir.join(".req")).expect("creates .req/");
+        fs::copy(manifest.join(".req/variants"), dir.join(".req/variants"))
+            .expect("copies .req/variants");
+        let bin = dir.join("home/.rustup/toolchains/fake/bin");
+        fs::create_dir_all(&bin).expect("creates the fake toolchain");
+        fs::write(bin.join("cargo"), "#!/bin/sh\nexit 0\n").expect("writes the stub cargo");
+        fs::set_permissions(bin.join("cargo"), fs::Permissions::from_mode(0o755))
+            .expect("makes the stub executable");
+        ScriptFixture(dir)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+
+    fn write(&self, relative: &str, text: &str) {
+        let path = self.path().join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("creates the fixture directory");
+        }
+        fs::write(path, text).expect("writes the fixture file");
+    }
+
+    /// Run the copied script to its banner, with HOME and PATH the fixture's own: the fake
+    /// toolchain is what it resolves, and nothing ambient leaks in.
+    fn banner(&self) -> std::process::Output {
+        let bin = self.path().join("home/.rustup/toolchains/fake/bin");
+        Command::new("bash")
+            .arg(self.path().join("scripts/check.sh"))
+            .current_dir(self.path())
+            .env("HOME", self.path().join("home"))
+            .env(
+                "PATH",
+                format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", bin.display()),
+            )
+            .env_remove("REQ_ROOT")
+            .output()
+            .expect("runs the copied scripts/check.sh")
+    }
+}
+
+#[cfg(unix)]
+impl Drop for ScriptFixture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+#[cfg(unix)]
+fn banner_text(output: &std::process::Output) -> String {
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    )
+}
+
+/// R4: a listed projection that no longer exists is a FAIL, and the healthy direction is a PASS
+/// with the count — so the failure is the branch's doing, not the fixture's.
+#[cfg(unix)]
+#[test]
+fn a_missing_listed_projection_fails_the_gate() {
+    let fixture = ScriptFixture::new("projection-missing");
+    fixture.write(".req/projections", "docs/spec.md\n");
+    let missing = fixture.banner();
+    let text = banner_text(&missing);
+    assert!(
+        text.contains("FAIL  .req/projections lists a projection that is missing: docs/spec.md"),
+        "a listed projection that vanished is silent decay, never skipped:\n{text}"
+    );
+    assert_eq!(missing.status.code(), Some(1), "the gate fails:\n{text}");
+    assert!(text.contains("GATE: FAIL"), "{text}");
+    // The reason is named once: the missing-file branch already reported it.
+    assert!(
+        !text.contains("pins no projection"),
+        "the empty-list reason is not also blamed for a missing path:\n{text}"
+    );
+
+    fixture.write("docs/spec.md", "");
+    let healthy = fixture.banner();
+    let healthy_text = banner_text(&healthy);
+    assert!(
+        healthy_text.contains("projections checked: 1"),
+        "the healthy list reports its count:\n{healthy_text}"
+    );
+    assert!(healthy_text.contains("GATE: PASS"), "{healthy_text}");
+    assert_eq!(healthy.status.code(), Some(0), "{healthy_text}");
+}
+
+/// R4: a pinned list that checks nothing is a FAIL, never a pass, and a line with more than one
+/// word is named rather than half-checked.
+#[cfg(unix)]
+#[test]
+fn a_projection_list_that_checks_nothing_fails_the_gate() {
+    let fixture = ScriptFixture::new("projection-empty");
+    fixture.write(".req/projections", "# nothing pinned yet\n\n");
+    let empty = fixture.banner();
+    let text = banner_text(&empty);
+    assert!(
+        text.contains("FAIL  .req/projections pins no projection"),
+        "a comment-only list examined nothing, and that is not a pass:\n{text}"
+    );
+    assert!(text.contains("GATE: FAIL"), "{text}");
+    assert_eq!(empty.status.code(), Some(1), "{text}");
+
+    fixture.write(".req/projections", "docs/spec.md docs/other.md\n");
+    let two_words = fixture.banner();
+    let two_words_text = banner_text(&two_words);
+    assert!(
+        two_words_text.contains("names more than one word"),
+        "a path with whitespace is named, not truncated to its first word:\n{two_words_text}"
+    );
+    assert!(two_words_text.contains("GATE: FAIL"), "{two_words_text}");
+    assert_eq!(two_words.status.code(), Some(1), "{two_words_text}");
 }
 
 /// R4: this repository's own adoption — `docs/spec.md` is committed and current. A corpus
