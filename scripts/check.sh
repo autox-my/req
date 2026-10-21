@@ -322,6 +322,53 @@ else
   fail=1
 fi
 
+# Committed projections (ADR 0018): a document generated from the corpus is checked by
+# regeneration, never trusted about itself, and never hand-edited in place — a difference is
+# exit 1, with the first differing line named. `.req/projections` is this repository's pinned
+# list — one repo-relative path per line, `#` comments, blank lines skipped, exactly the
+# `.req/variants` grammar above — and the reader is this script, because req knows nothing about
+# the file. The list is deliberately small (ADR 0018 §4): a projection is committed where it is a
+# *deliverable*, not as a cache of every view, and adding a path is a decision.
+#
+# Conditional on purpose: a project that commits no projection has nothing to check, so an absent
+# `.req/projections` is not a failed check. Once the file exists the step is the gate's, and two
+# conditions make "nothing was checked" red instead of green — the release-gate step's lesson:
+# a listed path that no longer exists (a projection that vanished is silent decay), and a list
+# that yielded no path at all (a comment-only file examined nothing). The step prints how many
+# projections it checked, so neither case can read as a pass.
+if [ -r "$PWD/.req/projections" ]; then
+  projections_checked=0
+  while IFS= read -r projection_line || [ -n "${projection_line}" ]; do
+    # A CRLF checkout would otherwise ask for a path ending in `\r`.
+    projection_line="${projection_line%$'\r'}"
+    # One path per line: `read` trims the surrounding whitespace and takes the first word. More
+    # than one word is named rather than half-checked — a path containing whitespace would be
+    # silently truncated to its first word, and the step would check a file nobody listed.
+    read -r projection_path projection_rest <<< "${projection_line%%#*}"
+    [ -n "$projection_path" ] || continue
+    if [ -n "$projection_rest" ]; then
+      printf 'FAIL  .req/projections line names more than one word (one repo-relative path per line): %s\n' "$projection_line"
+      fail=1
+      continue
+    fi
+    if [ ! -f "$PWD/$projection_path" ]; then
+      printf 'FAIL  .req/projections lists a projection that is missing: %s\n' "$projection_path"
+      fail=1
+      continue
+    fi
+    # </dev/null: nothing in the body may consume the remaining paths from this file's stdin.
+    run cargo run -q -- render --check "$projection_path" < /dev/null
+    projections_checked=$((projections_checked + 1))
+  done < "$PWD/.req/projections"
+  printf 'projections checked: %d\n' "$projections_checked"
+  if [ "$projections_checked" -eq 0 ]; then
+    printf 'FAIL  .req/projections pins no projection: nothing was checked, and a skipped check is never a pass\n'
+    fail=1
+  fi
+else
+  printf 'projections: none pinned (.req/projections absent; nothing to check)\n'
+fi
+
 # The rule-file checks decide from `git ls-files` output and from the shape of review/rule.json,
 # and that decision logic needs neither `ocr` nor a review run — so it is table-driven here,
 # ahead of the review-tool probe, rather than behind a check that can SKIP into looking green.

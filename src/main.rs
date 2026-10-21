@@ -184,18 +184,27 @@ exit: 0 every claim decided, 3 at least one claim left undecided, 2 usage.
 `AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
 
 const RENDER_HELP: &str = "\
-usage: req render [key=value ...]
+usage: req render [--out <path>] [--check <path>] [key=value ...]
 
 Prints the spec view for a selection: every applying claim's address, modality, statement,
 selector and outgoing relations, with the undecided claims in their own section and the
 outside-the-selection ones named. It is a projection: it reads claims, never writes one.
 
-exit: 0 settled, 3 anything an undecided claim leaves open, 2 usage.
+`--out <path>` commits the projection: the same view, preceded by an HTML-comment header naming
+the generator, rules_v, selection, applying-claim count and an identity digest over the sorted
+addresses. `--check <path>` regenerates the projection and compares bytes — it answers a
+question and writes nothing; a committed projection is checked, never hand-edited. The two are
+one question each: give one of them, once.
+
+exit: 0 settled (plain), written (--out), or current (--check); 1 a committed projection is
+stale or was hand-edited (--check); 3 anything an undecided claim leaves open (plain), a
+projection that cannot be written (--out), or one this build cannot judge — no header, another
+build's rules_v, an unreproducible selection, or another command's projection (--check); 2 usage.
 
 `AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
 
 const TRACE_HELP: &str = "\
-usage: req trace [key=value ...]
+usage: req trace [--out <path>] [--check <path>] [key=value ...]
 
 Prints the traceability matrix for a selection: the outgoing edges, the **derived** incoming
 edges (each relation is stored once, on the outgoing side), and the findings. Every edge that
@@ -203,8 +212,16 @@ leaves the selection is named — to an excluded claim, or to one this variant l
 — and a relation to a claim the corpus does not hold is named UNVERIFIABLE, never ignored.
 It is a projection: it reads claims, never writes one.
 
-exit: 0 the edge graph is settled, 3 an edge into a claim the corpus does not hold or into
-one the variant leaves undecided leaves the matrix open, 2 usage.
+`--out <path>` commits the projection with the same header `render --out` writes, naming this
+generator (`req trace`). `--check <path>` regenerates and compares bytes, and writes nothing; a
+committed projection is checked, never hand-edited. A projection made by the other command is
+UNVERIFIABLE here rather than stale: two commands are two artefacts.
+
+exit: 0 the edge graph is settled (plain), written (--out), or current (--check); 1 a committed
+projection is stale or was hand-edited (--check); 3 an edge into a claim the corpus does not
+hold or into one the variant leaves undecided leaves the matrix open (plain), a projection that
+cannot be written (--out), or one this build cannot judge — no header, another build's rules_v,
+an unreproducible selection, or another command's projection (--check); 2 usage.
 
 `AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
 

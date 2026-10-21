@@ -1,0 +1,25 @@
+# Committed projections (ADR 0018): one repo-relative path per line, `#` comments, blank lines
+# skipped — the sibling of `.req/variants`, and read by `scripts/check.sh` because req knows
+# nothing about this file.
+#
+# A **projection** is a document generated from the corpus: `scripts/check.sh` runs
+# `req render --check <path>` for every path here, and the answer is the file's verdict:
+#
+#   exit 0  current — byte-identical to a fresh projection of this corpus
+#   exit 1  stale (the corpus moved) or edited (the file moved): regenerate, never hand-edit
+#   exit 3  the check cannot judge — no header, another build's rules_v, an unreproducible
+#           selection, another command's projection, or the corpus cannot be read
+#
+# A listed path that is missing is a FAIL: a projection that vanished is silent decay. The list is
+# deliberately small (ADR 0018 §4) — a projection is committed where it is a **deliverable**, not as
+# a cache of every view, and adding a path here is a decision, not an edit.
+#
+# `docs/spec.md` is GENERATED from this repository's own corpus:
+#
+#   cargo run -q -- render --out docs/spec.md     # write it (never edit it by hand)
+#   cargo run -q -- render --check docs/spec.md   # 0 current, 1 stale/edited, 3 cannot judge
+#
+# Regenerate it in the same commit as the claim change that moved it; the header's
+# `selection=none` is the empty context, so the projection is the whole corpus (15 applying
+# claims, and the 6 the empty context leaves undecided are shown in their own section).
+docs/spec.md
