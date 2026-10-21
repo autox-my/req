@@ -84,7 +84,7 @@ change it to fit your document.
 # from the corpus root (the directory holding claims/), with adopt.py copied into your project
 python3 tools/adopt.py --from docs/capabilities.md --subject system             # dry run
 python3 tools/adopt.py --from docs/capabilities.md --subject system --write     # the drafts
-req canon                # exit 0, "discrepancy flags: 0" — an unstructured draft is legal as written
+req canon                # exit 0, "discrepancy flags: 0" — every draft the tool wrote is legal as written
 req canon --fill         # derives canonical.form and address
 req canon --verify       # exit 0 — the drafts are complete claims
 ```
@@ -95,8 +95,16 @@ draft that carried a derived value would be an address over a parse nobody autho
 `--fill` a draft is a complete, legal claim, and it is **still a proposal**: the human decides
 whether to leave it qualitative or to author the slots that give it structure (ADR 0004). The tool
 never writes a slot, never derives an address, and never decides whether a bullet is one
-requirement or three. A draft is legal *only because it is unstructured* — the format's marker for
-prose that has not been parsed, not a claim whose parse was skipped.
+requirement or three.
+
+**The honest boundary, exactly.** A draft is legal *only because it is unstructured* — the
+format's marker for prose that has not been parsed, not a claim whose parse was skipped. So only a
+statement the canonicalizer leaves unstructured can be drafted: the candidates are run through
+`req canon --fill` in a throwaway corpus (the same derivation that would refuse the fill), and a
+statement that parses as a structured claim — typically a `shall` with a subject and an action —
+is **reported as skipped**, never written, because its slots are the author's to write. If every
+candidate is like that, the run is exit 1 and says so. Re-word it as prose, author the claim, or
+copy the script and adjust the mapping.
 
 Two conventions are built in, and neither is a heuristic:
 
@@ -116,8 +124,9 @@ usage error asking for `--date`; with no commit at all it is the same. A date is
 invented, exactly as `req baseline --at` is.
 
 **Every skipped line is named with its reason and counted.** A line that looks like a candidate and
-is not drafted — an empty item, a `req-lines` item with no id, an item outside the named heading —
-appears in the report as `skip <doc>#L<n> <reason>`, and the summary line says how many. A
+is not drafted — an empty item, a `req-lines` item with no id, an item outside the named heading,
+or a statement that parses as a structured claim — appears in the report as
+`skip <doc>#L<n> <reason>`, and the summary line says how many. A
 requirement silently dropped at adoption is the failure this project exists to prevent, so the
 report is the reviewable output.
 

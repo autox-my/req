@@ -35,8 +35,8 @@ the run asks for `--date` rather than borrowing a revision that does not contain
 Exit codes, the same three-state discipline as req:
 
   0  drafted (dry run, or written with --write)
-  1  a definite problem — nothing extracted, the target already exists, or the document is
-     already drafted into this corpus; nothing was written
+  1  a definite problem — nothing extracted, no candidate is a prose-only statement, the target
+     already exists, or the document is already drafted into this corpus; nothing was written
   2  usage — a missing `--from`/`--subject`, an unreadable `--date`, or no date the tool can
      honestly borrow (not in git, or changed since its last commit)
   3  UNVERIFIABLE — the document, the corpus, the subject registry, or `req` itself cannot be
@@ -55,6 +55,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 # --- conventions (the whole mapping) ---------------------------------------
 
@@ -82,6 +83,14 @@ VERSION_SCHEMA_RE = re.compile(r"^[ \t]*claim_schema[ \t]+(?P<value>\S+)[ \t]*$"
 CLAIM_SCHEMA_RE = re.compile(r"^req\.claim/\d+$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SUBJECT_RE = re.compile(r"^[A-Za-z0-9_.\-]+$")
+
+# Why a candidate that parses as a structured claim is skipped: `unstructured: true` contradicts
+# that parse, and `req canon --fill` refuses it — the slots are the author's, so this tool must
+# not write it.
+STRUCTURED_REASON = (
+    "parses as a structured claim — only its author can supply the slots (author it, or re-word "
+    "it as prose)"
+)
 
 CLAIMS_DIR = "claims"
 REGISTRY_PATH = "aliases/subjects.yml"
@@ -139,6 +148,12 @@ conventions (no heuristics, no model):
 the draft this writes: an `unstructured: true` claim with its statement and provenance, and
 NOTHING derived — `canonical.form` is the empty placeholder and `address` is null. `req canon`
 accepts it, `req canon --fill` completes it, and the structured slots stay the human's.
+
+Only a statement the canonicalizer leaves unstructured is draftable: the candidates are run
+through `req canon --fill` in a throwaway corpus (the same derivation that would refuse the fill),
+and a candidate that would carry a discrepancy flag — a `shall` with a subject and an action, say —
+is reported as **skipped**, because its slots are the author's to write. Re-word it as prose, or
+author the claim, or copy this script and adjust the mapping.
 
 The corpus root is --root, else $REQ_ROOT, else the working directory — never an ancestor: this
 tool writes claims, so a run inside a subdirectory must not draft into a parent you never
@@ -561,14 +576,20 @@ def number_or_none(value):
     return int(match.group(1)) if match else None
 
 
-def read_axes():
-    """`(rules_v, claim_schema)` from the `req` on PATH — the values a draft must carry."""
+def req_binary():
+    """The `req` on PATH — the binary whose judgement this tool defers to."""
     binary = shutil.which(REQ_BINARY)
     if binary is None:
         raise Unverifiable(
             "`req` is not on PATH — install it at a pinned rev (docs/adopting.md), because a "
             "draft's `rules_v` and claim schema come from the binary that will judge it"
         )
+    return binary
+
+
+def read_axes():
+    """`(rules_v, claim_schema)` from the `req` on PATH — the values a draft must carry."""
+    binary = req_binary()
     try:
         completed = subprocess.run(
             [binary, "--version"], capture_output=True, text=True, check=False
@@ -587,6 +608,68 @@ def read_axes():
             "older than the claim format this tool writes cannot be drafted against"
         )
     return axes
+
+
+def undraftable(drafts, corpus, source, date, subject, rules_v, schema):
+    """The candidate line numbers whose `unstructured: true` draft the canonicalizer refuses.
+
+    The draft path's premise is that a prose-only claim is legal *as written*, and it holds only
+    for a statement the canonicalizer leaves unstructured. A statement that parses as a
+    structured claim contradicts `unstructured: true`, and `req canon --fill` refuses it — so the
+    candidates are run through that same derivation in a throwaway corpus (a copy of this
+    corpus's registry, the drafted files, and nothing else), and a refusal is attributed back to
+    its source line. `--fill` writes only inside the temporary directory.
+    """
+    binary = req_binary()
+    with tempfile.TemporaryDirectory(prefix="req-adopt-check-") as work:
+        root = pathlib.Path(work)
+        (root / CLAIMS_DIR).mkdir()
+        (root / "aliases").mkdir()
+        shutil.copyfile(corpus.root / REGISTRY_PATH, root / "aliases" / "subjects.yml")
+        line_of = {}
+        for index, (line, statement) in enumerate(drafts):
+            claim_id = f"REQ-{index + 1:04d}"
+            line_of[claim_id] = line
+            (root / CLAIMS_DIR / f"{claim_id}.yml").write_text(
+                render_claim(
+                    document=source,
+                    source=f"{source}#L{line}",
+                    statement=statement,
+                    date=date,
+                    subject=subject,
+                    claim_id=claim_id,
+                    rules_v=rules_v,
+                    registry_v=corpus.registry_v,
+                    schema=schema,
+                ),
+                encoding="utf-8",
+            )
+        completed = subprocess.run(
+            [binary, "--root", str(root), "canon", "--fill"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode not in (0, 3):
+            raise Unverifiable(
+                f"`{binary} canon --fill` exited {completed.returncode} while checking the "
+                f"candidates: {completed.stderr.strip() or 'no output'}"
+            )
+        refused = set()
+        for output in completed.stdout.splitlines():
+            match = re.match(r"^(REQ-\d+)[ \t]+REFUSED\b", output)
+            if match and match.group(1) in line_of:
+                refused.add(line_of[match.group(1)])
+        # The summary's count is the cross-check: if the report named a refusal it did not
+        # attribute, the candidate check is not understood, and writing anything would be a
+        # guess about legality.
+        summary = re.search(r"refused (\d+)", completed.stdout)
+        if summary is not None and int(summary.group(1)) != len(refused):
+            raise Unverifiable(
+                "the candidate check reported a refusal this run could not attribute to a line:"
+                f"\n{completed.stdout.strip()}"
+            )
+        return refused
 
 
 def git_date(document):
@@ -823,11 +906,33 @@ def run(args):
     drafts, skips, error = extract(lines, args.convention, args.under)
     if error is not None:
         raise Problem(f"nothing extracted: {error}\n{headings_of(lines)}")
+
+    # A draft is legal as written only if the canonicalizer leaves its statement unstructured.
+    # The same derivation `req canon --fill` runs decides that, in a throwaway corpus, before
+    # anything is written: a candidate it refuses is named and skipped, never drafted.
+    if drafts:
+        refused = undraftable(drafts, corpus, source, args.date, args.subject, rules_v, schema)
+        if refused:
+            kept = []
+            for line, statement in drafts:
+                if line in refused:
+                    skips.append((line, STRUCTURED_REASON))
+                else:
+                    kept.append((line, statement))
+            drafts = kept
+        skips.sort()
+
     if not drafts:
         scope = f"under {args.under!r}" if args.under else "whole document"
-        # The skipped lines are named even here: "nothing extracted" is the finding, and *why*
-        # each candidate was skipped is its remedy.
+        # The skipped lines are named even here: the finding is that nothing was drafted, and
+        # *why* each candidate was skipped is its remedy.
         reasons = "".join(f"\n  skip {source}#L{line}  {reason}" for line, reason in skips)
+        if any(reason == STRUCTURED_REASON for _line, reason in skips):
+            raise Problem(
+                f"nothing drafted from {source} ({args.convention}, {scope}): every candidate "
+                "parses as a structured claim, and this tool drafts only prose-only "
+                "(unstructured) claims — their slots are the author's to write" + reasons
+            )
         raise Problem(
             f"nothing extracted from {source} ({args.convention}, {scope})\n"
             "  bullets are `- `, `* ` and `1. `; req-lines are `- REQ-<n>: text`" + reasons

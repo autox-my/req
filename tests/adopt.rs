@@ -670,6 +670,94 @@ fn the_init_starter_placeholder_does_not_block_adoption_from_that_document() {
     );
 }
 
+/// A draft is legal as written only when the canonicalizer leaves its statement unstructured:
+/// a `shall` sentence parses as a structured claim, contradicts `unstructured: true`, and
+/// `req canon --fill` refuses it. The tool must report such a candidate and never write it.
+#[test]
+fn a_structured_statement_is_reported_and_never_drafted() {
+    let fx = Fixture::new("req-adopt-structured");
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    fx.write(
+        "docs/mixed.md",
+        "# Mixed\n\n- The system shall log every decision.\n- The copilot cites every source it quotes.\n",
+    );
+    let dry = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/mixed.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+        ],
+    );
+    dry.assert_code(0, "one prose candidate drafts, the `shall` one is skipped");
+    assert!(
+        dry.stdout.contains("drafted: 1") && dry.stdout.contains("skipped: 1"),
+        "the counts name both outcomes:\n{}",
+        dry.stdout
+    );
+    assert!(
+        dry.stdout.contains("parses as a structured claim") && dry.stdout.contains("#L3"),
+        "the skipped statement is named with its reason and line:\n{}",
+        dry.stdout
+    );
+
+    let write = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/mixed.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
+    );
+    write.assert_code(0, "the write run");
+    let draft = fx.read("claims/REQ-0002.yml");
+    assert!(
+        draft.contains("statement: \"The copilot cites every source it quotes.\""),
+        "only the prose candidate is drafted:\n{draft}"
+    );
+    assert!(
+        !draft.contains("shall log every decision"),
+        "the structured candidate is not written:\n{draft}"
+    );
+    req(fx.path(), &["canon"]).assert_code(0, "the written drafts are legal as written");
+
+    // Every candidate structured: a definite problem, nothing written.
+    fx.write(
+        "docs/shall-only.md",
+        "# Shall\n\n- The system shall log every decision.\n",
+    );
+    let none = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/shall-only.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
+    );
+    none.assert_code(1, "no candidate is a prose-only claim");
+    assert!(
+        none.stderr.contains("nothing drafted")
+            && none.stderr.contains("parses as a structured claim"),
+        "the finding names why nothing was drafted:\n{}",
+        none.stderr
+    );
+    assert!(
+        !fx.exists("claims/REQ-0003.yml"),
+        "nothing is written when no candidate is draftable"
+    );
+}
+
 /// A subject id that YAML would otherwise resolve to a non-string (`null`, `true`, `1.5`) must
 /// still arrive as a string, or the draft is a file the strict `ClaimFile` cannot deserialize
 /// while the tool reports success.
@@ -838,7 +926,7 @@ fn req_lines_ignores_the_sources_ids_and_names_every_skipped_line() {
     req(fx.path(), &["init"]).assert_code(0, "req init");
     fx.write(
         "docs/backlog.md",
-        "# Backlog\n\n- REQ-7: The system shall log every decision.\n- REQ-8: The system shall cite its sources.\n- A bullet with no id at all.\n",
+        "# Backlog\n\n- REQ-7: The system logs every decision.\n- REQ-8: The system cites its sources.\n- A bullet with no id at all.\n",
     );
     let out = adopt(
         fx.path(),
@@ -878,13 +966,14 @@ fn req_lines_ignores_the_sources_ids_and_names_every_skipped_line() {
         "req allocates the claim id:\n{draft}"
     );
     assert!(
-        draft.contains("statement: \"The system shall log every decision.\""),
+        draft.contains("statement: \"The system logs every decision.\""),
         "the statement is the text after the colon:\n{draft}"
     );
     assert!(
         !draft.contains("REQ-7"),
         "the source's id must not reach the draft:\n{draft}"
     );
+    req(fx.path(), &["canon"]).assert_code(0, "the drafts are legal as written");
 }
 
 #[test]

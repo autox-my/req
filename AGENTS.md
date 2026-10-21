@@ -586,10 +586,13 @@ matter:
   docs-only skip. Pure decision function plus a `--self-check` table, so its logic is tested
   without a model. The workflow enforces the copy from `origin/main`, never the pull request's.
 - `tools/adopt.py` — the document extractor (issue #44): drafts one `unstructured: true` claim
-  per statement from a `spec.md`/backlog, with the document **and line** as provenance and
-  **nothing derived** — `canonical.form` is the empty placeholder and `address` is `null`, so
-  `req canon` reports 0 flags and `req canon --fill` is what completes it (and refuses to write
-  over a contradicted parse). Two conventions only (`bullets`, `req-lines`; a source's
+  per statement the canonicalizer leaves unstructured, with the document **and line** as
+  provenance and **nothing derived** — `canonical.form` is the empty placeholder and `address` is
+  `null`, so `req canon` reports 0 flags and `req canon --fill` is what completes it (and refuses
+  to write over a contradicted parse). The candidates are checked through that same `--fill`
+  derivation in a throwaway corpus first: a statement that parses as a structured claim
+  (typically a `shall` with a subject and an action) is **reported as skipped, never written**,
+  because its slots are the author's. Two conventions only (`bullets`, `req-lines`; a source's
   `REQ-<n>` id is ignored because req allocates the id), an optional heading scope, every
   skipped line named with its reason, a **dry run by default**, and a refusal to overwrite or to
   re-draft a document already adopted. Its `--self-check` table-drives the pure half and is in

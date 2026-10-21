@@ -529,10 +529,14 @@ invariant. `req canon` re-parses the statement and reports every slot that disag
 `canonical.form` and `address` are *derived* from that parse, never authored.
 
 A `spec.md`, a backlog or a capabilities table can seed this corpus instead of transcribing it:
-copy `tools/adopt.py` from req's repository, adjust its mapping to your document, and run it with
-`--from <doc> --subject <id> --write` to draft one `unstructured: true` claim per candidate — a
-markdown list item (the default `bullets` convention) or, with `--convention req-lines`, a
-`- REQ-<n>:` line — then `req canon --fill`; the slots are still yours to author.
+copy `tools/adopt.py` from req's repository, adjust its mapping to your document, and run it from
+this corpus's root with `--from <doc> --subject <id>` first — a dry run that writes nothing and
+names every draft and every skipped line. Then add `--date YYYY-MM-DD` (the tool will not invent
+one, and requires it while the document has uncommitted changes) and `--write` to draft one
+`unstructured: true` claim per prose-only candidate — a markdown list item (the default `bullets`
+convention) or, with `--convention req-lines`, a `- REQ-<n>:` line. A sentence that parses as a
+structured claim (typically `shall …`) is reported as skipped, because its slots are yours to
+author. Then `req canon --fill`; the slots are still yours.
 
 ## The authoring loop
 
