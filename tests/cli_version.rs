@@ -352,6 +352,11 @@ fn help_page(cwd: &Path, command: &str) -> String {
 /// parser. The column is the part of a line before the description, and descriptions are
 /// separated from it by a run of spaces; within the column, `|` separates alternatives and
 /// the verb list ends at the first flag, placeholder or `k=v` argument.
+///
+/// A line is a verb row only when it is a verb column **followed by a description**, or an
+/// `a | b` alternatives row. Prose that wraps into the margin is not a verb row: its first
+/// words are lowercase and would otherwise read as verbs, and this function is the oracle
+/// behind `every_verb_named_in_usage_has_a_page`.
 fn usage_verbs(usage: &str) -> Vec<String> {
     let mut verbs: Vec<String> = Vec::new();
     for line in usage.lines() {
@@ -360,6 +365,11 @@ fn usage_verbs(usage: &str) -> Vec<String> {
         };
         // The verb column ends where the description column begins: two or more spaces.
         let column = indented.split("  ").next().unwrap_or("");
+        let has_description = column.len() < indented.len();
+        let has_alternatives = column.contains(" | ");
+        if !has_description && !has_alternatives {
+            continue;
+        }
         for token in column.split_whitespace() {
             if token == "|" {
                 continue;
@@ -379,6 +389,16 @@ fn usage_verbs(usage: &str) -> Vec<String> {
     verbs
 }
 
+/// Whether a page's first line is that command's usage line, with the command boundary
+/// intact: `render` must not be satisfied by `usage: req rendering …`, and the synopsis may
+/// be absent (a command taking no arguments) or separated by whitespace.
+fn first_line_names_command(page: &str, command: &str) -> bool {
+    let first = page.lines().next().unwrap_or_default();
+    first
+        .strip_prefix(&format!("usage: req {command}"))
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+}
+
 #[test]
 fn every_commands_help_answers_with_no_corpus_and_prints_no_root_line() {
     // Fact 2's bug: `req canon --help` used to resolve the root first and answer
@@ -388,7 +408,7 @@ fn every_commands_help_answers_with_no_corpus_and_prints_no_root_line() {
     for command in ALL_COMMANDS {
         let page = help_page(fx.path(), command);
         assert!(
-            page.starts_with(&format!("usage: req {command}")),
+            first_line_names_command(&page, command),
             "`req {command} --help` must begin with its own usage line, not another verb's:\n{page}"
         );
     }
@@ -417,7 +437,7 @@ fn init_help_is_answered_before_the_init_handler_sees_it() {
     let fx = NoCorpus::new("req-no-corpus-init-help");
     let page = help_page(fx.path(), "init");
     assert!(
-        page.starts_with("usage: req init"),
+        first_line_names_command(&page, "init"),
         "`req init --help` must print the init page:\n{page}"
     );
     assert!(
@@ -437,14 +457,10 @@ fn every_page_starts_with_usage_its_own_name() {
     let fx = NoCorpus::new("req-page-usage-line");
     for command in ALL_COMMANDS {
         let page = help_page(fx.path(), command);
-        let first = page.lines().next().unwrap_or_default();
-        let expected = format!("usage: req {command}");
-        let carries_synopsis = first
-            .strip_prefix(&expected)
-            .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace));
         assert!(
-            carries_synopsis,
-            "the first line of `req {command} --help` must be `usage: req {command} <synopsis>`:\n{first}"
+            first_line_names_command(&page, command),
+            "the first line of `req {command} --help` must be `usage: req {command} <synopsis>`:\n{}",
+            page.lines().next().unwrap_or_default()
         );
     }
 }
@@ -486,7 +502,7 @@ fn render_and_trace_pages_differ_and_each_names_its_projection() {
     for (command, page) in [("render", &render), ("trace", &trace)] {
         assert!(
             page.contains("undecided"),
-            "{command}'s page says an undecided claim is shown in its own section:\n{page}"
+            "{command}'s page names how an undecided claim (or an edge into one) is handled:\n{page}"
         );
         assert!(page.contains("projection"), "{command}'s page:\n{page}");
     }
@@ -502,26 +518,24 @@ fn every_verb_named_in_usage_has_a_page() {
     let usage = run_at(fx.path(), &["--help"]);
     assert_eq!(usage.code, 0, "{}", usage.stderr);
 
-    let verbs = usage_verbs(&usage.stdout);
-    for known in ALL_COMMANDS {
-        assert!(
-            verbs.contains(&known.to_string()),
-            "the USAGE scrape missed `{known}` — the parser or the layout changed:\n{}",
-            usage.stdout
-        );
-    }
-    // An empty (or nearly empty) scrape would make the loop below vacuous. `USAGE` cannot
-    // advertise fewer verbs than the tool has.
-    assert!(
-        verbs.len() >= ALL_COMMANDS.len(),
-        "scraped only {verbs:?} from USAGE — the verb column could not be read:\n{}",
+    // Set equality in both directions: a verb added to `USAGE` must have a page (the loop
+    // below), and a verb added to the table and `USAGE` must be added here too — otherwise it
+    // would escape the per-page loops above and could ship without an `exit:` line.
+    let mut verbs = usage_verbs(&usage.stdout);
+    let mut expected: Vec<String> = ALL_COMMANDS.iter().map(|c| c.to_string()).collect();
+    verbs.sort();
+    expected.sort();
+    assert_eq!(
+        verbs, expected,
+        "USAGE's verb column and ALL_COMMANDS must name the same verbs — add a new advertised \n\
+         verb to ALL_COMMANDS so every page test covers it:\n{}",
         usage.stdout
     );
 
     for verb in &verbs {
         let page = help_page(fx.path(), verb);
         assert!(
-            page.starts_with(&format!("usage: req {verb}")),
+            first_line_names_command(&page, verb),
             "`USAGE` advertises `{verb}`, so it must have a page:\n{page}"
         );
     }
