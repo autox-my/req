@@ -66,6 +66,40 @@ req gate             # exit 0, "verdict: PASS — every policy settled in the af
 If either is not exit 0, the corpus is not yours yet — report it with the command and the exit code
 (bottom of this page).
 
+## The document your project can commit
+
+A `spec.md` is usually a second source of truth: it drifts, and a "generated, do not edit" comment
+with nothing behind it proves nothing. req makes the document a **projection** instead (ADR 0018) —
+generated from the corpus, committed as an artefact, and proven current by regeneration:
+
+```bash
+req render --check docs/spec.md   # the gate: 0 current, 1 stale or hand-edited, 3 cannot judge
+req render --out docs/spec.md     # the remedy: regenerate, then commit the result
+```
+
+`--check` regenerates the projection and compares **bytes**; it writes nothing. A **1** means the
+corpus moved or the file was edited — the remedy is the same either way: change the corpus or
+regenerate, never hand-edit. A **3** means it cannot judge: the file is not a projection (no
+header), another build wrote it (`rules_v` differs, so its addresses mean something else — the
+same rule as a Baseline's `rules_v` mismatch), its selection cannot be reproduced, or the corpus
+cannot be read. Running `--out` first and then `--check` proves generation is reproducible, but the
+**gate is `--check` alone**: `--out` before it would repair the staleness it is supposed to report.
+
+The first line of a committed projection is a machine-readable header naming the `generator`,
+`rules_v`, selection, applying-claim count and an `sha256:` identity over the sorted applying
+addresses, so a reader can see what it was built from before running anything. It is not the check
+— the corpus is the oracle, and the header alone agreeing while the body differs is exactly the
+failure case `--check` exists to catch.
+
+Pin the paths your project commits in **`.req/projections`** — one repo-relative path per line,
+`#` comments, blank lines skipped, the same grammar as `.req/variants` — and run
+`req render --check` for each in your CI job. A listed path that is missing is a failure (a
+projection that vanished is silent decay), and a list that checked nothing is not a pass. The list
+is deliberately small: a projection is committed where it is a **deliverable**, not as a cache of
+every view, and adding a path is a decision. A `spec.md` cannot go stale by construction, because
+the only way to change it is to change the corpus — which has its own gates (`req canon --verify`,
+`req gate`, `req baseline --verify`).
+
 ## The authoring loop and its traps
 
 Every command's `--help` carries its own `exit:` line — the codes that command answers,
