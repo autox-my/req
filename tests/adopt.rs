@@ -1,0 +1,728 @@
+//! `tools/adopt.py` — the draft path: a document in, **legal** claims out.
+//!
+//! The seam is the CLI, not the extractor's functions: what the tool promises is a file set
+//! that `req canon`, `req canon --fill` and `req canon --verify` accept, so every check here
+//! drives the script and then the compiled binary over the corpus it wrote. A unit-tested
+//! string builder would prove nothing about that.
+//!
+//! The oracle for "the drafts are unfilled" is `req canon --fill`'s own count: a draft that
+//! carried a derived `form` or `address` would be *already current* to `--fill`, and `filled 2`
+//! is the measurement that the tool derived nothing. The draft's shape is checked directly too
+//! (`form: ""`, `address: null`) — the two assertions fail differently: one catches a derived
+//! value, the other catches a template that drifted from `src/init.rs`'s.
+//!
+//! `python3` is required, and its absence is a **failure named here** rather than a skipped
+//! check (`require_minisign` in `tests/baseline.rs` is the precedent): a skipped check is never
+//! a pass.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+mod common;
+
+/// The absolute path of the compiled binary, so the test does not depend on `$PATH`.
+fn req_bin() -> PathBuf {
+    std::env::var_os("CARGO_BIN_EXE_req")
+        .map(PathBuf::from)
+        .expect("integration tests run with CARGO_BIN_EXE_req set")
+}
+
+/// The extractor under test, from the tree this test run was built out of.
+fn adopt_py() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tools/adopt.py")
+}
+
+/// `python3` resolved from the test process's own `PATH`, as an absolute path: the child's
+/// `PATH` is rewritten below (to put the built `req` on it), and a program name resolved
+/// through the rewritten value would be a second, unintended dependency on it.
+fn python3() -> PathBuf {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    for dir in std::env::split_paths(&path) {
+        let candidate = dir.join("python3");
+        if candidate.is_file() {
+            return candidate;
+        }
+    }
+    panic!(
+        "python3 is required for tools/adopt.py — install it first \
+         (macOS: `xcode-select --install`; Debian: `apt-get install python3`)"
+    );
+}
+
+struct Outcome {
+    code: i32,
+    stdout: String,
+    stderr: String,
+}
+
+impl Outcome {
+    fn assert_code(&self, expected: i32, what: &str) {
+        assert_eq!(
+            self.code, expected,
+            "{what}: expected exit {expected}\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            self.stdout, self.stderr
+        );
+    }
+}
+
+/// Distinguishes fixtures within one process; the process id extends that across processes.
+static FIXTURE_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// A directory with **no `claims/` and no `.git` ancestor**: the extractor's root resolution
+/// (`--root`, else `REQ_ROOT`, else the working directory) and its `--date` fallback (the
+/// source's last commit) both walk outwards, so a fixture that inherited either would check
+/// something other than what it says.
+struct Fixture(PathBuf);
+
+impl Fixture {
+    fn new(name: &str) -> Self {
+        let seq = FIXTURE_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("{name}-{}-{seq}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("creates the fixture directory");
+        if let Some(found) = dir.ancestors().find(|d| req::root::is_corpus_root(d)) {
+            panic!(
+                "the fixture assumes no ancestor holds claims/, but {} does",
+                found.display()
+            );
+        }
+        if let Some(found) = dir.ancestors().find(|d| d.join(".git").exists()) {
+            panic!(
+                "the fixture assumes it is outside a git repository (the `--date` fallback \
+                 shells out to `git log`), but {} holds .git",
+                found.display()
+            );
+        }
+        Fixture(dir)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+
+    /// Write a file, creating its parents.
+    fn write(&self, rel: &str, text: &str) {
+        let path = self.0.join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("creates the fixture's parent directory");
+        }
+        fs::write(&path, text).unwrap_or_else(|e| panic!("writes {}: {e}", path.display()));
+    }
+
+    fn read(&self, rel: &str) -> String {
+        let path = self.0.join(rel);
+        fs::read_to_string(&path).unwrap_or_else(|e| panic!("reads {}: {e}", path.display()))
+    }
+
+    fn exists(&self, rel: &str) -> bool {
+        self.0.join(rel).is_file()
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+/// The compiled `req`, run in the fixture.
+fn req(cwd: &Path, args: &[&str]) -> Outcome {
+    let output = Command::new(req_bin())
+        .args(args)
+        .current_dir(cwd)
+        .env_remove("REQ_ROOT")
+        .output()
+        .expect("runs the compiled binary");
+    Outcome {
+        code: output.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    }
+}
+
+/// `tools/adopt.py`, run in the fixture, with the built `req` first on `PATH` — the tool takes
+/// `rules_v` and the claim schema from `req --version`, never from a literal.
+fn adopt(cwd: &Path, args: &[&str]) -> Outcome {
+    let mut path_value = req_bin()
+        .parent()
+        .expect("the binary has a parent")
+        .as_os_str()
+        .to_os_string();
+    if let Some(existing) = std::env::var_os("PATH") {
+        path_value.push(":");
+        path_value.push(existing);
+    }
+    let output = Command::new(python3())
+        .arg(adopt_py())
+        .args(args)
+        .current_dir(cwd)
+        .env_remove("REQ_ROOT")
+        .env("PATH", path_value)
+        .output()
+        .expect("runs tools/adopt.py");
+    Outcome {
+        code: output.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    }
+}
+
+/// `req --version`'s `rules_v` and `claim_schema`, the values a draft must carry. Read from the
+/// binary rather than restated, because a literal here would be a second copy of the axis that
+/// decides what a stored address means.
+fn version_axes() -> (String, String) {
+    let out = req(Path::new("."), &["--version"]);
+    out.assert_code(0, "req --version");
+    let field = |label: &str| -> String {
+        out.stdout
+            .lines()
+            .find_map(|line| {
+                let rest = line.trim().strip_prefix(label)?;
+                Some(rest.trim().to_string())
+            })
+            .unwrap_or_else(|| panic!("`{label}` missing from req --version:\n{}", out.stdout))
+    };
+    (field("rules_v"), field("claim_schema"))
+}
+
+/// The document the main loop uses: two statements, one empty item that must be skipped and
+/// named. Nothing here is a requirement id — `bullets` takes the item's text verbatim.
+const CAPABILITIES: &str = "\
+# Capabilities
+
+A paragraph that is not a requirement is not a candidate and is not reported.
+
+- The copilot reads each submitted document before judging it.
+- The copilot cites every source it quotes.
+- 
+";
+
+/// One claim file's field, by exact whole-line prefix. The template is argued over byte for
+/// byte, so this is a lookup rather than a `contains` that a comment could satisfy.
+fn field<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    text.lines().find(|line| line.starts_with(prefix))
+}
+
+#[test]
+fn the_draft_path_is_green_end_to_end() {
+    let fx = Fixture::new("req-adopt-loop");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    let init = req(fx.path(), &["init"]);
+    init.assert_code(0, "req init");
+
+    // The dry run is the default: it prints, writes nothing, and names the skipped line.
+    let dry = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+        ],
+    );
+    dry.assert_code(0, "the dry run");
+    assert!(
+        dry.stdout.contains("drafted: 2"),
+        "the dry run must count the two drafts:\n{}",
+        dry.stdout
+    );
+    assert!(
+        dry.stdout.contains("skipped: 1"),
+        "the dry run must count the skipped line:\n{}",
+        dry.stdout
+    );
+    assert!(
+        dry.stdout.contains("claims/REQ-0002.yml") && dry.stdout.contains("claims/REQ-0003.yml"),
+        "the dry run must name the files it would write:\n{}",
+        dry.stdout
+    );
+    assert!(
+        dry.stdout.contains("empty text") && dry.stdout.contains("#L7"),
+        "the skipped line must be named with its line number and reason:\n{}",
+        dry.stdout
+    );
+    assert!(
+        !fx.exists("claims/REQ-0002.yml"),
+        "a dry run writes nothing"
+    );
+
+    let write = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
+    );
+    write.assert_code(0, "the write run");
+    assert!(
+        write.stdout.contains("wrote: 2"),
+        "the write run must report what it wrote:\n{}",
+        write.stdout
+    );
+
+    // The drafts are legal, unfilled, and carry no derived field: `form` is the placeholder
+    // `--fill` rewrites and `address` is `null`. `--fill` itself is the independent oracle
+    // below — `filled 2` is only possible if the tool derived nothing.
+    let (rules_v, schema) = version_axes();
+    for (path, statement) in [
+        (
+            "claims/REQ-0002.yml",
+            "The copilot reads each submitted document before judging it.",
+        ),
+        (
+            "claims/REQ-0003.yml",
+            "The copilot cites every source it quotes.",
+        ),
+    ] {
+        let text = fx.read(path);
+        assert_eq!(
+            field(&text, "schema: "),
+            Some(format!("schema: {schema}").as_str()),
+            "{path} must declare the schema this build writes:\n{text}"
+        );
+        assert_eq!(
+            field(&text, "  rules_v: "),
+            Some(format!("  rules_v: {rules_v}").as_str()),
+            "{path} must carry the rules version `req --version` reports:\n{text}"
+        );
+        assert_eq!(
+            field(&text, "modality: "),
+            Some("modality: UNSTRUCTURED"),
+            "{path}: an unstructured claim is the only legal draft:\n{text}"
+        );
+        assert_eq!(
+            field(&text, "unstructured: "),
+            Some("unstructured: true"),
+            "{path}:\n{text}"
+        );
+        assert_eq!(
+            field(&text, "  form: "),
+            Some("  form: \"\""),
+            "{path} must leave the form as the placeholder `--fill` rewrites:\n{text}"
+        );
+        assert_eq!(
+            field(&text, "address: "),
+            Some("address: null"),
+            "{path} must never carry an address:\n{text}"
+        );
+        assert!(
+            text.contains(statement),
+            "{path} must carry its statement from the document:\n{text}"
+        );
+        assert!(
+            text.contains("source: docs/capabilities.md#L"),
+            "{path} must carry the document and line it came from:\n{text}"
+        );
+        assert!(
+            text.contains("date: 2026-10-21"),
+            "{path} must carry the authored date, not today's:\n{text}"
+        );
+    }
+
+    // The skipped line produced no claim: it is not in the corpus in any form.
+    for path in ["claims/REQ-0004.yml", "claims/REQ-0005.yml"] {
+        assert!(!fx.exists(path), "the skipped line must not become a claim");
+    }
+
+    // The loop the draft path hands to the human: `canon` reports, `--fill` derives the two
+    // fields, `--verify` proves them.
+    let canon = req(fx.path(), &["canon"]);
+    canon.assert_code(0, "req canon over the drafts");
+    assert!(
+        canon.stdout.contains("discrepancy flags: 0"),
+        "the drafts are legal as written:\n{}",
+        canon.stdout
+    );
+
+    let fill = req(fx.path(), &["canon", "--fill"]);
+    fill.assert_code(0, "req canon --fill");
+    assert!(
+        fill.stdout.contains("filled 2"),
+        "both drafts must have been unfilled — a drafted form or address would make one \
+         already current:\n{}",
+        fill.stdout
+    );
+
+    let verify = req(fx.path(), &["canon", "--verify"]);
+    verify.assert_code(0, "req canon --verify");
+    // Three claims: `init`'s starter claim and the two drafts. `--fill`'s `filled 2` above is
+    // the load-bearing count (the starter was already current); this one proves the filled
+    // corpus verifies end to end.
+    assert!(
+        verify.stdout.contains("verified 3"),
+        "the drafts must verify after one fill:\n{}",
+        verify.stdout
+    );
+}
+
+#[test]
+fn a_second_write_over_the_same_document_refuses_and_overwrites_nothing() {
+    let fx = Fixture::new("req-adopt-second");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    let args = [
+        "--from",
+        "docs/capabilities.md",
+        "--subject",
+        "system",
+        "--date",
+        "2026-10-21",
+        "--write",
+    ];
+    adopt(fx.path(), &args).assert_code(0, "the first write");
+
+    // Every existing claim file, byte for byte: an overwrite is visible as a changed file, and
+    // a fresh draft is visible as a new one.
+    let mut before = std::collections::BTreeMap::new();
+    for entry in fs::read_dir(fx.path().join("claims")).expect("the claims directory") {
+        let entry = entry.expect("a claim entry");
+        if entry.path().extension().is_some_and(|e| e == "yml") {
+            before.insert(
+                entry.file_name().to_string_lossy().into_owned(),
+                fs::read_to_string(entry.path()).expect("reads a claim"),
+            );
+        }
+    }
+
+    let second = adopt(fx.path(), &args);
+    second.assert_code(1, "a second --write over the same document");
+    assert!(
+        second.stderr.contains("already drafted"),
+        "the refusal must say the document is already drafted, and name the claims:\n{}",
+        second.stderr
+    );
+    assert!(
+        second.stderr.contains("REQ-0002"),
+        "the refusal must name the existing claims:\n{}",
+        second.stderr
+    );
+
+    let mut after = std::collections::BTreeMap::new();
+    for entry in fs::read_dir(fx.path().join("claims")).expect("the claims directory") {
+        let entry = entry.expect("a claim entry");
+        if entry.path().extension().is_some_and(|e| e == "yml") {
+            after.insert(
+                entry.file_name().to_string_lossy().into_owned(),
+                fs::read_to_string(entry.path()).expect("reads a claim"),
+            );
+        }
+    }
+    assert_eq!(
+        before, after,
+        "a refused run must write nothing and overwrite nothing"
+    );
+}
+
+#[test]
+fn no_corpus_is_unverifiable_and_names_init() {
+    let fx = Fixture::new("req-adopt-nocorpus");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    let out = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+        ],
+    );
+    out.assert_code(3, "no corpus");
+    assert!(
+        out.stderr.contains("claims/") && out.stderr.contains("req init"),
+        "the remedy for an unreadable corpus is named, and names the directory that is \
+         missing (the registry's message is a different defect):\n{}",
+        out.stderr
+    );
+    assert!(
+        !fx.exists("claims/REQ-0001.yml"),
+        "the extractor never creates a corpus"
+    );
+}
+
+#[test]
+fn an_unreadable_document_is_unverifiable() {
+    let fx = Fixture::new("req-adopt-nodoc");
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    let out = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/absent.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+        ],
+    );
+    out.assert_code(3, "a document that is not there");
+}
+
+#[test]
+fn a_missing_subject_is_a_usage_error() {
+    let fx = Fixture::new("req-adopt-nosubject");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    let out = adopt(
+        fx.path(),
+        &["--from", "docs/capabilities.md", "--date", "2026-10-21"],
+    );
+    out.assert_code(2, "a missing --subject");
+    assert!(
+        out.stderr.contains("--subject"),
+        "the usage error must name the missing flag:\n{}",
+        out.stderr
+    );
+}
+
+#[test]
+fn a_date_absent_from_the_source_and_from_git_is_a_usage_error() {
+    let fx = Fixture::new("req-adopt-nodate");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    let out = adopt(
+        fx.path(),
+        &["--from", "docs/capabilities.md", "--subject", "system"],
+    );
+    out.assert_code(2, "no --date and no commit date to borrow");
+    assert!(
+        out.stderr.contains("--date"),
+        "the remedy is the flag that supplies a date:\n{}",
+        out.stderr
+    );
+}
+
+/// The date is **authored**: `--date` or the source document's last commit, never "today".
+///
+/// The repository below is created **inside the fixture**, under the system temp dir, and is
+/// removed with it: this repository's history is never touched, and the identity and dates are
+/// scaffolding for that throwaway repository (set through the environment, never by rewriting
+/// anything of ours). They are pinned because `%cs` is the committer date: a fixture that read
+/// the wall clock would pass today and fail tomorrow.
+#[test]
+fn the_date_defaults_to_the_sources_last_commit_and_never_to_today() {
+    let fx = Fixture::new("req-adopt-gitdate");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    for args in [
+        vec!["init", "-q"],
+        vec!["add", "docs/capabilities.md", "claims", "aliases"],
+        vec!["commit", "-q", "-m", "the source document"],
+    ] {
+        let output = Command::new("git")
+            .args(&args)
+            .current_dir(fx.path())
+            .env("GIT_AUTHOR_NAME", "req adopt test")
+            .env("GIT_AUTHOR_EMAIL", "adopt@example.invalid")
+            .env("GIT_COMMITTER_NAME", "req adopt test")
+            .env("GIT_COMMITTER_EMAIL", "adopt@example.invalid")
+            .env("GIT_AUTHOR_DATE", "2020-01-02T00:00:00Z")
+            .env("GIT_COMMITTER_DATE", "2020-01-02T00:00:00Z")
+            .output()
+            .expect("runs git");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let out = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--subject",
+            "system",
+            "--write",
+        ],
+    );
+    out.assert_code(0, "the date comes from the document's last commit");
+    let draft = fx.read("claims/REQ-0002.yml");
+    assert!(
+        draft.contains("date: 2020-01-02"),
+        "the draft must carry the source's commit date, not today's:\n{draft}"
+    );
+}
+
+#[test]
+fn req_lines_ignores_the_sources_ids_and_names_every_skipped_line() {
+    let fx = Fixture::new("req-adopt-reqlines");
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    fx.write(
+        "docs/backlog.md",
+        "# Backlog\n\n- REQ-7: The system shall log every decision.\n- REQ-8: The system shall cite its sources.\n- A bullet with no id at all.\n",
+    );
+    let out = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/backlog.md",
+            "--convention",
+            "req-lines",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
+    );
+    out.assert_code(0, "the req-lines convention");
+    assert!(
+        out.stdout.contains("drafted: 2") && out.stdout.contains("skipped: 1"),
+        "two req lines are drafted and the id-less bullet is skipped:\n{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("ids are ignored"),
+        "the report must say the source's ids are ignored:\n{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("no id"),
+        "the skipped bullet's reason is named:\n{}",
+        out.stdout
+    );
+
+    // The source's ids do not become claim ids, and do not ride in the statements.
+    let draft = fx.read("claims/REQ-0002.yml");
+    assert!(
+        draft.contains("claim_id: REQ-0002"),
+        "req allocates the claim id:\n{draft}"
+    );
+    assert!(
+        draft.contains("statement: \"The system shall log every decision.\""),
+        "the statement is the text after the colon:\n{draft}"
+    );
+    assert!(
+        !draft.contains("REQ-7"),
+        "the source's id must not reach the draft:\n{draft}"
+    );
+}
+
+#[test]
+fn the_heading_scope_is_respected_and_everything_outside_it_is_named() {
+    let fx = Fixture::new("req-adopt-under");
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    fx.write(
+        "docs/capabilities.md",
+        "# Capabilities\n\n- In scope, first.\n\n## Detail\n\n- In scope, in a subsection.\n\n# Elsewhere\n\n- Out of scope.\n",
+    );
+    let out = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--under",
+            "Capabilities",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+        ],
+    );
+    out.assert_code(0, "the heading scope");
+    assert!(
+        out.stdout.contains("drafted: 2"),
+        "a heading's subsections are under it:\n{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("skipped: 1") && out.stdout.contains("outside the heading"),
+        "the bullet outside the heading is named with its reason:\n{}",
+        out.stdout
+    );
+}
+
+#[test]
+fn nothing_extracted_is_a_definite_problem() {
+    let fx = Fixture::new("req-adopt-nothing");
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    fx.write(
+        "docs/capabilities.md",
+        "# Capabilities\n\nNo list items at all.\n",
+    );
+    let out = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
+    );
+    out.assert_code(1, "a document with nothing to draft");
+    assert!(
+        !fx.exists("claims/REQ-0002.yml"),
+        "nothing extracted writes nothing"
+    );
+}
+
+#[test]
+fn the_self_check_passes_and_is_wired_into_the_gate() {
+    // The table itself.
+    let out = Command::new(python3())
+        .arg(adopt_py())
+        .arg("--self-check")
+        .output()
+        .expect("runs tools/adopt.py --self-check");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "--self-check must pass with no corpus, no git and no req:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // The gate's plan prints the default run's commands from the same call sites and executes
+    // none (`tests/baseline.rs` drives the same seam), so removing the wiring reddens this.
+    for args in [vec!["plan"], vec!["--fast", "plan"]] {
+        let plan = check_sh(&args);
+        let stdout = String::from_utf8_lossy(&plan.stdout);
+        assert_eq!(
+            plan.status.code(),
+            Some(3),
+            "a plan is never a pass:\n{stdout}"
+        );
+        assert!(
+            normalized(&stdout)
+                .iter()
+                .any(|line| line.contains("tools/adopt.py --self-check")),
+            "the gate must self-check the extractor in {args:?}:\n{stdout}"
+        );
+    }
+}
+
+/// `scripts/check.sh` from the tree under test, with `HOME` pointed at the toolchain the gate
+/// is meant to use (the same seam `tests/baseline.rs` and `tests/decision.rs` share).
+fn check_sh(args: &[&str]) -> std::process::Output {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut command = Command::new("bash");
+    command
+        .arg(root.join("scripts/check.sh"))
+        .args(args)
+        .current_dir(&root);
+    common::point_home_at_toolchain(&mut command);
+    command.output().expect("runs scripts/check.sh")
+}
+
+fn normalized(stdout: &str) -> Vec<String> {
+    stdout
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect()
+}

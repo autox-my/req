@@ -175,12 +175,12 @@ export OCR_NO_UPDATE=1
   because the steps it drops are the ones whose *runtime* dominates — `clippy`, the external
   corpora (v1-v3) and the direction gold set, and the review-rule/review-scope checks. It keeps
   `fmt`, `test`, `canon`, the seed parity bench, the Baseline and decision steps, the release
-  gate and the projection check. It cannot be mistaken for the gate: each skipped step prints
-  **`FAST`** (never `SKIP`, because the tooling is there) and the banner reads
-  `GATE: PASS (FAST: …)`, so a fast green is an iteration verdict — **the full run is required
-  before a commit**, and CI always runs the full one. `--fast` composes with `plan`; beside
-  `baseline` or `decision` it is a usage error (exit 2), because one check is not the gate and
-  neither is fast.
+  gate, the projection check and the extractor's self-check. It cannot be mistaken for the gate:
+  each skipped step prints **`FAST`** (never `SKIP`, because the tooling is there) and the banner
+  reads `GATE: PASS (FAST: …)`, so a fast green is an iteration verdict — **the full run is
+  required before a commit**, and CI always runs the full one. `--fast` composes with `plan`;
+  beside `baseline` or `decision` it is a usage error (exit 2), because one check is not the gate
+  and neither is fast.
 - Review-rule coverage: `python3 tools/review/check_rules.py` (part of `check.sh` when
   `ocr` is present) — checks both directions between `review/rule.json` and the tracked tree,
   plus the checklist text itself: every entry must still match a tracked file, every tracked
@@ -503,7 +503,8 @@ matter:
   benchmark protocol.
 - `docs/claim-format.md` — one claim per file; the parity invariant; authoring rules.
 - `docs/adopting.md` — how a project adopts req, on one page: install at a pinned rev,
-  `req init`, the authoring loop and its traps, the CI snippet with the per-variant rule,
+  `req init`, **adopting from documents you already have** (the extractor's draft path,
+  `tools/adopt.py`), the authoring loop and its traps, the CI snippet with the per-variant rule,
   and where a req bug is reported.
 - `claims/REQ-*.yml` + `claims/README.md` — the dogfood corpus: req's own
   requirements, in req's own format.
@@ -584,6 +585,16 @@ matter:
 - `tools/review/ocr_gate.py` — the verdict on an OCR review result: pass, fail, or a legitimate
   docs-only skip. Pure decision function plus a `--self-check` table, so its logic is tested
   without a model. The workflow enforces the copy from `origin/main`, never the pull request's.
+- `tools/adopt.py` — the document extractor (issue #44): drafts one `unstructured: true` claim
+  per statement from a `spec.md`/backlog, with the document **and line** as provenance and
+  **nothing derived** — `canonical.form` is the empty placeholder and `address` is `null`, so
+  `req canon` reports 0 flags and `req canon --fill` is what completes it (and refuses to write
+  over a contradicted parse). Two conventions only (`bullets`, `req-lines`; a source's
+  `REQ-<n>` id is ignored because req allocates the id), an optional heading scope, every
+  skipped line named with its reason, a **dry run by default**, and a refusal to overwrite or to
+  re-draft a document already adopted. Its `--self-check` table-drives the pure half and is in
+  the gate; the corpus end-to-end is `tests/adopt.rs`. It is a starting point adopters **copy
+  and adjust**, not a subcommand — the mapping from a document to claims is per-project.
 - `review/rule.json` — the review rules we own: one checklist per path class, passed
   to every `ocr` invocation. Its shape and the two CLI behaviours worth knowing are
   documented under **Review** above.

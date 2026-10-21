@@ -255,7 +255,9 @@ fn init_creates_a_filled_corpus_in_the_current_directory() {
         );
     }
 
-    // The README carries the authoring loop and its traps, in the adopter's words.
+    // The README carries the authoring loop and its traps, in the adopter's words — and points
+    // an adopter with a backlog at the extractor, which is the one path into a corpus that does
+    // not start by transcribing.
     let readme = fx.read("claims/README.md");
     for required in [
         "req canon --fill",
@@ -264,6 +266,7 @@ fn init_creates_a_filled_corpus_in_the_current_directory() {
         "SI",
         "refused",
         "address",
+        "tools/adopt.py",
     ] {
         assert!(
             readme.contains(required),

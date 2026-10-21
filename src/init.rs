@@ -528,6 +528,10 @@ A claim's structured slots are an **authored parse of its `statement`** — the 
 invariant. `req canon` re-parses the statement and reports every slot that disagrees;
 `canonical.form` and `address` are *derived* from that parse, never authored.
 
+A `spec.md`, a backlog or a capabilities table can seed this corpus instead of transcribing it:
+copy `tools/adopt.py` from req's repository and run it to draft one `unstructured: true` claim per
+statement — the slots are still yours to author — then `req canon --fill`.
+
 ## The authoring loop
 
 1. Edit `statement` (and, when the statement really changed, the slots that parse it).

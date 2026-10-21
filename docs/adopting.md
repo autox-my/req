@@ -66,6 +66,65 @@ req gate             # exit 0, "verdict: PASS — every policy settled in the af
 If either is not exit 0, the corpus is not yours yet — report it with the command and the exit code
 (bottom of this page).
 
+## Adopting from documents you already have
+
+A project usually starts with prose: a `spec.md`, a backlog, a capabilities table. `req init` gives
+you a corpus, not those requirements, and a tool that guessed `modality`, `value` or `operator` from
+a sentence would be the one path that can enshrine a contradicted parse. What *is* honest to draft
+is the part the claim format already sanctions: an **`unstructured: true` claim** — the statement,
+its provenance (the document **and the line**), and every structured slot absent.
+
+req ships no importer and no `adopt` subcommand (issue #44): the mapping from a document to claims
+is per-project. `tools/adopt.py` in req's repository is therefore a **starting point to copy and
+adjust**, not an interface to depend on — copy it out of req's checkout at the rev you installed and
+change it to fit your document.
+
+```bash
+# from the corpus root (the directory holding claims/), with adopt.py copied into your project
+python3 tools/adopt.py --from docs/capabilities.md --subject system             # dry run
+python3 tools/adopt.py --from docs/capabilities.md --subject system --write     # the drafts
+req canon                # exit 0, "discrepancy flags: 0" — an unstructured draft is legal as written
+req canon --fill         # derives canonical.form and address
+req canon --verify       # exit 0 — the drafts are complete claims
+```
+
+**The loop is the point.** The drafts are *unfilled* on purpose — `canonical.form` is left as the
+empty placeholder and `address` is `null` — because only the derivation writes those fields, and a
+draft that carried a derived value would be an address over a parse nobody authored. After
+`--fill` a draft is a complete, legal claim, and it is **still a proposal**: the human decides
+whether to leave it qualitative or to author the slots that give it structure (ADR 0004). The tool
+never writes a slot, never derives an address, and never decides whether a bullet is one
+requirement or three. A draft is legal *only because it is unstructured* — the format's marker for
+prose that has not been parsed, not a claim whose parse was skipped.
+
+Two conventions are built in, and neither is a heuristic:
+
+| `--convention` | what one claim is |
+| --- | --- |
+| `bullets` (default) | each markdown list item (`- `, `* `, `1. `) under `--under`, or in the whole document: the item's text, trimmed, its wrapped lines joined onto one line |
+| `req-lines` | each line matching `- REQ-<n>: <text>`: the text after the colon. The source's id is **ignored** — req allocates `REQ-NNNN` — and the report says so |
+
+`--under <heading>` limits the run to one section (a heading's subsections are under it).
+`--subject <id>` is required and is the whole document's subject — one decision per document, not
+per claim — and it is written verbatim into each claim: an unregistered surface stays literal in
+the parse, so aliasing it is a later, deliberate act. `--date` is the rationale date; without it the
+source document's **last git commit date** is used, and with neither the run is a usage error
+(exit 2) — a date is authored, never invented, exactly as `req baseline --at` is.
+
+**Every skipped line is named with its reason and counted.** A line that looks like a candidate and
+is not drafted — an empty item, a `req-lines` item with no id, an item outside the named heading —
+appears in the report as `skip <doc>#L<n> <reason>`, and the summary line says how many. A
+requirement silently dropped at adoption is the failure this project exists to prevent, so the
+report is the reviewable output.
+
+The defaults are the safe direction: a **dry run** prints each draft, the file it would write
+(`claims/REQ-NNNN.yml`, the next free number) and the skips, and writes nothing; `--write` writes
+them. It never overwrites — an existing path is exit **1**, nothing written — and a document already
+drafted into the corpus is refused (exit **1**) with the claims it produced named: draft that
+document again only after deliberately deleting them, or copy the script and adjust it. Exit **0**
+drafted (dry or written), **1** a definite problem, **2** usage, **3** the document, the corpus, the
+subject registry or `req` cannot be read — no `claims/` means run `req init` first.
+
 ## The document your project can commit
 
 A `spec.md` is usually a second source of truth: it drifts, and a "generated, do not edit" comment
