@@ -316,7 +316,10 @@ export OCR_NO_UPDATE=1
   was not valid when the signature was made), and **revocation is prospective** — a key revoked
   *after* the signing time still verifies, while one revoked at or before it is FAIL. Both are
   judged by calendar date, and the signing time is **signer-asserted** (no RFC 3161), so
-  revocation bounds newly asserted times only; `valid_from` is recorded but not enforced. An unknown key or a
+  revocation bounds newly asserted times only; `valid_from` is recorded but not enforced. An
+  envelope **newer** than this build's is a separate case: its `signed_at` is not a spelling this
+  build validates, so neither expiry nor **revocation** is a definite finding there — both stay
+  UNVERIFIABLE, with the remedy of a build that writes that envelope. An unknown key or a
   missing signature is UNVERIFIABLE — a manifest is **not yet a Baseline** until a human signs
   it. The signature check is a **process boundary** to a pinned verifier, so the core links no
   cryptography and still no network; with no verifier installed the outcome is UNVERIFIABLE,

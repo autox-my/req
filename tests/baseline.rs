@@ -137,7 +137,8 @@ fn a_decision_recorded_after_signing_does_not_invalidate_the_baseline() {
     // Attest the two-entry log, then show the log cannot be cut back below it.
     let mut candidate = manifest.clone();
     let two_entry_head = decision::head(&log).expect("filled");
-    attest(&mut candidate, FIXTURE_SIGNED_AT, &two_entry_head);
+    attest(&mut candidate, FIXTURE_SIGNED_AT, &two_entry_head)
+        .expect("the fixture signing time is a valid attestation");
     let truncated = req::baseline::verify(
         &rows,
         &candidate,
@@ -257,7 +258,8 @@ fn air_gapped() -> Context {
 /// covers. Attested, because a v3 envelope carries its signing time and authority.
 fn manifest_declaring(rules_v: u32, rows: &[Row], selection: &Context) -> Manifest {
     let mut manifest = manifest(rows, rules_v, selection);
-    attest(&mut manifest, FIXTURE_SIGNED_AT, &fixture_head());
+    attest(&mut manifest, FIXTURE_SIGNED_AT, &fixture_head())
+        .expect("the fixture signing time is a valid attestation");
     from_json(&canonical_bytes(&manifest))
         .expect("a fixture manifest round-trips through its own bytes")
 }
@@ -273,7 +275,8 @@ fn signed_manifest() -> (Vec<Row>, Manifest) {
     // pinning a hand-copied number would silently become a mismatch fixture — and every test
     // built on it would change meaning — the moment the constant moves.
     let mut manifest = manifest(&rows, RULES_V, &context);
-    attest(&mut manifest, FIXTURE_SIGNED_AT, &fixture_head());
+    attest(&mut manifest, FIXTURE_SIGNED_AT, &fixture_head())
+        .expect("the fixture signing time is a valid attestation");
     (rows, manifest)
 }
 
@@ -325,8 +328,10 @@ fn canonical_bytes_do_not_depend_on_input_order() {
         5,
         &context,
     );
-    attest(&mut forward, FIXTURE_SIGNED_AT, &fixture_head());
-    attest(&mut backward, FIXTURE_SIGNED_AT, &fixture_head());
+    attest(&mut forward, FIXTURE_SIGNED_AT, &fixture_head())
+        .expect("the fixture signing time is a valid attestation");
+    attest(&mut backward, FIXTURE_SIGNED_AT, &fixture_head())
+        .expect("the fixture signing time is a valid attestation");
     assert_eq!(canonical_bytes(&forward), canonical_bytes(&backward));
     // Selection keys sorted, non-applying claims absent, one trailing newline, and the
     // fixture's real digests in the bytes — both interpolated from the named oracles at the top
@@ -403,6 +408,38 @@ fn a_v3_manifest_with_an_unreadable_signed_at_is_rejected() {
         );
         assert!(!err.contains("predates"), "{bad:?}: {err}");
     }
+}
+
+/// The **writer's** half of the same choke point, which used to be missing: `attest` stored its
+/// argument verbatim, so a library caller (the CLI validates `--at`; the library did not) could
+/// put a `signed_at` inside the signed bytes that the only reader of a v3 manifest rejects — the
+/// failure then surfaced at verification as a parse error pointing at nothing. A refused call
+/// writes nothing, so the manifest stays unattested instead of half-filled.
+#[test]
+fn attest_refuses_a_signing_time_the_reader_would_reject() {
+    let mut manifest = manifest(&[], RULES_V, &Context::new());
+    let head = fixture_head();
+    for bad in [
+        "",
+        "07/10/2026",
+        "2026-10-07 09:00:00",
+        "2026-02-31T00:00:00Z",
+    ] {
+        let err = attest(&mut manifest, bad, &head)
+            .expect_err("a spelling the reader rejects is not attestable");
+        assert!(
+            err.contains("not an RFC 3339 UTC timestamp"),
+            "{bad:?}: {err}"
+        );
+        assert!(
+            manifest.signed_at.is_none() && manifest.authority.is_none(),
+            "a refused attestation writes nothing: {bad:?}"
+        );
+    }
+    attest(&mut manifest, FIXTURE_SIGNED_AT, &head).expect("a strict timestamp is attestable");
+    assert_eq!(manifest.signed_at.as_deref(), Some(FIXTURE_SIGNED_AT));
+    // The two halves agree: what `attest` accepts, `from_json` reads.
+    from_json(&canonical_bytes(&manifest)).expect("an attested manifest is readable");
 }
 
 /// A v3 declaration without either attestation is corrupt, not stale, and the message says what
@@ -862,6 +899,86 @@ fn a_key_revoked_after_the_signing_time_still_verifies() {
         FIXTURE_SIGNED_AT,
     );
     assert_eq!(same_day.exit_code(), 1, "{same_day:?}");
+}
+
+/// #41's trust residue: a revocation is a definite finding only when this build can judge the
+/// time the key is judged at. A v2 manifest is judged at today and a v3 one at its attested
+/// `signed_at`, so both keep the documented FAIL; an envelope **newer** than this build's records
+/// a signing time this build does not validate (the CLI judges it at today instead), so the same
+/// revocation must stay UNVERIFIABLE — the version dispatch has already answered that way, and a
+/// FAIL would outrank it and misdiagnose a newer envelope as a trust failure.
+///
+/// Gating the arm on `==` instead of `<=` would fail this test through the v2 half: the older
+/// envelope would become "cannot be decided".
+#[test]
+fn a_revocation_this_build_cannot_judge_is_unverifiable_never_fail() {
+    let (rows, manifest) = signed_manifest();
+    // Revoked long before every judgement time used below.
+    let revoked = trust_dates(Some("2020-01-01"), None);
+
+    // v3: judged at the attested signing time, so the revocation is a definite finding.
+    let v3 = verify(
+        &rows,
+        &manifest,
+        Some("sig"),
+        &revoked,
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        FIXTURE_SIGNED_AT,
+    );
+    assert_eq!(v3.exit_code(), 1, "{v3:?}");
+    assert!(
+        v3.reasons().join(" ").contains("revoked at 2020-01-01"),
+        "{v3:?}"
+    );
+
+    // v2: judged at today, which is also after the revocation — still FAIL, as documented.
+    let mut v2 = manifest.clone();
+    v2.version = 2;
+    v2.signed_at = None;
+    v2.authority = None;
+    let v2_outcome = verify(
+        &rows,
+        &v2,
+        Some("sig"),
+        &revoked,
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        "2026-10-21",
+    );
+    assert_eq!(v2_outcome.exit_code(), 1, "{v2_outcome:?}");
+    assert!(
+        v2_outcome
+            .reasons()
+            .join(" ")
+            .contains("revoked at 2020-01-01"),
+        "{v2_outcome:?}"
+    );
+
+    // A newer envelope: the same revocation is not this build's to turn into a definite FAIL.
+    let mut newer = manifest.clone();
+    newer.version = BASELINE_VERSION + 1;
+    let outcome = verify(
+        &rows,
+        &newer,
+        Some("sig"),
+        &revoked,
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        "2026-10-21",
+    );
+    assert_eq!(
+        outcome.exit_code(),
+        3,
+        "a newer envelope's trust verdict is UNVERIFIABLE: {outcome:?}"
+    );
+    let reasons = outcome.reasons().join(" ");
+    assert!(reasons.contains("newer envelope"), "{reasons}");
+    assert!(reasons.contains("cannot judge"), "{reasons}");
+    assert!(
+        reasons.contains("revocation cannot be decided here"),
+        "the reason must name the undecidable judgement, not just the revocation: {reasons}"
+    );
 }
 
 /// A malformed anchor spelling fails **closed**. `date_of` truncates blindly, so a typo'd
@@ -1346,6 +1463,135 @@ fn a_key_expired_today_but_valid_at_signing_verifies_through_the_cli() {
         !stdout.contains("revoked"),
         "the unvalidated signed_at must not judge the key: {stdout}"
     );
+}
+
+/// ADR 0016 falsification case 2 through the **real loader**, not the branch: the synthetic test
+/// above hands `verify` an `Err("decisions/ is absent")` directly, which pins the verdict but not
+/// the path the CLI takes. An absent `decisions/` directory is deliberately the **empty-log** case
+/// (`log_paths` answers an empty file set for a missing directory; pinned by
+/// `tests/decision.rs::the_gate_blocks_an_empty_decision_log_without_a_skip`), so what travels
+/// here is the loader's own diagnosis — "the decision log is empty: nothing is recorded" — and the
+/// verdict must stay UNVERIFIABLE: absence is not tampering.
+///
+/// A real throwaway key signs the fixture, so the *only* reason left after the log is removed is
+/// the absent authority. An unsigned fixture would answer UNVERIFIABLE for the missing signature
+/// as well, and the test could not tell the two apart.
+#[test]
+fn an_absent_decision_log_is_unverifiable_through_the_cli() {
+    require_minisign();
+    let fixture = Fixture::new("cli-absent-decisions");
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for (src, dst) in [
+        ("claims/REQ-0001.yml", "claims/REQ-0001.yml"),
+        ("aliases/subjects.yml", "aliases/subjects.yml"),
+        ("decisions/DEC-0001.yml", "decisions/DEC-0001.yml"),
+    ] {
+        let to = fixture.path().join(dst);
+        std::fs::create_dir_all(to.parent().expect("a parent")).expect("creates the directory");
+        std::fs::copy(root.join(src), &to).expect("copies the fixture corpus file");
+    }
+
+    let public_key = fixture.path().join("req.pub");
+    let secret_key = fixture.path().join("req.key");
+    let generated = std::process::Command::new("minisign")
+        .args(["-G", "-W", "-f", "-p"])
+        .arg(&public_key)
+        .arg("-s")
+        .arg(&secret_key)
+        .output()
+        .expect("runs minisign");
+    assert!(
+        generated.status.success(),
+        "throwaway key generation failed: {}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+
+    let manifest_path = fixture.path().join("baseline.json");
+    let emitted = std::process::Command::new(req_bin())
+        .arg("--root")
+        .arg(fixture.path())
+        .args(["baseline", "--at", FIXTURE_SIGNED_AT])
+        .output()
+        .expect("runs the compiled binary");
+    assert_eq!(
+        emitted.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&emitted.stderr)
+    );
+    std::fs::write(&manifest_path, &emitted.stdout).expect("writes the emitted manifest");
+    let signed = std::process::Command::new("minisign")
+        .args(["-Sm"])
+        .arg(&manifest_path)
+        .arg("-s")
+        .arg(&secret_key)
+        .output()
+        .expect("runs minisign");
+    assert!(
+        signed.status.success(),
+        "fixture signing failed: {}",
+        String::from_utf8_lossy(&signed.stderr)
+    );
+
+    let key_text = std::fs::read_to_string(&public_key).expect("reads the fixture public key");
+    let indented = key_text
+        .lines()
+        .map(|line| format!("      {line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let trust_dir = fixture.path().join("baselines");
+    std::fs::create_dir_all(&trust_dir).expect("creates baselines/");
+    std::fs::write(
+        trust_dir.join("trust.yml"),
+        format!(
+            "keys:\n  - id: \"req-baseline-1\"\n    scheme: \"minisign\"\n    public_key: |\n{indented}\n    valid_from: \"2026-01-01\"\n    revoked_at: \"2098-01-01\"\n"
+        ),
+    )
+    .expect("writes the fixture trust anchor");
+
+    let run = || {
+        let output = std::process::Command::new(req_bin())
+            .arg("--root")
+            .arg(fixture.path())
+            .args(["baseline", "--verify"])
+            .arg(&manifest_path)
+            .output()
+            .expect("runs the compiled binary");
+        (
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+        )
+    };
+
+    // The fixture verifies while its log is present, so the deletion is the only variable.
+    let (code, stdout) = run();
+    assert_eq!(
+        code,
+        Some(0),
+        "the signed fixture must verify before the log is removed: {stdout}"
+    );
+    assert!(stdout.contains("[VERIFIED]"), "{stdout}");
+
+    std::fs::remove_dir_all(fixture.path().join("decisions")).expect("removes decisions/");
+    let (code, stdout) = run();
+    assert_eq!(
+        code,
+        Some(3),
+        "an absent log is UNVERIFIABLE, never FAIL: {stdout}"
+    );
+    assert!(stdout.contains("[UNVERIFIABLE]"), "{stdout}");
+    assert!(stdout.contains("cannot be re-derived"), "{stdout}");
+    // The loader's own diagnosis travels, so the remedy ("record a decision") is named rather
+    // than a generic "cannot be read" that could be an unparsable file with a different remedy.
+    assert!(stdout.contains("the decision log is empty"), "{stdout}");
+    assert!(stdout.contains("nothing is recorded"), "{stdout}");
+    // ...and no tamper vocabulary: absence is not evidence of an edit.
+    for vocabulary in ["edited", "does not recompute", "authority mismatch"] {
+        assert!(
+            !stdout.contains(vocabulary),
+            "{vocabulary:?} must not appear: {stdout}"
+        );
+    }
 }
 
 // --- The canonical rules version, judged before drift -----------------------------------------

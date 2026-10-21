@@ -9,7 +9,7 @@
 mod common;
 
 use req::decision::{
-    Chain, Decision, GENESIS, canonical_bytes, compute_hash, fill, upsert_line, verify_chain,
+    Chain, Decision, GENESIS, canonical_bytes, compute_hash, fill, head, upsert_line, verify_chain,
 };
 
 fn decision(id: &str, address: &str) -> Decision {
@@ -93,6 +93,27 @@ fn a_log_that_does_not_begin_at_genesis_is_unverifiable() {
     assert!(matches!(chain, Chain::Unverifiable(_)), "{chain:?}");
     assert!(chain.reasons().join(" ").contains("genesis"));
     assert_eq!(chain.exit_code(), 3);
+}
+
+/// `head` answers `None` for a log that attests nothing: an empty log, or one whose **last**
+/// record carries no hash. Its single production caller (Baseline emission) reaches it only
+/// after `Chain::Valid`, so these arms are exercised through the public API alone — and a `Some`
+/// returned here would attest an authority the log cannot supply, which is the refusal emission
+/// exists to make.
+#[test]
+fn head_is_none_for_a_log_that_attests_nothing() {
+    assert_eq!(head(&[]), None, "an empty log has no head");
+
+    // The head is the *last* record: a filled earlier record does not rescue an unfilled last one.
+    let mut unfilled_last = filled(2);
+    unfilled_last[1].hash = None;
+    assert_eq!(head(&unfilled_last), None);
+
+    // ...and where it answers, it answers with the stored field and the record count.
+    let log = filled(2);
+    let answered = head(&log).expect("a filled log has a head");
+    assert_eq!(answered.hash, log[1].hash.clone().expect("filled"));
+    assert_eq!(answered.entries, 2);
 }
 
 /// Re-filling a reordered log yields a *different* internally consistent log: the point is that its
