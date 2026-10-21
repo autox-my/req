@@ -569,7 +569,9 @@ fn every_commands_help_answers_with_no_corpus_and_prints_no_root_line() {
 #[test]
 fn render_and_trace_usage_errors_name_the_invoked_verb() {
     // The pages made `render` and `trace` two verbs; the shared usage error must not keep
-    // naming a pair that exists nowhere else. It is still a usage error, not a page.
+    // naming a pair that exists nowhere else. It is still a usage error, not a page. Since ADR
+    // 0018 the synopsis carries the two committed-projection flags, so the error must name the
+    // invoked verb *and* the shape it accepts.
     let corpus = Path::new(env!("CARGO_MANIFEST_DIR"));
     for command in ["render", "trace"] {
         let out = run_at(corpus, &[command, "--bogus"]);
@@ -579,9 +581,10 @@ fn render_and_trace_usage_errors_name_the_invoked_verb() {
             out.stderr
         );
         assert!(
-            out.stderr
-                .contains(&format!("usage: req {command} [key=value ...]")),
-            "the error names the invoked verb, not the pair:\n{}",
+            out.stderr.contains(&format!(
+                "usage: req {command} [--out <path>] [--check <path>] [key=value ...]"
+            )),
+            "the error names the invoked verb and its accepted shape, not the pair:\n{}",
             out.stderr
         );
         assert!(

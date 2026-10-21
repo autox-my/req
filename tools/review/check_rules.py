@@ -73,6 +73,10 @@ RULE_FILE = ROOT / "review" / "rule.json"
 # exactly that path.
 ALLOW_LIST = {
     ".gitignore": "ignore rules only — no requirement semantics; reviewed in the diff by hand",
+    ".gitattributes": (
+        "checkout policy only — no requirement semantics; reviewed in the diff by hand. The one "
+        "line pins LF for the committed projection ADR 0018 compares byte for byte"
+    ),
     "Cargo.lock": "lockfile — the review CLI excludes lockfiles (default_path), and pins are provenance",
     "README.md": "markdown — the CLI excludes it as unsupported_ext; hand-reviewed by rule",
     "CONTEXT.md": "markdown, glossary only — hand-reviewed by rule (the CLI excludes it)",

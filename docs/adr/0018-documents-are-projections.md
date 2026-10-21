@@ -112,6 +112,62 @@ edits `spec.md` has changed a document, not a requirement.
 - Not implemented by this decision: `--check`, `--format markdown`, `--out`. Today `render`'s stdout is
   already markdown-shaped and `>` captures it; the decision names the contract, the implementation follows.
 
+## Implementation note (2026-10-21, pack A)
+
+The bullet above is what the decision did *not* build; this note records what was built on
+`feature/projection-check`, for `render` and `trace` (both, as §1 requires). `audit` is the third
+projection and gains no flag here: the pack's scope is the two views, and the audit packet's
+selection comes from a Baseline, which is a different question.
+
+**CLI.** `req render|trace [--out <path>] [--check <path>] [key=value ...]`. `--out` and `--check`
+are exclusive (2), as are a flag without a path and a path that is option-shaped. `--out` writes the
+header plus the body and exits **0** written / **3** cannot write — including when the plain
+command's verdict would be 3, because the artefact is complete (an undecided claim keeps its own
+section) and the exit class belongs to the verdict. `--check` writes nothing: **0** byte-identical,
+**1** stale or hand-edited (the first differing line is named, with the `--out` remedy), **3**
+cannot judge. Plain `render`/`trace` are unchanged, byte for byte and exit class for exit class.
+
+**Header** (one line, the file's first line, invisible when rendered):
+
+```
+<!-- req projection: generator=req render | rules_v=5 | selection=field=value runs=25 | claims=15 | identity=sha256:<64 lowercase hex> -->
+```
+
+`selection` is the canonical context — keys sorted, `k=v` pairs joined by single spaces, the literal
+`none` when the caller decided nothing — and the check reproduces the context from it. A context
+whose canonical spelling would not parse back (a key or value carrying whitespace) is refused by
+`--out` (**3**) rather than written into an artefact that cannot be checked.
+
+**Identity** is `sha256` over the sorted addresses of the **applying** claims, each followed by
+`\n`, lowercase hex: `sha256(concat(sorted(addresses).map(|a| a + "\n")))`. An address is the bare
+64-hex string `Row.address` carries (the digest of `canonical.form`), not the header's
+`sha256:`-prefixed spelling. The fixture
+`sha256("a"*64 + "\n" + "b"*64 + "\n") = 913f9338fb6c17253f3a14816fc08d52522454bfc19a8c99538a197cfb23fb41`
+was computed independently of the implementation, and a test pins the sort and the separator through
+it. The digest is an artefact of the projection, never a claim address: no identity and no `RULES_V`
+moves.
+
+**Check order** (an earlier failure outranks a later one): header grammar (**3**); `rules_v` not this
+build's (**3**, the ADR 0016 precedent — it is regenerated, never FAIL); another generator's
+projection (**3** — two commands are two artefacts, so `render --check` on a `trace` file names
+`trace --check` instead of calling it stale); a selection that does not reproduce (**3**); then
+regeneration and a **byte** comparison (**1** on any difference). The header's identity digest is
+never compared alone. An explicit context beside `--check` must name the same canonical selection as
+the header, or it is **3**: the artefact records what it was built from, and a second selection is a
+second question.
+
+**Pinned list.** `.req/projections` (one repo-relative path per line, `#` comments, blank lines
+skipped — the `.req/variants` grammar) is read by `scripts/check.sh`, which runs
+`req render --check` per path, fails on a listed path that is missing and on a list that checked
+nothing, and prints `projections checked: N`. This repository's first instance is `docs/spec.md`,
+generated with no context (15 applying, 6 undecided). req itself never reads `.req/projections`: the
+list and its reader belong to the repository, like `.req/variants`.
+
+**Deliberately not here.** `--format json` waits for workstream C — markdown is the only format, and
+the header names the generator so a JSON artefact can arrive without re-reading this decision.
+`audit` gains no `--out` (above). And `--check` never repairs, rewrites or normalizes the file: it
+answers a question.
+
 ## Falsification
 
 The decision is wrong if any of these is observed:

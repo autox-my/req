@@ -1,0 +1,9 @@
+# Checkout bytes for a committed projection (ADR 0018). `req render --check` compares the file
+# byte for byte with a freshly generated projection, and the generator writes LF. A Windows
+# checkout with core.autocrlf=true would otherwise rewrite docs/spec.md to CRLF and report it
+# stale (exit 1) on a clean tree.
+#
+# Pinned per path rather than globally: `text=auto eol=lf` on every file would change how the
+# corpus and the claims are checked out, which is a decision about the whole tree and not about
+# the projection being compared.
+docs/spec.md text eol=lf
