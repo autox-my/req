@@ -11,12 +11,23 @@
 #               A key declared for one scheme is never checked by another's verifier.
 #   public_key  the key's text, verbatim. Public, and a pin like Cargo.lock — committing it is
 #               what lets anyone verify a Baseline offline, with no keyserver and no account.
-#   valid_from  the date this key became trusted (ISO-8601, zero-padded, compared as a string).
-#   valid_until optional. Expiry reports UNVERIFIABLE, not FAIL: a Baseline is a historical
-#               record and no trusted signing time exists, so the question cannot be decided.
-#               (RFC 3161 timestamping is what would decide it — ADR 0010.)
-#   revoked_at  optional, and decisive: a revoked key's signatures FAIL, even if they verify.
-#               Record this the moment a private key is lost or retired.
+#   valid_from  the date this key became trusted (ISO-8601, zero-padded). **Recorded, not
+#               enforced**: verification consults `valid_until` and `revoked_at` only, so the
+#               lower bound documents the rotation story rather than refusing a Baseline that
+#               claims an earlier signing time.
+#   valid_until optional. Judged at the Baseline's signing time: a v3 manifest records
+#               `signed_at`, so a key valid until at or after it verifies even when today is
+#               later, and one expired at signing FAILS (ADR 0016). Compared by **calendar
+#               date**, so a same-day expiry verifies. A v2 manifest has no trusted signing
+#               time, so its expiry stays UNVERIFIABLE (ADR 0010).
+#   revoked_at  optional. Revocation is prospective (ADR 0016): a key revoked on a later
+#               calendar date than the Baseline's signing time still verifies for it; revoked
+#               on or before that date FAILS (same-day counts as revoked). A **v2** Baseline has
+#               no signing time, so it is judged at today and a revocation at or before today
+#               FAILS it. An unreadable date is treated as revoked, never as trusted. Record this
+#               the moment a private key is lost or retired. The signing time is signer-asserted
+#               (no RFC 3161), so this bounds newly asserted times only; `--now` overrides the
+#               judgement time on the command line.
 #
 # Rotating a key means adding a new entry beside the old one with its own validity window.
 # Old Baselines stay verifiable against the old key; new ones must use the new one.

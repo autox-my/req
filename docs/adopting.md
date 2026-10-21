@@ -87,31 +87,46 @@ If either is not exit 0, the corpus is not yours yet — report it with the comm
 
 ## Sign the Baseline
 
-`req baseline` prints the canonical manifest — the exact bytes a signature covers — and **req never
-signs**: the signature is the human's act, and a key the tool could reach would prove nothing (ADR 0010).
-A manifest with no valid signature over it is *not yet a Baseline*, and verification says so.
+`req baseline --at <ts>` prints the canonical manifest (envelope v3, ADR 0016) — the exact bytes a
+signature covers — and **req never signs**: the signature is the human's act, and a key the tool could
+reach would prove nothing (ADR 0010). A manifest with no valid signature over it is *not yet a Baseline*,
+and verification says so.
 
 ```bash
-req baseline > baselines/release.json           # the manifest goes to stdout; the resolved
-                                                # `corpus root:` line goes to stderr
+req baseline --at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > baselines/release.json
+                                                # the timestamp is YOUR assertion; the manifest goes to
+                                                # stdout, and the resolved `corpus root:` line to stderr
 minisign -Sm baselines/release.json             # signs it; prompts for the secret key's passphrase
 req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not yet a Baseline" before
 ```
 
+- **`--at` is required and is the signing time.** It goes *inside* the signed bytes, so it cannot be
+  backdated without breaking the signature. Req never invents one: emitting without `--at` is a usage
+  error (exit 2). A v3 manifest also attests the Decision log's chain head, and emission refuses (exit 3)
+  when that log is absent, unparsable or tampered — a head that attests nothing must not be signed.
 - **`-Sm` is `-S` (sign) with `-m <manifest>`**, and its default output name is `<manifest>.minisig` —
   exactly the file `--verify` looks for. Name it otherwise with `-x <path>` and pass `--signature <path>`.
 - **Sign the bytes `req baseline` emitted.** Do not reformat the file: the signature covers those bytes,
   and verification compares them to the corpus as well.
 - **The secret key is yours and is not in the repository.** minisign reads `~/.minisign/minisign.key` by
   default, or `-s <secret key>`; `req` has no flag for it and needs none.
+- **`signed_at` judges the key, never the claims.** A key whose validity ends **at or after** the signing
+  time verifies for that Baseline even when today is later; a key that had already **expired** at the
+  signing time fails (it was not valid when the signature was made), and a key **revoked after** the
+  signing time no longer invalidates it — revocation is prospective. Whether a claim is *current* remains
+  `canon --verify`'s and `audit`'s business, which re-derive addresses. `--now <date>` is the explicit
+  override for the judgement time; it is a verification flag, not an emission one.
 - **`baselines/trust.yml` must carry the matching public key**, or verification is UNVERIFIABLE — an
   unknown key is never a pass. Rotate by adding a key beside the old one with its own validity window
-  (`valid_from`, `expires`, `revoked_at`): old Baselines stay verifiable against the old key, and a
-  revoked key's signatures FAIL.
+  (`valid_from`, `valid_until`, `revoked_at`): old Baselines stay verifiable against the old key, and a
+  key revoked at or before a Baseline's signing time FAILS.
 - **An edit after signing is FAIL, not drift**: verification re-derives every address, so a claim edited
-  once the manifest was signed is the same class as a hand-edited digest.
+  once the manifest was signed is the same class as a hand-edited digest. A v3 manifest also FAILs when
+  the Decision log no longer re-derives the chain head it records; an absent log is UNVERIFIABLE, never
+  FAIL.
 - **A `rules_v` mismatch is UNVERIFIABLE** with the re-sign remedy: an address is derived from the rules
-  version, so the comparison is void rather than failed.
+  version, so the comparison is void rather than failed. A v2 manifest still parses and is reported as
+  *predates … re-issue and re-sign* — re-emit with `--at` and sign again.
 
 ## CI
 

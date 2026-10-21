@@ -117,6 +117,38 @@ pub fn fill(log: &mut [Decision]) {
     }
 }
 
+/// The log's chain head: the last record's stored `hash`, and how many records the log holds.
+///
+/// `None` when the log is empty or the last record's `hash` is unfilled — a head that attests
+/// nothing. This is the value a v3 Baseline records in `authority.head` and re-derives on
+/// verification (ADR 0016); `entries` rides beside it because a head alone cannot distinguish
+/// "one entry" from a log rebuilt to one entry with the same head — impossible in principle,
+/// cheap to state in fact.
+///
+/// **Precondition: the caller judges the chain first** ([`verify_chain`]). This function reads
+/// the *stored* hash, and a stored hash that no longer recomputes is exactly what an edit after
+/// the fact looks like: signing this value without the judgement would attest an edited record
+/// as the chain's committed head — the failure ADR 0016 exists to close. `baseline`'s emit path
+/// refuses unless the chain is [`Chain::Valid`].
+///
+/// The value is the log's **present** head. A Baseline attests a *position* as well (`entries`):
+/// it names record `entries - 1`, so a decision recorded afterwards does not move what the
+/// Baseline committed to. Verification therefore locates the attested record rather than
+/// comparing against this function's latest answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Head {
+    pub hash: String,
+    pub entries: usize,
+}
+
+pub fn head(log: &[Decision]) -> Option<Head> {
+    let last = log.last()?;
+    Some(Head {
+        hash: last.hash.clone()?,
+        entries: log.len(),
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Chain {
     Valid,
@@ -405,7 +437,9 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
 
 /// Read the log from disk, in chain order, keeping the path each record came from so a caller can
 /// re-read after writing and judge what is now on disk rather than what it read first.
-fn read_log(paths: &[std::path::PathBuf]) -> Result<Vec<(std::path::PathBuf, Decision)>, String> {
+pub(crate) fn read_log(
+    paths: &[std::path::PathBuf],
+) -> Result<Vec<(std::path::PathBuf, Decision)>, String> {
     let mut log = Vec::with_capacity(paths.len());
     for path in paths {
         let text =
@@ -419,7 +453,7 @@ fn read_log(paths: &[std::path::PathBuf]) -> Result<Vec<(std::path::PathBuf, Dec
 
 /// The log's files, in chain order. Zero-padded ids make lexicographic order chronological, so the
 /// order is a property of the names rather than of the filesystem.
-fn log_paths(root: &std::path::Path) -> Result<Vec<std::path::PathBuf>, String> {
+pub(crate) fn log_paths(root: &std::path::Path) -> Result<Vec<std::path::PathBuf>, String> {
     let dir = root.join("decisions");
     if !dir.exists() {
         return Ok(Vec::new());

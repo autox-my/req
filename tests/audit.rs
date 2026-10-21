@@ -3,7 +3,7 @@
 mod common;
 
 use req::audit::{coverage, findings, packet};
-use req::baseline::{canonical_bytes, from_json, manifest};
+use req::baseline::{attest, canonical_bytes, from_json, manifest};
 use req::select::{Applies, Context};
 use req::view::Row;
 
@@ -50,8 +50,21 @@ fn ctx() -> Context {
     context
 }
 
+/// The audit does not verify signatures or authority, so a synthetic v3 attestation is enough:
+/// the packet accepts a manifest whose version this build writes, and coverage derives from
+/// `baseline::drift` alone. (A real emitted manifest carries the log's head; this fixture cannot
+/// read one, and nothing here consults it.)
 fn baseline_for(rows: &[Row]) -> req::baseline::Manifest {
-    manifest(rows, 5, &ctx())
+    let mut manifest = manifest(rows, 5, &ctx());
+    attest(
+        &mut manifest,
+        "2026-10-07T09:00:00Z",
+        &req::decision::Head {
+            hash: "a".repeat(64),
+            entries: 1,
+        },
+    );
+    manifest
 }
 
 /// With no Baseline the packet still prints — but it says nothing is ratified, and the verdict

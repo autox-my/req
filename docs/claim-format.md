@@ -206,10 +206,10 @@ genuine paraphrases).
 ## Deliberately deferred
 
 - Formal predicate syntax for `applicability` (v0: informal strings).
-- A third Baseline envelope (`signed_at`, the Decision-log head). The manifest's `version`
-  axis is separate from `rules_v` (`src/baseline.rs`), and today's envelope is v2; with the
-  Decision log now ratified and gated, this remainder is a live decision rather than a
-  silent default.
+- A formal timestamp authority for the signing time (RFC 3161). Envelope v3 (ADR 0016)
+  records `signed_at` and the Decision-log head; the time is the signer's assertion, and
+  replacing it with an externally attested one is still open. (The third envelope itself is
+  no longer deferred — this build writes v3.)
 - A lint rule comparing a claim's statement against its `rationale.source` ADR
   narrative — the human keeps them consistent for now; the check is proposal-tier
   work.

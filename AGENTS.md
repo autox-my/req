@@ -289,23 +289,39 @@ export OCR_NO_UPDATE=1
   never a pass. The claims pass above it still runs (and is still capped); its deferral is reported
   but does not rewrite a verdict about a different question, exactly as its `unverifiable` count
   never did.
-- Baselines: `cargo run -q -- baseline [key=value ...]` prints the **canonical manifest** — the
-  rules version, the selection, and every applying claim's address — which is the exact byte
-  string a human signs; `cargo run -q -- baseline --verify <file> [--signature <file>]
-  [--key <id>] [--now <date>]` verifies one. Exit **0** verified (or emitted), **1** FAIL, **3**
-  UNVERIFIABLE, **2** usage. Verification re-derives every address, so a claim edited after
-  signing is **FAIL** — the same class as a hand-edited digest; a manifest whose recorded
+- Baselines: `cargo run -q -- baseline --at <RFC 3339 UTC timestamp> [key=value ...]` prints the
+  **canonical manifest** (envelope v3, ADR 0016) — the signing time, the Decision log's chain
+  head, the rules version, the selection, and every applying claim's address — which is the exact
+  byte string a human signs. The signing time is **authored**: emitting without `--at` is a
+  **usage error (exit 2)**, and so is a timestamp req cannot read; req never invents one.
+  Emission also **refuses** when the decision log is absent, unparsable or empty — **exit 3**,
+  a head that attests nothing must not be signed — and when the log is **tampered**, which is a
+  definite finding and exits **1** (the same class `verify` and `req decision` give it).
+  `cargo run -q -- baseline --verify <file> [--signature <file>] [--key <id>] [--now <date>]`
+  verifies one. Exit **0** verified, **1** FAIL, **3** UNVERIFIABLE, **2** usage (including
+  `--at` on the verification path — the manifest carries its own time). Verification re-derives
+  every address, so a claim edited after signing is **FAIL** — the same class as a hand-edited
+  digest; a v3 manifest also attests the Decision log's **chain head at a position**
+  (`entries`), so a rewritten attested prefix, a truncated log or a record whose stored hash no
+  longer recomputes is **FAIL** (authority mismatch) — while decisions appended *after* that
+  prefix do not invalidate an earlier Baseline (history growth is not tampering), and an absent
+  or unparsable log is **UNVERIFIABLE**, never FAIL — absence is not tampering. A manifest whose recorded
   `rules_v` disagrees with this build's is **UNVERIFIABLE** with the re-sign remedy and drift is
   **not judged** — an address is derived from the rules version, so the comparison is void
   rather than inconclusive (an older manifest is re-signed under the current rules; a newer one
-  is verified with a build that writes it, never re-signed with this binary); and it consults
-  the committed trust anchor at `baselines/trust.yml` (ADR 0010): a **revoked** key is FAIL, an
-  **expired** one is UNVERIFIABLE (a Baseline is historical and no trusted signing time exists,
-  so the question is unanswerable rather than answered badly), an unknown key or a missing
-  signature is UNVERIFIABLE — a manifest is **not yet a Baseline** until a human signs it. The
-  signature check is a **process boundary** to a pinned verifier, so the core links no
+  is verified with a build that writes it, never re-signed with this binary). Trust is consulted
+  at `baselines/trust.yml` (ADR 0010), and the key is judged at the **manifest's `signed_at`**
+  for v3 (today for v2; `--now` is the explicit override): a key whose expiry is **at or after**
+  the signing time verifies even when today is later, a key **expired at signing** is FAIL (it
+  was not valid when the signature was made), and **revocation is prospective** — a key revoked
+  *after* the signing time still verifies, while one revoked at or before it is FAIL. Both are
+  judged by calendar date, and the signing time is **signer-asserted** (no RFC 3161), so
+  revocation bounds newly asserted times only; `valid_from` is recorded but not enforced. An unknown key or a
+  missing signature is UNVERIFIABLE — a manifest is **not yet a Baseline** until a human signs
+  it. The signature check is a **process boundary** to a pinned verifier, so the core links no
   cryptography and still no network; with no verifier installed the outcome is UNVERIFIABLE,
-  never a pass.
+  never a pass. A **v2** manifest still parses (its new fields are `Option`), keeps its historical
+  signed bytes, and is reported as *predates … re-issue and re-sign* — never a parse error.
   **The signing act is the human's**: req emits and verifies, and a key this tool could reach
   would prove nothing. The **manifest records the variant**, so verification re-derives the
   addresses under *that* selection: an explicit context that contradicts it is a **usage error**

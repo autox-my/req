@@ -1,5 +1,5 @@
 ---
-status: accepted — the manifest is extended by 0013 to attest the audit surface
+status: accepted — the manifest is extended by 0013 to attest the audit surface; ADR 0016 adds the signing time, so a v3 Baseline judges expiry at it and revocation prospectively (the expiry/revocation answer below holds only where no signing time exists, i.e. v2)
 ---
 
 # A Baseline is signed with minisign, over a committed trust file
