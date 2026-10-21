@@ -68,6 +68,9 @@ If either is not exit 0, the corpus is not yours yet — report it with the comm
 
 ## The authoring loop and its traps
 
+Every command's `--help` carries its own `exit:` line — the codes that command answers,
+including the tri-state — and `req <command> --help` works before a corpus exists.
+
 1. **Edit `statement`, then re-run `req canon --fill`.** The slots below the statement are its
    *authored parse*; `--fill` re-derives `canonical.form` and `address` and writes them into the
    anchor lines. A hand-authored numeric slot that disagrees with the parse is **refused** — exit 3,

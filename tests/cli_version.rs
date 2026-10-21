@@ -1,7 +1,8 @@
-//! `req --version` / `--help`: the tool's own flags, answered where the subcommand lookup
-//! happens — before the corpus root is resolved. They must therefore work **anywhere**,
-//! including a directory with no `claims/` ancestor, and must never print a `corpus root:`
-//! line: an answer that needed a corpus would be a different claim.
+//! `req --version` / `--help` / `<cmd> --help`: the tool's own flags and every subcommand's
+//! page, answered where the subcommand lookup happens — before the corpus root is resolved.
+//! They must therefore work **anywhere**, including a directory with no `claims/` ancestor,
+//! and must never print a `corpus root:` line: an answer that needed a corpus would be a
+//! different claim (and a verb's help may be read to find out how to create one).
 //!
 //! The axes are asserted against the constants **by name** (`RULES_V`, `BASELINE_VERSION`,
 //! `DECISION_VERSION`, `claim_schema()`), never against a re-typed literal: a deliberate bump
@@ -310,6 +311,529 @@ fn bare_req_and_unknown_arguments_stay_usage_errors() {
             out.code, 2,
             "{argv:?} is not a command and not a flag this tool knows:\n{}\n{}",
             out.stdout, out.stderr
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Per-command help: `<cmd> --help` is answered where the verb is looked up
+// ---------------------------------------------------------------------------
+
+/// Every verb the tool has, written down once here so a loop can ask each one for its page.
+///
+/// This list is **not** the completeness check — the help table makes a verb without a page
+/// fail to compile, and `every_verb_named_in_usage_has_a_page` scrapes `USAGE` for the verbs
+/// the tool advertises. It exists because two tests need a concrete list (the mutation
+/// `init` case is outside the table, and a loop that ran zero times would pass silently).
+const ALL_COMMANDS: &[&str] = &[
+    "audit", "baseline", "bench", "canon", "compare", "decision", "gate", "impact", "init",
+    "propose", "render", "select", "trace",
+];
+
+/// The page `<command> --help` prints, or a failure that names the command and its output.
+fn help_page(cwd: &Path, command: &str) -> String {
+    let out = run_at(cwd, &[command, "--help"]);
+    assert_eq!(
+        out.code, 0,
+        "`req {command} --help` must be a request that was answered, not a usage error or a \
+         corpus lookup (exit {}):\nstdout:\n{}\nstderr:\n{}",
+        out.code, out.stdout, out.stderr
+    );
+    assert!(
+        !out.stderr.contains("corpus root:"),
+        "`req {command} --help` resolves no root and must not name one:\n{}",
+        out.stderr
+    );
+    // The marker belongs on stderr today; if it moved to (or were copied onto) stdout, the
+    // page text would be polluted for the reader who pipes it, and the caller must see that.
+    assert!(
+        !out.stdout.contains("corpus root:"),
+        "`req {command} --help` must not print a root line on stdout either:\n{}",
+        out.stdout
+    );
+    out.stdout
+}
+
+/// The verbs named in the `USAGE` text's verb column, scraped from the text **as it is** —
+/// never a second hand-maintained list, and never by changing `USAGE`'s layout to suit this
+/// parser. Within the column, `|` separates alternatives and the verb list ends at the first
+/// flag, placeholder or `k=v` argument.
+///
+/// The description column is **derived from the text**, not hardcoded: it is the commonest
+/// offset at which a run of two or more spaces ends among the indented lines, which is where
+/// the rows put their prose. A line is a verb row only when its description starts there, or
+/// when it is an `a | b` alternatives row (which carries no description). Prose that wraps
+/// back into the margin is therefore never parsed as verbs — a wrapped word is not at the
+/// description column — and a deliberate relayout moves the anchor with the text instead of
+/// silently misreading the column. This is the oracle behind
+/// `every_verb_named_in_usage_has_a_page`, so its failure mode must be "no verbs found",
+/// never "prose demanded pages".
+fn usage_verbs(usage: &str) -> Vec<String> {
+    let indented: Vec<&str> = usage
+        .lines()
+        .filter_map(|line| line.strip_prefix("  "))
+        .collect();
+
+    // Where the rows put their descriptions: the strict-majority end of a 2+ space run. A
+    // tie means the text has no single description column, and picking one would let prose
+    // choose the column (and then reject the legitimate rows) — a loud failure is the only
+    // honest answer, because a guessed column can hide a verb.
+    let mut offsets: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
+    for line in &indented {
+        if let Some(offset) = description_offset(line) {
+            *offsets.entry(offset).or_default() += 1;
+        }
+    }
+    let described: usize = offsets.values().sum();
+    let (column, count) = offsets
+        .into_iter()
+        .max_by_key(|&(offset, count)| (count, offset))
+        .unwrap_or((0, 0));
+    assert!(
+        described > 0 && count * 2 > described,
+        "USAGE has no single description column ({count} line(s) at offset {column}, \
+         {described} described line(s)) — fix the layout or teach the scraper"
+    );
+    let description_column = Some(column);
+
+    let mut unclassifiable: Vec<&str> = Vec::new();
+    let mut verbs: Vec<String> = Vec::new();
+    for line in &indented {
+        let column = match description_column {
+            Some(column) if description_offset(line) == Some(column) => line[..column].trim_end(),
+            // An alternatives row has no description column; its whole line is the column.
+            _ if line.contains(" | ") && description_offset(line).is_none() => line.trim_end(),
+            _ => {
+                // An indented, non-empty line this oracle cannot place is an ambiguity it
+                // must not swallow: a misaligned row, or a bare verb row with no description
+                // at all, would otherwise vanish from the scrape and the set-equality guard
+                // would agree with the omission. Fail loudly instead, naming the line.
+                if !line.trim().is_empty() {
+                    unclassifiable.push(line);
+                }
+                continue;
+            }
+        };
+        for token in column.split_whitespace() {
+            if token == "|" {
+                continue;
+            }
+            let is_verb = token.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+                && token
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+            if !is_verb {
+                break;
+            }
+            if !verbs.iter().any(|verb| verb == token) {
+                verbs.push(token.to_string());
+            }
+        }
+    }
+    assert!(
+        unclassifiable.is_empty(),
+        "the USAGE scrape cannot classify these indented lines — fix their layout or teach the \
+         scraper (a silent skip could hide a verb):\n{unclassifiable:#?}"
+    );
+    verbs
+}
+
+/// Where a line's description starts (the index in `line` of the first non-space after the
+/// first run of two or more spaces), or `None` when the line has no such run.
+fn description_offset(line: &str) -> Option<usize> {
+    let bytes = line.as_bytes();
+    let start = bytes.windows(2).position(|pair| pair == b"  ".as_slice())?;
+    let after_spaces = bytes[start..]
+        .iter()
+        .position(|byte| !byte.is_ascii_whitespace())
+        .map(|index| start + index)?;
+    Some(after_spaces)
+}
+
+/// Whether a page's first line is that command's usage line, with the command boundary
+/// intact: `render` must not be satisfied by `usage: req rendering …`, and the synopsis may
+/// be absent (a command taking no arguments) or separated by whitespace.
+fn first_line_names_command(page: &str, command: &str) -> bool {
+    let first = page.lines().next().unwrap_or_default();
+    first
+        .strip_prefix(&format!("usage: req {command}"))
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+}
+
+#[test]
+fn the_usage_line_check_enforces_the_command_boundary_and_the_empty_synopsis() {
+    // The strip_prefix rule is load-bearing: without the boundary, `render` would accept
+    // `usage: req rendering …` and the `render|trace` line. The empty synopsis is `init`'s.
+    assert!(first_line_names_command(
+        "usage: req render [k=v ...]\n",
+        "render"
+    ));
+    assert!(first_line_names_command("usage: req init\n", "init"));
+    assert!(
+        !first_line_names_command("usage: req rendering [k=v ...]\n", "render"),
+        "a longer verb sharing the prefix is not this command"
+    );
+    assert!(
+        !first_line_names_command("usage: req render|trace [k=v ...]\n", "render"),
+        "a combined usage line is not either command's page"
+    );
+}
+
+#[test]
+#[should_panic(expected = "cannot classify")]
+fn the_usage_scrape_names_a_bare_verb_row_it_cannot_place() {
+    // A row with no description and no alternatives is still a row: skipping it silently could
+    // hide an advertised verb, which is exactly what this oracle exists to catch.
+    let usage = "\
+usage: req x
+
+  bench [corpus.yml]              the FMR gate
+  canon [--fill | --verify]       parse diagnostics
+  compare <a.yml> <b.yml>         what kind of change
+  newverb
+
+The corpus root is resolved at runtime.";
+    let _ = usage_verbs(usage);
+}
+
+#[test]
+fn the_usage_scrape_reads_the_verb_column_and_never_prose() {
+    // A description column is derived from the text (every row's prose starts at the same
+    // offset). These are the shapes that made a naive "split on two spaces" parser read prose
+    // as verbs: a wrapped description re-entering the margin, one wrapped with its own
+    // double-space run, and the `a | b` alternatives row that carries no description at all.
+    let usage = "\
+usage: req [--root <dir>] <command> [args]
+
+  bench [corpus.yml]              the FMR gate
+  select | render | trace | gate k=v [...]
+                                  the variant projections and the release gate
+  init                            create a corpus
+  --version | -V                  the versions
+  --help | -h                     this text
+
+The corpus root is resolved at runtime.";
+    assert_eq!(
+        usage_verbs(usage),
+        ["bench", "select", "render", "trace", "gate", "init"]
+    );
+}
+
+#[test]
+#[should_panic(expected = "no single description column")]
+fn the_usage_scrape_refuses_text_without_a_description_column() {
+    // One row and one prose wrap are a tie: there is no column to anchor on, and picking one
+    // would let the prose choose it and reject the legitimate row. Fail loudly instead.
+    let usage = "\
+usage: req x
+
+  bench [corpus.yml]              the FMR gate
+  the variant  projections and the release gate
+
+The corpus root is resolved at runtime.";
+    let _ = usage_verbs(usage);
+}
+
+#[test]
+#[should_panic(expected = "cannot classify")]
+fn the_usage_scrape_names_a_misaligned_row_it_cannot_place() {
+    // With a clear majority column, a row whose description sits elsewhere is a layout bug the
+    // oracle must name rather than skip: a silent skip could hide a verb from the scrape.
+    let usage = "\
+usage: req x
+
+  bench [corpus.yml]              the FMR gate
+  canon [--fill | --verify]       parse diagnostics
+  compare <a.yml> <b.yml>         what kind of change
+  reject [--force]  reject a claim
+
+The corpus root is resolved at runtime.";
+    let _ = usage_verbs(usage);
+}
+
+#[test]
+fn every_commands_help_answers_with_no_corpus_and_prints_no_root_line() {
+    // Fact 2's bug: `req canon --help` used to resolve the root first and answer
+    // `[UNVERIFIABLE] no claims/ directory …` with exit 3. A help page must be readable in a
+    // directory with no corpus — help is exactly what you read before creating one.
+    let fx = NoCorpus::new("req-no-corpus-per-command-help");
+    for command in ALL_COMMANDS {
+        let page = help_page(fx.path(), command);
+        assert!(
+            first_line_names_command(&page, command),
+            "`req {command} --help` must begin with its own usage line, not another verb's:\n{page}"
+        );
+    }
+}
+
+#[test]
+fn render_and_trace_usage_errors_name_the_invoked_verb() {
+    // The pages made `render` and `trace` two verbs; the shared usage error must not keep
+    // naming a pair that exists nowhere else. It is still a usage error, not a page.
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for command in ["render", "trace"] {
+        let out = run_at(corpus, &[command, "--bogus"]);
+        assert_eq!(
+            out.code, 2,
+            "`{command} --bogus` is a usage error:\n{}",
+            out.stderr
+        );
+        assert!(
+            out.stderr
+                .contains(&format!("usage: req {command} [key=value ...]")),
+            "the error names the invoked verb, not the pair:\n{}",
+            out.stderr
+        );
+        assert!(
+            !out.stderr.contains("render|trace"),
+            "the combined line is gone from the error path:\n{}",
+            out.stderr
+        );
+    }
+}
+
+#[test]
+fn a_help_flag_wins_in_a_non_leading_position() {
+    // AGENTS.md states the contract: among a command's arguments a help flag wins wherever it
+    // appears. A regression to `args.first().map(is_help_flag)` would keep every other test in
+    // this file green, so one non-leading case is pinned here.
+    let fx = NoCorpus::new("req-help-non-leading");
+    let out = run_at(fx.path(), &["propose", "--gold", "--help"]);
+    assert_eq!(
+        out.code, 0,
+        "a help flag after an option value is still help:\n{}",
+        out.stderr
+    );
+    assert!(
+        first_line_names_command(&out.stdout, "propose"),
+        "the page for the invoked verb is printed:\n{}",
+        out.stdout
+    );
+    assert!(!out.stderr.contains("corpus root:"), "{}", out.stderr);
+}
+
+#[test]
+fn a_help_request_for_an_unknown_verb_stays_a_usage_error() {
+    // The failure direction of the lookup: help must not turn a typo into an answer. A
+    // regression that printed some page for any first argument would pass every test above.
+    let fx = NoCorpus::new("req-unknown-verb-help");
+    let out = run_at(fx.path(), &["not-a-command", "--help"]);
+    assert_eq!(
+        out.code, 2,
+        "an unknown verb is a usage error even with --help:\n{}\n{}",
+        out.stdout, out.stderr
+    );
+    assert!(
+        !out.stdout.contains("usage: req not-a-command"),
+        "an unknown verb must not receive a page:\n{}",
+        out.stdout
+    );
+    assert!(
+        out.stderr
+            .contains("unrecognized subcommand: not-a-command"),
+        "the usage error names the unknown verb:\n{}",
+        out.stderr
+    );
+    assert!(
+        !out.stderr.contains("corpus root:"),
+        "the lookup fails before the root is resolved:\n{}",
+        out.stderr
+    );
+}
+
+#[test]
+fn the_short_help_flag_is_the_same_page_for_every_command() {
+    let fx = NoCorpus::new("req-no-corpus-per-command-short-help");
+    for command in ALL_COMMANDS {
+        let long = help_page(fx.path(), command);
+        let short = run_at(fx.path(), &[command, "-h"]);
+        assert_eq!(short.code, 0, "`req {command} -h`:\n{}", short.stderr);
+        assert!(
+            !short.stderr.contains("corpus root:"),
+            "`req {command} -h` resolves no root, exactly like the long form:\n{}",
+            short.stderr
+        );
+        assert_eq!(
+            short.stdout, long,
+            "`req {command} -h` and `req {command} --help` are one answer, not two"
+        );
+    }
+}
+
+#[test]
+fn init_help_is_answered_before_the_init_handler_sees_it() {
+    // Fact 5's bug: `init` is special-cased before the table, so `--help` reached it as a
+    // command-line argument and answered `usage: req init` + `unexpected argument: --help`,
+    // exit 2. Asking for help must never run the command, and here it also must not create a
+    // corpus as a side effect of being asked.
+    let fx = NoCorpus::new("req-no-corpus-init-help");
+    let page = help_page(fx.path(), "init");
+    assert!(
+        first_line_names_command(&page, "init"),
+        "`req init --help` must print the init page:\n{page}"
+    );
+    assert!(
+        page.contains("exit:"),
+        "the page carries its exit contract:\n{page}"
+    );
+    assert!(
+        !fx.path().join("claims").exists() && !fx.path().join("aliases").exists(),
+        "a help request must not create a corpus"
+    );
+}
+
+#[test]
+fn init_help_does_not_swallow_init_s_usage_errors() {
+    // The page says `init` takes no arguments and no `--root` (exit 2), and AGENTS.md says the
+    // same. A help flag must not turn either into a page: a user who got the invocation wrong
+    // is exactly the one who needs the error.
+    let fx = NoCorpus::new("req-init-help-usage");
+    let root = fx.path().to_str().expect("fixture path is UTF-8");
+    let with_root = run_at(fx.path(), &["init", "--root", root, "--help"]);
+    assert_eq!(
+        with_root.code, 2,
+        "`init --root … --help` is still a usage error:\n{}\n{}",
+        with_root.stdout, with_root.stderr
+    );
+    assert!(
+        with_root.stderr.contains("takes no --root"),
+        "the error names the offending flag:\n{}",
+        with_root.stderr
+    );
+
+    let with_argument = run_at(fx.path(), &["init", "junk", "--help"]);
+    assert_eq!(
+        with_argument.code, 2,
+        "`init junk --help` is still a usage error:\n{}\n{}",
+        with_argument.stdout, with_argument.stderr
+    );
+    assert!(
+        with_argument.stderr.contains("unexpected argument: junk"),
+        "the error names the offending argument:\n{}",
+        with_argument.stderr
+    );
+    let help_first = run_at(fx.path(), &["init", "--help", "junk"]);
+    assert_eq!(
+        help_first.code, 2,
+        "`init --help junk` is still a usage error:\n{}\n{}",
+        help_first.stdout, help_first.stderr
+    );
+    assert!(
+        help_first.stderr.contains("unexpected argument: junk"),
+        "the error names the actual bad argument, not the help flag:\n{}",
+        help_first.stderr
+    );
+
+    assert!(
+        !fx.path().join("claims").exists(),
+        "a refused help request creates nothing"
+    );
+}
+
+#[test]
+fn every_page_starts_with_usage_its_own_name_where_the_root_would_resolve() {
+    // R5's "one line each" row. The no-corpus loop above proves help needs no root; this arm
+    // runs where the root *would* resolve, which is the failure the no-corpus fixture cannot
+    // see: a help path that resolved the corpus first would print `corpus root:` and still
+    // exit 0. `help_page` asserts that line is absent, so this is coverage, not a duplicate.
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR"));
+    assert!(
+        req::root::is_corpus_root(corpus),
+        "this arm needs a directory where root resolution would succeed: {}",
+        corpus.display()
+    );
+    for command in ALL_COMMANDS {
+        let page = help_page(corpus, command);
+        assert!(
+            first_line_names_command(&page, command),
+            "the first line of `req {command} --help` must be `usage: req {command} <synopsis>`:\n{}",
+            page.lines().next().unwrap_or_default()
+        );
+    }
+}
+
+#[test]
+fn every_page_carries_an_exit_line() {
+    // The exit contract is the payload a bare usage line cannot carry — the thing issue #45
+    // is actually about. Deleting one page's `exit:` line must redden this test.
+    let fx = NoCorpus::new("req-page-exit-line");
+    for command in ALL_COMMANDS {
+        let page = help_page(fx.path(), command);
+        let exit = page
+            .lines()
+            .find(|line| line.starts_with("exit:"))
+            .unwrap_or_else(|| {
+                panic!("`req {command} --help` must carry an `exit:` line:\n{page}")
+            });
+        let first_code = exit
+            .strip_prefix("exit: ")
+            .and_then(|codes| codes.split_whitespace().next());
+        assert_eq!(
+            first_code,
+            Some("0"),
+            "`req {command} --help`'s `exit:` line must carry the codes, starting with 0:\n{exit}"
+        );
+    }
+}
+
+#[test]
+fn render_and_trace_pages_differ_and_each_names_its_projection() {
+    // Fact 4's bug: both printed `usage: req render|trace [key=value ...]`. Two different
+    // projections need two different pages, and each must say which one it is.
+    let fx = NoCorpus::new("req-render-trace-pages");
+    let render = help_page(fx.path(), "render");
+    let trace = help_page(fx.path(), "trace");
+
+    assert_ne!(
+        render, trace,
+        "`render` and `trace` are different projections and must not share one page"
+    );
+    assert!(
+        render.contains("spec view"),
+        "render's page names the spec view it projects:\n{render}"
+    );
+    assert!(
+        trace.contains("traceability") && trace.contains("incoming"),
+        "trace's page names the traceability matrix and its derived incoming edges:\n{trace}"
+    );
+    for (command, page) in [("render", &render), ("trace", &trace)] {
+        assert!(
+            page.contains("undecided"),
+            "{command}'s page names how an undecided claim (or an edge into one) is handled:\n{page}"
+        );
+        assert!(page.contains("projection"), "{command}'s page:\n{page}");
+    }
+}
+
+#[test]
+fn every_verb_named_in_usage_has_a_page() {
+    // Fact 7: the advertised verb list is `USAGE`'s verb column. Scrape it from the text the
+    // tool actually prints, so a verb that exists only in the table (or only in `USAGE`)
+    // cannot hide. The table makes a *table* verb without a page a compile error; this test
+    // is what catches a verb added to `USAGE` alone, and a scrape that silently found nothing.
+    let fx = NoCorpus::new("req-usage-verbs");
+    let usage = run_at(fx.path(), &["--help"]);
+    assert_eq!(usage.code, 0, "{}", usage.stderr);
+
+    // Set equality in both directions: a verb added to `USAGE` must have a page (the loop
+    // below), and a verb added to the table and `USAGE` must be added here too — otherwise it
+    // would escape the per-page loops above and could ship without an `exit:` line.
+    let mut verbs = usage_verbs(&usage.stdout);
+    let mut expected: Vec<String> = ALL_COMMANDS.iter().map(|c| c.to_string()).collect();
+    verbs.sort();
+    expected.sort();
+    assert_eq!(
+        verbs, expected,
+        "USAGE's verb column and ALL_COMMANDS must name the same verbs — add a new advertised \n\
+         verb to ALL_COMMANDS so every page test covers it:\n{}",
+        usage.stdout
+    );
+
+    for verb in &verbs {
+        let page = help_page(fx.path(), verb);
+        assert!(
+            first_line_names_command(&page, verb),
+            "`USAGE` advertises `{verb}`, so it must have a page:\n{page}"
         );
     }
 }

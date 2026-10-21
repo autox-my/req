@@ -221,7 +221,7 @@ fn stored_marker(stored: &crate::fill::StoredState) -> String {
 
 /// `req render key=value ...`
 pub fn run_render(args: &[String], root: &std::path::Path) -> i32 {
-    let context = match context_from(args) {
+    let context = match context_from(args, "render") {
         Ok(c) => c,
         Err(code) => return code,
     };
@@ -242,7 +242,7 @@ pub fn run_render(args: &[String], root: &std::path::Path) -> i32 {
 
 /// `req trace key=value ...`
 pub fn run_trace(args: &[String], root: &std::path::Path) -> i32 {
-    let context = match context_from(args) {
+    let context = match context_from(args, "trace") {
         Ok(c) => c,
         Err(code) => return code,
     };
@@ -264,7 +264,11 @@ pub fn run_trace(args: &[String], root: &std::path::Path) -> i32 {
 
 /// Same `key=value` argv shape as `req select`, and the same grammar: the two must not
 /// drift, so the *behaviour* on an uncovered form is pinned by a test in both.
-fn context_from(args: &[String]) -> Result<Context, i32> {
+///
+/// `command` is the verb that was actually invoked (`render` or `trace`): the usage error must
+/// name the command whose arguments were wrong, not the pair — a usage error is still a
+/// different text from the help page, but it may not name a verb that does not exist.
+fn context_from(args: &[String], command: &str) -> Result<Context, i32> {
     let mut context = Context::new();
     for arg in args {
         match arg.split_once('=') {
@@ -272,7 +276,7 @@ fn context_from(args: &[String]) -> Result<Context, i32> {
                 context.insert(key.to_string(), value.to_string());
             }
             _ => {
-                eprintln!("usage: req render|trace [key=value ...]");
+                eprintln!("usage: req {command} [key=value ...]");
                 return Err(2);
             }
         }
