@@ -7,9 +7,10 @@
 # A dispatched run that failed (a provider hiccup, a cancelled attempt) would otherwise paint
 # that context red on `main` and read as a finding about the code.
 #
-# The provider configuration is the same repository variables and secret as review.yml, and the
-# rule file is taken from `origin/main` for the same reason: a run judged by rules from its own
-# checkout could be told to be lenient.
+# **Dispatch inputs are data, never script.** The runner substitutes `${{ … }}` into the script
+# *before* bash parses it, so an input written inline (`--exclude "${{ inputs.exclude }}"`) would
+# let a quote, `$(…)`, a backtick or `;` run commands in a step that holds the provider token.
+# Every input reaches the shell through `env:` below, where it is a value and not source.
 #
 # Usage: POST /repos/fdx/req/actions/workflows/review-measure.yml/dispatches with
 #   {"ref":"main","inputs":{"to_sha":"<sha>","label":"C1","from_ref":"origin/main"}}
@@ -51,6 +52,14 @@ jobs:
   measure:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # The inputs as DATA. Nothing below interpolates a `${{ inputs.… }}` into a script.
+      MEASURE_TO: ${{ inputs.to_sha }}
+      MEASURE_LABEL: ${{ inputs.label }}
+      MEASURE_FROM: ${{ inputs.from_ref }}
+      MEASURE_MAX_TOOLS: ${{ inputs.max_tools }}
+      MEASURE_NO_FILTER: ${{ inputs.no_filter }}
+      MEASURE_EXCLUDE: ${{ inputs.exclude }}
     steps:
       - name: checkout, with the history the diff needs
         uses: actions/checkout@v4
@@ -58,16 +67,36 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.to_sha }}
 
-      - name: the review CLI, installed from the committed lockfile
+      - name: the review CLI, installed from origin/main
         run: |
           set -eu
-          npm --prefix tools/ocr ci --no-fund --no-audit --cache "$GITHUB_WORKSPACE/.npm-cache"
-          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          # The tool comes from the trusted ref, never from the checked-out commit: a measurement of a
+          # commit must not execute the review CLI that commit supplies, with the token in its env.
+          # A bare-SHA checkout does not necessarily carry `origin/main`; the trusted ref is required
+          # (the tool and the rule file both come from it), so fetch it explicitly and fail closed.
+          if ! git rev-parse --verify -q origin/main >/dev/null 2>&1; then
+            git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          fi
+          TOOL_DIR="$RUNNER_TEMP/ocr-tool"
+          mkdir -p "$TOOL_DIR"
+          for f in package.json package-lock.json; do
+            if ! git cat-file -e "origin/main:tools/ocr/$f" 2>/dev/null; then
+              echo "::error::origin/main has no tools/ocr/$f — fail closed, never install the tool from this checkout"
+              exit 1
+            fi
+            git show "origin/main:tools/ocr/$f" > "$TOOL_DIR/$f"
+          done
+          npm --prefix "$TOOL_DIR" ci --no-fund --no-audit --cache "$GITHUB_WORKSPACE/.npm-cache"
+          echo "OCR_BIN=$TOOL_DIR/node_modules/.bin" >> "$GITHUB_ENV"
+          export PATH="$TOOL_DIR/node_modules/.bin:$PATH"
           if ! command -v ocr >/dev/null 2>&1; then
             echo "::error::ocr did not install, so nothing can be measured"
             exit 1
           fi
           ocr --version
+          # A stale config in a persistent $HOME overrides the environment and produces
+          # "provider has no api_key configured" against a perfectly good token.
+          rm -f "$HOME/.opencodereview/config.json"
 
       - name: the provider answers
         env:
@@ -78,7 +107,11 @@ jobs:
           OCR_LLM_AUTH_HEADER: x-api-key
         run: |
           set -eu
-          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          if [ -z "${OCR_BIN:-}" ]; then
+            echo "::error::OCR_BIN is not set — the runner did not carry $GITHUB_ENV to this step"
+            exit 1
+          fi
+          export PATH="$OCR_BIN:$PATH"
           if [ -z "${OCR_LLM_TOKEN:-}" ]; then
             echo "::error::OCR_LLM_TOKEN is not set (Settings, Actions, Secrets)"
             exit 1
@@ -95,7 +128,11 @@ jobs:
           OCR_LLM_AUTH_HEADER: x-api-key
         run: |
           set -eu
-          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
+          if [ -z "${OCR_BIN:-}" ]; then
+            echo "::error::OCR_BIN is not set — the runner did not carry $GITHUB_ENV to this step"
+            exit 1
+          fi
+          export PATH="$OCR_BIN:$PATH"
           RULE_PATH=review/rule.json
           if ! git cat-file -e "origin/main:$RULE_PATH" 2>/dev/null; then
             echo "::error::origin/main has no $RULE_PATH — fail closed, never fall back to this checkout"
@@ -105,23 +142,24 @@ jobs:
           git show "origin/main:$RULE_PATH" > "$RULE"
           echo "measuring with rules from $RULE_PATH at origin/main"
 
+          # A measurement is a single attempt: riding out a bad window would average two different
+          # things together and call it a number.
+          extra=""
+          if [ "$MEASURE_MAX_TOOLS" != "0" ]; then extra="$extra --max-tools $MEASURE_MAX_TOOLS"; fi
+          if [ "$MEASURE_NO_FILTER" = "true" ]; then extra="$extra --no-filter"; fi
+
           set +e
           started=$(date +%s)
-          # A measurement is a single attempt: riding out a bad window would average two
-          # different things together and call it a number.
-          extra=""
-          if [ "${{ inputs.max_tools }}" != "0" ]; then extra="$extra --max-tools ${{ inputs.max_tools }}"; fi
-          if [ "${{ inputs.no_filter }}" = "true" ]; then extra="$extra --no-filter"; fi
           # shellcheck disable=SC2086
           ocr review \
-            --from "${{ inputs.from_ref }}" \
-            --to "${{ inputs.to_sha }}" \
+            --from "$MEASURE_FROM" \
+            --to "$MEASURE_TO" \
             --format json \
             --output ocr-result.json \
             --rule "$RULE" \
             --effort low \
             --timeout 20 \
-            --exclude "${{ inputs.exclude }}" \
+            --exclude "$MEASURE_EXCLUDE" \
             $extra > /tmp/measure.log 2>&1
           rc=$?
           elapsed=$(( $(date +%s) - started ))
@@ -129,8 +167,6 @@ jobs:
           printf '%s\n' "$rc" > /tmp/measure.rc
           printf '%s\n' "$elapsed" > /tmp/measure.elapsed
           echo "review finished rc=${rc} elapsed=${elapsed}s"
-          # The log is the evidence, so print it; the MEASURE line comes next and is what the
-          # comparison table is built from.
           cat /tmp/measure.log
           exit "$rc"
 
@@ -138,15 +174,54 @@ jobs:
         if: always()
         run: |
           set -eu
+          # Every parser here is best-effort: the step must print its record even when the review
+          # failed and `ocr-result.json` is absent or truncated — that is exactly when a measurement
+          # is worth having. A shape the schema does not guarantee yields "none"/"unavailable", never
+          # an abort under `set -e`.
+          cat > /tmp/summarize.py <<'PY'
+          import collections, json, sys
+          def out(tokens="none", findings="none", rounds=-1):
+              print(tokens); print(findings); print(rounds)
+          try:
+              with open("ocr-result.json", encoding="utf-8") as handle:
+                  document = json.load(handle)
+          except Exception:
+              out(); sys.exit(0)
+          if not isinstance(document, dict):
+              out(); sys.exit(0)
+          tokens = document.get("total_tokens", "none")
+          comments = document.get("comments")
+          comments = comments if isinstance(comments, list) else []
+          hist = collections.Counter(
+              str(c.get("severity", "")).strip().lower()
+              for c in comments if isinstance(c, dict)
+          )
+          findings = "/".join(str(hist.get(s, 0)) for s in ("critical", "high", "medium", "low"))
+          rounds = -1
+          calls = document.get("tool_calls")
+          if isinstance(calls, dict):
+              numbers = [v for v in calls.values() if isinstance(v, int)]
+              rounds = sum(numbers) if numbers else -1
+          elif isinstance(calls, list):
+              rounds = len(calls)
+          out(tokens, findings, rounds)
+          PY
+          python3 /tmp/summarize.py > /tmp/summary.txt 2>/dev/null || printf 'none\nnone\n-1\n' > /tmp/summary.txt
+          tokens=$(sed -n 1p /tmp/summary.txt)
+          findings=$(sed -n 2p /tmp/summary.txt)
+          rounds_json=$(sed -n 3p /tmp/summary.txt)
+          if [ "$rounds_json" -ge 0 ] 2>/dev/null; then
+            rounds="$rounds_json"; rounds_src=json
+          else
+            # Fallback: the CLI's progress glyph. Labelled, because a formatting change must not
+            # silently read as "no rounds".
+            glyph=$(grep -c '▶' /tmp/measure.log 2>/dev/null || true)
+            if [ -n "$glyph" ] && [ "$glyph" -gt 0 ] 2>/dev/null; then
+              rounds="$glyph"; rounds_src=glyph
+            else
+              rounds=unavailable; rounds_src=none
+            fi
+          fi
           rc=$(cat /tmp/measure.rc 2>/dev/null || echo "no-attempt")
           elapsed=$(cat /tmp/measure.elapsed 2>/dev/null || echo "0")
-          rounds=$(grep -c '▶' /tmp/measure.log 2>/dev/null || true)
-          rounds=${rounds:-0}
-          if [ -f ocr-result.json ]; then
-            tokens=$(python3 -c "import json;print(json.load(open('ocr-result.json')).get('total_tokens',0))")
-            findings=$(python3 -c "import json,collections;d=json.load(open('ocr-result.json'));c=collections.Counter(str(x.get('severity','')).strip().lower() for x in (d.get('comments') or []));print('/'.join(str(c.get(s,0)) for s in ('critical','high','medium','low')))")
-          else
-            tokens=none
-            findings=none
-          fi
-          echo "MEASURE label=${{ inputs.label }} to=${{ inputs.to_sha }} from=${{ inputs.from_ref }} max_tools=${{ inputs.max_tools }} no_filter=${{ inputs.no_filter }} exclude='${{ inputs.exclude }}' rc=${rc} elapsed_s=${elapsed} rounds=${rounds} tokens=${tokens} findings=${findings}"
+          echo "MEASURE label=${MEASURE_LABEL} to=${MEASURE_TO} from=${MEASURE_FROM} max_tools=${MEASURE_MAX_TOOLS} no_filter=${MEASURE_NO_FILTER} exclude='${MEASURE_EXCLUDE}' rc=${rc} elapsed_s=${elapsed} rounds=${rounds} rounds_src=${rounds_src} tokens=${tokens} findings=${findings}"
