@@ -194,11 +194,12 @@ usage: req trace [key=value ...]
 
 Prints the traceability matrix for a selection: the outgoing edges, the **derived** incoming
 edges (each relation is stored once, on the outgoing side), and the findings. Every edge that
-leaves the selection is named — to an excluded claim, or to an undecided one — and an
-undecided claim keeps its own section. It is a projection: it reads claims, never writes one.
+leaves the selection is named — to an excluded claim, or to one this variant leaves undecided
+— and a relation to a claim the corpus does not hold is named UNVERIFIABLE, never ignored.
+It is a projection: it reads claims, never writes one.
 
-exit: 0 settled, 3 anything an undecided claim or a missing claim leaves open (a relation to
-a claim not in the corpus is UNVERIFIABLE, never ignored), 2 usage.
+exit: 0 the edge graph is settled, 3 an edge into a claim the corpus does not hold or into
+one the variant leaves undecided leaves the matrix open, 2 usage.
 
 `AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
 
@@ -250,8 +251,9 @@ usage: req baseline --at <RFC 3339 UTC timestamp> [key=value ...]
        req baseline --verify <file> [--signature <file>] [--key <id>] [--now <date>]
 
 Emits the canonical manifest — the exact byte string a human signs — or verifies one: drift,
-authority, trust and signature, with the key judged at the manifest's `signed_at`. The
-signing time is authored, never invented, and req never signs.
+authority, trust and signature, with the key judged at the manifest's `signed_at` for a v3
+envelope (today for v2, and `--now` sets the judgement time explicitly). The signing time is
+authored, never invented, and req never signs.
 
 exit: 0 emitted or VERIFIED, 1 FAIL (drift, a signature or authority that does not verify),
 3 UNVERIFIABLE (no verifier, an unknown key, no signature, a `rules_v` mismatch, or an absent
