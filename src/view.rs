@@ -58,6 +58,12 @@ pub struct Row {
     /// The authored test links, verbatim, and their attested digest (ADR 0019). Identity does not
     /// carry either: a test rename moves no address, and the manifest attests the digest so an
     /// agent cannot quietly unlink what it cannot prove.
+    ///
+    /// They are **not** in `impl Serialize for Row`: the document's row shape is the view a
+    /// consumer reads (`claim_id`, `statement`, `modality`, `address`, `applies`, `selectors`,
+    /// `relations`, `rationale`), and the evidence declaration is audit-surface data like
+    /// `stored`/`relations_hash`/`rationale_hash` — it rides the Baseline, not the projection.
+    /// Adding them would be a document-shape change, not a rendering detail.
     pub tests: Vec<String>,
     /// The declared evidence mode (machine by default, process when a human said so), and the
     /// digest over the whole evidence declaration — both outside identity (ADR 0019).

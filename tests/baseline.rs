@@ -459,6 +459,31 @@ fn a_v3_manifest_keeps_its_historical_bytes_and_still_verifies() {
         0,
         "a v3 manifest did not attest the links, so it cannot judge them: {unaware:?}"
     );
+
+    // The direction the guards exist for: a **v3 file that happens to carry** `tests_hash`.
+    // `canonical_bytes` must still omit it (or every historical signature stops verifying) and
+    // `drift` must not judge it (or an unsigned field invents a tampering).
+    let mut carrying = parsed.clone();
+    carrying.claims[0].tests_hash = Some(EMPTY_TESTS_DIGEST.to_string());
+    assert_eq!(
+        canonical_bytes(&carrying),
+        bytes,
+        "a v3 manifest's signed bytes do not gain `tests_hash` just because the record carries one"
+    );
+    let carrying_outcome = verify(
+        &relinked,
+        &carrying,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        FIXTURE_SIGNED_AT,
+    );
+    assert_eq!(
+        carrying_outcome.exit_code(),
+        0,
+        "a v3 manifest's `tests_hash` is not attested, so it cannot be judged: {carrying_outcome:?}"
+    );
 }
 
 /// The v4 half: the manifest attests the tests digest for every claim, a v4 header without one
