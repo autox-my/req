@@ -5,6 +5,10 @@ Cargo.lock.bak
 # Session scratch (never part of the deliverable tree)
 .scratch/
 
+# OS junk: Finder drops .DS_Store into any directory it opens, and it must never be staged.
+.DS_Store
+Thumbs.db
+
 # Editors
 *.swp
 .idea/
