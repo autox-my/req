@@ -487,6 +487,49 @@ else
   skip "python3 or tools/adopt.py missing: cannot self-check the document extractor"
 fi
 
+# The five-minute path (`docs/agentic.md`), rehearsed for real against the binary this run just
+# built. `tools/quickstart.sh` does in a `mktemp -d` what the page tells an adopter to do — `req
+# init`, the extractor's dry run and `--write`, an authored applicability, `canon --fill` then
+# `--verify`, the declared variant's `gate`, `render --out` then `--check` — offline and with no
+# $HOME write, and prints the one line the page's claim is measured by: `QUICKSTART <n>s`. The
+# page says "under five minutes", so the gate carries the clock rather than trusting the prose:
+# the script fails at n >= 300 and on any step whose wrong-but-zero answer its assertions catch.
+#
+# Kept under `--fast` too: it is a ~1s step, and a docs claim that quietly stopped being true
+# would otherwise wait for a full run. The fast banner still says what did not run, so a fast
+# green is never quoted as the gate's verdict.
+#
+# The binary is bound to this tree's debug build when there is one, so the rehearsal judges what
+# the gate just built rather than a stale release. It is NOT a condition for running: a caller
+# who redirects CARGO_TARGET_DIR — this script deliberately does not set it — or builds release
+# only would otherwise turn the rehearsal into a SKIP inside a green run, and a docs claim that
+# goes unchecked is exactly the hole the SKIP/`FAST` distinction exists to show. With no debug
+# binary the script's own resolution runs, and failing to find one is a red, never a pass.
+if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/quickstart.sh" ] && command -v python3 >/dev/null 2>&1; }; then
+  # `plan` prints this same choice, from this same call site: `-x` picks the command, it does
+  # not gate the check, so consulting it in a plan is what makes the plan show the binding the
+  # default run uses.
+  #
+  # The search honours a redirected build dir, the same resolution the rehearsal itself uses: a
+  # caller with CARGO_TARGET_DIR set has the binary there, and `$PWD/target` would bind a path
+  # that does not exist — turning the binding into a refusal inside the script. The fallback
+  # unsets a caller's REQ_BIN: it exists to let the script resolve the tree's own build, and a
+  # stray exported value would make the gate rehearse an arbitrary binary (the rule the
+  # standalone Baseline and decision steps apply to REQ_GATE_BIN).
+  quickstart_target="${CARGO_TARGET_DIR:-$PWD/target}"
+  case "$quickstart_target" in
+    /*) : ;;
+    *) quickstart_target="$PWD/$quickstart_target" ;;
+  esac
+  if [ -x "$quickstart_target/debug/req" ]; then
+    run env REQ_BIN="$quickstart_target/debug/req" bash "$PWD/tools/quickstart.sh"
+  else
+    run env -u REQ_BIN bash "$PWD/tools/quickstart.sh"
+  fi
+else
+  skip "tools/quickstart.sh or python3 missing: cannot rehearse the quickstart"
+fi
+
 # The rule-file checks decide from `git ls-files` output and from the shape of review/rule.json,
 # and that decision logic needs neither `ocr` nor a review run — so it is table-driven here,
 # ahead of the review-tool probe, rather than behind a check that can SKIP into looking green.

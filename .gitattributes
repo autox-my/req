@@ -7,3 +7,12 @@
 # corpus and the claims are checked out, which is a decision about the whole tree and not about
 # the projection being compared.
 docs/spec.md text eol=lf
+# The CI snippet is compared **byte for byte** across three files (`tests/ci_template.rs`): a
+# CRLF checkout would make the comparison fail on an unchanged tree, exactly as it would for the
+# projection above. Pinned per path, for the same reason.
+docs/adopting.md text eol=lf
+examples/github-workflows/req.yml text eol=lf
+# The third copy is the raw string `CI_SNIPPET` in this file: under `core.autocrlf=true` it would
+# compile with CRLF and differ from the two LF copies on a clean tree. The guard is only
+# consistent if all three check out the same bytes.
+src/init.rs text eol=lf

@@ -2360,6 +2360,15 @@ fn the_fast_run_skips_the_expensive_checks_and_never_reads_as_the_gate() {
             "the fast plan must keep `{kept}`:\n{fast_out}"
         );
     }
+    // The quickstart rehearsal is kept in both modes (AGENTS.md says so, and the page's
+    // "five minutes" is measured by it): the plan must show it, or a `fastskip` could drop it
+    // with the claim still green.
+    assert!(
+        fast_lines
+            .iter()
+            .any(|line| line.starts_with("PLAN ") && line.contains("tools/quickstart.sh")),
+        "the fast plan must keep the quickstart rehearsal:\n{fast_out}"
+    );
     // ...and the banner is the fast one, so a scrollback cannot mistake it for the gate's.
     assert!(
         fast_out.contains("GATE: UNVERIFIABLE (fast plan only"),
@@ -2378,6 +2387,10 @@ fn the_fast_run_skips_the_expensive_checks_and_never_reads_as_the_gate() {
         "external-v1",
         "direction-v1",
         "check_rules.py",
+        // The rehearsal is kept in both modes: this is the full plan's half of the pin, so a
+        // block moved into a fast-only branch would leave the fast assertion green while the
+        // full gate stopped checking the page's claim.
+        "tools/quickstart.sh",
     ] {
         assert!(
             full_lines.iter().any(|line| line.contains(planned)),

@@ -81,3 +81,8 @@ Changes go through a feature branch and a pull request. CI runs the same gate th
 locally, and an AI review reads the diff and blocks on critical or high findings. The
 agent-facing instructions are in `AGENTS.md`, the glossary in `CONTEXT.md`, the design of
 record in `docs/design.md`, and the decisions in `docs/adr/`.
+
+Adopting req in a project — as a human or as an agent — starts at `docs/agentic.md`: the
+five-minute path, the CI snippet in `examples/github-workflows/req.yml`, and a block to paste
+into a project's own `AGENTS.md`. `tools/quickstart.sh` rehearses that path offline and prints
+`QUICKSTART <n>s`; the page is rehearsed by the script, not asserted by it.
