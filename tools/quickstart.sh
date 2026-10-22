@@ -359,7 +359,7 @@ anchor = "applicability: []"
 if text.count(anchor) != 1:
     raise SystemExit("expected exactly one 'applicability: []' line in %s" % path)
 path.write_text(text.replace(anchor, "applicability:\n  - deployment_mode == air_gapped"))
-print("authored applicability: deployment_mode == air_gapped")
+print("authored applicability: deployment_mode == air_gapped", file=sys.stderr)
 PY
 )"
 RC=$?
@@ -428,7 +428,7 @@ for path in sys.argv[1:]:
     claim_id = claim.stem
     test_id = "quickstart::%s" % claim_id.lower().replace("-", "_")
     claim.write_text(text.replace(anchor, anchor + 'tests:\n  - "%s"\n' % test_id))
-    print("linked %s -> %s" % (claim_id, test_id))
+    print("linked %s -> %s" % (claim_id, test_id), file=sys.stderr)
 PY
 RC=$?
 if [ "$RC" -ne 0 ]; then

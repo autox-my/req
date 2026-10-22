@@ -69,6 +69,18 @@ jobs:
           report-skipped = "ignored"
           TOML
           fi
+          # The profile and the report path are what `--profile ci` and `--test-report` assume. When
+          # the project already owns a config, verify it declares both — do not assume: a config
+          # without `[profile.ci]` makes `--profile ci` fail, and one without `[profile.ci.junit]`
+          # writes no report at all, so the gate would read a missing file and answer UNVERIFIABLE
+          # beside tests that passed. The likely adopter fix is to drop `--test-report`, which relaxes
+          # the policy — so this is a named error, not a puzzle.
+          if ! grep -q '^\[profile\.ci\]' .config/nextest.toml \
+             || ! grep -q '^\[profile\.ci\.junit\]' .config/nextest.toml \
+             || ! grep -q 'path = "junit.xml"' .config/nextest.toml; then
+            echo "::error::.config/nextest.toml exists but does not declare [profile.ci], [profile.ci.junit] and path = \"junit.xml\": add them, or point --test-report at the report your own test command writes"
+            exit 1
+          fi
           cargo nextest run --profile ci
       - name: the release gate — every declared variant, and the default when none is declared
         run: |

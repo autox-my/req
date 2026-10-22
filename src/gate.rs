@@ -577,6 +577,15 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                     return 2;
                 }
             }
+        } else if let Some(path) = arg.strip_prefix("--test-report=") {
+            // The `--flag=value` spelling most CI snippets and GNU habits produce. Without this arm it
+            // fell through to the selector parser and became a *context entry* — a silent answer to a
+            // question nobody asked, which is the one failure mode the gate must not have.
+            if path.is_empty() {
+                eprintln!("--test-report needs a value: {usage}");
+                return 2;
+            }
+            test_report = Some(path.to_string());
         } else {
             match arg.split_once('=') {
                 Some((key, value)) if !key.is_empty() => {

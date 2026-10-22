@@ -79,7 +79,10 @@ export OCR_NO_UPDATE=1
 NEXTEST_PIN="0.9.149"
 # The artefact the release gate reads. Removed before the run so a *stale* report can never answer
 # for a run that failed to produce one: a report nobody generated is UNVERIFIABLE, never a pass.
-JUNIT_REPORT="target/nextest/ci/junit.xml"
+#  relocates the build tree (CI does); nextest writes the report under it. The
+# default stays **relative**, so the planned and executed lines are the same text wherever the run
+# starts from.
+JUNIT_REPORT="${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml"
 
 fail=0
 dry=0

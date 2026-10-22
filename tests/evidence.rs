@@ -94,21 +94,23 @@ const NETWORK_AND_LOOP_APIS: &[&str] = &[
 /// Every Rust source file of the core crate (the binary's direct sources only; the test tree is
 /// not the shipped program).
 fn source_files() -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    let src = repo_root().join("src");
-    let mut entries: Vec<PathBuf> = std::fs::read_dir(&src)
-        .expect("the crate has a src/ directory")
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "rs"))
-        .collect();
-    entries.sort();
-    files.extend(entries);
-    let build = repo_root().join("build.rs");
-    if build.is_file() {
-        files.push(build);
+    /// Every `*.rs` under `dir`, recursively. A flat `read_dir(&src)` would miss
+    /// `src/net/client.rs` — and a network client in a submodule is still a network client, which is
+    /// exactly the absence REQ-0012 asserts.
+    fn walk(dir: &Path, found: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("reads the source directory") {
+            let path = entry.expect("reads a directory entry").path();
+            if path.is_dir() {
+                walk(&path, found);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                found.push(path);
+            }
+        }
     }
-    files
+    let mut found = Vec::new();
+    walk(&repo_root().join("src"), &mut found);
+    found.sort();
+    found
 }
 
 /// **REQ-0012.** The core crate links no network client and contains no socket API, so a claim

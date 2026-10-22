@@ -200,6 +200,12 @@ fn the_ci_snippet_has_one_text_in_three_places() {
              load-bearing (a `req` that read stdin would shorten the release list and end green)",
         ),
         (
+            "does not declare [profile.ci], [profile.ci.junit] and path",
+            1,
+            "the template verifies the nextest profile it depends on instead of assuming it: an \
+             adopter's own config without the profile makes the gate read a missing report",
+        ),
+        (
             "capture gate gate --test-report target/nextest/ci/junit.xml < /dev/null",
             1,
             "the default-variant JSON capture reads the same report as the gate step: without it the \

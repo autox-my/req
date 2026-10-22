@@ -7,6 +7,15 @@ use req::fill::StoredState;
 use req::gate::{Outcome, evaluate_claims, exit_code};
 use req::select::{Applies, Context};
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Fixture reports run concurrently (one test binary, many threads), so a path keyed by the
+/// process id alone is shared state: two tests would write and read the same file.
+static JUNIT_SEQ: AtomicU64 = AtomicU64::new(0);
+fn junit_serial() -> u64 {
+    JUNIT_SEQ.fetch_add(1, Ordering::Relaxed)
+}
+
 #[test]
 fn a_clean_selection_passes_every_policy() {
     let rows = vec![
@@ -245,8 +254,11 @@ mod cli {
         // The dogfood gate reads the *repository's* links; this fixture report answers them all
         // as passed so a test about the release context is not re-answering the evidence question.
         // The real gate step in `scripts/check.sh` feeds it the report nextest actually wrote.
-        let report = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
-            .join(format!("dogfood-junit-{}.xml", std::process::id()));
+        let report = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!(
+            "dogfood-junit-{}-{}.xml",
+            std::process::id(),
+            crate::junit_serial()
+        ));
         crate::common::passing_junit(&root.join("claims"), &report);
         let mut full: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
         full.push("--test-report".to_string());
@@ -371,9 +383,11 @@ mod cli {
 
         /// A JUnit fixture whose every claimed link passes.
         pub fn passing_report(&self) -> PathBuf {
-            let path = self
-                .path()
-                .join(format!("junit-{}.xml", std::process::id()));
+            let path = self.path().join(format!(
+                "junit-{}-{}.xml",
+                std::process::id(),
+                crate::junit_serial()
+            ));
             crate::common::passing_junit(&self.path().join("claims"), &path)
         }
 
