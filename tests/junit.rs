@@ -185,6 +185,23 @@ fn a_testcase_without_a_classname_is_an_error() {
 }
 
 #[test]
+fn text_after_the_root_with_no_tag_is_an_error() {
+    // A corrupt tail used to be consumed silently: `<testsuites/>garbage` parsed as a valid
+    // (empty) report. A report whose tail cannot be parsed is not a result.
+    let reason = parse_err(r#"<testsuites/>garbage"#);
+    assert!(reason.contains("outside any element"), "{reason}");
+}
+
+#[test]
+fn a_repeated_attribute_is_an_error_not_the_first_value() {
+    // Keeping the first value would silently choose one of two identities.
+    let reason = parse_err(
+        r#"<testsuites><testsuite name="s"><testcase name="old" name="new" classname="s"/></testsuite></testsuites>"#,
+    );
+    assert!(reason.contains("twice"), "{reason}");
+}
+
+#[test]
 fn an_empty_name_or_classname_is_an_error_not_an_id() {
     // Presence is not identity: `<testcase name="" classname="s"/>` would join the id space as
     // `s::`, a string no claim could link to intentionally. A report entry with no writable id is

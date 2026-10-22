@@ -93,12 +93,27 @@ impl Report {
         if !self_closing {
             parse_container(&mut scanner, &root, &mut report)?;
         }
-        if let Some(event) = scanner.next()? {
-            let what = match event {
-                Event::Start { name, .. } => format!("`<{name}>`"),
-                Event::End { name } => format!("`</{name}>`"),
-            };
-            return Err(format!("content after the root element: {what}"));
+        // Anything left after the root must be tags (named, below), comments/PIs, or whitespace.
+        // A corrupt or overwritten tail with no `<` in it used to be consumed silently and the
+        // report read as valid; a report whose tail cannot be parsed is not a result.
+        let rest = scanner.rest()?;
+        if !rest.trim().is_empty() {
+            if rest.trim_start().starts_with('<') {
+                // Comments and processing instructions are skipped by `next()`; reaching the end
+                // here is legal trailing content.
+                if let Some(event) = scanner.next()? {
+                    let what = match event {
+                        Event::Start { name, .. } => format!("`<{name}>`"),
+                        Event::End { name } => format!("`</{name}>`"),
+                    };
+                    return Err(format!("content after the root element: {what}"));
+                }
+                return Ok(report);
+            }
+            return Err(format!(
+                "text outside any element after the root: {:?}",
+                rest.trim()
+            ));
         }
         Ok(report)
     }
@@ -399,6 +414,12 @@ impl<'a> Scanner<'a> {
                     self.pos += 1;
                     let value = decode_entities(raw)
                         .map_err(|reason| format!("attribute `{attr}` in `<{name}>`: {reason}"))?;
+                    // XML requires unique attribute names, and keeping the first would silently
+                    // choose one of two values — the same "pick a winner" this reader refuses for
+                    // conflicting duplicate test ids.
+                    if attrs.iter().any(|(existing, _)| existing == &attr) {
+                        return Err(format!("attribute `{attr}` appears twice in `<{name}>`"));
+                    }
                     attrs.push((attr, value));
                 }
             }

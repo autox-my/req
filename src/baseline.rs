@@ -511,7 +511,12 @@ pub fn drift(rows: &[Row], manifest: &Manifest) -> Drift {
                     // tampering. A v4 manifest always carries one (from_json enforces it), so a
                     // changed `tests_hash` after signing is FAIL — the same class as a changed
                     // address (ADR 0019).
-                    || (manifest.version >= 4
+                    // `verify` does not return early for a newer envelope before drift, so the
+                    // guard is the closed support window (4..=BASELINE_VERSION), not `>= 4`: a
+                    // future envelope's `tests_hash` is not this build's to compare, and reading
+                    // a difference there as "edited after signing" would FAIL a manifest the
+                    // build already reported UNVERIFIABLE for being newer.
+                    || ((4..=BASELINE_VERSION).contains(&manifest.version)
                         && claim
                             .tests_hash
                             .as_deref()
@@ -1642,7 +1647,11 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     // that fact **once** rather than a per-claim silence that could read as coverage. This is a
     // disclosure, not a finding: the drifted addresses and audit surface are still judged, and
     // the verdict is not rewritten by it (ADR 0019).
-    if manifest.version == OLDEST_VERIFIABLE_BASELINE_VERSION {
+    // "Predates what this build writes" is a relationship, not the coincidence that the oldest
+    // supported envelope happens to be one below the write version: key it off both constants so
+    // a future bump cannot tell a freshly written manifest that it predates itself.
+    if manifest.version < BASELINE_VERSION && manifest.version >= OLDEST_VERIFIABLE_BASELINE_VERSION
+    {
         println!(
             "  - predates envelope v{BASELINE_VERSION}: the authored test links are NOT attested \
              by this manifest (ADR 0019) — re-issue and re-sign to attest them"
