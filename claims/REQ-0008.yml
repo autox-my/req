@@ -16,6 +16,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::bench::tests::fmr_is_zero_on_the_seed_corpus"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

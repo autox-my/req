@@ -15,6 +15,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::impact::dependents_are_found_transitively_and_nearest_first"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

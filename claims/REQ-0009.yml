@@ -16,6 +16,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::evidence::the_direction_gold_set_meets_its_accuracy_target"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

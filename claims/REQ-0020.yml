@@ -15,6 +15,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::view::incoming_relations_are_derived_from_the_outgoing_side"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

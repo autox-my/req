@@ -16,6 +16,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::evidence::the_parity_corpus_meets_its_false_split_target"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

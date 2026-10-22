@@ -17,6 +17,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::evidence::the_core_crate_carries_no_network_client"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

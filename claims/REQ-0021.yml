@@ -15,6 +15,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::fill::fill_touches_only_the_derived_fields"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

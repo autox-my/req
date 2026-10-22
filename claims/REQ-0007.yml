@@ -15,6 +15,10 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: true
+tests:
+  - "req::init::the_fresh_corpus_is_green"
+  - "req::baseline::emitting_attests_the_chain_head_and_the_signing_time"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

@@ -14,6 +14,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::baseline::a_verified_baseline_is_the_only_verified_outcome"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

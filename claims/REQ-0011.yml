@@ -16,6 +16,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::funnel::a_pass_requires_a_measured_flip_rate_and_no_false_merge"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1
