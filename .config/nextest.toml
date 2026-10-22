@@ -1,0 +1,25 @@
+# The gate's test runner configuration (ADR 0019; pack D).
+#
+# nextest is adopted for its **JUnit artefact**, not for speed — measured 2026-10-21: warm
+# `cargo test` 2 s and `cargo nextest run` 2–3 s, because the ~24 s the test step pays is *link*
+# time both runners pay. One run, one truth: `cargo test` is replaced, not kept beside.
+#
+# The `ci` profile is the gate's profile: `scripts/check.sh` runs
+#   cargo nextest run --profile ci
+# and the JUnit document below is the evidence `req gate --test-report` reads.
+#
+# `fail-fast = false` keeps one failing test from hiding the rest: the artefact must name every
+# failure, and a report cut short would make the absence of a test indistinguishable from a
+# pass. Its command-line twin `--no-fail-fast` is redundant under this profile, and the profile
+# is the single home.
+[profile.ci]
+fail-fast = false
+
+# `report-skipped` lives under `[profile.ci.junit]` in 0.9.149 (the top-level spelling is
+# silently ignored with a warning, which would drop every `#[ignore]`d test from the artefact —
+# exactly the "absence reads as pass" failure this corpus forbids). `"ignored"` reports the
+# `#[ignore]` tests and nothing else: `"all"` would also emit tests skipped by filters or
+# partitions, so a partitioned run would list every filtered-out test as skipped.
+[profile.ci.junit]
+path = "junit.xml"
+report-skipped = "ignored"

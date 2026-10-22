@@ -175,12 +175,9 @@ const EMPTY_RELATIONS_DIGEST: &str =
 const FIXTURE_RATIONALE_DIGEST: &str =
     "bd57ad973193c6a0537045b60db5890f854b15616391b6ffe0e661c5709185c5";
 
-/// `printf 'req.tests.v1\0{"evidence":"machine","tests":[]}' | shasum -a 256` (the `\0` is a
-/// literal NUL byte) — the fixture rows link no test, and the pinned v4 bytes must carry the
-/// digest of that empty **declaration**. `tests/fill.rs` pins the same value against its own
-/// oracle; an earlier draft hashed the bare list (60dd3ab0…) and the review caught the two pins
-/// disagreeing — the implementation hashes the declaration.
-const EMPTY_TESTS_DIGEST: &str = "f70c34ce463f8c0294ac8846abea5b911d5933c42a9d978522bff8c6b5445d53";
+/// `printf 'req.tests.v1\0[]' | shasum -a 256` (the `\0` is a literal NUL byte) — the fixture
+/// rows link no test, and the pinned v4 bytes must carry the digest of that empty list.
+const EMPTY_TESTS_DIGEST: &str = "60dd3ab04cdb753a15543227032c757592bd8db4421252e02f7f2521dab89939";
 
 /// The fixture Decision's chain hash, computed **independently of this crate**:
 /// `sha256("req.decision.v1" \0 "req.genesis.v1" "\n" <canonical decision bytes>)`, where the
@@ -2457,9 +2454,9 @@ fn the_default_gate_run_verifies_the_committed_baseline() {
     );
     // ...and it is the default run being planned, not the single step.
     assert!(
-        planned
-            .iter()
-            .any(|line| line.starts_with("PLAN ") && line.contains("cargo test")),
+        planned.iter().any(
+            |line| line.starts_with("PLAN ") && line.contains("cargo nextest run --profile ci")
+        ),
         "{stdout}"
     );
     assert!(stdout.contains("GATE: UNVERIFIABLE"), "{stdout}");
@@ -2497,7 +2494,7 @@ fn the_fast_run_skips_the_expensive_checks_and_never_reads_as_the_gate() {
     }
     // ...the steps that decide behaviour are still planned...
     for kept in [
-        "PLAN cargo test",
+        "PLAN cargo nextest run --profile ci",
         "PLAN cargo run -q -- canon",
         "PLAN cargo run -q -- bench",
         "PLAN cargo run -q -- gate",
@@ -2926,9 +2923,19 @@ fn the_default_gate_run_gates_every_declared_release() {
         let expected: Vec<&str> = variant.split_whitespace().collect();
         let planned_gate = |line: &str| {
             let words: Vec<&str> = line.split_whitespace().collect();
-            words.starts_with(&["PLAN", "cargo", "run", "-q", "--", "gate"])
-                && words.len() == 6 + expected.len()
-                && words[6..] == expected[..]
+            // The gate step carries the report the test run wrote: the evidence is part of the
+            // invocation, not a file the gate might find later.
+            words.starts_with(&[
+                "PLAN",
+                "cargo",
+                "run",
+                "-q",
+                "--",
+                "gate",
+                "--test-report",
+                "target/nextest/ci/junit.xml",
+            ]) && words.len() == 8 + expected.len()
+                && words[8..] == expected[..]
         };
         assert!(
             planned.iter().any(|line| planned_gate(line)),

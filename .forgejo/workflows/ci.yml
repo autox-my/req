@@ -87,6 +87,12 @@ jobs:
           rustup run 1.99.0 cargo --version
           rustup run 1.99.0 rustfmt --version
           rustup run 1.99.0 cargo clippy --version
+          # Publish the toolchain to LATER steps: a runner does not carry one step's `export`
+          # forward, so without these two lines the next `cargo` is a 127. `$HOME/.cargo/bin` is
+          # where rustup put the shims (and where `cargo install` will put the test runner), and
+          # RUSTUP_HOME is the tree those shims resolve.
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "RUSTUP_HOME=$HOME/.rustup" >> "$GITHUB_ENV"
 
       - name: the review CLI, installed from the committed lockfile
         run: |
@@ -137,6 +143,23 @@ jobs:
             echo "::error::origin/main has no $ANCHOR_PATH — fail closed, never fall back to this checkout (a pull request could then supply the trust anchor that judges it)"
             exit 1
           fi
+
+      - name: the pinned test runner (the JUnit artefact the release gate reads)
+        run: |
+          set -eu
+          # ADR 0019: nextest is adopted for its JUnit artefact, not for speed. The pin is the
+          # version `scripts/check.sh` verifies at run time — a different installed version is a
+          # FAIL naming both, never a silent substitution — and this install is the remedy that
+          # script prints when the runner is missing.
+          #
+          # The rustup step published `$HOME/.cargo/bin` through `$GITHUB_PATH`; if it did not
+          # reach this step, say so with the remedy rather than letting a bare `cargo` exit 127.
+          if ! command -v rustup >/dev/null 2>&1; then
+            echo "::error::rustup is not on PATH; the rustup step must publish \$HOME/.cargo/bin via \$GITHUB_PATH (and RUSTUP_HOME via \$GITHUB_ENV) so cargo and rustup reach later steps"
+            exit 1
+          fi
+          cargo install cargo-nextest --version 0.9.149 --locked
+          cargo nextest --version
 
       - name: the gate — the exit code and the log both count
         run: |

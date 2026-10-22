@@ -194,10 +194,34 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         ("capture trace trace", 1, "the traceability document"),
         ("capture audit audit", 1, "the audit packet document"),
         (
-            "capture \"gate-${releases}\" gate \"${release[@]}\" < /dev/null",
+            "capture \"gate-${releases}\" gate --test-report target/nextest/ci/junit.xml \"${release[@]}\" < /dev/null",
             1,
             "the per-variant gate document, with the `/dev/null` stdin the loop comment calls \
              load-bearing (a `req` that read stdin would shorten the release list and end green)",
+        ),
+        (
+            "cargo nextest run --profile ci",
+            1,
+            "the suite whose JUnit report the gate reads: without it `--test-report` has nothing \
+             to read and the gate is UNVERIFIABLE, not green",
+        ),
+        (
+            "cargo install cargo-nextest --version 0.9.149 --locked",
+            1,
+            "the pinned test runner (ADR 0019): an unpinned install would let the artefact's shape \
+             drift, exactly as an unpinned `ocr` would let the review's",
+        ),
+        (
+            "report-skipped = \"ignored\"",
+            1,
+            "a skipped test is present in the artefact — it is not a pass, and a report that \
+             silently omits it would read as one",
+        ),
+        (
+            "--test-report target/nextest/ci/junit.xml",
+            2,
+            "the gate step and the per-variant JSON capture both read the same artefact: a document \
+             captured without it would say `unverifiable` beside a green gate",
         ),
         (
             "[ \"$variants_read\" -eq 1 ]",
