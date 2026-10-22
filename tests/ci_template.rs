@@ -245,9 +245,10 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         ),
         (
             "if: always()",
-            3,
-            "the capture and the upload must run on a red build — the run an agent most needs to \
-             read",
+            5,
+            "every step that must run on a red build: the invalidation of a stale report (before the \
+             run, so a skipped step cannot leave yesterday's), the capture and the upload — plus the \
+             two comments that name the property",
         ),
         (
             "if-no-files-found: error",

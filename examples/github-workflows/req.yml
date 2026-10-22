@@ -51,6 +51,14 @@ jobs:
       # it writes the JUnit/XUnit document `req gate --test-report` reads; on another stack, run
       # your own test command and point `--test-report` at the report it writes. A claim with no
       # linked test is a finding, never a pass — the gate below names it.
+      # No stale report may answer for this run. `if: always()` is the point: when an earlier step
+      # fails, every ordinary step after it is skipped — and on a cached or self-hosted workspace
+      # yesterday's `target/nextest/ci/junit.xml` would then survive for the artifacts step below,
+      # which would publish it as a `pass` beside a red build.
+      - name: invalidate any stale test report
+        if: always()
+        run: rm -f "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml"
+
       - name: the tests that prove the claims, as the report the gate reads
         run: |
           set -eu
@@ -82,10 +90,6 @@ jobs:
             echo "::error::.config/nextest.toml exists but does not declare [profile.ci], [profile.ci.junit] and path = \"junit.xml\": add them, or point --test-report at the report your own test command writes"
             exit 1
           fi
-          # A stale report must never answer for a run that produced none: a compile error writes no
-          # JUnit, and a cached or self-hosted workspace can still hold yesterday's — which the JSON
-          # step below would then publish as a `pass` beside a red build.
-          rm -f "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml"
           cargo nextest run --profile ci
       - name: the release gate — every declared variant, and the default when none is declared
         run: |
