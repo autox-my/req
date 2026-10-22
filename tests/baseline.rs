@@ -175,9 +175,12 @@ const EMPTY_RELATIONS_DIGEST: &str =
 const FIXTURE_RATIONALE_DIGEST: &str =
     "bd57ad973193c6a0537045b60db5890f854b15616391b6ffe0e661c5709185c5";
 
-/// `printf 'req.tests.v1\0[]' | shasum -a 256` (the `\0` is a literal NUL byte) — the fixture
-/// rows link no test, and the pinned v4 bytes must carry the digest of that empty list.
-const EMPTY_TESTS_DIGEST: &str = "60dd3ab04cdb753a15543227032c757592bd8db4421252e02f7f2521dab89939";
+/// `printf 'req.tests.v1\0{"evidence":"machine","tests":[]}' | shasum -a 256` (the `\0` is a
+/// literal NUL byte) — the fixture rows link no test, and the pinned v4 bytes must carry the
+/// digest of that empty **declaration**. `tests/fill.rs` pins the same value against its own
+/// oracle; an earlier draft hashed the bare list (60dd3ab0…) and the review caught the two pins
+/// disagreeing — the implementation hashes the declaration.
+const EMPTY_TESTS_DIGEST: &str = "f70c34ce463f8c0294ac8846abea5b911d5933c42a9d978522bff8c6b5445d53";
 
 /// The fixture Decision's chain hash, computed **independently of this crate**:
 /// `sha256("req.decision.v1" \0 "req.genesis.v1" "\n" <canonical decision bytes>)`, where the
