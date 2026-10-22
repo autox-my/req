@@ -74,7 +74,12 @@ fn assert_same_bytes(left: &str, left_name: &str, right: &str, right_name: &str)
     // The byte offset may fall inside a multi-byte character; counting newlines over the byte
     // prefix keeps the line number right without slicing at a non-char boundary.
     let line = left_bytes[..at].iter().filter(|&&b| b == b'\n').count() + 1;
-    let line_of = |text: &str| text.lines().nth(line - 1).unwrap_or("<line absent>").to_string();
+    let line_of = |text: &str| {
+        text.lines()
+            .nth(line - 1)
+            .unwrap_or("<line absent>")
+            .to_string()
+    };
     if at == shorter {
         panic!(
             "{left_name} and {right_name} are not byte-identical: one ends at byte {at} \
