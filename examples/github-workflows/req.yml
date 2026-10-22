@@ -77,10 +77,15 @@ jobs:
           # the policy — so this is a named error, not a puzzle.
           if ! grep -q '^\[profile\.ci\]' .config/nextest.toml \
              || ! grep -q '^\[profile\.ci\.junit\]' .config/nextest.toml \
-             || ! grep -q 'path = "junit.xml"' .config/nextest.toml; then
+             || ! grep -q 'path = "junit.xml"' .config/nextest.toml \
+             || ! grep -q 'fail-fast = false' .config/nextest.toml; then
             echo "::error::.config/nextest.toml exists but does not declare [profile.ci], [profile.ci.junit] and path = \"junit.xml\": add them, or point --test-report at the report your own test command writes"
             exit 1
           fi
+          # A stale report must never answer for a run that produced none: a compile error writes no
+          # JUnit, and a cached or self-hosted workspace can still hold yesterday's — which the JSON
+          # step below would then publish as a `pass` beside a red build.
+          rm -f "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml"
           cargo nextest run --profile ci
       - name: the release gate — every declared variant, and the default when none is declared
         run: |

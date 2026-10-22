@@ -250,7 +250,7 @@ bare gate on a corpus carrying a selector is UNVERIFIABLE.
 
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 answers as a `req.gate/1` document on stdout: schema, generator, `rules_v`, the selection, the
-folded verdict, the five policies and the undecided claims with what each is missing. The
+folded verdict, the six policies and the undecided claims with what each is missing. The
 verdict is the same fold the exit code applies, so the document and the process cannot disagree.
 
 exit: 0 every policy passed and every claim decided, 1 a defect, 3 something that cannot be

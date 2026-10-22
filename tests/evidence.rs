@@ -30,27 +30,49 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Dependency names in a Cargo manifest's `[dependencies]` table.
+/// Dependency names a Cargo manifest declares, in **every spelling that links a crate**.
 ///
-/// Deliberately a small line reader, not a TOML parser: the question is which crates the **core**
-/// links, and a full parse would make this test depend on the format's whole grammar to answer a
-/// question that only needs the table's left-hand sides.
+/// A small line reader, not a TOML parser — but not a naive one: `[dependencies.reqwest]` (table
+/// form), `[target.'cfg(unix)'.dependencies]` (target-specific) and `http = { package = "reqwest" }`
+/// (renamed) all link the crate, and all three are invisible to a reader that only looks at
+/// `key = value` lines under a literal `[dependencies]`. The caller asserts the *known* set was
+/// found, so a reader regression fails instead of passing vacuously.
 fn runtime_dependencies(manifest: &str) -> Vec<String> {
     let mut deps = Vec::new();
     let mut in_dependencies = false;
-    for line in manifest.lines() {
-        let line = line.trim();
+    for raw in manifest.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
         if line.starts_with('[') {
-            in_dependencies = line == "[dependencies]";
+            let header = line.trim_matches(|c| c == '[' || c == ']');
+            in_dependencies = header == "dependencies"
+                || header.starts_with("dependencies.")
+                || header.ends_with(".dependencies");
+            if let Some(name) = header.strip_prefix("dependencies.") {
+                deps.push(name.to_string());
+            }
             continue;
         }
-        if !in_dependencies || line.is_empty() || line.starts_with('#') {
+        if !in_dependencies {
             continue;
         }
-        if let Some((name, _)) = line.split_once('=') {
-            deps.push(name.trim().to_string());
+        let Some((name, value)) = line.split_once('=') else {
+            continue;
+        };
+        deps.push(name.trim().to_string());
+        // `http = { package = "reqwest", … }` links `reqwest`, not `http`.
+        if let Some(quoted) = value
+            .split("package")
+            .nth(1)
+            .and_then(|after| after.split('"').nth(1))
+        {
+            deps.push(quoted.to_string());
         }
     }
+    deps.sort();
+    deps.dedup();
     deps
 }
 
@@ -121,10 +143,22 @@ fn the_core_crate_carries_no_network_client() {
     let manifest = std::fs::read_to_string(repo_root().join("Cargo.toml"))
         .expect("the crate manifest is readable");
     let deps = runtime_dependencies(&manifest);
-    assert!(
-        !deps.is_empty(),
-        "the dependency reader found no [dependencies] entries — it would pass vacuously"
-    );
+    // The reader must have found the crates this manifest is known to declare: an empty or partial
+    // read would pass the absence check vacuously, which is the failure mode this assertion closes.
+    for expected in [
+        "serde",
+        "serde_json",
+        "yaml_serde",
+        "rust_decimal",
+        "sha2",
+        "unicode-normalization",
+    ] {
+        assert!(
+            deps.iter().any(|dep| dep == expected),
+            "the dependency reader missed `{expected}` (it must see table, target-specific and \
+             renamed forms): {deps:?}"
+        );
+    }
 
     let banned: Vec<&str> = deps
         .iter()
@@ -353,6 +387,12 @@ impl Scratch {
         let dir = std::env::temp_dir().join(format!("{name}-{}-{seq}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("creates the scratch directory");
+        if let Some(found) = dir.ancestors().find(|d| req::root::is_corpus_root(d)) {
+            panic!(
+                "the scratch directory assumes no ancestor holds claims/, but {} does",
+                found.display()
+            );
+        }
         Scratch(dir)
     }
     fn path(&self) -> &Path {
@@ -558,6 +598,10 @@ fn derived_claims_are_accepted_without_constraint() {
                 "relations: []",
                 &format!("relations:\n  - type: derives-from\n    to: {parent}"),
             );
+        assert!(
+            derived.contains(&format!("to: {parent}")),
+            "the fixture's relation edit is a no-op: the starter template changed its `relations:` line"
+        );
         scratch.write(&format!("claims/{id}.yml"), &derived);
     }
 
