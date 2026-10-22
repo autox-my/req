@@ -180,16 +180,46 @@ jobs:
           # an abort under `set -e`.
           cat > /tmp/summarize.py <<'PY'
           import collections, json, sys
-          def out(tokens="none", findings="none", rounds=-1):
-              print(tokens); print(findings); print(rounds)
+
+
+          def find_tokens(node, depth=0):
+              """`total_tokens` is not at the top level of every CLI version, and a measurement that
+              reports `none` because the key moved is worse than useless. Walk for it once."""
+              if depth > 6:
+                  return None
+              if isinstance(node, dict):
+                  if isinstance(node.get("total_tokens"), int):
+                      return node["total_tokens"]
+                  for value in node.values():
+                      found = find_tokens(value, depth + 1)
+                      if found is not None:
+                          return found
+              elif isinstance(node, list):
+                  for value in node:
+                      found = find_tokens(value, depth + 1)
+                      if found is not None:
+                          return found
+              return None
+
+
+          def lines_for(tokens="none", findings="none", rounds=-1, findings_out=()):
+              print(tokens)
+              print(findings)
+              print(rounds)
+              for line in findings_out:
+                  print(line)
+
+
           try:
               with open("ocr-result.json", encoding="utf-8") as handle:
                   document = json.load(handle)
           except Exception:
-              out(); sys.exit(0)
+              lines_for(); sys.exit(0)
           if not isinstance(document, dict):
-              out(); sys.exit(0)
-          tokens = document.get("total_tokens", "none")
+              lines_for(); sys.exit(0)
+
+          tokens = find_tokens(document)
+          tokens = tokens if isinstance(tokens, int) else "none"
           comments = document.get("comments")
           comments = comments if isinstance(comments, list) else []
           hist = collections.Counter(
@@ -197,6 +227,22 @@ jobs:
               for c in comments if isinstance(c, dict)
           )
           findings = "/".join(str(hist.get(s, 0)) for s in ("critical", "high", "medium", "low"))
+
+          # The finding text is the evidence the decision is made on: a count cannot tell a real
+          # defect found by a narrower configuration from a false positive it induced. Print them,
+          # bounded, one line each — the same shape review.yml's log uses.
+          detail = []
+          for comment in comments[:60]:
+              if not isinstance(comment, dict):
+                  continue
+              severity = str(comment.get("severity", "?")).strip().lower()
+              path = str(comment.get("path", "?"))
+              line = comment.get("start_line", "")
+              text = " ".join(str(comment.get("content", "")).split())[:220]
+              detail.append(f"FINDING {severity} {path}:{line} — {text}")
+          if len(comments) > 60:
+              detail.append(f"FINDING … {len(comments) - 60} more not printed")
+
           rounds = -1
           calls = document.get("tool_calls")
           if isinstance(calls, dict):
@@ -204,7 +250,7 @@ jobs:
               rounds = sum(numbers) if numbers else -1
           elif isinstance(calls, list):
               rounds = len(calls)
-          out(tokens, findings, rounds)
+          lines_for(tokens, findings, rounds, detail)
           PY
           python3 /tmp/summarize.py > /tmp/summary.txt 2>/dev/null || printf 'none\nnone\n-1\n' > /tmp/summary.txt
           tokens=$(sed -n 1p /tmp/summary.txt)
@@ -225,3 +271,6 @@ jobs:
           rc=$(cat /tmp/measure.rc 2>/dev/null || echo "no-attempt")
           elapsed=$(cat /tmp/measure.elapsed 2>/dev/null || echo "0")
           echo "MEASURE label=${MEASURE_LABEL} to=${MEASURE_TO} from=${MEASURE_FROM} max_tools=${MEASURE_MAX_TOOLS} no_filter=${MEASURE_NO_FILTER} exclude='${MEASURE_EXCLUDE}' rc=${rc} elapsed_s=${elapsed} rounds=${rounds} rounds_src=${rounds_src} tokens=${tokens} findings=${findings}"
+          # The finding texts go to the log *after* the MEASURE line, so a reader greps one token
+          # ("FINDING") for the evidence and one ("MEASURE") for the record.
+          sed -n '4,$p' /tmp/summary.txt
