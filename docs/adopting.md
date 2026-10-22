@@ -190,9 +190,11 @@ including the tri-state — and `req <command> --help` works before a corpus exi
    string the parser derives, not the units the prose used. `unit: ms` and `unit: seconds` are parse
    flags, and `"0.30"` is not a canonical decimal (`"0.3"` is).
 3. **`req canon` always exits 0.** It reports the divergences; it never gates. The check that gates
-   is `req canon --verify`: exit 0 verified, 1 a digest that does not recompute, 3 a
-   re-canonicalization candidate (unfilled, or filled under other rules) — re-fill it, do not retype
-   it.
+   is `req canon --verify`: exit 0 verified, 1 a digest that does not recompute — or, measured, a
+   draft still carrying the empty `form` anchor with `address: null`, reported as
+   `form stored but no address` (its remedy is `--fill`, not a retype) — 3 a re-canonicalization
+   candidate (a claim with no `form` field at all, or one filled under other rules) — re-fill it, do
+   not retype it.
 4. **An empty `claims/` is UNVERIFIABLE (exit 3)** — for both `canon --verify` and `gate`. Zero
    claims cannot be told from every claim having vanished, so never "clean up" a corpus down to
    nothing; delete a requirement by deleting its claim, deliberately.
@@ -326,7 +328,75 @@ jobs:
             gate
           fi
           exit $rc
+      # The agent-facing half (pack C): the verdicts as JSON documents, kept off the log.
+      # An agent reviewing this pull request reads `req.gate/1`, never a scraped text line.
+      - name: the JSON views, as build artifacts (an agent reads these, not the log)
+        if: always()
+        run: |
+          set -eu
+          mkdir -p req-views
+          # A view document is complete even when its verdict is open (pack C), so each exit
+          # class is recorded beside its document and never folded into this step: the gate
+          # above decides the build, and `always()` keeps the views when it went red.
+          # `--format json` renders to stdout only — beside `--out`/`--check` it is a usage
+          # error (exit 2) — so a redirect, not a flag, is how a document reaches the disk.
+          view() {
+            req "$1" --format json > "req-views/$1.json" && code=0 || code=$?
+            printf 'req %s --format json -> req-views/%s.json (exit %s)\n' "$1" "$1" "$code"
+          }
+          view render
+          view trace
+          view audit
+          # The gate document is ONE PER VARIANT, exactly as the gate step runs it: a bare
+          # `req gate` is UNVERIFIABLE on a corpus carrying a selector (ADR 0015), so a bare
+          # document would say "cannot tell" beside a release that passed. With no release
+          # declared, the bare view IS the default variant's document.
+          releases=0
+          if [ -f .req/variants ] && [ -r .req/variants ]; then
+            while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
+              variant_line="${variant_line%$'\r'}"
+              read -r -a release <<< "${variant_line%%#*}"
+              [ "${#release[@]}" -gt 0 ] || continue
+              releases=$((releases + 1))
+              req gate "${release[@]}" --format json < /dev/null > "req-views/gate-${releases}.json" \
+                && code=0 || code=$?
+              printf 'req gate %s --format json -> req-views/gate-%s.json (exit %s)\n' \
+                "${release[*]}" "$releases" "$code"
+            done < .req/variants
+          fi
+          if [ "$releases" -eq 0 ]; then
+            req gate --format json < /dev/null > req-views/gate.json && code=0 || code=$?
+            printf 'req gate --format json -> req-views/gate.json (exit %s)\n' "$code"
+          fi
+      - name: keep the views for the reviewing agent
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: req-views
+          path: req-views/
+          if-no-files-found: error
 ```
+
+**The JSON views are the agent-facing half.** The last two steps write pack C's documents and
+upload them as the `req-views` artifact, so an agent reviewing the pull request reads the verdict
+instead of scraping a log. `render`, `trace` and `audit` are written once; the **gate document is
+written once per declared release** (`gate-1.json`, `gate-2.json`, …), because a bare `req gate` is
+UNVERIFIABLE on a corpus carrying a selector (ADR 0015) and a single bare document would say
+"cannot tell" beside a release that passed. With no release declared, `gate.json` *is* the default
+variant's document. The capture step runs `if: always()` and **records** each command's exit class
+beside its document instead of folding it into the step: a document is complete even when its
+verdict is open (ADR 0018, and pack C's rule), and the gate step above is what decides the build.
+`--format json` renders to stdout only — beside `--out`/`--check` it is a usage error (exit 2) —
+so the redirect is how a document reaches the disk.
+
+The upload names `actions/upload-artifact@v4`. That version is the one **runner-specific** line in
+this file: check the major your GitHub or Forgejo runner implements and change it if it differs —
+the JSON files are written to `req-views/` either way, and only the upload is version-specific.
+
+**This body is one text in three places**, and a test keeps it that way: `req init` prints it,
+this page carries it, and `examples/github-workflows/req.yml` is the copy-ready file to `cp` into
+`.github/workflows/` or `.forgejo/workflows/`. `tests/ci_template.rs` compares the three byte for
+byte — the equality is checked, never assumed.
 
 **`.req/variants`** is plain text beside the corpus, because the CI step is bash and YAML would need
 a parser: one gate invocation per line, `key=value` pairs space-separated, `#` starts a comment, and
@@ -345,7 +415,16 @@ a line that is empty after stripping the comment is skipped. Two rules matter:
   readability; `[ -r ]` alone also passes for a readable *directory*, whose redirection still
   fails. While you declare no variants, the file is valid with comments only.
 
-One part of the snippet is not verified on a runner: whether the job summary renders above the log.
+Two parts of the snippet are not verified on a runner: whether the job summary renders above the
+log, and the artifact upload — the JSON documents and their redirect are plain shell over
+commands run locally against this exact text, but `actions/upload-artifact` and `if: always()`
+are the runner's behaviour, not req's.
+The JSON step was run locally too, against both corpus shapes it has to survive: a fresh `req init`
+corpus (four documents — `req.render/1`, `req.trace/1`, `req.gate/1`, `req.audit/1` — with `audit`
+exiting **3** for nothing ratified and the step exiting **0**), and a selector-carrying corpus with
+one declared release (`gate-1.json` carrying `"verdict": "pass"` and the release's `selection`,
+while the bare `render`/`audit` documents recorded their open exit classes). The gate decides the
+build, the documents never do.
 The shell logic was run locally against this exact text — an absent, unreadable, or non-regular
 `.req/variants` → exit 1 (`missing, unreadable, or not a regular file .req/variants`); a comment-only file → one row, the bare default variant, and exit 0 **on a
 corpus with no selector** (a fresh `req init` corpus; on a corpus with a selector the bare run is

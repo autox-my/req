@@ -1,0 +1,126 @@
+name: req
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  requirements:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: req, installed at a pinned rev
+        env:
+          GIT_SSH_COMMAND: "ssh -o ControlMaster=no -o ControlPath=none -o StrictHostKeyChecking=accept-new"
+        run: |
+          set -eu
+          CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install \
+            --git ssh://git@git.xantu-barb.ts.net/fdx/req.git \
+            --rev <PIN> --root "$HOME/.local" --locked
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          req --version
+      - name: every stored address still recomputes (variant-independent)
+        run: req canon --verify
+      - name: the release gate — every declared variant, and the default when none is declared
+        run: |
+          set -eu
+          # An absent, unreadable, or non-regular variants file must be red. A failed INPUT
+          # REDIRECTION does not stop a `set -e` script: the loop then never runs and the
+          # fallback below gates the bare variant, so the step can be green with no declared
+          # variant gated. `[ -f ]` proves a regular file, not readability; `[ -r ]` proves
+          # readability, not that a directory is not the path (a readable directory passes it
+          # and the redirection still fails) — so both are asserted.
+          [ -f .req/variants ] && [ -r .req/variants ] \
+            || { echo "missing, unreadable, or not a regular file .req/variants" >&2; exit 1; }
+          # A job summary above the log (runner >= 13.2 sets one of these).
+          # Absent variable = an older runner: the step must still pass, so the target is /dev/null.
+          summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}"
+          printf '## req gate\n\n| variant | exit | verdict |\n| --- | --- | --- |\n' >> "$summary"
+          rc=0
+          gate() {
+            out="$(req gate "$@" 2>&1)" && code=0 || code=$?
+            verdict="$(printf '%s' "$out" | sed -n 's/^verdict: //p' | head -1)"
+            printf '| `%s` | %s | %s |\n' "${*:-<none>}" "$code" "${verdict:-no verdict line}" >> "$summary"
+            # Fail outranks unverifiable, and nothing non-zero may be swallowed. The rule: 1 is
+            # sticky above every code; among the rest the **first** non-zero is kept. The first
+            # failed invocation is the one to investigate, and ranking 2/3/127 by severity would be
+            # this script inventing an order req's exit contract does not define (127 is the
+            # shell's, not req's). The previous rule kept the *last*, so a missing binary (127)
+            # followed by an UNVERIFIABLE (3) reported 3 — the tool never ran.
+            if [ "$code" -eq 1 ]; then
+              rc=1
+            elif [ "$code" -ne 0 ] && [ "$rc" -eq 0 ]; then
+              rc=$code
+            fi
+          }
+          gated=0
+          # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while
+          # still assigning it, and a release appended without one would otherwise be silently
+          # dropped. `read -a` splits on IFS and runs no pathname expansion, so a whitespace-only or
+          # comment-only line yields no element and is skipped rather than becoming a bare run.
+          while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
+            variant_line="${variant_line%$'\r'}"
+            read -r -a release <<< "${variant_line%%#*}"
+            [ "${#release[@]}" -gt 0 ] || continue
+            # /dev/null: nothing in the body may consume the remaining releases from this
+            # file's stdin — a command that reads stdin would shorten the list without error, and
+            # the loop would end early with a green step. scripts/check.sh guards the same loop
+            # the same way.
+            gate "${release[@]}" < /dev/null
+            gated=$((gated + 1))
+          done < .req/variants
+          # A comment-only file declares one variant — the default — and the bare invocation is
+          # its gate. With a line declared, the loop is the gate: a bare run beside it reports
+          # UNVERIFIABLE on any corpus carrying a selector (ADR 0015), and a false red beside
+          # green variants is how a real red gets ignored.
+          if [ "$gated" -eq 0 ]; then
+            gate
+          fi
+          exit $rc
+      # The agent-facing half (pack C): the verdicts as JSON documents, kept off the log.
+      # An agent reviewing this pull request reads `req.gate/1`, never a scraped text line.
+      - name: the JSON views, as build artifacts (an agent reads these, not the log)
+        if: always()
+        run: |
+          set -eu
+          mkdir -p req-views
+          # A view document is complete even when its verdict is open (pack C), so each exit
+          # class is recorded beside its document and never folded into this step: the gate
+          # above decides the build, and `always()` keeps the views when it went red.
+          # `--format json` renders to stdout only — beside `--out`/`--check` it is a usage
+          # error (exit 2) — so a redirect, not a flag, is how a document reaches the disk.
+          view() {
+            req "$1" --format json > "req-views/$1.json" && code=0 || code=$?
+            printf 'req %s --format json -> req-views/%s.json (exit %s)\n' "$1" "$1" "$code"
+          }
+          view render
+          view trace
+          view audit
+          # The gate document is ONE PER VARIANT, exactly as the gate step runs it: a bare
+          # `req gate` is UNVERIFIABLE on a corpus carrying a selector (ADR 0015), so a bare
+          # document would say "cannot tell" beside a release that passed. With no release
+          # declared, the bare view IS the default variant's document.
+          releases=0
+          if [ -f .req/variants ] && [ -r .req/variants ]; then
+            while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
+              variant_line="${variant_line%$'\r'}"
+              read -r -a release <<< "${variant_line%%#*}"
+              [ "${#release[@]}" -gt 0 ] || continue
+              releases=$((releases + 1))
+              req gate "${release[@]}" --format json < /dev/null > "req-views/gate-${releases}.json" \
+                && code=0 || code=$?
+              printf 'req gate %s --format json -> req-views/gate-%s.json (exit %s)\n' \
+                "${release[*]}" "$releases" "$code"
+            done < .req/variants
+          fi
+          if [ "$releases" -eq 0 ]; then
+            req gate --format json < /dev/null > req-views/gate.json && code=0 || code=$?
+            printf 'req gate --format json -> req-views/gate.json (exit %s)\n' "$code"
+          fi
+      - name: keep the views for the reviewing agent
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: req-views
+          path: req-views/
+          if-no-files-found: error

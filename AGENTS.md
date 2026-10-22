@@ -150,9 +150,10 @@ export OCR_NO_UPDATE=1
   annotation is not a refusal: it is the author's qualitative predicate, which identity does
   not carry and the fill must not delete.
   `cargo run -q -- canon --verify` checks the stored fields against a fresh parse:
-  exit **1** mismatch (a hand-edited digest), **3** candidate (unfilled, filled
-  under other rules, or a declared schema this build does not write — re-fill before
-  merging a rules bump). Both are in the gate.
+  exit **1** mismatch (a hand-edited digest; and, measured, a draft still carrying the empty
+  `form` anchor with `address: null`, reported as `form stored but no address`), **3**
+  candidate (a claim with no `form` field at all, filled under other rules, or a declared
+  schema this build does not write — re-fill before merging a rules bump). Both are in the gate.
 - Lint/format: `cargo fmt --all -- --check` and
   `cargo clippy --all-targets -- -D warnings` — both part of the gate. The
   components live in the *pinned* toolchain, not in `stable`, so the toolchain
@@ -175,7 +176,10 @@ export OCR_NO_UPDATE=1
   because the steps it drops are the ones whose *runtime* dominates — `clippy`, the external
   corpora (v1-v3) and the direction gold set, and the review-rule/review-scope checks. It keeps
   `fmt`, `test`, `canon`, the seed parity bench, the Baseline and decision steps, the release
-  gate, the projection check and the extractor's self-check. It cannot be mistaken for the gate:
+  gate, the projection check, the extractor's self-check and the **quickstart rehearsal**
+  (`tools/quickstart.sh`, measured at 1-2s, so it is kept in both modes — it prints the
+  `QUICKSTART <n>s` line `docs/agentic.md`'s "five minutes" is measured by, and fails at 300).
+  It cannot be mistaken for the gate:
   each skipped step prints **`FAST`** (never `SKIP`, because the tooling is there) and the banner
   reads `GATE: PASS (FAST: …)`, so a fast green is an iteration verdict — **the full run is
   required before a commit**, and CI always runs the full one. `--fast` composes with `plan`;
@@ -550,6 +554,19 @@ matter:
   `req init`, **adopting from documents you already have** (the extractor's draft path,
   `tools/adopt.py`), the authoring loop and its traps, the CI snippet with the per-variant rule,
   and where a req bug is reported.
+- `docs/agentic.md` — the **agentic** quickstart, one page: the same adoption path for an agent and
+  its human in five steps (install at a pinned rev, `req init`, the extractor, `req canon` /
+  `--fill` / `--verify`, `.req/variants` + `gate`), then what the agent may not do, what it can
+  read (`--format json` documents, the exit contract, `render --check` as the drift alarm), and one
+  line naming what is not built yet (pack D's claim↔test linkage). Rehearsed by
+  `tools/quickstart.sh`, which prints `QUICKSTART <n>s` and fails at 300 — "five minutes" is
+  measured, never asserted.
+- `examples/` — copy-ready adopter files, inert by location (neither GitHub nor Forgejo picks a
+  workflow up under `examples/`): `github-workflows/req.yml`, the CI snippet — the *same bytes*
+  `req init` prints and `docs/adopting.md` carries, pinned by `tests/ci_template.rs` rather than
+  assumed — and `agents-snippet.md`, the block to paste into a project's own `AGENTS.md`.
+- `tests/ci_template.rs` — the three-way byte equality of that snippet (the `init` const, the
+  adopting page's fenced block, the example file). One copy of the advice, or a red build.
 - `claims/REQ-*.yml` + `claims/README.md` — the dogfood corpus: req's own
   requirements, in req's own format.
 - `aliases/subjects.yml` — subject registry. Alias sets must be disjoint; an

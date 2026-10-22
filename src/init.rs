@@ -423,12 +423,17 @@ fn print_next_steps() {
 }
 
 /// The CI snippet `init` prints. Public so the execution test (`tests/init.rs`) can run the
-/// exact block an adopter's runner runs, not a copy of it. `docs/adopting.md` carries it inside its
-/// "## CI" section — two copies of advice no adopter can afford to have drift, so the
-/// equality is **asserted** (`the_printed_snippet_is_the_one_the_adopting_doc_carries`,
-/// below) rather than left to review: the parts that matter (the `summary` fallback, the
-/// `gate()` bookkeeping, `exit $rc`, the readability assertion) would otherwise be free to
-/// diverge with nothing failing.
+/// exact block an adopter's runner runs, not a copy of it, and so the snippet's own test can
+/// compare it with the two copies a human edits.
+///
+/// The snippet is **one text in three places** — this template, the fenced ```` ```yaml ````
+/// block in `docs/adopting.md`'s "## CI" section, and `examples/github-workflows/req.yml` (the
+/// file an adopter `cp`s into a workflow directory) — and the equality is **asserted** by
+/// `tests/ci_template.rs::the_ci_snippet_has_one_text_in_three_places` rather than left to
+/// review: the parts that matter (the `summary` fallback, the `gate()` bookkeeping, `exit
+/// $rc`, the readability assertion, the `--format json` artifact step) would otherwise be
+/// free to diverge with nothing failing. The artifact step is pack C's documents: an agent
+/// reads `req.gate/1` from the per-variant run artifacts instead of scraping this log.
 ///
 /// The readable-regular-file assertion is not decoration: a **failed input redirection does not
 /// stop a `set -e` script**, so without it an absent, unreadable, or non-regular `.req/variants`
@@ -514,6 +519,53 @@ jobs:
             gate
           fi
           exit $rc
+      # The agent-facing half (pack C): the verdicts as JSON documents, kept off the log.
+      # An agent reviewing this pull request reads `req.gate/1`, never a scraped text line.
+      - name: the JSON views, as build artifacts (an agent reads these, not the log)
+        if: always()
+        run: |
+          set -eu
+          mkdir -p req-views
+          # A view document is complete even when its verdict is open (pack C), so each exit
+          # class is recorded beside its document and never folded into this step: the gate
+          # above decides the build, and `always()` keeps the views when it went red.
+          # `--format json` renders to stdout only — beside `--out`/`--check` it is a usage
+          # error (exit 2) — so a redirect, not a flag, is how a document reaches the disk.
+          view() {
+            req "$1" --format json > "req-views/$1.json" && code=0 || code=$?
+            printf 'req %s --format json -> req-views/%s.json (exit %s)\n' "$1" "$1" "$code"
+          }
+          view render
+          view trace
+          view audit
+          # The gate document is ONE PER VARIANT, exactly as the gate step runs it: a bare
+          # `req gate` is UNVERIFIABLE on a corpus carrying a selector (ADR 0015), so a bare
+          # document would say "cannot tell" beside a release that passed. With no release
+          # declared, the bare view IS the default variant's document.
+          releases=0
+          if [ -f .req/variants ] && [ -r .req/variants ]; then
+            while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
+              variant_line="${variant_line%$'\r'}"
+              read -r -a release <<< "${variant_line%%#*}"
+              [ "${#release[@]}" -gt 0 ] || continue
+              releases=$((releases + 1))
+              req gate "${release[@]}" --format json < /dev/null > "req-views/gate-${releases}.json" \
+                && code=0 || code=$?
+              printf 'req gate %s --format json -> req-views/gate-%s.json (exit %s)\n' \
+                "${release[*]}" "$releases" "$code"
+            done < .req/variants
+          fi
+          if [ "$releases" -eq 0 ]; then
+            req gate --format json < /dev/null > req-views/gate.json && code=0 || code=$?
+            printf 'req gate --format json -> req-views/gate.json (exit %s)\n' "$code"
+          fi
+      - name: keep the views for the reviewing agent
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: req-views
+          path: req-views/
+          if-no-files-found: error
 "#;
 
 /// `claims/README.md` — the authoring loop and its traps, in the adopter's words. Static
@@ -683,39 +735,10 @@ mod tests {
         assert_eq!(claim.address.as_deref(), Some(""), "address is an anchor");
     }
 
-    /// The one **fenced YAML block** in a document, without the fence. Panics when the
-    /// document has none or more than one, because "the first one" is exactly the assumption
-    /// that lets a test compare the wrong block and pass.
-    fn the_only_yaml_block(markdown: &str) -> &str {
-        const OPEN: &str = "```yaml\n";
-        let mut blocks = markdown.match_indices(OPEN);
-        let first = blocks.next().expect("the document has a ```yaml block");
-        assert!(
-            blocks.next().is_none(),
-            "the document must have exactly one ```yaml block; the snippet test compares *the* block"
-        );
-        let after = &markdown[first.0 + OPEN.len()..];
-        let close = after
-            .find("\n```")
-            .expect("the ```yaml block is closed with ```");
-        &after[..close + 1]
-    }
-
-    /// `init` prints the CI snippet; `docs/adopting.md` shows it. The two copies are the same
-    /// block today, and this is what keeps them the same block: the parts an adopter cannot
-    /// afford to lose — the `summary` fallback, the `gate()` bookkeeping, `exit $rc`, the
-    /// `[ -r .req/variants ]` readability assertion — are not pinned anywhere else.
-    #[test]
-    fn the_printed_snippet_is_the_one_the_adopting_doc_carries() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/adopting.md");
-        let doc = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("reads {}: {e}", path.display()));
-        assert_eq!(
-            the_only_yaml_block(&doc),
-            CI_SNIPPET,
-            "the CI snippet `init` prints and the block in docs/adopting.md have drifted apart"
-        );
-    }
+    // The three-way equality of the CI snippet — `init`'s `CI_SNIPPET` above,
+    // `docs/adopting.md`'s fenced block, and `examples/github-workflows/req.yml` — lives in
+    // `tests/ci_template.rs`, the one home for it: a unit test here covered only two of the
+    // three copies, and the copy-ready example is the one an adopter edits without a compiler.
 
     /// `Created::abort` removes **the directories this run made** — not only its files — and
     /// this is the only case that says so. `tests/init.rs` cannot reach it: `claims` is a

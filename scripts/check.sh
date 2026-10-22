@@ -487,6 +487,24 @@ else
   skip "python3 or tools/adopt.py missing: cannot self-check the document extractor"
 fi
 
+# The five-minute path (`docs/agentic.md`), rehearsed for real against the binary this run just
+# built. `tools/quickstart.sh` does in a `mktemp -d` what the page tells an adopter to do — `req
+# init`, the extractor's dry run and `--write`, an authored applicability, `canon --fill` then
+# `--verify`, the declared variant's `gate`, `render --out` then `--check` — offline and with no
+# $HOME write, and prints the one line the page's claim is measured by: `QUICKSTART <n>s`. The
+# page says "under five minutes", so the gate carries the clock rather than trusting the prose:
+# the script fails at n >= 300 and on any step whose wrong-but-zero answer its assertions catch.
+#
+# Kept under `--fast` too: it is a ~1-2s step, and a docs claim that quietly stopped being true
+# would otherwise wait for a full run. The fast banner still says what did not run, so a fast
+# green is never quoted as the gate's verdict. `REQ_BIN` is passed explicitly so the rehearsal
+# judges the tree's build, not a stale release binary; its own resolution is the adopter's path.
+if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/quickstart.sh" ] && [ -x "$PWD/target/debug/req" ] && command -v python3 >/dev/null 2>&1; }; then
+  run env REQ_BIN="$PWD/target/debug/req" bash "$PWD/tools/quickstart.sh"
+else
+  skip "tools/quickstart.sh, a built req binary, or python3 missing: cannot rehearse the quickstart"
+fi
+
 # The rule-file checks decide from `git ls-files` output and from the shape of review/rule.json,
 # and that decision logic needs neither `ocr` nor a review run — so it is table-driven here,
 # ahead of the review-tool probe, rather than behind a check that can SKIP into looking green.
