@@ -696,49 +696,60 @@ fn authoring_is_frictionless_and_the_decision_boundary_is_not() {
     assert!(decided_out.contains("verdict: PASS"), "{decided_out}");
 }
 
-/// REQ-0021 — *never rewrite a claim or merge two claims automatically*: the read-only commands
-/// (`bench`, `propose`) leave the corpus byte-identical, `canon --fill` writes only derived fields,
-/// and nothing adds or removes a claim file.
+/// REQ-0021 — *never rewrite a claim or merge two claims automatically*.
+///
+/// Two claims, because a merge path needs a pair: with one claim it could never fire, and the test
+/// would be green for the wrong reason (the review caught exactly that). Every observation is on
+/// the **whole bytes** of every claim, not one line: a read-only command must leave the corpus
+/// byte-identical, and `--fill` on an already-current corpus must write nothing at all.
 #[test]
 fn no_command_rewrites_or_merges_claims_automatically() {
     let scratch = Scratch::new("req-0021-readonly");
     assert_eq!(run_here(scratch.path(), &["init"]).0, 0);
+    let starter = scratch.read("claims/REQ-0001.yml");
+    assert!(
+        starter.contains(STARTER_STATEMENT),
+        "the fixture edits the template's own statement"
+    );
+    scratch.write(
+        "claims/REQ-0002.yml",
+        &starter
+            .replace("claim_id: REQ-0001", "claim_id: REQ-0002")
+            .replace(STARTER_STATEMENT, STARTER_MAY)
+            .replace("modality: SHALL", "modality: MAY"),
+    );
+    assert_eq!(run_here(scratch.path(), &["canon", "--fill"]).0, 0);
+    assert_eq!(run_here(scratch.path(), &["canon", "--verify"]).0, 0);
     let before = claim_files(scratch.path());
+    assert_eq!(before.len(), 2, "two obligations, two files");
 
-    // Both of these are read-only with respect to claims: `bench` writes a results record under
-    // bench/results, and `propose` answers UNVERIFIABLE offline — neither may touch claims/.
+    // `bench` writes a results record under bench/results; `propose` now has a candidate pair to
+    // consider and answers UNVERIFIABLE offline. Neither may touch a claim.
     let parity = format!("{}/bench/corpus/parity.yml", env!("CARGO_MANIFEST_DIR"));
-    let (bench_code, _, bench_err) = run_here(scratch.path(), &["bench", &parity]);
-    assert_eq!(bench_code, 0, "the seed parity bench runs: {bench_err}");
+    assert_eq!(run_here(scratch.path(), &["bench", &parity]).0, 0);
     let (propose_code, _, _) = run_here(scratch.path(), &["propose"]);
-    assert_eq!(
-        propose_code, 0,
-        "one claim yields no candidate pair; whatever it does, it must not write a claim"
+    assert!(
+        matches!(propose_code, 0 | 3),
+        "propose answers without writing: {propose_code}"
     );
     assert_eq!(
         claim_files(scratch.path()),
         before,
-        "a read-only command rewrote a claim"
+        "a read-only command rewrote or merged a claim"
     );
 
-    // `--fill` writes the derived fields only: the authored statement is untouched, and the file
-    // set is unchanged (a merge would delete or add one).
+    // `--fill` on an already-current corpus writes nothing: every byte stays where it was, and no
+    // file disappears (a merge would remove one).
     assert_eq!(run_here(scratch.path(), &["canon", "--fill"]).0, 0);
-    let after = claim_files(scratch.path());
-    assert_eq!(after.len(), before.len(), "a merge changed the claim set");
-    let statement_of = |bytes: &[u8]| -> String {
-        let text = String::from_utf8_lossy(bytes).into_owned();
-        let start = text.find("statement:").expect("a claim has a statement");
-        let end = text[start..]
-            .find("modality:")
-            .expect("a statement is followed by modality")
-            + start;
-        text[start..end].to_string()
-    };
     assert_eq!(
-        statement_of(&before[0].1),
-        statement_of(&after[0].1),
-        "fill rewrote an authored statement"
+        claim_files(scratch.path()),
+        before,
+        "fill changed a claim that was already current"
+    );
+    assert_eq!(
+        claim_files(scratch.path()).len(),
+        2,
+        "a merge changed the claim set"
     );
 }
 
