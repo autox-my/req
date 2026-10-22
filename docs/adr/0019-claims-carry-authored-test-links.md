@@ -257,17 +257,30 @@ The links are claims about evidence and were made one by one:
 - **process:** REQ-0013 and REQ-0014. No proving test exists; both declare `tests: []` and
   `evidence: process`, are reported PASS-as-declared, and are counted in `process-evidenced`. They are
   **not** machine-proven, and the PR says so in those words.
-- **machine, linked into the existing suite:** fourteen claims — REQ-0001…REQ-0008, REQ-0011, REQ-0016,
-  REQ-0017 and REQ-0019…REQ-0021 — each naming a test that is already in the suite and that demonstrably
-  proves it. REQ-0007 is the one to look at twice: it is `unstructured: true`, but the
-  authoring/decision-boundary contract it states is implemented, so it links
-  `req::init::the_fresh_corpus_is_green` (a fresh corpus verifies and fills without friction) and
-  `req::baseline::emitting_attests_the_chain_head_and_the_signing_time` (the boundary demands an
-  authored time, meaning and evidence) rather than declaring itself process-evidenced.
+- **machine, linked into the existing suite:** ten claims — REQ-0002…REQ-0005, REQ-0008, REQ-0011,
+  REQ-0016, REQ-0017, REQ-0019 and REQ-0020 — each naming a test whose *name states the obligation* it is
+  attached to (`a_claims_applicability_is_its_selector`, `fmr_is_zero_on_the_seed_corpus`,
+  `a_pass_requires_a_measured_flip_rate_and_no_false_merge`, …). Fourteen originally borrowed a nearby
+  test; the strict bar below replaced four of those, and the review caught one borrowed link directly
+  (`impact`'s traversal test builds rows in memory, so it would stay green if the loader began refusing
+  derived claims).
+- **machine, written for the claim:** nine claims link tests in `tests/evidence.rs` — the five
+  structural/measured ones (REQ-0009, REQ-0010, REQ-0012, REQ-0015, REQ-0018) and four written for claims
+  whose evidence had been borrowed (REQ-0001, REQ-0006, REQ-0007, REQ-0021). Each asserts exactly what its
+  obligation obliges, through the CLI seam: a three-deep derived chain no command refuses, one command
+  that boots a green corpus beside a boundary that refuses to pass on an undecided variant, a claim that
+  is one file/one row/one address, and read-only commands that leave the corpus byte-identical.
 
-The 21 dogfood claims are therefore: **19 machine-evidenced with links** (5 new in `tests/evidence.rs`,
-14 into the existing suite) and **2 process-evidenced** (REQ-0013, REQ-0014). Both declared variants are
-green with the real report — 20 applying claims, 0 undecided, `process-evidenced: 2`.
+The 21 dogfood claims are therefore: **19 machine-evidenced with links** (9 in `tests/evidence.rs` and 10
+in the existing suite) and **2 process-evidenced** (REQ-0013, REQ-0014). Both declared variants are green
+with the real report — 20 applying claims, 0 undecided, `process-evidenced: 2`.
+
+**The bar for a link (ruled 2026-10-22): the strict question — "if this test failed, would the
+requirement be rejected?"** A test that merely exercises nearby behaviour does not qualify, and neither
+does one the claim's author did not choose for it. Under the loose bar ("it exercises the behaviour")
+fourteen borrowed links were acceptable; under the strict bar four were not, and those four were replaced
+with tests written for the obligation rather than the link relaxed. The same bar applies to every future
+claim: a machine claim with no such test is UNVERIFIABLE, named, and red — that is the product.
 
 ## The honest limit
 

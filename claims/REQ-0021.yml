@@ -16,7 +16,7 @@ temporal: null
 quantifier: null
 unstructured: false
 tests:
-  - "req::fill::fill_touches_only_the_derived_fields"
+  - "req::evidence::no_command_rewrites_or_merges_claims_automatically"
 evidence: machine
 canonical:
   rules_v: 5

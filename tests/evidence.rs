@@ -322,3 +322,376 @@ fn the_scanned_source_tree_is_the_shipped_crate() {
         "the source scan must reach src/canon.rs: {sources:?}"
     );
 }
+
+// --- Four claims whose proof is a behaviour of the whole tool ------------------------------------
+//
+// REQ-0001, REQ-0006, REQ-0007 and REQ-0021 were linked to tests written for other purposes. The
+// review caught REQ-0006's link directly: `impact`'s traversal test builds `Row` values in memory,
+// so it stays green even if the loader starts refusing derived claims. The strict bar is "if this
+// test failed, would the requirement be rejected?" — so each of the four gets a test named for the
+// claim and asserting exactly what the claim obliges, through the CLI seam.
+
+use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+fn req_bin() -> PathBuf {
+    std::env::var_os("CARGO_BIN_EXE_req")
+        .map(PathBuf::from)
+        .expect("integration tests run with CARGO_BIN_EXE_req set")
+}
+
+static SCRATCH_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// A directory with no `claims/` ancestor, so a fixture that starts empty really is empty.
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new(name: &str) -> Self {
+        let seq = SCRATCH_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("{name}-{}-{seq}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("creates the scratch directory");
+        Scratch(dir)
+    }
+    fn path(&self) -> &Path {
+        &self.0
+    }
+    fn read(&self, rel: &str) -> String {
+        std::fs::read_to_string(self.0.join(rel)).unwrap_or_else(|e| panic!("reads {rel}: {e}"))
+    }
+    fn write(&self, rel: &str, text: &str) {
+        let path = self.0.join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("creates the parent directory");
+        }
+        std::fs::write(&path, text).unwrap_or_else(|e| panic!("writes {rel}: {e}"));
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn run_here(dir: &Path, args: &[&str]) -> (i32, String, String) {
+    let output = Command::new(req_bin())
+        .args(args)
+        .current_dir(dir)
+        .env_remove("REQ_ROOT")
+        .output()
+        .expect("runs the compiled binary");
+    (
+        output.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
+/// Every `claims/*.yml`, sorted, as `(file name, bytes)` — the snapshot an automatic rewrite or
+/// merge would change.
+fn claim_files(dir: &Path) -> Vec<(String, Vec<u8>)> {
+    let mut found: Vec<(String, Vec<u8>)> = std::fs::read_dir(dir.join("claims"))
+        .expect("reads claims/")
+        .filter_map(|entry| {
+            let entry = entry.expect("reads a directory entry");
+            let name = entry.file_name().to_string_lossy().into_owned();
+            name.ends_with(".yml")
+                .then(|| (name, std::fs::read(entry.path()).expect("reads a claim")))
+        })
+        .collect();
+    found.sort();
+    found
+}
+
+/// The rows of a `render --format json` document, from all three sections.
+fn render_rows(stdout: &str) -> Vec<serde_json::Value> {
+    let document: serde_json::Value =
+        serde_json::from_str(stdout).expect("render --format json emits a JSON document");
+    ["applies", "undecided", "outside"]
+        .iter()
+        .flat_map(|section| {
+            document[section]
+                .as_array()
+                .unwrap_or_else(|| panic!("render document has no `{section}` array"))
+                .clone()
+        })
+        .collect()
+}
+
+fn address_of(rows: &[serde_json::Value], claim_id: &str) -> String {
+    rows.iter()
+        .find(|row| row["claim_id"] == claim_id)
+        .unwrap_or_else(|| panic!("no row for {claim_id}"))["address"]
+        .as_str()
+        .expect("a row address is a string")
+        .to_string()
+}
+
+/// `req init`'s starter statement, exactly as the template writes it. The starter is the generic
+/// API example, not this repository's own REQ-0001 — a fixture that assumed otherwise edits nothing.
+const STARTER_STATEMENT: &str =
+    "statement: \"The API shall respond to a health check within 200 ms.\"\n";
+const STARTER_MAY: &str = "statement: \"The API may respond to a health check within 200 ms.\"\n";
+const STARTER_SHOULD: &str =
+    "statement: \"The API should respond to a health check within 200 ms.\"\n";
+const STARTER_500: &str = "statement: \"The API shall respond to a health check within 500 ms.\"\n";
+
+/// A minimal nextest-shaped report carrying the ids the corpus links.
+fn write_report(dir: &Path, ids: &[&str]) -> PathBuf {
+    let cases: String = ids
+        .iter()
+        .map(|id| {
+            let (classname, name) = id.rsplit_once("::").expect("an id is classname::name");
+            format!("    <testcase name=\"{name}\" classname=\"{classname}\"/>\n")
+        })
+        .collect();
+    let path = dir.join("junit.xml");
+    std::fs::write(
+        &path,
+        format!(
+            "<testsuites name=\"fixture\" tests=\"{}\">\n  <testsuite name=\"req\" tests=\"{}\">\n{cases}  </testsuite>\n</testsuites>\n",
+            ids.len(),
+            ids.len()
+        ),
+    )
+    .expect("writes the report fixture");
+    path
+}
+
+/// REQ-0001 — *a single claim is the unit of authorship, review, and merge*: one file is one claim,
+/// one claim is one row, one claim is one address, and editing one claim moves only its own address.
+#[test]
+fn a_claim_is_the_unit_of_authorship_review_and_merge() {
+    let scratch = Scratch::new("req-0001-unit");
+    assert_eq!(run_here(scratch.path(), &["init"]).0, 0, "init bootstraps");
+
+    let (code, stdout, _) = run_here(scratch.path(), &["render", "--format", "json"]);
+    assert_eq!(code, 0);
+    assert_eq!(render_rows(&stdout).len(), 1, "one claim file, one row");
+
+    // A second obligation: copying the file is not enough — identity is over **meaning**, so the
+    // obligation itself must differ (a different modality), not merely its wording.
+    let starter = scratch.read("claims/REQ-0001.yml");
+    assert!(
+        starter.contains(STARTER_STATEMENT),
+        "the fixture edits the template's own statement"
+    );
+    let second = starter
+        .replace("claim_id: REQ-0001", "claim_id: REQ-0002")
+        .replace(STARTER_STATEMENT, STARTER_MAY)
+        .replace("modality: SHALL", "modality: MAY");
+    scratch.write("claims/REQ-0002.yml", &second);
+    assert_eq!(run_here(scratch.path(), &["canon", "--fill"]).0, 0);
+    assert_eq!(run_here(scratch.path(), &["canon", "--verify"]).0, 0);
+
+    let (_, stdout, _) = run_here(scratch.path(), &["render", "--format", "json"]);
+    let rows = render_rows(&stdout);
+    assert_eq!(rows.len(), 2, "two files, two rows");
+    let first_before = address_of(&rows, "REQ-0001");
+    let second_before = address_of(&rows, "REQ-0002");
+    assert_ne!(
+        first_before, second_before,
+        "two different obligations must not share an address"
+    );
+
+    // A slot edit moves that claim's address — and only that one.
+    let edited = second
+        .replace(STARTER_MAY, STARTER_SHOULD)
+        .replace("modality: MAY", "modality: SHOULD");
+    scratch.write("claims/REQ-0002.yml", &edited);
+    assert_eq!(run_here(scratch.path(), &["canon", "--fill"]).0, 0);
+    let (_, stdout, _) = run_here(scratch.path(), &["render", "--format", "json"]);
+    let rows = render_rows(&stdout);
+    assert_eq!(rows.len(), 2, "editing a claim merges and splits nothing");
+    assert_eq!(
+        address_of(&rows, "REQ-0001"),
+        first_before,
+        "an untouched claim keeps its address"
+    );
+    assert_ne!(
+        address_of(&rows, "REQ-0002"),
+        second_before,
+        "the edited claim's address moved"
+    );
+    assert_eq!(
+        claim_files(scratch.path()).len(),
+        2,
+        "one file per claim, still"
+    );
+}
+
+/// REQ-0006 — *permit splitting a claim into derived claims without constraint*: a three-deep chain
+/// of authored `derives-from` relations loads, re-derives, and resolves — no Decision demanded, no
+/// arity limit, no refusal.
+#[test]
+fn derived_claims_are_accepted_without_constraint() {
+    let scratch = Scratch::new("req-0006-derived");
+    assert_eq!(run_here(scratch.path(), &["init"]).0, 0);
+    let starter = scratch.read("claims/REQ-0001.yml");
+
+    // Each derived claim must carry a *distinct obligation*: two statements that parse to the same
+    // slots share an address — the parity invariant, not a bug. Modality and the bound are slots.
+    assert!(
+        starter.contains(STARTER_STATEMENT),
+        "the fixture edits the template's own statement"
+    );
+    for (id, parent, statement, slots) in [
+        ("REQ-0002", "REQ-0001", STARTER_MAY, "modality: MAY"),
+        ("REQ-0003", "REQ-0002", STARTER_SHOULD, "modality: SHOULD"),
+        ("REQ-0004", "REQ-0003", STARTER_500, "value: \"0.5\""),
+    ] {
+        let derived = starter
+            .replace("claim_id: REQ-0001", &format!("claim_id: {id}"))
+            .replace(STARTER_STATEMENT, statement)
+            .replace(
+                if slots.starts_with("modality") {
+                    "modality: SHALL"
+                } else {
+                    "value: \"0.2\""
+                },
+                slots,
+            )
+            .replace(
+                "relations: []",
+                &format!("relations:\n  - type: derives-from\n    to: {parent}"),
+            );
+        scratch.write(&format!("claims/{id}.yml"), &derived);
+    }
+
+    let (fill_code, fill_out, fill_err) = run_here(scratch.path(), &["canon", "--fill"]);
+    assert_eq!(
+        fill_code, 0,
+        "fill accepts the derived claims: {fill_out}{fill_err}"
+    );
+    assert_eq!(run_here(scratch.path(), &["canon", "--verify"]).0, 0);
+
+    let (code, stdout, stderr) = run_here(scratch.path(), &["trace"]);
+    assert_eq!(
+        code, 0,
+        "a three-deep derived chain resolves, and no command demands a Decision first:\n{stdout}{stderr}"
+    );
+    for id in ["REQ-0001", "REQ-0002", "REQ-0003", "REQ-0004"] {
+        assert!(stdout.contains(id), "trace names {id}");
+    }
+    let refused = stderr.to_lowercase();
+    for demand in ["decision", "arity", "constraint"] {
+        assert!(
+            !refused.contains(demand),
+            "a split must be accepted without a `{demand}`: {stderr}"
+        );
+    }
+
+    let (_, stdout, _) = run_here(scratch.path(), &["render", "--format", "json"]);
+    let rows = render_rows(&stdout);
+    assert_eq!(
+        rows.len(),
+        4,
+        "every derived claim is one row and one claim"
+    );
+    let mut addresses: Vec<String> = rows
+        .iter()
+        .map(|row| row["address"].as_str().unwrap_or_default().to_string())
+        .collect();
+    addresses.sort();
+    addresses.dedup();
+    assert_eq!(addresses.len(), 4, "each obligation keeps its own address");
+}
+
+/// REQ-0007 — *authoring is friction-free and the decision boundary is deliberately high-friction*,
+/// both halves in one measurement: one command boots a green corpus, and the same corpus refuses to
+/// pass until the variant it carries is decided.
+#[test]
+fn authoring_is_frictionless_and_the_decision_boundary_is_not() {
+    let scratch = Scratch::new("req-0007-boundary");
+    // Half one: one command, and the corpus is green (no authoring ceremony).
+    assert_eq!(run_here(scratch.path(), &["init"]).0, 0);
+    assert_eq!(run_here(scratch.path(), &["canon", "--verify"]).0, 0);
+
+    // Half two: an applicability the invocation does not decide is never treated as absent.
+    let claim = scratch.read("claims/REQ-0001.yml");
+    assert!(
+        claim.contains("applicability: []"),
+        "the starter has no selector"
+    );
+    assert!(
+        !claim.contains("\ntests:"),
+        "the starter carries no evidence link — this test authors one, as an adopter would"
+    );
+    let link = "req::evidence::authoring_is_frictionless_and_the_decision_boundary_is_not";
+    scratch.write(
+        "claims/REQ-0001.yml",
+        &claim
+            .replace("applicability: []", "applicability: [\"runs >= 100\"]")
+            .replace(
+                "canonical:",
+                &format!("tests:\n  - \"{link}\"\nevidence: machine\ncanonical:"),
+            ),
+    );
+    assert_eq!(run_here(scratch.path(), &["canon", "--fill"]).0, 0);
+
+    let linked = "req::evidence::authoring_is_frictionless_and_the_decision_boundary_is_not";
+    let report = write_report(scratch.path(), &[linked]);
+    let report_arg = report.to_string_lossy().into_owned();
+    let (undecided_code, undecided_out, _) =
+        run_here(scratch.path(), &["gate", "--test-report", &report_arg]);
+    assert_eq!(
+        undecided_code, 3,
+        "the boundary refuses to pass on an undecided claim:\n{undecided_out}"
+    );
+    let (decided_code, decided_out, _) = run_here(
+        scratch.path(),
+        &["gate", "runs=100", "--test-report", &report_arg],
+    );
+    assert_eq!(
+        decided_code, 0,
+        "deciding the variant clears the boundary:\n{decided_out}"
+    );
+    assert!(decided_out.contains("verdict: PASS"), "{decided_out}");
+}
+
+/// REQ-0021 — *never rewrite a claim or merge two claims automatically*: the read-only commands
+/// (`bench`, `propose`) leave the corpus byte-identical, `canon --fill` writes only derived fields,
+/// and nothing adds or removes a claim file.
+#[test]
+fn no_command_rewrites_or_merges_claims_automatically() {
+    let scratch = Scratch::new("req-0021-readonly");
+    assert_eq!(run_here(scratch.path(), &["init"]).0, 0);
+    let before = claim_files(scratch.path());
+
+    // Both of these are read-only with respect to claims: `bench` writes a results record under
+    // bench/results, and `propose` answers UNVERIFIABLE offline — neither may touch claims/.
+    let parity = format!("{}/bench/corpus/parity.yml", env!("CARGO_MANIFEST_DIR"));
+    let (bench_code, _, bench_err) = run_here(scratch.path(), &["bench", &parity]);
+    assert_eq!(bench_code, 0, "the seed parity bench runs: {bench_err}");
+    let (propose_code, _, _) = run_here(scratch.path(), &["propose"]);
+    assert_eq!(
+        propose_code, 0,
+        "one claim yields no candidate pair; whatever it does, it must not write a claim"
+    );
+    assert_eq!(
+        claim_files(scratch.path()),
+        before,
+        "a read-only command rewrote a claim"
+    );
+
+    // `--fill` writes the derived fields only: the authored statement is untouched, and the file
+    // set is unchanged (a merge would delete or add one).
+    assert_eq!(run_here(scratch.path(), &["canon", "--fill"]).0, 0);
+    let after = claim_files(scratch.path());
+    assert_eq!(after.len(), before.len(), "a merge changed the claim set");
+    let statement_of = |bytes: &[u8]| -> String {
+        let text = String::from_utf8_lossy(bytes).into_owned();
+        let start = text.find("statement:").expect("a claim has a statement");
+        let end = text[start..]
+            .find("modality:")
+            .expect("a statement is followed by modality")
+            + start;
+        text[start..end].to_string()
+    };
+    assert_eq!(
+        statement_of(&before[0].1),
+        statement_of(&after[0].1),
+        "fill rewrote an authored statement"
+    );
+}

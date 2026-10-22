@@ -16,7 +16,7 @@ temporal: null
 quantifier: null
 unstructured: false
 tests:
-  - "req::loader::duplicate_claim_ids_error_and_the_content_is_compared"
+  - "req::evidence::a_claim_is_the_unit_of_authorship_review_and_merge"
 evidence: machine
 canonical:
   rules_v: 5

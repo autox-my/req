@@ -16,7 +16,7 @@ temporal: null
 quantifier: null
 unstructured: false
 tests:
-  - "req::impact::dependents_are_found_transitively_and_nearest_first"
+  - "req::evidence::derived_claims_are_accepted_without_constraint"
 evidence: machine
 canonical:
   rules_v: 5
