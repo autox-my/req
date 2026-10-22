@@ -34,6 +34,7 @@
 use crate::canon::{RULES_V, address_hex, canonical_json, evaluate_claim};
 use crate::digest::sha256_hex;
 use crate::format::{self, Format, SCHEMA_RENDER, SCHEMA_TRACE};
+use crate::model::Evidence;
 use crate::select::{Applies, Context, applies, parse_predicate};
 use serde::Serialize;
 use serde::ser::{SerializeStruct, Serializer};
@@ -54,6 +55,20 @@ pub struct Row {
     /// so emit and verify compare like with like. Identity (the address) stays meaning-only.
     pub relations_hash: String,
     pub rationale_hash: String,
+    /// The authored test links, verbatim, and their attested digest (ADR 0019). Identity does not
+    /// carry either: a test rename moves no address, and the manifest attests the digest so an
+    /// agent cannot quietly unlink what it cannot prove.
+    ///
+    /// They are **not** in `impl Serialize for Row`: the document's row shape is the view a
+    /// consumer reads (`claim_id`, `statement`, `modality`, `address`, `applies`, `selectors`,
+    /// `relations`, `rationale`), and the evidence declaration is audit-surface data like
+    /// `stored`/`relations_hash`/`rationale_hash` — it rides the Baseline, not the projection.
+    /// Adding them would be a document-shape change, not a rendering detail.
+    pub tests: Vec<String>,
+    /// The declared evidence mode (machine by default, process when a human said so), and the
+    /// digest over the whole evidence declaration — both outside identity (ADR 0019).
+    pub evidence: Evidence,
+    pub tests_hash: String,
     /// What the *stored* derived fields say, checked against a fresh parse: a release gate
     /// has to know whether the address on disk is the one the current rules produce.
     pub stored: crate::fill::StoredState,
@@ -1006,6 +1021,9 @@ pub fn load_rows(context: &Context, root: &std::path::Path) -> Result<Vec<Row>, 
                 .collect(),
             relations_hash: crate::model::relations_digest(&claim.relations),
             rationale_hash: crate::model::rationale_digest(&claim.rationale),
+            tests: claim.tests.clone(),
+            evidence: claim.evidence,
+            tests_hash: crate::model::tests_digest(&claim.tests, claim.evidence),
             // The same check `req canon --verify` runs, so the view and the gate cannot
             // disagree about whether a stored address is current.
             stored: crate::fill::verify_text(text, &form_json, crate::canon::RULES_V),

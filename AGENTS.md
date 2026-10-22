@@ -83,8 +83,8 @@ export OCR_NO_UPDATE=1
 ```
 
 - What this binary is: `cargo run -q -- --version` (`-V`) prints the versions that decide a
-  verdict — the crate, `rules_v`, the Baseline envelope, the decision chain and the claim file
-  schema — and the build identity. The first line stays single-line and greppable; `--help`
+  verdict — the crate, `rules_v`, the Baseline envelope (`baseline_envelope 4`), the decision
+  chain and the claim file schema (`claim_schema req.claim/1`) — and the build identity. The first line stays single-line and greppable; `--help`
   (`-h`) prints `USAGE`, and `<command> --help` (or `-h`) prints that command's page — its
   usage, one paragraph of what it does, its own `exit:` contract, and the anchor into this
   section. Every one of them is answered where the subcommand is looked up, **before** the
@@ -136,7 +136,8 @@ export OCR_NO_UPDATE=1
   because a bound the parse missed would silently leave the address (a false merge).
   `attribute` stays **unverified by design** (its lexicon has no parser to agree with). Exit 3 when the
   registry or a claim file cannot be read, and when a file's declared `schema:` is not the
-  `req.claim/<n>` value this build writes (`CLAIM_SCHEMA_V`, reported by `--version` as
+  `req.claim/<n>` value this build writes (`CLAIM_SCHEMA_V = 1`, i.e. `req.claim/1` — the v1
+  format adds the authored `tests:` and `evidence:` fields — reported by `--version` as
   `claim_schema`): the file's parse is **NOT JUDGED** — an older schema is a migration candidate
   (a format bump moves no address), a newer one is a question for a build that writes it (the
   file is not wrong, the reader is old), and a value of no `req.claim/<n>` shape at all is a
@@ -344,9 +345,11 @@ export OCR_NO_UPDATE=1
   but does not rewrite a verdict about a different question, exactly as its `unverifiable` count
   never did.
 - Baselines: `cargo run -q -- baseline --at <RFC 3339 UTC timestamp> [key=value ...]` prints the
-  **canonical manifest** (envelope v3, ADR 0016) — the signing time, the Decision log's chain
-  head, the rules version, the selection, and every applying claim's address — which is the exact
-  byte string a human signs. The signing time is **authored**: emitting without `--at` is a
+  **canonical manifest** (envelope v4, ADRs 0016 and 0019) — the signing time, the Decision log's
+  chain head, the rules version, the selection, and every applying claim's address, audit surface
+  (`relations_hash`, `rationale_hash`) and evidence declaration (`tests_hash`) — which is the exact
+  byte string a human signs. v4 lands with ADR 0019 (proposed); the release-gate policy that reads
+  the links is the flagship's, not this change's. The signing time is **authored**: emitting without `--at` is a
   **usage error (exit 2)**, and so is a timestamp req cannot read; req never invents one.
   Emission also **refuses** when the decision log is absent, unparsable or empty — **exit 3**,
   a head that attests nothing must not be signed — and when the log is **tampered**, which is a
@@ -355,7 +358,7 @@ export OCR_NO_UPDATE=1
   verifies one. Exit **0** verified, **1** FAIL, **3** UNVERIFIABLE, **2** usage (including
   `--at` on the verification path — the manifest carries its own time). Verification re-derives
   every address, so a claim edited after signing is **FAIL** — the same class as a hand-edited
-  digest; a v3 manifest also attests the Decision log's **chain head at a position**
+  digest; a v3-or-later manifest also attests the Decision log's **chain head at a position**
   (`entries`), so a rewritten attested prefix, a truncated log or a record whose stored hash no
   longer recomputes is **FAIL** (authority mismatch) — while decisions appended *after* that
   prefix do not invalidate an earlier Baseline (history growth is not tampering), and an absent
@@ -365,7 +368,7 @@ export OCR_NO_UPDATE=1
   rather than inconclusive (an older manifest is re-signed under the current rules; a newer one
   is verified with a build that writes it, never re-signed with this binary). Trust is consulted
   at `baselines/trust.yml` (ADR 0010), and the key is judged at the **manifest's `signed_at`**
-  for v3 (today for v2; `--now` is the explicit override): a key whose expiry is **at or after**
+  for v3 and later (today for v2; `--now` is the explicit override): a key whose expiry is **at or after**
   the signing time verifies even when today is later, a key **expired at signing** is FAIL (it
   was not valid when the signature was made), and **revocation is prospective** — a key revoked
   *after* the signing time still verifies, while one revoked at or before it is FAIL. Both are
@@ -381,6 +384,12 @@ export OCR_NO_UPDATE=1
   cryptography and still no network; with no verifier installed the outcome is UNVERIFIABLE,
   never a pass. A **v2** manifest still parses (its new fields are `Option`), keeps its historical
   signed bytes, and is reported as *predates … re-issue and re-sign* — never a parse error.
+  A **v4** manifest attests each claim's `tests_hash`, so a test list or evidence declaration
+  changed after signing is **FAIL** — the same class as a changed address. A **v3** manifest still
+  verifies on its historical signed bytes and says **once** that it predates v4, so its tests are
+  **not attested** — never a FAIL, because it never claimed to attest them; a release that wants
+  test attestation re-issues and re-signs as v4. The committed `baselines/air-gapped.json` is v3
+  and therefore still verifies.
   **The signing act is the human's**: req emits and verifies, and a key this tool could reach
   would prove nothing. The **manifest records the variant**, so verification re-derives the
   addresses under *that* selection: an explicit context that contradicts it is a **usage error**
@@ -558,7 +567,8 @@ matter:
   its human in five steps (install at a pinned rev, `req init`, the extractor, `req canon` /
   `--fill` / `--verify`, `.req/variants` + `gate`), then what the agent may not do, what it can
   read (`--format json` documents, the exit contract, `render --check` as the drift alarm), and one
-  line naming what is not built yet (pack D's claim↔test linkage). Rehearsed by
+  line naming what is not built yet (pack D's release-gate policy; the report reader and the
+  claim's test-link field are already in the tree). Rehearsed by
   `tools/quickstart.sh`, which prints `QUICKSTART <n>s` and fails at 300 — "five minutes" is
   measured, never asserted.
 - `examples/` — copy-ready adopter files, inert by location (neither GitHub nor Forgejo picks a
@@ -632,7 +642,9 @@ matter:
   `decision.rs` (the decision log and its hash chain),
   `funnel.rs` (Tier-2 blocking, the provider seam, the command provider and the
   gold-set scoring), `fill.rs` (derived fields), `init.rs` (the corpus bootstrap and the
-  templates it writes).
+  templates it writes), `junit.rs` (the hand-written reader for nextest's JUnit subset: parsed,
+  unparsable, or zero test cases — the last two UNVERIFIABLE, never "no failures found"; the
+  release-gate policy that consumes it is the flagship follow-up).
 - `baselines/` — `trust.yml` is the committed trust anchor (ADR 0010) and the **single home of
   the public key**; `<variant>.json` is a signed Baseline's canonical manifest and
   `<variant>.json.minisig` its signature; `trust.example.yml` is the template. The standalone

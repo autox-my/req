@@ -4,6 +4,12 @@
 second half of review finding [F4] and the limitation ADR 0010 states plainly ("a Baseline is historical
 and no trusted signing time exists"). Date proposed: 2026-10-20.
 
+**Extended by [ADR 0019](0019-claims-carry-authored-test-links.md) (proposed)** — envelope **v4** adds
+`tests_hash` to each claim record, beside `relations_hash`/`rationale_hash`. Nothing in this ADR is
+superseded: `signed_at`, the authority anchor and the `rules_v`-mismatch rule are unchanged. A **v3**
+manifest still verifies on its historical signed bytes and reports **once** that it predates v4, so its
+tests are **not attested** — never a FAIL, because it never claimed to attest them.
+
 ## Context
 
 A Baseline today is a signature over **which claims** were ratified. The canonical manifest (envelope v2,

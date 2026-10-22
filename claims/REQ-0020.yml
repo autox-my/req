@@ -1,4 +1,4 @@
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0020
 statement: >-
   The req tool shall serialize each relation exactly once, on the outgoing side

@@ -38,23 +38,39 @@ use std::path::{Path, PathBuf};
 
 /// The manifest format's own version — distinct from `RULES_V`, because the *envelope* and
 /// the *rules* move independently.
-/// The manifest schema this build writes and verifies. v3 attests the Decision log's chain head
-/// and the signer's timestamp (ADR 0016); v2 attests the audit surface (ADR 0013); an older
-/// manifest is stale and must be re-issued and re-signed by the human.
-pub const BASELINE_VERSION: u32 = 3;
+/// The manifest schema this build writes. v4 attests the claim's authored test links
+/// (`tests_hash`, ADR 0019); v3 attests the Decision log's chain head and the signer's timestamp
+/// (ADR 0016); v2 attests the audit surface (ADR 0013).
+pub const BASELINE_VERSION: u32 = 4;
+
+/// The **oldest envelope this build still verifies**.
+///
+/// A bump is not a cliff for signed history: a v3 manifest's historical signed bytes are
+/// unchanged by v4, and the one thing v4 adds — the attested `tests_hash` — is simply *not
+/// attested* by a v3 manifest, which is reported once rather than guessed at. That is why the
+/// support floor moves independently of [`BASELINE_VERSION`]: v4 is what this build writes, v3
+/// is what it still honours. A v2 manifest (ADR 0013) predates the authority and signing time a
+/// v3 Baseline attests, so it remains a re-issue candidate — UNVERIFIABLE, never silently
+/// re-signed by this build.
+pub const OLDEST_VERIFIABLE_BASELINE_VERSION: u32 = 3;
 
 /// Where the committed trust anchor lives. Data, reviewed like a corpus (ADR 0010).
 pub const TRUST_PATH: &str = "baselines/trust.yml";
 
 /// One ratified claim: its identity, and the audit surface attested beside it. Identity
 /// stays meaning-only (ADR 0007) — the hashes cover what an auditor relies on that the
-/// address deliberately does not (ADR 0013).
+/// address deliberately does not (ADR 0013, ADR 0019).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ManifestClaim {
     pub claim_id: String,
     pub address: String,
     pub relations_hash: String,
     pub rationale_hash: String,
+    /// The authored test links' digest (v4, ADR 0019). `Option` so a **v3** manifest — which
+    /// never attested them — still parses and verifies over its historical bytes; a v4 manifest
+    /// must carry it for every claim, and [`from_json`] refuses one that does not.
+    #[serde(default)]
+    pub tests_hash: Option<String>,
 }
 
 /// The authority a v3 signature is tied to (ADR 0016): the Decision log's chain head and how
@@ -88,10 +104,10 @@ pub struct Manifest {
 /// Build a manifest from the claims that apply in `selection`, sorted by id and deduplicated
 /// so the bytes never depend on input order.
 ///
-/// The result is an **unattested** v3 envelope: `signed_at` and `authority` are filled by
+/// The result is an **unattested** v4 envelope: `signed_at` and `authority` are filled by
 /// [`attest`], which only the emit path calls (`req baseline --at <ts>`). A draft is never
 /// emitted — [`canonical_bytes`] leaves the attestation out until it is present, and
-/// [`from_json`] rejects a v3 manifest that lacks it.
+/// [`from_json`] rejects a v4 manifest that lacks it.
 pub fn manifest(rows: &[Row], rules_v: u32, selection: &Context) -> Manifest {
     let mut claims: Vec<ManifestClaim> = rows
         .iter()
@@ -101,6 +117,7 @@ pub fn manifest(rows: &[Row], rules_v: u32, selection: &Context) -> Manifest {
             address: row.address.clone(),
             relations_hash: row.relations_hash.clone(),
             rationale_hash: row.rationale_hash.clone(),
+            tests_hash: Some(row.tests_hash.clone()),
         })
         .collect();
     claims.sort_by(|a, b| a.claim_id.cmp(&b.claim_id));
@@ -151,10 +168,12 @@ pub fn attest(
 /// what is signed must be reproducible byte for byte by anyone.
 ///
 /// v3's fixed key order is `version, signed_at, authority, rules_v, selection, claims`
-/// (ADR 0016), and it is pinned by a test because this byte string is what the human signs.
-/// A **v2** manifest keeps its historical shape (no `signed_at`/`authority` keys), so an old
-/// signature still verifies over the bytes it was made over and the stale envelope is reported
-/// as *predates*, never as a signature failure.
+/// (ADR 0016), and v4 appends `tests_hash` to each claim record (ADR 0019). Both are pinned by
+/// tests because this byte string is what the human signs.
+/// A **v2** manifest keeps its historical shape (no `signed_at`/`authority` keys), and a **v3**
+/// manifest keeps its four-key claim records (no `tests_hash`), so an old signature still
+/// verifies over the bytes it was made over and a stale envelope is reported as *predates*,
+/// never as a signature failure.
 pub fn canonical_bytes(manifest: &Manifest) -> String {
     let selection = manifest
         .selection
@@ -166,8 +185,17 @@ pub fn canonical_bytes(manifest: &Manifest) -> String {
         .claims
         .iter()
         .map(|claim| {
+            // v4 appends `tests_hash` (ADR 0019). A v3 manifest's claims keep their historical
+            // four-key shape, because that is the byte string its signature covers — adding a
+            // key with a null value would silently stop every old signature from verifying.
+            let tests = match &claim.tests_hash {
+                Some(tests_hash) if manifest.version >= 4 => {
+                    format!(",\"tests_hash\":{}", json_string(tests_hash))
+                }
+                _ => String::new(),
+            };
             format!(
-                "{{\"claim_id\":{},\"address\":{},\"relations_hash\":{},\"rationale_hash\":{}}}",
+                "{{\"claim_id\":{},\"address\":{},\"relations_hash\":{},\"rationale_hash\":{}{tests}}}",
                 json_string(&claim.claim_id),
                 json_string(&claim.address),
                 json_string(&claim.relations_hash),
@@ -226,6 +254,16 @@ struct EnvelopeVersion {
 /// the wording cannot drift between the two places it is printed.
 const REISSUE_ADVICE: &str = "re-issue and re-sign (ADR 0013)";
 
+/// Whether this build judges a manifest of `version` by its attested signing time.
+///
+/// The support window, not a point: v4 is what this build writes, v3 is what it still honours,
+/// and both attest `signed_at` — so both have their key judged at it (ADR 0016, ADR 0019). A
+/// newer envelope's field is not this build's to interpret, and an older (v2) manifest carries
+/// none, so a caller must not read a signing time off either.
+fn judges_signing_time(version: u32) -> bool {
+    (OLDEST_VERIFIABLE_BASELINE_VERSION..=BASELINE_VERSION).contains(&version)
+}
+
 /// Parse a manifest back. Reading is not the address path, so the ordinary JSON reader is
 /// fine here — only the *emitted* bytes have to be canonical.
 ///
@@ -242,18 +280,20 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
         // which is not a stable contract; and not on the field name alone, because a stale
         // manifest is missing *both* attested hashes while serde names only the first — a
         // current-version manifest that lost exactly one hash would otherwise be told it is
-        // stale. The stale test is *any declared version below this build's*, derived from
-        // BASELINE_VERSION rather than hardcoded, so the next envelope bump cannot silently
-        // drop the advice; a manifest declaring the current version (or newer) is corrupt, and
-        // re-issue advice would send its reader off to re-sign over a defect that was never a
-        // stale envelope (ADR 0013).
+        // stale. The stale test is *any declared version below the oldest this build still
+        // verifies*, derived from the constant rather than hardcoded, so the next envelope bump
+        // cannot silently drop the advice; a manifest declaring a supported version (v3) or a
+        // newer one is corrupt, and re-issue advice would send its reader off to re-sign over a
+        // defect that was never a stale envelope (ADR 0013, ADR 0019).
         let declared = serde_json::from_str::<EnvelopeVersion>(text)
             .ok()
             .and_then(|envelope| envelope.version);
         // Binding the recovered version keeps the invariant local: the stale branch runs only
         // when a declared version below this build's was observed, so the message cannot print
         // a fabricated fallback.
-        if let Some(version) = declared.filter(|version| *version < BASELINE_VERSION) {
+        if let Some(version) =
+            declared.filter(|version| *version < OLDEST_VERIFIABLE_BASELINE_VERSION)
+        {
             format!(
                 "manifest is not readable: {detail} — this manifest declares version {version}, \
                      which predates the version this build writes ({BASELINE_VERSION}): \
@@ -263,35 +303,57 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
             format!("manifest is not readable: {detail}")
         }
     })?;
-    if manifest.version == BASELINE_VERSION {
-        let missing: Vec<&str> = [
+    // Every envelope in the support window attests its signing time and authority (ADR 0016);
+    // **v4** adds the tests digest per claim (ADR 0019). A v4 header with v3 records is corrupt,
+    // not a v3 envelope wearing a new number — so the field set is checked per version, and the
+    // message names what the declared envelope must carry.
+    if judges_signing_time(manifest.version) {
+        let mut missing: Vec<&str> = [
             ("signed_at", manifest.signed_at.is_none()),
             ("authority", manifest.authority.is_none()),
         ]
         .into_iter()
         .filter_map(|(field, absent)| absent.then_some(field))
         .collect();
-        if !missing.is_empty() {
-            return Err(format!(
-                "manifest is not readable: this manifest declares version {BASELINE_VERSION} but \
-                 does not attest {} — a v3 envelope carries both `signed_at` and `authority`; \
-                 emit one with `req baseline --at <RFC 3339 UTC timestamp>`, then re-sign",
-                missing.join(" or ")
-            ));
-        }
-        // **A present `signed_at` must also be a time.** It is fed to `TrustFile::state`, whose
-        // comparisons are lexicographic on the date; an empty or non-date spelling sorts below
-        // every trust date and would skip both the expiry and the revocation check — reading a
-        // revoked key as trusted. This is the one choke point both the library and the CLI use.
-        if let Some(signed_at) = &manifest.signed_at
-            && !valid_signing_time(signed_at)
+        if manifest.version == BASELINE_VERSION
+            && manifest
+                .claims
+                .iter()
+                .any(|claim| claim.tests_hash.is_none())
         {
+            missing.push("`tests_hash` for every claim");
+        }
+        if !missing.is_empty() {
+            let carries = if manifest.version == BASELINE_VERSION {
+                "`signed_at`, `authority` and a `tests_hash` per claim"
+            } else {
+                "`signed_at` and `authority`"
+            };
             return Err(format!(
-                "manifest is not readable: `signed_at` {signed_at:?} is not an RFC 3339 UTC \
-                 timestamp, so the key's expiry and revocation cannot be judged; re-issue with \
-                 `req baseline --at <RFC 3339 UTC timestamp>` and re-sign"
+                "manifest is not readable: this manifest declares version {} but does not \
+                 attest {} — a v{} envelope carries {carries}; emit one with `req baseline \
+                 --at <RFC 3339 UTC timestamp>`, then re-sign",
+                manifest.version,
+                missing.join(" or "),
+                manifest.version
             ));
         }
+    }
+    // **A present `signed_at` must also be a time**, on every envelope whose signing time this
+    // build judges — v3 history included, because that time now adjudicates the key here. It is
+    // fed to `TrustFile::state`, whose comparisons are lexicographic on the date; an empty or
+    // non-date spelling sorts below every trust date and would skip both the expiry and the
+    // revocation check — reading a revoked key as trusted. This is the one choke point both the
+    // library and the CLI use.
+    if judges_signing_time(manifest.version)
+        && let Some(signed_at) = &manifest.signed_at
+        && !valid_signing_time(signed_at)
+    {
+        return Err(format!(
+            "manifest is not readable: `signed_at` {signed_at:?} is not an RFC 3339 UTC \
+             timestamp, so the key's expiry and revocation cannot be judged; re-issue with \
+             `req baseline --at <RFC 3339 UTC timestamp>` and re-sign"
+        ));
     }
     Ok(manifest)
 }
@@ -310,8 +372,10 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
 pub struct Drift {
     /// In the manifest, applying now, but at a different address — an edited claim.
     pub changed: Vec<String>,
-    /// In the manifest at the same address, but the attested audit surface (relations or
-    /// rationale, ADR 0013) no longer recomputes — edited after signing.
+    /// In the manifest at the same address, but the attested surface (relations, rationale, or
+    /// — in a v4 envelope — the authored test links; ADR 0013, ADR 0019) no longer recomputes —
+    /// edited after signing. Identity stayed put, which is exactly why this is its own category:
+    /// the edit is not a reworded requirement, it is a changed record of what was ratified.
     pub attested_changed: Vec<String>,
     /// In the manifest, no longer applying at all.
     pub missing: Vec<String>,
@@ -336,8 +400,8 @@ impl Drift {
         }
         for id in &self.attested_changed {
             out.push(format!(
-                "{id}: the relations or rationale no longer recompute — edited after \
-                 signing (ADR 0013)"
+                "{id}: the relations, rationale or authored test links no longer recompute — \
+                 edited after signing (ADR 0013, ADR 0019)"
             ));
         }
         for id in &self.missing {
@@ -414,7 +478,7 @@ pub fn rules_mismatch(manifest: &Manifest) -> Option<RulesMismatch> {
 /// first — [`verify`] returns before it judges drift, and `audit::coverage` reports NOT JUDGED —
 /// rather than reading this alone.
 pub fn drift(rows: &[Row], manifest: &Manifest) -> Drift {
-    let current: BTreeMap<&str, (&str, &str, &str)> = rows
+    let current: BTreeMap<&str, (&str, &str, &str, &str)> = rows
         .iter()
         .filter(|row| row.applies == Applies::Yes)
         .map(|row| {
@@ -424,6 +488,7 @@ pub fn drift(rows: &[Row], manifest: &Manifest) -> Drift {
                     row.address.as_str(),
                     row.relations_hash.as_str(),
                     row.rationale_hash.as_str(),
+                    row.tests_hash.as_str(),
                 ),
             )
         })
@@ -435,10 +500,28 @@ pub fn drift(rows: &[Row], manifest: &Manifest) -> Drift {
             // The precedence is **structural** — nested, not match-arm order — so the
             // exclusivity the categories are documented to have (and `audit::coverage`'s merge
             // relies on) does not depend on which arm happens to come first.
-            Some((address, relations, rationale)) => {
+            Some((address, relations, rationale, tests)) => {
                 if *address != claim.address {
                     out.changed.push(claim.claim_id.clone())
-                } else if *relations != claim.relations_hash || *rationale != claim.rationale_hash {
+                } else if *relations != claim.relations_hash
+                    || *rationale != claim.rationale_hash
+                    // Only a v4 manifest **attests** the tests digest, so only there is it
+                    // judged: a v3 manifest (or one parsed from a v3 file that happens to carry
+                    // the key) did not sign it, and comparing an unsigned field would invent a
+                    // tampering. A v4 manifest always carries one (from_json enforces it), so a
+                    // changed `tests_hash` after signing is FAIL — the same class as a changed
+                    // address (ADR 0019).
+                    // `verify` does not return early for a newer envelope before drift, so the
+                    // guard is the closed support window (4..=BASELINE_VERSION), not `>= 4`: a
+                    // future envelope's `tests_hash` is not this build's to compare, and reading
+                    // a difference there as "edited after signing" would FAIL a manifest the
+                    // build already reported UNVERIFIABLE for being newer.
+                    || ((4..=BASELINE_VERSION).contains(&manifest.version)
+                        && claim
+                            .tests_hash
+                            .as_deref()
+                            .is_some_and(|signed| signed != *tests))
+                {
                     out.attested_changed.push(claim.claim_id.clone())
                 }
             }
@@ -1079,9 +1162,10 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
     // ADR 0013's re-issue is for, but a manifest written by a *newer* build must not be told to
     // re-sign with this binary — that would downgrade the attested surface instead of upgrading
     // the reader.
-    if manifest.version < BASELINE_VERSION {
+    if manifest.version < OLDEST_VERIFIABLE_BASELINE_VERSION {
         open.push(format!(
-            "manifest version {} predates the version this build writes ({BASELINE_VERSION}) — \
+            "manifest version {} predates the oldest version this build verifies \
+             ({OLDEST_VERIFIABLE_BASELINE_VERSION}, v{BASELINE_VERSION} is what it writes) — \
              {REISSUE_ADVICE}",
             manifest.version
         ));
@@ -1093,7 +1177,8 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
         ));
     }
 
-    // **v3 attests the authority it was signed under (ADR 0016).** Re-derive the head of the
+    // **v3 attests the authority it was signed under (ADR 0016); v4 keeps that attestation.**
+    // Re-derive the head of the
     // **prefix** the manifest names: `authority.entries` says which record its head points at, so
     // decisions recorded *after* the signature are ordinary history growth (ADR 0005) and must
     // not invalidate a Baseline the human signed before them. The comparison is that record's
@@ -1102,7 +1187,7 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
     // signed over is not there); a log that cannot be read is UNVERIFIABLE. `verify_chain`
     // distinguishes "the content moved" from "there is nothing to judge", and the three answers
     // must not be flattened into one.
-    if manifest.version == BASELINE_VERSION {
+    if judges_signing_time(manifest.version) {
         match (&manifest.signed_at, &manifest.authority) {
             (Some(_), Some(authority)) => match log {
                 Err(why) => open.push(format!(
@@ -1167,7 +1252,7 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
             },
             _ => open.push(format!(
                 "manifest declares version {} but does not attest signed_at and authority — a v3 \
-                 envelope carries both; re-issue with `req baseline --at <ts>` and re-sign",
+                 or v4 envelope carries both; re-issue with `req baseline --at <ts>` and re-sign",
                 manifest.version
             )),
         }
@@ -1212,7 +1297,7 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
         // `--now` may supply the judged time instead, so the reason names the time it actually
         // used rather than claiming it was `signed_at`.
         TrustState::Expired(reason) => {
-            if manifest.version == BASELINE_VERSION {
+            if judges_signing_time(manifest.version) {
                 failed.push(format!(
                     "key {key_id} is {reason} — the judged time ({now}) is outside the key's \
                      validity window, so the Baseline was not signed under a trusted key \
@@ -1528,7 +1613,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         // deliberately does not validate it), so its trust verdict stays on today's clock — the
         // version dispatch already answers UNVERIFIABLE for it.
         match manifest.signed_at.as_deref() {
-            Some(signed_at) if manifest.version == BASELINE_VERSION => signed_at.to_string(),
+            Some(signed_at) if judges_signing_time(manifest.version) => signed_at.to_string(),
             _ => today_utc(),
         }
     };
@@ -1557,6 +1642,20 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             manifest.claims.len(),
             manifest.rules_v
         ),
+    }
+    // A v3 manifest is honoured, but it cannot attest what v4 added, and the reader is owed
+    // that fact **once** rather than a per-claim silence that could read as coverage. This is a
+    // disclosure, not a finding: the drifted addresses and audit surface are still judged, and
+    // the verdict is not rewritten by it (ADR 0019).
+    // "Predates what this build writes" is a relationship, not the coincidence that the oldest
+    // supported envelope happens to be one below the write version: key it off both constants so
+    // a future bump cannot tell a freshly written manifest that it predates itself.
+    if manifest.version < BASELINE_VERSION && manifest.version >= OLDEST_VERIFIABLE_BASELINE_VERSION
+    {
+        println!(
+            "  - predates envelope v{BASELINE_VERSION}: the authored test links are NOT attested \
+             by this manifest (ADR 0019) — re-issue and re-sign to attest them"
+        );
     }
     println!("[{}]", outcome.as_str());
     for reason in outcome.reasons() {

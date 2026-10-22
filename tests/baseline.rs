@@ -3,9 +3,9 @@
 mod common;
 
 use req::baseline::{
-    BASELINE_VERSION, Manifest, MinisignCli, Outcome, SignatureOutcome, SignatureVerifier,
-    TrustFile, Verification, attest, canonical_bytes, create_staging_dir, drift, from_json,
-    manifest, staging_dir, staging_dir_name,
+    BASELINE_VERSION, Manifest, MinisignCli, OLDEST_VERIFIABLE_BASELINE_VERSION, Outcome,
+    SignatureOutcome, SignatureVerifier, TrustFile, Verification, attest, canonical_bytes,
+    create_staging_dir, drift, from_json, manifest, staging_dir, staging_dir_name,
 };
 use req::canon::RULES_V;
 use req::decision::{self, Decision};
@@ -175,6 +175,13 @@ const EMPTY_RELATIONS_DIGEST: &str =
 const FIXTURE_RATIONALE_DIGEST: &str =
     "bd57ad973193c6a0537045b60db5890f854b15616391b6ffe0e661c5709185c5";
 
+/// `printf 'req.tests.v1\0{"evidence":"machine","tests":[]}' | shasum -a 256` (the `\0` is a
+/// literal NUL byte) — the fixture rows link no test, and the pinned v4 bytes must carry the
+/// digest of that empty **declaration**. `tests/fill.rs` pins the same value against its own
+/// oracle; an earlier draft hashed the bare list (60dd3ab0…) and the review caught the two pins
+/// disagreeing — the implementation hashes the declaration.
+const EMPTY_TESTS_DIGEST: &str = "f70c34ce463f8c0294ac8846abea5b911d5933c42a9d978522bff8c6b5445d53";
+
 /// The fixture Decision's chain hash, computed **independently of this crate**:
 /// `sha256("req.decision.v1" \0 "req.genesis.v1" "\n" <canonical decision bytes>)`, where the
 /// canonical bytes are the fixed fixture record with note `the maintainer ratified REQ-A`.
@@ -205,6 +212,11 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
         relations,
         relations_hash,
         rationale_hash: provenance.hash,
+        // The fixtures link no test; the digest is the independently computed empty-list one,
+        // so the pinned v4 canonical bytes below are not derived from the function they pin.
+        tests: Vec::new(),
+        evidence: req::model::Evidence::Machine,
+        tests_hash: EMPTY_TESTS_DIGEST.to_string(),
         stored: req::fill::StoredState::Verified,
         rationale_source: provenance.source,
         rationale_date: provenance.date,
@@ -334,10 +346,10 @@ fn canonical_bytes_do_not_depend_on_input_order() {
         .expect("the fixture signing time is a valid attestation");
     assert_eq!(canonical_bytes(&forward), canonical_bytes(&backward));
     // Selection keys sorted, non-applying claims absent, one trailing newline, and the
-    // fixture's real digests in the bytes — both interpolated from the named oracles at the top
+    // fixture's real digests in the bytes — all interpolated from the named oracles at the top
     // of this file, so the pin has one home rather than a hand-copy per claim. The key order is
-    // ADR 0016's, and this is the byte string the human signs: version, signed_at, authority,
-    // rules_v, selection, claims.
+    // ADR 0016's, extended by ADR 0019: version, signed_at, authority, rules_v, selection,
+    // claims, with `tests_hash` last in each claim record.
     let head = fixture_head();
     assert_eq!(
         head.hash, FIXTURE_HEAD_HASH,
@@ -347,15 +359,17 @@ fn canonical_bytes_do_not_depend_on_input_order() {
     assert_eq!(
         canonical_bytes(&forward),
         format!(
-            "{{\"version\":3,\"signed_at\":\"{FIXTURE_SIGNED_AT}\",\
+            "{{\"version\":4,\"signed_at\":\"{FIXTURE_SIGNED_AT}\",\
              \"authority\":{{\"head\":\"{}\",\"entries\":{}}},\"rules_v\":5,\
              \"selection\":{{\"a\":\"1\",\"b\":\"2\"}},\
              \"claims\":[{{\"claim_id\":\"REQ-A\",\"address\":\"aaa\",\
              \"relations_hash\":\"{EMPTY_RELATIONS_DIGEST}\",\
-             \"rationale_hash\":\"{FIXTURE_RATIONALE_DIGEST}\"}},\
+             \"rationale_hash\":\"{FIXTURE_RATIONALE_DIGEST}\",\
+             \"tests_hash\":\"{EMPTY_TESTS_DIGEST}\"}},\
              {{\"claim_id\":\"REQ-B\",\"address\":\"bbb\",\
              \"relations_hash\":\"{EMPTY_RELATIONS_DIGEST}\",\
-             \"rationale_hash\":\"{FIXTURE_RATIONALE_DIGEST}\"}}]}}\n",
+             \"rationale_hash\":\"{FIXTURE_RATIONALE_DIGEST}\",\
+             \"tests_hash\":\"{EMPTY_TESTS_DIGEST}\"}}]}}\n",
             FIXTURE_HEAD_HASH, FIXTURE_HEAD_ENTRIES
         ),
         "the exact bytes are the stability pin: `canonical_bytes` is pure, so re-calling it \
@@ -380,6 +394,158 @@ fn a_v2_manifest_keeps_its_legacy_bytes_and_still_parses() {
         canonical_bytes(&parsed),
         text,
         "the v2 bytes are the ones an old signature covers"
+    );
+}
+
+/// A **v3** manifest is not a stale envelope under a v4 build: its historical signed bytes are
+/// unchanged, its claims keep their four-key records (no `tests_hash`), and it still verifies.
+/// What it cannot do is attest the test links — so they are **not judged** there, which is the
+/// difference between "no link" (a finding) and "not signed" (a disclosure). This is the
+/// compatibility half of ADR 0019 and the reason `BASELINE_VERSION` and the support floor are
+/// two constants.
+#[test]
+fn a_v3_manifest_keeps_its_historical_bytes_and_still_verifies() {
+    let (rows, v4) = signed_manifest();
+    let mut v3 = v4.clone();
+    v3.version = 3;
+    for claim in &mut v3.claims {
+        claim.tests_hash = None;
+    }
+    let bytes = canonical_bytes(&v3);
+    assert!(
+        !bytes.contains("tests_hash"),
+        "v3 claim records stay four-key"
+    );
+    assert!(bytes.contains("\"version\":3"), "{bytes}");
+    let parsed = from_json(&bytes).expect("a v3 manifest still parses");
+    assert_eq!(parsed.version, 3);
+    assert_eq!(
+        canonical_bytes(&parsed),
+        bytes,
+        "the v3 bytes are the signed ones"
+    );
+
+    let outcome = verify(
+        &rows,
+        &parsed,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        FIXTURE_SIGNED_AT,
+    );
+    assert_eq!(
+        outcome.exit_code(),
+        0,
+        "a v3 Baseline still verifies: {outcome:?}"
+    );
+
+    // And the links are not judged: changing a claim's `tests:` list under a v3 manifest does
+    // not turn a verified Baseline into drift — it was never attested.
+    let mut relinked: Vec<Row> = rows.clone();
+    relinked[0].tests = vec!["req::some::test".to_string()];
+    relinked[0].tests_hash = req::model::tests_digest(&relinked[0].tests, relinked[0].evidence);
+    let unaware = verify(
+        &relinked,
+        &parsed,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        FIXTURE_SIGNED_AT,
+    );
+    assert_eq!(
+        unaware.exit_code(),
+        0,
+        "a v3 manifest did not attest the links, so it cannot judge them: {unaware:?}"
+    );
+
+    // The direction the guards exist for: a **v3 file that happens to carry** `tests_hash`.
+    // `canonical_bytes` must still omit it (or every historical signature stops verifying) and
+    // `drift` must not judge it (or an unsigned field invents a tampering).
+    let mut carrying = parsed.clone();
+    carrying.claims[0].tests_hash = Some(EMPTY_TESTS_DIGEST.to_string());
+    assert_eq!(
+        canonical_bytes(&carrying),
+        bytes,
+        "a v3 manifest's signed bytes do not gain `tests_hash` just because the record carries one"
+    );
+    let carrying_outcome = verify(
+        &relinked,
+        &carrying,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        FIXTURE_SIGNED_AT,
+    );
+    assert_eq!(
+        carrying_outcome.exit_code(),
+        0,
+        "a v3 manifest's `tests_hash` is not attested, so it cannot be judged: {carrying_outcome:?}"
+    );
+}
+
+/// The v4 half: the manifest attests the tests digest for every claim, a v4 header without one
+/// is corrupt, and a `tests:` change after signing is FAIL — the same class as a changed
+/// address, because it is a changed record of what was ratified. The address does not move
+/// (ADR 0019's ruling), which is exactly why the digest must be inside the signed bytes.
+#[test]
+fn a_v4_manifest_attests_the_tests_hash_and_a_change_is_a_failure() {
+    let (rows, manifest) = signed_manifest();
+    assert_eq!(manifest.version, BASELINE_VERSION);
+    assert!(
+        manifest
+            .claims
+            .iter()
+            .all(|claim| claim.tests_hash.is_some()),
+        "a v4 manifest attests the tests digest for every claim"
+    );
+
+    // A v4 declaration whose claim records lack `tests_hash` is corrupt, not a v3 envelope.
+    let mut stripped = manifest.clone();
+    for claim in &mut stripped.claims {
+        claim.tests_hash = None;
+    }
+    let err = from_json(&canonical_bytes(&stripped))
+        .expect_err("a v4 header without the attested tests digest is unreadable");
+    assert!(err.contains("tests_hash"), "{err}");
+    assert!(err.contains("re-sign"), "{err}");
+
+    // The signature is not re-checked here: the stub validates, and the point is drift.
+    let clean = verify(
+        &rows,
+        &manifest,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        FIXTURE_SIGNED_AT,
+    );
+    assert_eq!(clean.exit_code(), 0, "{clean:?}");
+
+    // Re-link one claim while leaving its identity alone: the address is untouched (that is the
+    // ruling), so only the attested tests digest can catch the edit.
+    let mut relinked: Vec<Row> = rows.clone();
+    relinked[0].tests = vec!["req::some::test".to_string()];
+    relinked[0].tests_hash = req::model::tests_digest(&relinked[0].tests, relinked[0].evidence);
+    assert_eq!(
+        relinked[0].address, rows[0].address,
+        "identity must not move"
+    );
+    let edited = verify(
+        &relinked,
+        &manifest,
+        Some("sig"),
+        &trust(false, None),
+        "req-baseline-1",
+        &Stub(SignatureOutcome::Valid),
+        FIXTURE_SIGNED_AT,
+    );
+    assert_eq!(edited.exit_code(), 1, "{edited:?}");
+    assert!(
+        edited.reasons().join(" ").contains("authored test links"),
+        "{edited:?}"
     );
 }
 
@@ -585,7 +751,10 @@ fn an_edited_relation_after_signing_fails_verification() {
     assert_eq!(outcome.exit_code(), 1);
     let reasons = outcome.reasons().join(" ");
     assert!(reasons.contains("REQ-B"), "{reasons}");
-    assert!(reasons.contains("relations or rationale"), "{reasons}");
+    assert!(
+        reasons.contains("authored test links"),
+        "the attested surface is named, including the evidence added by ADR 0019: {reasons}"
+    );
 }
 
 /// Same attestation, other surface: the rationale is provenance, and provenance is part of
@@ -615,7 +784,10 @@ fn an_edited_rationale_after_signing_fails_verification() {
     assert_eq!(outcome.exit_code(), 1);
     let reasons = outcome.reasons().join(" ");
     assert!(reasons.contains("REQ-A"), "{reasons}");
-    assert!(reasons.contains("relations or rationale"), "{reasons}");
+    assert!(
+        reasons.contains("authored test links"),
+        "the attested surface is named, including the evidence added by ADR 0019: {reasons}"
+    );
 }
 
 /// A v1 manifest carries no attested hashes: it is stale, and the error must say what to do
@@ -725,9 +897,10 @@ fn a_newer_manifest_is_not_told_to_downgrade() {
     assert!(reasons.contains("newer"), "{reasons}");
     assert!(!reasons.contains("re-issue"), "{reasons}");
 
-    // ...and the stale direction keeps the advice: an older envelope is exactly the case
-    // ADR 0013's re-issue is for.
-    manifest.version = BASELINE_VERSION - 1;
+    // ...and the stale direction keeps the advice: an envelope below the support floor is
+    // exactly the case ADR 0013's re-issue is for. `BASELINE_VERSION - 1` (v3) is now
+    // *supported*, so the fixture must step one below `OLDEST_VERIFIABLE_BASELINE_VERSION`.
+    manifest.version = OLDEST_VERIFIABLE_BASELINE_VERSION - 1;
     let stale = verify_at(&manifest);
     assert_eq!(stale.exit_code(), 3, "{stale:?}");
     assert!(stale.reasons().join(" ").contains("re-issue"));
@@ -1468,7 +1641,7 @@ fn a_key_expired_today_but_valid_at_signing_verifies_through_the_cli() {
     // today and reports only the version.
     let versioned = std::fs::read_to_string(&manifest_path)
         .expect("reads the emitted manifest")
-        .replacen("\"version\":3", "\"version\":4", 1)
+        .replacen("\"version\":4", "\"version\":5", 1)
         .replacen(
             &format!("\"signed_at\":\"{FIXTURE_SIGNED_AT}\""),
             "\"signed_at\":\"9999-01-01T00:00:00Z\"",
@@ -2808,10 +2981,27 @@ fn script_fixture(tag: &str) -> Fixture {
     .expect("copies check.sh");
     let bin = fixture.path().join("home/.rustup/toolchains/fake/bin");
     std::fs::create_dir_all(&bin).expect("creates the fake toolchain");
-    std::fs::write(bin.join("cargo"), "#!/bin/sh\necho '{}'\nexit 0\n")
-        .expect("writes the stub cargo");
-    std::fs::set_permissions(bin.join("cargo"), std::fs::Permissions::from_mode(0o755))
-        .expect("makes the stub executable");
+    // The stub answers the test runner two ways: `nextest --version` for the pin probe, and the
+    // run itself (writes the JUnit artefact the gate step will read). `cargo-nextest` exists on
+    // PATH too, so the script's "is the tooling there" probe answers yes — a SKIP would make the
+    // healthy direction red for the wrong reason.
+    let stub = "#!/bin/sh\n\
+        if [ \"$1\" = nextest ] && [ \"$2\" = --version ]; then\n\
+          echo 'cargo-nextest 0.9.149 (stub)'\n\
+          exit 0\n\
+        fi\n\
+        if [ \"$1\" = nextest ]; then\n\
+          mkdir -p target/nextest/ci\n\
+          printf '<testsuites name=\"stub\" tests=\"0\" skipped=\"0\" failures=\"0\" errors=\"0\"></testsuites>\\n' > target/nextest/ci/junit.xml\n\
+        fi\n\
+        echo '{}'\n\
+        exit 0\n";
+    std::fs::write(bin.join("cargo"), stub).expect("writes the stub cargo");
+    std::fs::write(bin.join("cargo-nextest"), stub).expect("writes the stub nextest");
+    for stub in ["cargo", "cargo-nextest"] {
+        std::fs::set_permissions(bin.join(stub), std::fs::Permissions::from_mode(0o755))
+            .expect("makes the stub executable");
+    }
     fixture
 }
 

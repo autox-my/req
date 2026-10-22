@@ -1,4 +1,4 @@
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0009
 statement: >-
   The benchmark harness shall classify direction of change on the structural

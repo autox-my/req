@@ -1,7 +1,9 @@
-# Claim-file format — v0
+# Claim-file format — v1
 
-Status: `req.claim/0`. Implements docs/adr/0002-git-is-transport-not-identity.md
-(one claim per file) and docs/canonical-hashing.md (identity, tiers, freeze).
+Status: `req.claim/1`. Implements docs/adr/0002-git-is-transport-not-identity.md
+(one claim per file), docs/adr/0019-claims-carry-authored-test-links.md (authored test
+links, attested and outside identity) and docs/canonical-hashing.md (identity, tiers,
+freeze).
 
 ## Layout
 
@@ -34,7 +36,7 @@ reader is `src/decision.rs`, whose `log_paths` reads `root.join("decisions")`.
 
 | Axis | Where | Effect of a bump |
 |---|---|---|
-| File format | `schema: req.claim/0` | a migration; addresses unchanged |
+| File format | `schema: req.claim/1` | a migration; addresses unchanged — v1 adds the readable `tests:`/`evidence:` fields, an older declaration is a migration candidate (exit 3), and no `RULES_V` moves |
 | Normalization rules | `canonical.rules_v` | re-canonicalization of affected claims → *candidates* needing re-ratification (hashing spec §5); history never silently rewritten |
 | Subject registry | `aliases/subjects.yml` version | same effect as a rules bump, scoped to claims using affected subjects |
 
@@ -72,9 +74,32 @@ reports it the same way. The two classes are therefore **coupled**: if either ev
 | `address` | `sha256("req.claim.v1\0" \|\| canonical_form_bytes)` | written by the same derivation (`req canon --fill`, or `req init`'s starter claim); `req canon --verify` enforces `sha256(tag \|\| stored form) == address` (REQ-0017) |
 | `rationale` | object: `source`, `date`, `rejected_alternatives[]`, `assumptions[]` | all four **required** (an omitted list is a parse error, not an empty one); the losing side is preserved — never a string field |
 | `relations[]` | `{type, to}` outgoing only | **required** (an omitted key is a parse error: relations sit outside the canonical form, so a dropped key leaves the address untouched while the edges vanish); incoming relations are always *derived* by traversal, never stored (REQ-0020); `relations: []` = a root claim |
+| `tests` | the test ids that prove the claim — **authored**, optional | `[String]` of `classname::name` ids (the `classname` and the test's `name` the JUnit report writes, joined by `::`); **outside the canonical form**, so adding, removing or renaming a link moves no address (ADR 0019); on a **machine** claim (the default) absent or `[]` = no linked test (the release-gate policy names it; this change only records it), never a parse error; under `evidence: process` the list is empty by definition; attested in the signed Baseline by `tests_hash`, hashed over the **sorted** list; an empty or duplicated string in the list is a load error — a link that names no test, or names one twice, is not a link |
+| `evidence` | how the claim's evidence is established — `machine` (default) or `process` | authored, optional (omitted = `machine`); `process` is an explicit declaration that the **process itself** establishes the claim — a Decision, a signature, a workflow — and it must carry **no** `tests:` (naming both is a load error: machine or process, never both); **outside identity**, attested together with the links by `tests_hash`; an empty `tests:` list never implies `process` — that is the *no linked test* finding, not a declaration |
 
 Reference types (`to`, `source`) use `claim_id`s, addresses, or repo paths —
 whatever stays stable under rewording.
+
+## Test links and process evidence (ADR 0019, proposed)
+
+`tests:` is authored and **outside the canonical form**: no address moves when a link is added,
+removed or renamed. What the Baseline attests instead is the whole declaration — `tests_hash` =
+`sha256("req.tests.v1\0" ‖ serde_json of {"evidence": "machine"|"process", "tests": <sorted ids>})`,
+written beside `relations_hash`/`rationale_hash` since envelope v4 — so unlinking a claim, or flipping
+its evidence mode, after signing is **FAIL**, exactly as a changed rationale is (ADR 0013 / ADR 0016).
+A **v3** manifest still verifies on its historical signed bytes and says once that it predates v4: its
+tests are *not attested*, which is not a failure because it never claimed to attest them.
+
+The evidence mode is the second half of the declaration. `machine` is the default: a linked test in a
+run's JUnit report is the proof. `process` is an explicit authored statement that the **process
+itself** establishes the claim — a Decision, a signature, a workflow — and it must carry no `tests:`
+(naming both is a load error, exit 3: machine or process, never both). **Process is never inferred**:
+an empty `tests:` list on a machine claim means *no linked test*, not a declaration.
+
+The **release-gate policy** that reads a report (`req gate --test-report <junit.xml>`) and answers
+PASS / FAIL / the two UNVERIFIABLE reasons is ADR 0019's flagship follow-up, not part of this change:
+this tree lands the field, the hash and the envelope, so the policy has something authoritative to
+read. The gate's CLI and the four-outcome table arrive with it.
 
 ## The parity invariant (what `req canon` must check)
 
@@ -174,7 +199,12 @@ than proceeding over a corpus it could not read:
   one), `relations` (the edges would vanish from `trace` and `impact`), and the
   rationale's `rejected_alternatives`/`assumptions` (the losing side of a decision would
   be dropped from the record). Writing them as `[]` is how a claim says "none"; omitting
-  them is the failure this project treats as catastrophic.
+  them is the failure this project treats as catastrophic. `tests` is the deliberate
+  exception (ADR 0019): it is **optional**, because a claim whose proof does not exist yet is not
+  a malformed claim — the field records evidence, it does not summon it. `evidence` is optional
+  for the opposite reason: its absence has a defined meaning (`machine`), so a required key would
+  add nothing — while `process` is never a default, because it is a claim about the process that
+  only a human can make.
 
 Directory entries that are not claims (`README.md`, editor droppings) are left alone;
 that is a naming rule, not a silence. One deliberate exception runs the other way: an
@@ -205,11 +235,12 @@ genuine paraphrases).
 
 ## Deliberately deferred
 
-- Formal predicate syntax for `applicability` (v0: informal strings).
+- Formal predicate syntax for `applicability` (v1: informal strings).
 - A formal timestamp authority for the signing time (RFC 3161). Envelope v3 (ADR 0016)
   records `signed_at` and the Decision-log head; the time is the signer's assertion, and
-  replacing it with an externally attested one is still open. (The third envelope itself is
-  no longer deferred — this build writes v3.)
+  replacing it with an externally attested one is still open. (The envelope itself is no
+  longer deferred — this build writes **v4** (ADR 0019 adds `tests_hash`), and a v3
+  manifest still verifies on its historical signed bytes with its tests *not attested*.)
 - A lint rule comparing a claim's statement against its `rationale.source` ADR
   narrative — the human keeps them consistent for now; the check is proposal-tier
   work.

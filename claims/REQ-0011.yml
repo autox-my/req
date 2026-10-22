@@ -1,4 +1,4 @@
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0011
 statement: >-
   The benchmark harness shall report a tier 2 provider's repeated-identical-input

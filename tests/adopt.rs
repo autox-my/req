@@ -874,7 +874,7 @@ fn a_candidate_check_with_no_verdict_is_unverifiable_not_a_pass() {
         &fake,
         "#!/bin/sh\n\
          if [ \"$1\" = \"--version\" ]; then\n\
-         \x20 printf 'req 0.1.0\\n  rules_v            5\\n  claim_schema       req.claim/0\\n'\n\
+         \x20 printf 'req 0.1.0\\n  rules_v            5\\n  claim_schema       req.claim/1\\n'\n\
          \x20 exit 0\n\
          fi\n\
          echo 'cannot read the corpus registry' >&2\n\

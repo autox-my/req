@@ -1,4 +1,4 @@
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0006
 statement: >-
   The req tool shall permit splitting a claim into derived claims without

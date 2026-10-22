@@ -1,4 +1,4 @@
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0001
 statement: >-
   The req tool shall treat a single claim as the unit of requirements authorship,

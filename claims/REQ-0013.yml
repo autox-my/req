@@ -1,4 +1,4 @@
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0013
 statement: >-
   The req tool shall deliver a non engineer author's edit as a Proposal inside an

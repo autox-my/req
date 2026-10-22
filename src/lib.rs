@@ -31,6 +31,7 @@ pub mod impact;
 // `main.rs` before root resolution, so its handler takes no corpus — see the module doc for
 // why `--root` is a usage error there and not a second anchor.
 pub mod init;
+pub mod junit;
 pub mod model;
 pub mod root;
 pub mod select;

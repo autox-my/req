@@ -40,7 +40,13 @@ pub const RULES_V: u32 = 5;
 /// identity-path versions, because two callers need one value — `--version` reports it and
 /// the loader judges the value a file declares — and a literal at either site would be a
 /// second home, free to drift from the contract the doc states.
-pub const CLAIM_SCHEMA_V: u32 = 0;
+///
+/// 0 -> 1 adds the authored `tests:` list (ADR 0019): a claim carries the ids of the tests that
+/// prove it, attested in the Baseline and **outside identity**. The bump is mechanical — a
+/// format bump moves no address — but the loader judges it by direction, so a `req.claim/0` file
+/// is a migration candidate (NOT JUDGED) rather than silently accepted by a build that writes a
+/// field the old file's contract did not have.
+pub const CLAIM_SCHEMA_V: u32 = 1;
 /// The `schema:` identifier's prefix: the value is `req.claim/<version>`. Split from the
 /// version so the version is stated once, as a number, and the identifier is derived.
 pub const CLAIM_SCHEMA_PREFIX: &str = "req.claim/";
@@ -80,10 +86,9 @@ pub fn classify_claim_schema(declared: &str) -> ClaimSchema {
 /// The same judgement against an explicitly given build version.
 ///
 /// The build version is a parameter for the same reason [`crate::baseline::rules_mismatch`]'s
-/// direction is reachable from a test: at `CLAIM_SCHEMA_V = 0` **no file can declare an older
-/// format**, so the `Less` arm would otherwise be a branch nobody exercises — free to be wrong on
-/// the day the first format bump arrives, which is the day it matters most. Callers judge with
-/// [`claim_schema`]; only a test names another build.
+/// direction is reachable from a test: the `Older` arm is what a file written before the first
+/// format bump declares, and it must be judged **by direction** rather than as a parse failure.
+/// Callers judge with [`claim_schema`]; only a test names another build.
 pub fn classify_claim_schema_at(declared: &str, build_v: u32) -> ClaimSchema {
     let Some(numeral) = declared.strip_prefix(CLAIM_SCHEMA_PREFIX) else {
         return ClaimSchema::Malformed;
@@ -1663,6 +1668,12 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
         // `--fill` refuses to write derived fields into a format this build does not write.
         // `reason` is `None` only for the schema this build writes.
         if let Some(reason) = claim_schema_reason(&claim) {
+            return Err(format!("{}: {reason}", path.display()));
+        }
+        // The authored link list is part of the file contract even though it is outside
+        // identity: an empty or duplicated id is refused here, where the file can be named,
+        // rather than becoming a confusing gate finding later (ADR 0019).
+        if let Err(reason) = crate::model::validate_tests(&claim.tests, claim.evidence) {
             return Err(format!("{}: {reason}", path.display()));
         }
         loaded.push(LoadedClaim {

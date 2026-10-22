@@ -73,7 +73,7 @@ fn registry() -> &'static Registry {
 /// contradiction and omission cases mutate: every slot is quantity-shaped, so a bad authored
 /// slot has something to contradict.
 const QUANTITY: &str = "\
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0001
 statement: The API shall respond to a health check within 200 ms.
 modality: SHALL
@@ -104,7 +104,7 @@ relations: []
 /// The qualitative triple the corpus authors (REQ-0001's shape): an `attribute = value`
 /// statement with no quantity to derive.
 const QUALITATIVE: &str = "\
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0001
 statement: The API shall treat a single claim as the unit of requirements authorship.
 modality: SHALL
@@ -136,7 +136,7 @@ relations: []
 /// sentinel is the trap — `operator_str()` answers `"none"`, never `""`, so a comparison
 /// that forgets it reports this claim as a contradiction.
 const UNSTRUCTURED: &str = "\
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0001
 statement: >-
   Authoring shall be friction-free and the decision boundary shall be deliberately
