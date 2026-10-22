@@ -495,14 +495,24 @@ fi
 # page says "under five minutes", so the gate carries the clock rather than trusting the prose:
 # the script fails at n >= 300 and on any step whose wrong-but-zero answer its assertions catch.
 #
-# Kept under `--fast` too: it is a ~1-2s step, and a docs claim that quietly stopped being true
+# Kept under `--fast` too: it is a ~1s step, and a docs claim that quietly stopped being true
 # would otherwise wait for a full run. The fast banner still says what did not run, so a fast
-# green is never quoted as the gate's verdict. `REQ_BIN` is passed explicitly so the rehearsal
-# judges the tree's build, not a stale release binary; its own resolution is the adopter's path.
-if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/quickstart.sh" ] && [ -x "$PWD/target/debug/req" ] && command -v python3 >/dev/null 2>&1; }; then
-  run env REQ_BIN="$PWD/target/debug/req" bash "$PWD/tools/quickstart.sh"
+# green is never quoted as the gate's verdict.
+#
+# The binary is bound to this tree's debug build when there is one, so the rehearsal judges what
+# the gate just built rather than a stale release. It is NOT a condition for running: a caller
+# who redirects CARGO_TARGET_DIR — this script deliberately does not set it — or builds release
+# only would otherwise turn the rehearsal into a SKIP inside a green run, and a docs claim that
+# goes unchecked is exactly the hole the SKIP/`FAST` distinction exists to show. With no debug
+# binary the script's own resolution runs, and failing to find one is a red, never a pass.
+if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/quickstart.sh" ] && command -v python3 >/dev/null 2>&1; }; then
+  if [ "$dry" -eq 0 ] && [ -x "$PWD/target/debug/req" ]; then
+    run env REQ_BIN="$PWD/target/debug/req" bash "$PWD/tools/quickstart.sh"
+  else
+    run bash "$PWD/tools/quickstart.sh"
+  fi
 else
-  skip "tools/quickstart.sh, a built req binary, or python3 missing: cannot rehearse the quickstart"
+  skip "tools/quickstart.sh or python3 missing: cannot rehearse the quickstart"
 fi
 
 # The rule-file checks decide from `git ls-files` output and from the shape of review/rule.json,

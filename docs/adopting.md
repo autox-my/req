@@ -340,13 +340,27 @@ jobs:
           # above decides the build, and `always()` keeps the views when it went red.
           # `--format json` renders to stdout only — beside `--out`/`--check` it is a usage
           # error (exit 2) — so a redirect, not a flag, is how a document reaches the disk.
-          view() {
-            req "$1" --format json > "req-views/$1.json" && code=0 || code=$?
-            printf 'req %s --format json -> req-views/%s.json (exit %s)\n' "$1" "$1" "$code"
+          #
+          # The redirect goes to a `.tmp` name first because a command can fail WITHOUT writing
+          # a document: an unreadable corpus prints `[UNVERIFIABLE]` to stderr and exits 3, and
+          # a bare `> req-views/gate.json` would leave a zero-byte file where a view should be.
+          # A consumer that parses an empty document believes it holds a verdict. So a view
+          # that wrote nothing is named on the log and leaves no file at all.
+          capture() {
+            name=$1
+            shift
+            req "$@" --format json > "req-views/$name.json.tmp" && code=0 || code=$?
+            if [ -s "req-views/$name.json.tmp" ]; then
+              mv "req-views/$name.json.tmp" "req-views/$name.json"
+              printf 'req %s --format json -> req-views/%s.json (exit %s)\n' "$*" "$name" "$code"
+            else
+              rm -f "req-views/$name.json.tmp"
+              printf 'req %s --format json -> NO DOCUMENT, nothing written (exit %s)\n' "$*" "$code"
+            fi
           }
-          view render
-          view trace
-          view audit
+          capture render render
+          capture trace trace
+          capture audit audit
           # The gate document is ONE PER VARIANT, exactly as the gate step runs it: a bare
           # `req gate` is UNVERIFIABLE on a corpus carrying a selector (ADR 0015), so a bare
           # document would say "cannot tell" beside a release that passed. With no release
@@ -358,15 +372,11 @@ jobs:
               read -r -a release <<< "${variant_line%%#*}"
               [ "${#release[@]}" -gt 0 ] || continue
               releases=$((releases + 1))
-              req gate "${release[@]}" --format json < /dev/null > "req-views/gate-${releases}.json" \
-                && code=0 || code=$?
-              printf 'req gate %s --format json -> req-views/gate-%s.json (exit %s)\n' \
-                "${release[*]}" "$releases" "$code"
+              capture "gate-${releases}" gate "${release[@]}" < /dev/null
             done < .req/variants
           fi
           if [ "$releases" -eq 0 ]; then
-            req gate --format json < /dev/null > req-views/gate.json && code=0 || code=$?
-            printf 'req gate --format json -> req-views/gate.json (exit %s)\n' "$code"
+            capture gate gate < /dev/null
           fi
       - name: keep the views for the reviewing agent
         if: always()
@@ -387,7 +397,11 @@ variant's document. The capture step runs `if: always()` and **records** each co
 beside its document instead of folding it into the step: a document is complete even when its
 verdict is open (ADR 0018, and pack C's rule), and the gate step above is what decides the build.
 `--format json` renders to stdout only — beside `--out`/`--check` it is a usage error (exit 2) —
-so the redirect is how a document reaches the disk.
+so the redirect is how a document reaches the disk, and it goes to a `.tmp` name first: a view that
+fails **without writing a document** (an unreadable corpus prints `[UNVERIFIABLE]` and exits 3)
+leaves no file and is named on the log, because a zero-byte document is the one thing a consumer
+would parse and believe. `tests/ci_template.rs` pins `if: always()` and `if-no-files-found: error`
+along with the four captures, so a coordinated removal from all three copies is still red.
 
 The upload names `actions/upload-artifact@v4`. That version is the one **runner-specific** line in
 this file: check the major your GitHub or Forgejo runner implements and change it if it differs —
@@ -419,11 +433,13 @@ Two parts of the snippet are not verified on a runner: whether the job summary r
 log, and the artifact upload — the JSON documents and their redirect are plain shell over
 commands run locally against this exact text, but `actions/upload-artifact` and `if: always()`
 are the runner's behaviour, not req's.
-The JSON step was run locally too, against both corpus shapes it has to survive: a fresh `req init`
+The JSON step was run locally too, against every shape it has to survive: a fresh `req init`
 corpus (four documents — `req.render/1`, `req.trace/1`, `req.gate/1`, `req.audit/1` — with `audit`
-exiting **3** for nothing ratified and the step exiting **0**), and a selector-carrying corpus with
-one declared release (`gate-1.json` carrying `"verdict": "pass"` and the release's `selection`,
-while the bare `render`/`audit` documents recorded their open exit classes). The gate decides the
+exiting **3** for nothing ratified and the step exiting **0**); a selector-carrying corpus with one
+declared release (`gate-1.json` carrying `"verdict": "pass"` and the release's `selection`, while
+the bare `render`/`audit` documents recorded their open exit classes); comment-only and absent
+`.req/variants`; and a corpus that cannot be read, where all four commands exit **3** with
+`[UNVERIFIABLE]` and the step writes **no documents at all** and says so. The gate decides the
 build, the documents never do.
 The shell logic was run locally against this exact text — an absent, unreadable, or non-regular
 `.req/variants` → exit 1 (`missing, unreadable, or not a regular file .req/variants`); a comment-only file → one row, the bare default variant, and exit 0 **on a

@@ -177,7 +177,7 @@ export OCR_NO_UPDATE=1
   corpora (v1-v3) and the direction gold set, and the review-rule/review-scope checks. It keeps
   `fmt`, `test`, `canon`, the seed parity bench, the Baseline and decision steps, the release
   gate, the projection check, the extractor's self-check and the **quickstart rehearsal**
-  (`tools/quickstart.sh`, measured at 1-2s, so it is kept in both modes — it prints the
+  (`tools/quickstart.sh`, measured at 0-2s, so it is kept in both modes — it prints the
   `QUICKSTART <n>s` line `docs/agentic.md`'s "five minutes" is measured by, and fails at 300).
   It cannot be mistaken for the gate:
   each skipped step prints **`FAST`** (never `SKIP`, because the tooling is there) and the banner

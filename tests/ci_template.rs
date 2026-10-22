@@ -158,22 +158,32 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         // `tests/init.rs` (that target runs the const's gate step). Without these fragments a
         // step gutted down to `view render` would satisfy every test in this file.
         (
-            "view render",
+            "capture render render",
             "the spec view document: one of the four an agent reads instead of scraping text",
         ),
         (
-            "view trace",
+            "capture trace trace",
             "the traceability document: dropped, the artifact silently loses every edge",
         ),
         (
-            "view audit",
+            "capture audit audit",
             "the audit packet document: dropped, coverage and provenance vanish from the artifact",
         ),
         (
-            "req gate \"${release[@]}\" --format json",
+            "capture \"gate-${releases}\" gate \"${release[@]}\"",
             "the per-variant gate document: a bare `req gate` is UNVERIFIABLE on a \
              selector-carrying corpus (ADR 0015), so the artifact would say \"cannot tell\" \
              beside a release that passed",
+        ),
+        (
+            "if: always()",
+            "the capture must still run when the gate went red, or the failed run is the one \
+             with no documents — the run an agent most needs to read",
+        ),
+        (
+            "if-no-files-found: error",
+            "an upload that finds nothing must be red: a green step with no artifact is the \
+             silent-loss case this pack exists to remove",
         ),
         (
             "actions/upload-artifact@v4",

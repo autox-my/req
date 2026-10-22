@@ -531,13 +531,27 @@ jobs:
           # above decides the build, and `always()` keeps the views when it went red.
           # `--format json` renders to stdout only — beside `--out`/`--check` it is a usage
           # error (exit 2) — so a redirect, not a flag, is how a document reaches the disk.
-          view() {
-            req "$1" --format json > "req-views/$1.json" && code=0 || code=$?
-            printf 'req %s --format json -> req-views/%s.json (exit %s)\n' "$1" "$1" "$code"
+          #
+          # The redirect goes to a `.tmp` name first because a command can fail WITHOUT writing
+          # a document: an unreadable corpus prints `[UNVERIFIABLE]` to stderr and exits 3, and
+          # a bare `> req-views/gate.json` would leave a zero-byte file where a view should be.
+          # A consumer that parses an empty document believes it holds a verdict. So a view
+          # that wrote nothing is named on the log and leaves no file at all.
+          capture() {
+            name=$1
+            shift
+            req "$@" --format json > "req-views/$name.json.tmp" && code=0 || code=$?
+            if [ -s "req-views/$name.json.tmp" ]; then
+              mv "req-views/$name.json.tmp" "req-views/$name.json"
+              printf 'req %s --format json -> req-views/%s.json (exit %s)\n' "$*" "$name" "$code"
+            else
+              rm -f "req-views/$name.json.tmp"
+              printf 'req %s --format json -> NO DOCUMENT, nothing written (exit %s)\n' "$*" "$code"
+            fi
           }
-          view render
-          view trace
-          view audit
+          capture render render
+          capture trace trace
+          capture audit audit
           # The gate document is ONE PER VARIANT, exactly as the gate step runs it: a bare
           # `req gate` is UNVERIFIABLE on a corpus carrying a selector (ADR 0015), so a bare
           # document would say "cannot tell" beside a release that passed. With no release
@@ -549,15 +563,11 @@ jobs:
               read -r -a release <<< "${variant_line%%#*}"
               [ "${#release[@]}" -gt 0 ] || continue
               releases=$((releases + 1))
-              req gate "${release[@]}" --format json < /dev/null > "req-views/gate-${releases}.json" \
-                && code=0 || code=$?
-              printf 'req gate %s --format json -> req-views/gate-%s.json (exit %s)\n' \
-                "${release[*]}" "$releases" "$code"
+              capture "gate-${releases}" gate "${release[@]}" < /dev/null
             done < .req/variants
           fi
           if [ "$releases" -eq 0 ]; then
-            req gate --format json < /dev/null > req-views/gate.json && code=0 || code=$?
-            printf 'req gate --format json -> req-views/gate.json (exit %s)\n' "$code"
+            capture gate gate < /dev/null
           fi
       - name: keep the views for the reviewing agent
         if: always()

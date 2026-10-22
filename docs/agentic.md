@@ -2,10 +2,10 @@
 
 For the agentic adopter and the human with it. The unit is the **claim** — one obligation, one file.
 Each step gives the command and its deciding line; the traps are in `docs/adopting.md`.
-Rehearsed by `tools/quickstart.sh`, offline: it printed `QUICKSTART 1s` here (1-2s across three
+Rehearsed by `tools/quickstart.sh`, offline: it printed `QUICKSTART 1s` here (0-2s across
 runs) and fails at n >= 300, so "under five minutes" is an instrument, not prose. The script does
-not install req — the networked install in step 1 is the adopter's step and is not in the measured
-path.
+not install req — the networked install in step 1 is the adopter's step, and it and the script's own
+preflight are not in the measured window (preflight is timed separately).
 
 ## 1. Install at a pinned rev
 

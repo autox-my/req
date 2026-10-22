@@ -31,11 +31,16 @@
 #     fresh HOME), so bytecode writing is switched off for the whole run below.
 #     With that, nothing writes outside $WORK;
 #   * idempotent — a fresh `mktemp -d` per run, removed on success, kept and named
-#     on failure (or with QUICKSTART_KEEP=1);
+#     on failure, on SIGINT/SIGTERM (or with QUICKSTART_KEEP=1);
 #   * stdout carries EXACTLY one line, `QUICKSTART <n>s`: progress, step timings and
-#     every failure diagnostic go to stderr. Exit 0 only when every step passed and
-#     n < 300; otherwise a `QUICKSTART: FAIL …` diagnostic goes to stderr and the exit
-#     code is non-zero.
+#     every failure diagnostic go to stderr. The measured window starts at the first
+#     adoption step; preflight (binary resolution, a possible offline build, the
+#     scratch dir) is timed separately and logged. Exit 0 only when every step passed
+#     and n < 300; otherwise a `QUICKSTART: FAIL …` diagnostic goes to stderr and the
+#     exit code is non-zero.
+#   * the 300s budget is a **post-hoc verdict**, not a deadline: this script does not
+#     kill a wedged command (that is the caller's timeout, CI's job timeout), it
+#     reports that a completed rehearsal exceeded five minutes.
 #
 # Usage:
 #   tools/quickstart.sh
@@ -56,6 +61,8 @@ RC=0
 
 log() { printf '%s\n' "$*" >&2; }
 
+trap on_signal INT TERM
+
 # fail <message>: report, name the scratch dir (so the failure can be inspected), and
 # exit non-zero — but still print the one measured stdout line, so a failed run is timed
 # too (a slow failure is a finding, not a missing measurement).
@@ -67,6 +74,14 @@ fail() {
   fi
   printf 'QUICKSTART %ss\n' "$elapsed"
   exit 1
+}
+
+# A signal must not leave an anonymous scratch dir: the header promises one that is
+# removed or named, and an interrupted run in CI (a cancelled job) is the normal case.
+on_signal() {
+  printf 'QUICKSTART: interrupted — scratch kept for inspection: %s\n' "${WORK_DIR:-<none>}" >&2
+  printf 'QUICKSTART %ss\n' "$(( $(date +%s) - START ))"
+  exit 130
 }
 
 step_start() {
@@ -219,6 +234,12 @@ log ""
 log "req quickstart: binary $REQ_BIN"
 "$REQ_BIN" --version >&2 || fail "the resolved binary does not answer --version: $REQ_BIN"
 
+# The measured window starts here: `QUICKSTART <n>s` is the adoption path the page
+# describes, not this script's own setup. Preflight is timed and logged on its own.
+PREFLIGHT_ELAPSED=$(( $(date +%s) - START ))
+START="$(date +%s)"
+log "req quickstart: preflight ${PREFLIGHT_ELAPSED}s (not in the measured line)"
+
 # --- the five-minute path ---------------------------------------------------------
 
 step_start "init a fresh corpus (req init)"
@@ -253,7 +274,7 @@ CLAIMS_BEFORE="$(claim_count)"
 [ "$CLAIMS_BEFORE" -eq 1 ] || fail "preflight: expected 1 claim after init, found $CLAIMS_BEFORE"
 
 run_step "extract a draft, dry run (nothing may be written)" 0 \
-  "python3 tools/adopt.py --from docs/capabilities.md --subject SYSTEM --date $TODAY (dry run)" \
+  "python3 $REPO_ROOT/tools/adopt.py --from docs/capabilities.md --subject SYSTEM --date $TODAY (dry run)" \
   python3 "$REPO_ROOT/tools/adopt.py" --from docs/capabilities.md --subject SYSTEM --date "$TODAY"
 require_out "draft  REQ-0002  claims/REQ-0002.yml"
 require_out "docs/capabilities.md#L4"
@@ -265,7 +286,7 @@ require_absent claims/REQ-0002.yml
   || fail "$STEP_NAME: the dry run changed the claim count ($CLAIMS_BEFORE -> $(claim_count))"
 
 run_step "write the drafts (the extractor's --write)" 0 \
-  "python3 tools/adopt.py --from docs/capabilities.md --subject SYSTEM --date $TODAY --write" \
+  "python3 $REPO_ROOT/tools/adopt.py --from docs/capabilities.md --subject SYSTEM --date $TODAY --write" \
   python3 "$REPO_ROOT/tools/adopt.py" --from docs/capabilities.md --subject SYSTEM --date "$TODAY" --write
 require_out "wrote: 1 claim(s)"
 require_file claims/REQ-0002.yml
