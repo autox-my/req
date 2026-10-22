@@ -509,10 +509,22 @@ if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/quickstart.sh" ] && command -v python3
   # `plan` prints this same choice, from this same call site: `-x` picks the command, it does
   # not gate the check, so consulting it in a plan is what makes the plan show the binding the
   # default run uses.
-  if [ -x "$PWD/target/debug/req" ]; then
-    run env REQ_BIN="$PWD/target/debug/req" bash "$PWD/tools/quickstart.sh"
+  #
+  # The search honours a redirected build dir, the same resolution the rehearsal itself uses: a
+  # caller with CARGO_TARGET_DIR set has the binary there, and `$PWD/target` would bind a path
+  # that does not exist — turning the binding into a refusal inside the script. The fallback
+  # unsets a caller's REQ_BIN: it exists to let the script resolve the tree's own build, and a
+  # stray exported value would make the gate rehearse an arbitrary binary (the rule the
+  # standalone Baseline and decision steps apply to REQ_GATE_BIN).
+  quickstart_target="${CARGO_TARGET_DIR:-$PWD/target}"
+  case "$quickstart_target" in
+    /*) : ;;
+    *) quickstart_target="$PWD/$quickstart_target" ;;
+  esac
+  if [ -x "$quickstart_target/debug/req" ]; then
+    run env REQ_BIN="$quickstart_target/debug/req" bash "$PWD/tools/quickstart.sh"
   else
-    run bash "$PWD/tools/quickstart.sh"
+    run env -u REQ_BIN bash "$PWD/tools/quickstart.sh"
   fi
 else
   skip "tools/quickstart.sh or python3 missing: cannot rehearse the quickstart"

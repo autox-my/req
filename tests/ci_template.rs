@@ -36,21 +36,31 @@ fn read_reporting(path: &Path, what: &str) -> String {
     })
 }
 
-/// The one **fenced YAML block** in a markdown document, without the fence. Panics when the
-/// document has none or more than one: "the first one" is exactly the assumption that lets a
-/// test compare the wrong block and pass, so a second block is a failure, not a tie-break.
-fn the_only_yaml_block<'a>(markdown: &'a str, source: &str) -> &'a str {
+/// The one **fenced YAML block** in the adopting page's `## CI` section, without the fence.
+///
+/// Scoped to that section on purpose: the guide is long and may legitimately grow another yaml
+/// example later, which is not this test's business. Inside the section, "more than one" is
+/// still a failure — this test compares *the* CI snippet block, and a second one would let it
+/// compare the wrong text and pass.
+fn the_ci_yaml_block<'a>(markdown: &'a str, source: &str) -> &'a str {
+    const HEADING: &str = "\n## CI\n";
     const OPEN: &str = "```yaml\n";
-    let mut blocks = markdown.match_indices(OPEN);
-    let first = blocks
-        .next()
-        .unwrap_or_else(|| panic!("{source} has no ```yaml block; there is nothing to compare"));
+    let after_heading = markdown
+        .find(HEADING)
+        .unwrap_or_else(|| panic!("{source} has no `## CI` section; there is nothing to compare"))
+        + HEADING.len();
+    let rest = &markdown[after_heading..];
+    let section = &rest[..rest.find("\n## ").unwrap_or(rest.len())];
+    let mut blocks = section.match_indices(OPEN);
+    let first = blocks.next().unwrap_or_else(|| {
+        panic!("{source}'s `## CI` section has no ```yaml block; there is nothing to compare")
+    });
     assert!(
         blocks.next().is_none(),
-        "{source} has more than one ```yaml block; this test compares *the* CI snippet block, \
-         and a second one would let it compare the wrong text and pass"
+        "{source}'s `## CI` section has more than one ```yaml block; this test compares *the* \
+         CI snippet block, and a second one would let it compare the wrong text and pass"
     );
-    let after = &markdown[first.0 + OPEN.len()..];
+    let after = &section[first.0 + OPEN.len()..];
     let close = after
         .find("\n```")
         .unwrap_or_else(|| panic!("{source}'s ```yaml block is not closed with ```"));
@@ -107,7 +117,7 @@ fn the_ci_snippet_has_one_text_in_three_places() {
 
     let doc_path = repo_root().join("docs/adopting.md");
     let doc = read_reporting(&doc_path, "adopting doc");
-    let doc_block = the_only_yaml_block(&doc, "docs/adopting.md");
+    let doc_block = the_ci_yaml_block(&doc, "docs/adopting.md");
 
     let example_path = repo_root().join("examples/github-workflows/req.yml");
     let example = read_reporting(&example_path, "copy-ready example");
@@ -134,66 +144,91 @@ fn the_ci_snippet_has_one_text_in_three_places() {
     );
 
     // The snippet must still *be* the snippet. Byte equality would keep three copies of a
-    // gutted text honest with each other; each fragment below is a failure this repository
-    // has already paid for, so its disappearance is named rather than averaged away.
-    for (fragment, why) in [
+    // gutted text honest with each other, so each fragment below is pinned; each is a failure
+    // this repository has already paid for. Fragments that legitimately occur more than once
+    // are pinned by **count**: a `contains` check on `if: always()` survives deleting one of
+    // the two, which is exactly the mutation the pin exists to catch.
+    for (fragment, occurrences, why) in [
         (
             "req canon --verify",
+            1,
             "the variant-independent address check: without it a hand-edited digest is not caught",
         ),
         (
             "[ -r .req/variants ]",
-            "the readability assertion: a failed input redirection does not stop `set -e`, so \
-             every declared variant would be skipped and the step would go green",
+            2,
+            "the readability assertion, in the gate step and again in the artifact step: a failed \
+             input redirection does not stop `set -e`, so every declared variant would be skipped \
+             and the step would go green",
         ),
         (
             "exit $rc",
+            1,
             "the sticky exit fold: a swallowed non-zero is a green gate over a red run",
         ),
         (
-            "--format json",
-            "the agent-facing documents (pack C): an agent reads `req.gate/1`, not scraped text",
-        ),
-        // The artifact step is the pack's new surface, and it is *not* executed by
-        // `tests/init.rs` (that target runs the const's gate step). Without these fragments a
-        // step gutted down to `view render` would satisfy every test in this file.
-        (
-            "capture render render",
-            "the spec view document: one of the four an agent reads instead of scraping text",
+            "the deploy key the private install needs, when the runner has none",
+            1,
+            "the credential the private install needs: a copy-ready file that cannot reach req's \
+             host on a fresh runner is not copy-ready",
         ),
         (
-            "capture trace trace",
-            "the traceability document: dropped, the artifact silently loses every edge",
+            "secrets.REQ_DEPLOY_KEY",
+            1,
+            "the key comes from a secret and is skippable, so a runner that already has access is \
+             not forced to carry one",
         ),
         (
-            "capture audit audit",
-            "the audit packet document: dropped, coverage and provenance vanish from the artifact",
+            "REQ_DEPLOY_KEY is not set",
+            1,
+            "the skip is announced: a silent step would make a keyless runner look provisioned",
         ),
         (
-            "capture \"gate-${releases}\" gate \"${release[@]}\"",
-            "the per-variant gate document: a bare `req gate` is UNVERIFIABLE on a \
-             selector-carrying corpus (ADR 0015), so the artifact would say \"cannot tell\" \
-             beside a release that passed",
+            "req \"$@\" --format json",
+            1,
+            "the one capture helper: every view goes through the same redirect-and-record path, so \
+             an empty document can never be written",
+        ),
+        ("capture render render", 1, "the spec view document"),
+        ("capture trace trace", 1, "the traceability document"),
+        ("capture audit audit", 1, "the audit packet document"),
+        (
+            "capture \"gate-${releases}\" gate \"${release[@]}\" < /dev/null",
+            1,
+            "the per-variant gate document, with the `/dev/null` stdin the loop comment calls \
+             load-bearing (a `req` that read stdin would shorten the release list and end green)",
+        ),
+        (
+            "[ \"$variants_read\" -eq 1 ]",
+            1,
+            "the bare gate document is written only for a variants file this step actually read: a \
+             missing or unreadable one is the gate step's red, and `gate.json` must not say \
+             `pass` beside it",
         ),
         (
             "if: always()",
-            "the capture must still run when the gate went red, or the failed run is the one \
-             with no documents — the run an agent most needs to read",
+            2,
+            "the capture and the upload must run on a red build — the run an agent most needs to \
+             read",
         ),
         (
             "if-no-files-found: error",
+            1,
             "an upload that finds nothing must be red: a green step with no artifact is the \
              silent-loss case this pack exists to remove",
         ),
         (
             "actions/upload-artifact@v4",
-            "the upload: without it the documents die with the runner and no reviewing agent \
-             ever reads them",
+            1,
+            "the upload: without it the documents die with the runner and no reviewing agent ever \
+             reads them",
         ),
     ] {
+        let found = printed.matches(fragment).count();
         assert!(
-            printed.contains(fragment),
-            "req init's CI snippet no longer carries {fragment:?} — {why}"
+            found == occurrences,
+            "req init's CI snippet carries {fragment:?} {found} time(s), expected {occurrences} \
+             — {why}"
         );
     }
 }

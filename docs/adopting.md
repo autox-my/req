@@ -260,6 +260,22 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      # The install fetches from req's **private** host, so the runner needs read access to it.
+      # Set the `REQ_DEPLOY_KEY` secret to a key with read access (this step installs it); skip the
+      # step when the runner already has one (a self-hosted runner), or install from a clone
+      # instead (`cargo install --path . --locked`). req's own claim operations need no network.
+      - name: the deploy key the private install needs, when the runner has none
+        env:
+          REQ_DEPLOY_KEY: ${{ secrets.REQ_DEPLOY_KEY }}
+        run: |
+          set -eu
+          if [ -z "${REQ_DEPLOY_KEY:-}" ]; then
+            echo "REQ_DEPLOY_KEY is not set — assuming the runner already has read access"
+            exit 0
+          fi
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$REQ_DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
       - name: req, installed at a pinned rev
         env:
           GIT_SSH_COMMAND: "ssh -o ControlMaster=no -o ControlPath=none -o StrictHostKeyChecking=accept-new"
@@ -366,7 +382,9 @@ jobs:
           # document would say "cannot tell" beside a release that passed. With no release
           # declared, the bare view IS the default variant's document.
           releases=0
+          variants_read=0
           if [ -f .req/variants ] && [ -r .req/variants ]; then
+            variants_read=1
             while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
               variant_line="${variant_line%$'\r'}"
               read -r -a release <<< "${variant_line%%#*}"
@@ -375,8 +393,14 @@ jobs:
               capture "gate-${releases}" gate "${release[@]}" < /dev/null
             done < .req/variants
           fi
-          if [ "$releases" -eq 0 ]; then
+          # Only a file THIS STEP READ, declaring no line, is the default variant and its bare
+          # gate the document. A missing, unreadable or non-regular file is the red the gate step
+          # above already reported: the other views are kept, but no `gate.json` may read `pass`
+          # beside it.
+          if [ "$releases" -eq 0 ] && [ "$variants_read" -eq 1 ]; then
             capture gate gate < /dev/null
+          elif [ "$variants_read" -eq 0 ]; then
+            printf 'no readable regular .req/variants: the gate step above is red, so no gate document is written\n' >&2
           fi
       - name: keep the views for the reviewing agent
         if: always()
@@ -387,13 +411,21 @@ jobs:
           if-no-files-found: error
 ```
 
+**The install reaches req's private host.** The first step installs a read-only key from the
+`REQ_DEPLOY_KEY` secret and skips itself (with a message) when the secret is unset — the case of a
+self-hosted runner that already has read access. With neither, install from a clone instead
+(`cargo install --path . --locked`): req's own claim operations need no network (REQ-0012), so only
+the install is affected.
+
 **The JSON views are the agent-facing half.** The last two steps write pack C's documents and
 upload them as the `req-views` artifact, so an agent reviewing the pull request reads the verdict
 instead of scraping a log. `render`, `trace` and `audit` are written once; the **gate document is
 written once per declared release** (`gate-1.json`, `gate-2.json`, …), because a bare `req gate` is
 UNVERIFIABLE on a corpus carrying a selector (ADR 0015) and a single bare document would say
-"cannot tell" beside a release that passed. With no release declared, `gate.json` *is* the default
-variant's document. The capture step runs `if: always()` and **records** each command's exit class
+"cannot tell" beside a release that passed. With a comment-only or empty `.req/variants`, `gate.json`
+*is* the default variant's document; an **absent or unreadable** file is the gate step's red, so
+the other views are kept and no gate document is written at all — a `pass` beside that red would be
+worse than no document. The capture step runs `if: always()` and **records** each command's exit class
 beside its document instead of folding it into the step: a document is complete even when its
 verdict is open (ADR 0018, and pack C's rule), and the gate step above is what decides the build.
 `--format json` renders to stdout only — beside `--out`/`--check` it is a usage error (exit 2) —
@@ -434,13 +466,14 @@ log, and the artifact upload — the JSON documents and their redirect are plain
 commands run locally against this exact text, but `actions/upload-artifact` and `if: always()`
 are the runner's behaviour, not req's.
 The JSON step was run locally too, against every shape it has to survive: a fresh `req init`
-corpus (four documents — `req.render/1`, `req.trace/1`, `req.gate/1`, `req.audit/1` — with `audit`
-exiting **3** for nothing ratified and the step exiting **0**); a selector-carrying corpus with one
-declared release (`gate-1.json` carrying `"verdict": "pass"` and the release's `selection`, while
-the bare `render`/`audit` documents recorded their open exit classes); comment-only and absent
-`.req/variants`; and a corpus that cannot be read, where all four commands exit **3** with
-`[UNVERIFIABLE]` and the step writes **no documents at all** and says so. The gate decides the
-build, the documents never do.
+corpus with **no** `.req/variants` (the three views — `req.render/1`, `req.trace/1`, `req.audit/1`
+— no gate document, because that is the gate step's red, and `audit` exiting **3** recorded on the
+log, the step exiting **0**); a comment-only file (`gate.json`, the default variant); one declared
+release (`gate-1.json` carrying `"verdict": "pass"` and the release's `selection`); an unreadable
+variants file (views kept, no gate document, named on the log); and a corpus that cannot be read,
+where every command exits **3** with `[UNVERIFIABLE]`, the step writes **no documents at all**, and
+says so. The gate decides the build, the documents never do. `tests/init.rs` executes this exact
+step against a stub `req`, so the three behaviours above are checked rather than described.
 The shell logic was run locally against this exact text — an absent, unreadable, or non-regular
 `.req/variants` → exit 1 (`missing, unreadable, or not a regular file .req/variants`); a comment-only file → one row, the bare default variant, and exit 0 **on a
 corpus with no selector** (a fresh `req init` corpus; on a corpus with a selector the bare run is

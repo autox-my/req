@@ -9,6 +9,22 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      # The install fetches from req's **private** host, so the runner needs read access to it.
+      # Set the `REQ_DEPLOY_KEY` secret to a key with read access (this step installs it); skip the
+      # step when the runner already has one (a self-hosted runner), or install from a clone
+      # instead (`cargo install --path . --locked`). req's own claim operations need no network.
+      - name: the deploy key the private install needs, when the runner has none
+        env:
+          REQ_DEPLOY_KEY: ${{ secrets.REQ_DEPLOY_KEY }}
+        run: |
+          set -eu
+          if [ -z "${REQ_DEPLOY_KEY:-}" ]; then
+            echo "REQ_DEPLOY_KEY is not set — assuming the runner already has read access"
+            exit 0
+          fi
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$REQ_DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
       - name: req, installed at a pinned rev
         env:
           GIT_SSH_COMMAND: "ssh -o ControlMaster=no -o ControlPath=none -o StrictHostKeyChecking=accept-new"
@@ -115,7 +131,9 @@ jobs:
           # document would say "cannot tell" beside a release that passed. With no release
           # declared, the bare view IS the default variant's document.
           releases=0
+          variants_read=0
           if [ -f .req/variants ] && [ -r .req/variants ]; then
+            variants_read=1
             while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
               variant_line="${variant_line%$'\r'}"
               read -r -a release <<< "${variant_line%%#*}"
@@ -124,8 +142,14 @@ jobs:
               capture "gate-${releases}" gate "${release[@]}" < /dev/null
             done < .req/variants
           fi
-          if [ "$releases" -eq 0 ]; then
+          # Only a file THIS STEP READ, declaring no line, is the default variant and its bare
+          # gate the document. A missing, unreadable or non-regular file is the red the gate step
+          # above already reported: the other views are kept, but no `gate.json` may read `pass`
+          # beside it.
+          if [ "$releases" -eq 0 ] && [ "$variants_read" -eq 1 ]; then
             capture gate gate < /dev/null
+          elif [ "$variants_read" -eq 0 ]; then
+            printf 'no readable regular .req/variants: the gate step above is red, so no gate document is written\n' >&2
           fi
       - name: keep the views for the reviewing agent
         if: always()

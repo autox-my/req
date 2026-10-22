@@ -136,7 +136,9 @@ named — regenerate, never edit), **3** it cannot judge. Pin the path in `.req/
 `req render --check <path>` for each in CI, exactly as `.req/variants` is gated. The copy-ready
 Action is `examples/github-workflows/req.yml` (the same bytes `req init` prints) and it runs
 `req canon --verify`, the variant gates and the JSON documents — add the projection check beside
-them if you commit a projection.
+them if you commit a projection. On a CI runner the install needs read access to req's private
+host: the Action installs a read-only key from the `REQ_DEPLOY_KEY` secret and skips that step when
+the secret is unset (a self-hosted runner that already has one).
 
 ## What the agent may not do
 
@@ -158,8 +160,10 @@ beside `--out` or `--check` is a usage error (exit 2).
 In CI the copy-ready Action writes those documents to `req-views/` and uploads them as an artifact,
 with **one gate document per declared release** (`gate-<n>.json`) — a bare `req gate` is
 UNVERIFIABLE on a selector-carrying corpus (ADR 0015), so the per-variant document is the one that
-carries the release verdict. Read the artifact, not the log; each document's exit class is recorded
-beside it, and the gate step remains what decides the build.
+carries the release verdict. A comment-only `.req/variants` makes `gate.json` the default variant's
+document; an absent or unreadable one is the gate step's red, and then no gate document exists at
+all. Read the artifact, not the log; each document's exit class is recorded beside it, and the gate
+step remains what decides the build.
 
 The exit contract is tri-state everywhere, plus usage: **0** settled affirmatively, **1** a definite
 finding (a defect, a mismatch, a stale projection), **3** UNVERIFIABLE — it cannot be told, which
