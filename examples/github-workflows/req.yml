@@ -208,7 +208,7 @@ jobs:
           # above already reported: the other views are kept, but no `gate.json` may read `pass`
           # beside it.
           if [ "$releases" -eq 0 ] && [ "$variants_read" -eq 1 ] && [ "$rejected" -eq 0 ]; then
-            capture gate gate < /dev/null
+            capture gate gate --test-report target/nextest/ci/junit.xml < /dev/null
           elif [ "$releases" -eq 0 ] && [ "$variants_read" -eq 0 ]; then
             printf 'no readable regular .req/variants: the gate step above is red, so no gate document is written\n' >&2
           elif [ "$releases" -eq 0 ]; then

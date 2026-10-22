@@ -320,7 +320,7 @@ if [ "$dry" -eq 1 ] || command -v cargo-nextest >/dev/null 2>&1; then
   # so it is a FAIL naming both versions, never a silent substitution. The install command is the
   # remedy, exactly as the ocr pin prints its own.
   if [ "$dry" -eq 0 ]; then
-    installed="$(cargo nextest --version 2>/dev/null | sed -n 's/^cargo-nextest \([0-9][^ ]*\) .*/\1/p' | head -1)"
+    installed="$(cargo nextest --version 2>/dev/null | sed -n 's/^cargo-nextest \([0-9][^ ]*\).*/\1/p' | head -1)"
     if [ "$installed" != "$NEXTEST_PIN" ]; then
       printf 'FAIL  cargo-nextest %s is not the pinned %s: install it with `cargo install cargo-nextest --version %s --locked`\n' "${installed:-<none>}" "$NEXTEST_PIN" "$NEXTEST_PIN"
       fail=1

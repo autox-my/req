@@ -200,6 +200,12 @@ fn the_ci_snippet_has_one_text_in_three_places() {
              load-bearing (a `req` that read stdin would shorten the release list and end green)",
         ),
         (
+            "capture gate gate --test-report target/nextest/ci/junit.xml < /dev/null",
+            1,
+            "the default-variant JSON capture reads the same report as the gate step: without it the \
+             document says `unverifiable` beside a green gate",
+        ),
+        (
             "cargo nextest run --profile ci",
             1,
             "the suite whose JUnit report the gate reads: without it `--test-report` has nothing \
@@ -219,9 +225,10 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         ),
         (
             "--test-report target/nextest/ci/junit.xml",
-            2,
-            "the gate step and the per-variant JSON capture both read the same artefact: a document \
-             captured without it would say `unverifiable` beside a green gate",
+            3,
+            "the gate step and **both** JSON captures (per-variant and default-variant) read the same \
+             artefact: a document captured without it was the review's finding — `unverifiable` \
+             beside a green gate",
         ),
         (
             "[ \"$variants_read\" -eq 1 ]",

@@ -1650,8 +1650,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     // "Predates what this build writes" is a relationship, not the coincidence that the oldest
     // supported envelope happens to be one below the write version: key it off both constants so
     // a future bump cannot tell a freshly written manifest that it predates itself.
-    if manifest.version < BASELINE_VERSION && manifest.version >= OLDEST_VERIFIABLE_BASELINE_VERSION
-    {
+    if (OLDEST_VERIFIABLE_BASELINE_VERSION..BASELINE_VERSION).contains(&manifest.version) {
         println!(
             "  - predates envelope v{BASELINE_VERSION}: the authored test links are NOT attested \
              by this manifest (ADR 0019) — re-issue and re-sign to attest them"
