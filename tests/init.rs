@@ -850,9 +850,10 @@ fn the_adoption_doc_carries_the_verified_install_form_and_the_ci_gate() {
 /// free to drift, and the point of this test is to run *the* snippet.
 #[cfg(unix)]
 fn gate_script() -> String {
-    // Anchored on the redirection that closes the loop, not on a variable name: a
-    // behaviour-preserving rename of the loop variable must not break the extractor.
-    run_block_containing("done < .req/variants")
+    // Anchored on the loop's own `gate` call, not on the `done < .req/variants` line: the
+    // JSON-views step now closes a loop the same way, so that line is no longer unique. A
+    // behaviour-preserving rename of the loop variable still must not break the extractor.
+    run_block_containing("gate \"${release[@]}\" < /dev/null")
 }
 
 /// The shell body of the CI **JSON-views** step, extracted by the same positional rule: the
@@ -1408,29 +1409,25 @@ fn the_json_views_step_captures_documents_and_never_fabricates_a_gate() {
         "a document written under a non-zero exit is complete and must be kept:\n{text}"
     );
 
-    let fx = Fixture::new("ci-json-views-empty");
-    write_variants(&fx, "deployment_mode=air_gapped\n");
-    let (code, text, _) = run_artifact_step(&fx, &script, None, 3);
-    assert_eq!(
-        code, 0,
-        "the step records an exit class; the gate above decides the build:\n{text}"
-    );
-    assert!(
-        view_files(&fx).is_empty(),
-        "a view that wrote nothing left files: {:?}\n{text}",
-        view_files(&fx)
-    );
-    assert!(text.contains("NO DOCUMENT"), "{text}");
-
-    let fx = Fixture::new("ci-json-views-empty-zero");
-    write_variants(&fx, "deployment_mode=air_gapped\n");
-    let (code, text, _) = run_artifact_step(&fx, &script, None, 0);
-    assert_eq!(code, 0, "{text}");
-    assert!(
-        view_files(&fx).is_empty(),
-        "a zero exit with empty stdout still writes no document: {:?}\n{text}",
-        view_files(&fx)
-    );
+    // A command that writes nothing leaves no file, and the step knows how many documents it
+    // expects — so the *set* is red even though each individual exit class was recorded. The
+    // upload's `if-no-files-found` would only notice a completely empty directory.
+    for (name, code_in) in [("ci-json-views-empty", 3), ("ci-json-views-empty-zero", 0)] {
+        let fx = Fixture::new(name);
+        write_variants(&fx, "deployment_mode=air_gapped\n");
+        let (code, text, _) = run_artifact_step(&fx, &script, None, code_in);
+        assert_eq!(
+            code, 1,
+            "{name}: a missing document set is red, whatever the exit class:\n{text}"
+        );
+        assert!(
+            view_files(&fx).is_empty(),
+            "{name}: a view that wrote nothing left files: {:?}\n{text}",
+            view_files(&fx)
+        );
+        assert!(text.contains("NO DOCUMENT"), "{text}");
+        assert!(text.contains("incomplete view set"), "{text}");
+    }
 
     for (name, variants) in [
         ("ci-json-views-no-variants", None),
@@ -1467,15 +1464,15 @@ fn an_option_shaped_release_line_is_red_not_a_green_no_op() {
     let (code, text) = run_gate_step(&fx, &script);
     assert_eq!(code, 1, "an option-shaped line must be red:\n{text}");
     assert!(
-        text.contains("release line starts with an option"),
+        text.contains("release line carries an option"),
         "the refusal must name the line:\n{text}"
     );
-    // The rejected line is not gated; the step still runs its bare default (the same fallback a
-    // comment-only file gets), and the sticky `rc` keeps the whole step red.
-    let rows = summary_rows(&text);
-    assert_eq!(rows.len(), 1, "only the bare default run, not the rejected line:\n{text}");
-    assert!(
-        rows[0].contains("<none>"),
-        "the rejected line must never become a gate row:\n{text}"
+    // A file whose only line was rejected declared something and it was malformed: that is not
+    // the "no variants" state, so the bare default is not its fallback. The sticky `rc` keeps
+    // the step red.
+    assert_eq!(
+        summary_rows(&text).len(),
+        0,
+        "nothing was gated, and no bare default was run as a fallback:\n{text}"
     );
 }

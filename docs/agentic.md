@@ -129,9 +129,10 @@ undecided with the remedy, and ends `verdict: UNVERIFIABLE — nothing is wrong,
 be confirmed`. That is correct since ADR 0015, not a bug: an undecided claim was not examined, and an
 unexamined claim is not a pass — while you declare no variants, the bare `req gate` is the gate (exit 0).
 
-A release line is a `key=value` context, never an option: a line like `--help` is rejected and makes
-the step red, because `req gate --help` exits 0 having gated nothing (a help flag wins wherever it
-appears in argv) — and a green step with no release examined is the false pass this rule removes.
+A release line is a `key=value` context, never an option: any argument that looks like an option
+rejects the line, because a help flag wins wherever it appears — `req gate deployment_mode=x --help`
+prints the page and exits 0 having gated nothing — and a green step with no release examined is the
+false pass this rule removes.
 
 Commit the document as a projection: `req render --out docs/spec.md` writes it, and
 `req render --check docs/spec.md` is the alarm. `--out` exits **0** (`[WROTE] …`); `--check` writes
@@ -141,8 +142,9 @@ named — regenerate, never edit), **3** it cannot judge. Pin the path in `.req/
 Action is `examples/github-workflows/req.yml` (the same bytes `req init` prints) and it runs
 `req canon --verify`, the variant gates and the JSON documents — add the projection check beside
 them if you commit a projection. On a CI runner the install needs read access to req's private
-host: the Action installs a read-only key from the `REQ_DEPLOY_KEY` secret and skips that step when
-the secret is unset (a self-hosted runner that already has one).
+host: the Action writes a read-only key from the `REQ_DEPLOY_KEY` secret into the job's temp dir
+(never `$HOME`) and removes it in a final `if: always()` step; the key step skips itself when the
+secret is unset, the case of a runner that already has access.
 
 ## What the agent may not do
 

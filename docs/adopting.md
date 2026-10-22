@@ -273,11 +273,11 @@ jobs:
             echo "REQ_DEPLOY_KEY is not set — assuming the runner already has read access"
             exit 0
           fi
-          mkdir -p "$HOME/.ssh"
-          # A path of its own: overwriting `$HOME/.ssh/id_ed25519` would take the identity away
-          # from every other job on a self-hosted runner, so the install points `-i` at this.
-          printf '%s\n' "$REQ_DEPLOY_KEY" > "$HOME/.ssh/req_deploy_key"
-          chmod 600 "$HOME/.ssh/req_deploy_key"
+          # Per job, and removed by the cleanup step at the end: a key under `$HOME` survives on
+          # a self-hosted runner, where the next job (an untrusted pull request included) could
+          # read it. `umask 077` means the file is never briefly world-readable.
+          umask 077
+          printf '%s\n' "$REQ_DEPLOY_KEY" > "${RUNNER_TEMP:-$HOME}/req_deploy_key"
       - name: req, installed at a pinned rev
         run: |
           set -eu
@@ -285,13 +285,16 @@ jobs:
           # above to a path of its own) is offered with `IdentitiesOnly`, so a self-hosted
           # runner's default identity is neither overwritten nor offered to this host by accident.
           ssh_command="ssh -o ControlMaster=no -o ControlPath=none -o StrictHostKeyChecking=accept-new"
-          if [ -f "$HOME/.ssh/req_deploy_key" ]; then
-            ssh_command="ssh -i $HOME/.ssh/req_deploy_key -o IdentitiesOnly=yes $ssh_command"
+          req_key="${RUNNER_TEMP:-$HOME}/req_deploy_key"
+          if [ -f "$req_key" ]; then
+            ssh_command="ssh -i $req_key -o IdentitiesOnly=yes $ssh_command"
           fi
           CARGO_NET_GIT_FETCH_WITH_CLI=true GIT_SSH_COMMAND="$ssh_command" cargo install \
             --git ssh://git@git.xantu-barb.ts.net/fdx/req.git \
             --rev <PIN> --root "$HOME/.local" --locked
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # `$GITHUB_PATH` applies to *later* steps only; this step's own PATH is unchanged.
+          export PATH="$HOME/.local/bin:$PATH"
           req --version
       - name: every stored address still recomputes (variant-independent)
         run: req canon --verify
@@ -311,6 +314,7 @@ jobs:
           summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}"
           printf '## req gate\n\n| variant | exit | verdict |\n| --- | --- | --- |\n' >> "$summary"
           rc=0
+          rejected=0
           gate() {
             out="$(req gate "$@" 2>&1)" && code=0 || code=$?
             verdict="$(printf '%s' "$out" | sed -n 's/^verdict: //p' | head -1)"
@@ -336,12 +340,19 @@ jobs:
             variant_line="${variant_line%$'\r'}"
             read -r -a release <<< "${variant_line%%#*}"
             [ "${#release[@]}" -gt 0 ] || continue
-            # A release line is a `key=value` context, never an option. `req gate --help` exits 0
-            # having gated nothing (a help flag wins wherever it appears), so an option-shaped
-            # line would leave this step green with no release examined.
-            case "${release[0]}" in
-              -*) printf 'release line starts with an option: %s\n' "${release[*]}" >&2; rc=1; continue ;;
-            esac
+            # A release line is a `key=value` context, never an option. A help flag wins WHEREVER
+            # it appears (`req gate deployment_mode=x --help` prints the page and exits 0 having
+            # gated nothing), so every argument is checked, not just the first.
+            release_option=0
+            for release_arg in "${release[@]}"; do
+              case "$release_arg" in -*) release_option=1 ;; esac
+            done
+            if [ "$release_option" -eq 1 ]; then
+              printf 'release line carries an option, so it is not a release: %s\n' "${release[*]}" >&2
+              rc=1
+              rejected=$((rejected + 1))
+              continue
+            fi
             # /dev/null: nothing in the body may consume the remaining releases from this
             # file's stdin — a command that reads stdin would shorten the list without error, and
             # the loop would end early with a green step. scripts/check.sh guards the same loop
@@ -353,7 +364,10 @@ jobs:
           # its gate. With a line declared, the loop is the gate: a bare run beside it reports
           # UNVERIFIABLE on any corpus carrying a selector (ADR 0015), and a false red beside
           # green variants is how a real red gets ignored.
-          if [ "$gated" -eq 0 ]; then
+          # A file whose lines were all rejected declared something, and it was malformed: it is
+          # not the "no variants" state, so the bare default is not its fallback. The sticky `rc`
+          # already makes the step red.
+          if [ "$gated" -eq 0 ] && [ "$rejected" -eq 0 ]; then
             gate
           fi
           exit $rc
@@ -404,9 +418,15 @@ jobs:
               read -r -a release <<< "${variant_line%%#*}"
               [ "${#release[@]}" -gt 0 ] || continue
               # The gate step above is red on this line; capture nothing rather than help text.
-              case "${release[0]}" in
-                -*) printf 'release line starts with an option, not captured: %s\n' "${release[*]}" >&2; rejected=1; continue ;;
-              esac
+              release_option=0
+              for release_arg in "${release[@]}"; do
+                case "$release_arg" in -*) release_option=1 ;; esac
+              done
+              if [ "$release_option" -eq 1 ]; then
+                printf 'release line carries an option, not captured: %s\n' "${release[*]}" >&2
+                rejected=$((rejected + 1))
+                continue
+              fi
               releases=$((releases + 1))
               capture "gate-${releases}" gate "${release[@]}" < /dev/null
             done < .req/variants
@@ -420,7 +440,24 @@ jobs:
           elif [ "$releases" -eq 0 ] && [ "$variants_read" -eq 0 ]; then
             printf 'no readable regular .req/variants: the gate step above is red, so no gate document is written\n' >&2
           elif [ "$releases" -eq 0 ]; then
-            printf 'a release line starts with an option: the gate step above is red, so no gate document is written\n' >&2
+            printf 'a release line carries an option: the gate step above is red, so no gate document is written\n' >&2
+          fi
+          # `if-no-files-found: error` on the upload only reds a COMPLETELY empty directory: one
+          # variant's document lost while its text gate passed would ship silently. The step knows
+          # how many documents it expects, so it checks instead of assuming.
+          expected=3
+          if [ "$releases" -gt 0 ]; then
+            expected=$((expected + releases))
+          elif [ "$variants_read" -eq 1 ] && [ "$rejected" -eq 0 ]; then
+            expected=$((expected + 1))
+          fi
+          actual=0
+          for document in req-views/*.json; do
+            [ -f "$document" ] && actual=$((actual + 1))
+          done
+          if [ "$actual" -ne "$expected" ]; then
+            printf 'incomplete view set: expected %s document(s), found %s\n' "$expected" "$actual" >&2
+            exit 1
           fi
       - name: keep the views for the reviewing agent
         if: always()
@@ -429,15 +466,21 @@ jobs:
           name: req-views
           path: req-views/
           if-no-files-found: error
+      - name: remove the deploy key this job wrote
+        if: always()
+        run: rm -f "${RUNNER_TEMP:-$HOME}/req_deploy_key"
 ```
 
 **The install reaches req's private host.** The first step writes a read-only key from the
-`REQ_DEPLOY_KEY` secret to a path of its own — `$HOME/.ssh/req_deploy_key`, so a self-hosted
-runner's default identity is never overwritten — and skips itself (with a message) when the secret
-is unset, the case of a runner that already has read access. The install offers that key with
-`IdentitiesOnly=yes`, never the runner's default identity. With neither a secret nor runner
-access, install from a clone instead (`cargo install --path . --locked`): req's own claim
-operations need no network (REQ-0012), so only the install is affected.
+`REQ_DEPLOY_KEY` secret to **`$RUNNER_TEMP/req_deploy_key`** — per job, never `$HOME`, and created
+under `umask 077` — and skips itself (with a message) when the secret is unset, the case of a runner
+that already has read access. The install offers that key with `IdentitiesOnly=yes`, never the
+runner's own identity, and the last step removes it under `if: always()`: a private key left on a
+self-hosted runner is readable by every later job, an untrusted pull request included. With neither
+a secret nor runner access, install from a clone instead (`cargo install --path . --locked`): req's
+own claim operations need no network (REQ-0012), so only the install is affected. The install step
+also exports `PATH="$HOME/.local/bin:$PATH"` — `$GITHUB_PATH` applies to later steps only, so
+without it that step's own `req --version` would be `command not found`.
 
 **The JSON views are the agent-facing half.** The last two steps write pack C's documents and
 upload them as the `req-views` artifact, so an agent reviewing the pull request reads the verdict
@@ -454,8 +497,8 @@ verdict is open (ADR 0018, and pack C's rule), and the gate step above is what d
 so the redirect is how a document reaches the disk, and it goes to a `.tmp` name first: a view that
 fails **without writing a document** (an unreadable corpus prints `[UNVERIFIABLE]` and exits 3)
 leaves no file and is named on the log, because a zero-byte document is the one thing a consumer
-would parse and believe. `tests/ci_template.rs` pins `if: always()` and `if-no-files-found: error`
-along with the four captures, so a coordinated removal from all three copies is still red.
+would parse and believe. `tests/ci_template.rs` pins `if: always()`, `if-no-files-found: error`, the captures and
+the set check by **count**, so a coordinated removal from all three copies is still red.
 
 The upload names `actions/upload-artifact@v4`. That version is the one **runner-specific** line in
 this file: check the major your GitHub or Forgejo runner implements and change it if it differs —
@@ -470,11 +513,11 @@ byte — the equality is checked, never assumed.
 a parser: one gate invocation per line, `key=value` pairs space-separated, `#` starts a comment, and
 a line that is empty after stripping the comment is skipped. Two rules matter:
 
-- **A release line is a `key=value` context, never an option.** An option-shaped line is
-  rejected and makes the step red: `req gate --help` exits **0** having gated nothing (a help flag
-  wins wherever it appears in argv), so accepting `--help` as a release would leave the step green
-  with no release examined — the false green the step exists to prevent. A file whose every line
-  was rejected is not the default variant either: the artifact step writes no `gate.json` for it.
+- **A release line is a `key=value` context, never an option.** Any argument that looks like an
+  option rejects the line, because a help flag wins **wherever it appears**: `req gate --help` and
+  `req gate deployment_mode=x --help` both exit **0** having gated nothing. The step goes red with
+  the offending line named, and a file whose every line was rejected is not the default variant:
+  neither the gate step nor the artifact step falls back to the bare run for it.
 - **No release line declares the default variant.** A comment-only `.req/variants` describes exactly
   one variant — the default — so the step runs the bare `req gate` only when the loop read no line.
   Once a line is declared, **the loop is the gate**: a bare run beside it is UNVERIFIABLE on any
@@ -499,9 +542,12 @@ log, the step exiting **0**); a comment-only file (`gate.json`, the default vari
 release (`gate-1.json` carrying `"verdict": "pass"` and the release's `selection`); an unreadable
 variants file and a file whose only line is option-shaped (`--help`; views kept, no gate document,
 named on the log); and a corpus that cannot be read,
-where every command exits **3** with `[UNVERIFIABLE]`, the step writes **no documents at all**, and
-says so. The gate decides the build, the documents never do. `tests/init.rs` executes this exact
-step against a stub `req`, so the three behaviours above are checked rather than described.
+where every command exits **3** with `[UNVERIFIABLE]`, the step writes **no documents at all** —
+and that makes it **red**: the step knows how many documents it expects, and `if-no-files-found`
+would only notice a completely empty directory, so one lost variant document would ship silently.
+The gate decides the *verdict*; the document set decides whether the artifact is complete.
+`tests/init.rs` executes this exact step against a stub `req`, so these behaviours are checked
+rather than described.
 The shell logic was run locally against this exact text — an absent, unreadable, or non-regular
 `.req/variants` → exit 1 (`missing, unreadable, or not a regular file .req/variants`); a comment-only file → one row, the bare default variant, and exit 0 **on a
 corpus with no selector** (a fresh `req init` corpus; on a corpus with a selector the bare run is

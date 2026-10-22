@@ -122,23 +122,24 @@ fn the_ci_snippet_has_one_text_in_three_places() {
     let example_path = repo_root().join("examples/github-workflows/req.yml");
     let example = read_reporting(&example_path, "copy-ready example");
 
+    // Order matters: the two files a human edits without a compiler are compared FIRST, so a
+    // drift between them names those two paths. Asserted last it could never fire — the two
+    // comparisons with `printed` would already have failed — which is a check that cannot fail.
     assert_same_bytes(
-        printed,
-        "req init's printed snippet",
         doc_block,
         "docs/adopting.md's ```yaml block",
-    );
-    assert_same_bytes(
-        printed,
-        "req init's printed snippet",
         &example,
         "examples/github-workflows/req.yml",
     );
-    // Logically implied by the two above, but the pair a human edits without a compiler gets
-    // its own message: a red run should not send the reader through `src/init.rs` first.
     assert_same_bytes(
+        printed,
+        "req init's printed snippet",
         doc_block,
         "docs/adopting.md's ```yaml block",
+    );
+    assert_same_bytes(
+        printed,
+        "req init's printed snippet",
         &example,
         "examples/github-workflows/req.yml",
     );
@@ -200,20 +201,20 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         ),
         (
             "[ \"$variants_read\" -eq 1 ]",
-            1,
+            2,
             "the bare gate document is written only for a variants file this step actually read: a \
              missing or unreadable one is the gate step's red, and `gate.json` must not say \
              `pass` beside it",
         ),
         (
             "if: always()",
-            2,
+            3,
             "the capture and the upload must run on a red build — the run an agent most needs to \
              read",
         ),
         (
             "if-no-files-found: error",
-            1,
+            2,
             "an upload that finds nothing must be red: a green step with no artifact is the \
              silent-loss case this pack exists to remove",
         ),
@@ -224,7 +225,37 @@ fn the_ci_snippet_has_one_text_in_three_places() {
              reads them",
         ),
         (
-            "release line starts with an option",
+            "incomplete view set",
+            1,
+            "a PARTIAL document set must be red: `if-no-files-found` only notices a completely \
+             empty directory, so one lost variant document would ship silently",
+        ),
+        (
+            "export PATH=\"$HOME/.local/bin:$PATH\"",
+            1,
+            "`$GITHUB_PATH` applies to later steps only; this step's own `req --version` needs the \
+             installed binary on PATH now, or the copy-ready file is red on its first run",
+        ),
+        (
+            "umask 077",
+            2,
+            "the key is never briefly world-readable — and the reason says so, so a later edit \
+             that drops the umask is visible",
+        ),
+        (
+            "remove the deploy key this job wrote",
+            1,
+            "the key is removed under `if: always()`: a private key left in `$HOME` is readable by \
+             every later job on a self-hosted runner",
+        ),
+        (
+            "RUNNER_TEMP",
+            3,
+            "the key lives in the per-job temp dir (written, offered to the install, removed), not \
+             in a path that survives the job",
+        ),
+        (
+            "release line carries an option",
             3,
             "a release line is a `key=value` context, never an option: `req gate --help` exits 0 \
              having gated nothing, so an option-shaped line would leave the gate step green and \
@@ -232,7 +263,7 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         ),
         (
             "req_deploy_key",
-            4,
+            3,
             "the deploy key gets a path of its own: overwriting `$HOME/.ssh/id_ed25519` would take \
              a self-hosted runner's identity away from every other job",
         ),
@@ -243,7 +274,7 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         ),
         (
             "[ \"$rejected\" -eq 0 ]",
-            1,
+            3,
             "a variants file whose every line was rejected is not the default variant: no bare \
              `gate.json` is written beside the gate step's red",
         ),

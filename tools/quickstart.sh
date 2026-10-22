@@ -63,7 +63,6 @@ RC=0
 
 log() { printf '%s\n' "$*" >&2; }
 
-trap on_signal INT TERM
 
 # fail <message>: report, name the scratch dir (so the failure can be inspected), and
 # exit non-zero — but still print the one measured stdout line, so a failed run is timed
@@ -85,6 +84,10 @@ on_signal() {
   printf 'QUICKSTART %ss\n' "$(( $(date +%s) - START ))"
   exit 130
 }
+
+# Installed after `on_signal` exists: a signal in the window before the definition would run an
+# undefined command, and the trap would return non-zero instead of exiting 130.
+trap on_signal INT TERM
 
 step_start() {
   STEP_INDEX=$((STEP_INDEX + 1))
@@ -140,7 +143,10 @@ require_absent() {
 }
 
 require_out_re() { # <extended-regex>: the captured output must match it, not merely contain it
-  if printf '%s\n' "$OUT" | grep -Eq "$1"; then
+  # A here-string, not `printf | grep -q`: under `pipefail`, `grep -q` closes the pipe on its
+  # first match and a large `$OUT` makes `printf` die of SIGPIPE, failing the pipeline even
+  # though the pattern matched.
+  if grep -Eq "$1" <<< "$OUT"; then
     :
   else
     printf -- '--- assertion failed: %s\n    expected output to match: %s\n    output:\n%s\n' \
@@ -180,9 +186,10 @@ WORK_DIR="$(mktemp -d "${TMP_BASE}/req-quickstart.XXXXXX")" || {
 # `mktemp -d` returns a RELATIVE path when TMPDIR is relative. Every later use of $WORK_DIR happens
 # after `cd "$WORK_DIR"`, so a relative one would resolve against the scratch dir itself (a count
 # of 0, a build landing outside $WORK, an `rm -rf` of the wrong path). Make it absolute now.
-if ! WORK_DIR="$(cd "$WORK_DIR" && pwd -P)"; then
+if ! RESOLVED_WORK_DIR="$(cd "$WORK_DIR" && pwd -P)"; then
   fail "cannot resolve the scratch dir to an absolute path"
 fi
+WORK_DIR="$RESOLVED_WORK_DIR"
 # The same resolution for the base: on macOS `/var` is a symlink to `/private/var`, so the
 # cleanup guard below must compare the RESOLVED directory with the RESOLVED scratch path.
 if ! TMP_BASE="$(cd "$TMP_BASE" && pwd -P)"; then
