@@ -84,7 +84,8 @@ export OCR_NO_UPDATE=1
 
 - What this binary is: `cargo run -q -- --version` (`-V`) prints the versions that decide a
   verdict — the crate, `rules_v`, the Baseline envelope (`baseline_envelope 4`), the decision
-  chain and the claim file schema (`claim_schema req.claim/1`) — and the build identity. The first line stays single-line and greppable; `--help`
+  chain, the claim file schema (`claim_schema req.claim/1`) — and the build identity. The first
+  line stays single-line and greppable; `--help`
   (`-h`) prints `USAGE`, and `<command> --help` (or `-h`) prints that command's page — its
   usage, one paragraph of what it does, its own `exit:` contract, and the anchor into this
   section. Every one of them is answered where the subcommand is looked up, **before** the
@@ -115,7 +116,22 @@ export OCR_NO_UPDATE=1
   removed rather than left as a half-corpus that is red and refuses the next run). It reads
   no root, prints no `corpus root:` line, and prints the next steps to stdout: the CI
   snippet, the per-variant rule, and where a req bug goes.
-- Test suite: `cargo test` — check `EXIT=$?` on the *cargo* command.
+- Test suite: `cargo nextest run --profile ci` — one run, and it writes the JUnit
+  report the release gate reads (`target/nextest/ci/junit.xml`), so the suite and its evidence are
+  the same run: **`cargo test` is replaced, not kept beside it**. nextest is pinned at **0.9.149**
+  (`cargo install cargo-nextest --version 0.9.149 --locked`, verified at pin time — a CI-side pin
+  like `tools/ocr`'s, **not** a `Cargo.lock` change) and the profile is the reviewed
+  `.config/nextest.toml`: `[profile.ci] fail-fast = false` (its CLI twin `--no-fail-fast` is
+  redundant — the profile is the single home) and `[profile.ci.junit] path = "junit.xml"` with
+  `report-skipped = "ignored"`. `report-skipped` belongs **under `[profile.ci.junit]`**, not at the
+  profile's top level: the top-level spelling is silently ignored with a warning in 0.9.149 and
+  would drop every `#[ignore]`d test from the artefact. The value is `"ignored"`, not `"all"` —
+  `"all"` would also list tests skipped by filters or partitions. It is adopted for the
+  **artefact, not for speed**:
+  measured 2026-10-21, a warm `cargo test` took 2 s and `cargo nextest run` 2–3 s, both paying
+  the ~24 s link, over the same 378 tests. **Doctests are the named gap** — nextest does not run
+  them, so a future `#[doc]` example needs its own step in the gate; there are none today.
+  Check `EXIT=$?` on the *cargo* command.
   **Never pipe a check through `tail`/`grep`**: the pipeline's status is not the
   command's, and `EXIT=$?` after a pipe reports the wrong program.
 - The gate that matters: `cargo run -q -- bench [corpus.yml]` — FMR = 0 hard gate,
@@ -137,8 +153,7 @@ export OCR_NO_UPDATE=1
   `attribute` stays **unverified by design** (its lexicon has no parser to agree with). Exit 3 when the
   registry or a claim file cannot be read, and when a file's declared `schema:` is not the
   `req.claim/<n>` value this build writes (`CLAIM_SCHEMA_V = 1`, i.e. `req.claim/1` — the v1
-  format adds the authored `tests:` and `evidence:` fields — reported by `--version` as
-  `claim_schema`): the file's parse is **NOT JUDGED** — an older schema is a migration candidate
+  format adds `tests:` and `evidence:` — reported by `--version` as `claim_schema`): the file's parse is **NOT JUDGED** — an older schema is a migration candidate
   (a format bump moves no address), a newer one is a question for a build that writes it (the
   file is not wrong, the reader is old), and a value of no `req.claim/<n>` shape at all is a
   broken file, not a version question. The judgement lives in `claim_schema_reason`
@@ -172,12 +187,16 @@ export OCR_NO_UPDATE=1
   must decide every key an applying claim depends on: `dependencies_decided` refuses to answer
   (exit 3) for the dependency-guarded ones rather than skipping, and the undecided count keeps
   the rest honest. Green before every commit and merge.
+  The step order is **build → `cargo nextest run --profile ci` (the JUnit is written) →
+  `req gate --test-report target/nextest/ci/junit.xml` per `.req/variants` line**: the report is a
+  product of the run that decides the suite, not a file found again later, and the release gate
+  reads it.
   **`scripts/check.sh --fast` is the iteration mode**, measured rather than asserted: a warm
   full run is 59s and a fast one 25s on the maintainer's machine (~34s saved per iteration),
   because the steps it drops are the ones whose *runtime* dominates — `clippy`, the external
   corpora (v1-v3) and the direction gold set, and the review-rule/review-scope checks. It keeps
-  `fmt`, `test`, `canon`, the seed parity bench, the Baseline and decision steps, the release
-  gate, the projection check, the extractor's self-check and the **quickstart rehearsal**
+  `fmt`, `test` (nextest, and the report it writes), `canon`, the seed parity bench, the Baseline
+  and decision steps, the release gate, the projection check, the extractor's self-check and the **quickstart rehearsal**
   (`tools/quickstart.sh`, measured at 0-2s, so it is kept in both modes — it prints the
   `QUICKSTART <n>s` line `docs/agentic.md`'s "five minutes" is measured by, and fails at 300).
   It cannot be mistaken for the gate:
@@ -256,10 +275,12 @@ export OCR_NO_UPDATE=1
   when a listed path is missing or the list checked none, and prints how many it checked.
 - Impact and release gate: `cargo run -q -- impact <claim-id> [key=value ...]` walks the
   relations **backwards** (derived, REQ-0020) and reports every dependent nearest-first
-  with its selection state; `cargo run -q -- gate [--format text|json] [key=value ...]` runs
-  five policies —
-  `addresses_current`, `relations_resolve`, `dependencies_decided` and `rationale_present`
-  over the **applying** claims, and `selectors_confirmed` over the **invocation**: a variant
+  with its selection state; `cargo run -q -- gate [--test-report <junit.xml>]
+  [--format text|json] [key=value ...]` runs
+  six policies —
+  `addresses_current`, `relations_resolve`, `dependencies_decided`, `rationale_present`
+  and `tests_linked` over the **applying** claims, and `selectors_confirmed` over the
+  **invocation**: a variant
   in which nothing applies verified nothing; a `key=value` entry no applicability predicate
   in the corpus mentions decided nothing at all; and an `Eq` entry whose value the corpus
   never declares is refused, naming the values it does — `gate field=val` prints
@@ -277,9 +298,42 @@ export OCR_NO_UPDATE=1
   tri-state honest: a claim the variant **excludes** is not the variant's problem, and an
   **undecided** one is never treated as absent. An `impact` answer that a broken relation
   could have made incomplete says so (exit 3) instead of quietly shortening the list.
+  **Test evidence (ADR 0019)**: `--test-report <junit.xml>` feeds the `tests_linked` policy,
+  a sibling of `rationale_present` over the applying claims. It reads the run's report and
+  answers four ways, and there is no fifth:
+
+  | outcome | condition | fold |
+  |---|---|---|
+  | **PASS** | the claim links at least one test and at least one linked test **passed** | contributes pass |
+  | **FAIL** | every linked test is present in the report and **none passed** (a `skipped` test is not a pass) | exit 1 |
+  | **UNVERIFIABLE — *no linked test*** | the claim carries no `tests:` entry — the flagship answer, named per claim | exit 3 |
+  | **UNVERIFIABLE — *linked test not in the report*** | a linked test id has no testcase in the report (renamed or deleted) — never folded into PASS | exit 3 |
+
+  The four outcomes judge **machine** evidence; a **process declaration is a reported fact, not a
+  fifth outcome**. A **`skipped` test is not a pass**, and a **failed** linked test outranks a passing
+  one on the same claim (one pass does not launder a failure), while a skipped link beside a passing one
+  is not a failure; an absent, unparsable or zero-testcase report
+  is UNVERIFIABLE **once**, naming the reader's reason, never once per claim; and **FAIL outranks
+  any UNVERIFIABLE, both outrank PASS** — the existing fold, no new code. **With no
+  `--test-report`, `tests_linked` cannot be exercised and the gate is UNVERIFIABLE (exit 3)** —
+  unless every applying claim declares `evidence: process`, in which case nothing machine-evidenced
+  needs a report; a policy that cannot be exercised is not a pass. A test id is the test's
+  *identity*, so a renamed linked test is *linked test not in the report* — UNVERIFIABLE, never
+  PASS (the rename defence).
+  **Process evidence**: a claim may declare `evidence: process` (the default is `machine`) when the
+  process itself establishes it — a Decision, a signature, a workflow — and it must carry no `tests:`
+  (naming both is a corpus load error, exit 3: a claim's evidence is machine or process, never both).
+  The policy answers it **PASS as declared**, prints it under the `tests_linked` block
+  (`* process-evidenced (declared, not machine-proven): …`) and counts it in the summary line;
+  `req.gate/1` carries a top-level `process_evidenced` array (sorted claim ids) beside the six
+  `policies`, with `tests_linked` after `rationale_present`. **An empty `tests:` list never implies
+  process** — a machine claim with no link is UNVERIFIABLE, *no linked test*, and the default being
+  load-bearing is mutation-checked; a process claim must carry no links at all.
   `--format json` prints the same answers as a `req.gate/1` document: the `selection`, the
   folded `verdict` (`pass`/`fail`/`unverifiable` — the same fold the exit code applies, computed
-  once), the five `policies` with `pass`/`fail`/`unverifiable` outcomes and their `details`, and
+  once), the six `policies` with `pass`/`fail`/`unverifiable` outcomes and their `details` (which
+  name the offending claims, never just a count), the top-level `process_evidenced` claim ids
+  (declared, not machine-proven), and
   the `undecided` claims with the `missing` context keys. Exit codes are identical under both
   formats.
 - Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--max-pairs N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [--pairs] [key=value ...]` — the funnel's
@@ -347,9 +401,8 @@ export OCR_NO_UPDATE=1
 - Baselines: `cargo run -q -- baseline --at <RFC 3339 UTC timestamp> [key=value ...]` prints the
   **canonical manifest** (envelope v4, ADRs 0016 and 0019) — the signing time, the Decision log's
   chain head, the rules version, the selection, and every applying claim's address, audit surface
-  (`relations_hash`, `rationale_hash`) and evidence declaration (`tests_hash`) — which is the exact
-  byte string a human signs. v4 lands with ADR 0019 (proposed); the release-gate policy that reads
-  the links is the flagship's, not this change's. The signing time is **authored**: emitting without `--at` is a
+  (`relations_hash`, `rationale_hash`) and its evidence declaration with the test links
+  (`tests_hash`, the declaration hashed first) — which is the exact byte string a human signs. The signing time is **authored**: emitting without `--at` is a
   **usage error (exit 2)**, and so is a timestamp req cannot read; req never invents one.
   Emission also **refuses** when the decision log is absent, unparsable or empty — **exit 3**,
   a head that attests nothing must not be signed — and when the log is **tampered**, which is a
@@ -384,12 +437,12 @@ export OCR_NO_UPDATE=1
   cryptography and still no network; with no verifier installed the outcome is UNVERIFIABLE,
   never a pass. A **v2** manifest still parses (its new fields are `Option`), keeps its historical
   signed bytes, and is reported as *predates … re-issue and re-sign* — never a parse error.
-  A **v4** manifest attests each claim's `tests_hash`, so a test list or evidence declaration
-  changed after signing is **FAIL** — the same class as a changed address. A **v3** manifest still
-  verifies on its historical signed bytes and says **once** that it predates v4, so its tests are
-  **not attested** — never a FAIL, because it never claimed to attest them; a release that wants
-  test attestation re-issues and re-signs as v4. The committed `baselines/air-gapped.json` is v3
-  and therefore still verifies.
+  A **v4** manifest attests each claim's `tests_hash`, so a test list or evidence declaration changed
+  after signing is **FAIL** — the same class as a changed address. A **v3** manifest still verifies on its
+  historical signed bytes and says **once** that it predates v4, so its tests are **not
+  attested** — never a FAIL, because it never claimed to attest them; a release that wants test
+  attestation re-issues and re-signs as v4. A v4 manifest read by a v3-only build is the existing
+  *newer envelope* UNVERIFIABLE, not a new class.
   **The signing act is the human's**: req emits and verifies, and a key this tool could reach
   would prove nothing. The **manifest records the variant**, so verification re-derives the
   addresses under *that* selection: an explicit context that contradicts it is a **usage error**
@@ -567,8 +620,7 @@ matter:
   its human in five steps (install at a pinned rev, `req init`, the extractor, `req canon` /
   `--fill` / `--verify`, `.req/variants` + `gate`), then what the agent may not do, what it can
   read (`--format json` documents, the exit contract, `render --check` as the drift alarm), and one
-  line naming what is not built yet (pack D's release-gate policy; the report reader and the
-  claim's test-link field are already in the tree). Rehearsed by
+  line naming the honest limit of the test link (a link is a claim about evidence). Rehearsed by
   `tools/quickstart.sh`, which prints `QUICKSTART <n>s` and fails at 300 — "five minutes" is
   measured, never asserted.
 - `examples/` — copy-ready adopter files, inert by location (neither GitHub nor Forgejo picks a
@@ -642,9 +694,8 @@ matter:
   `decision.rs` (the decision log and its hash chain),
   `funnel.rs` (Tier-2 blocking, the provider seam, the command provider and the
   gold-set scoring), `fill.rs` (derived fields), `init.rs` (the corpus bootstrap and the
-  templates it writes), `junit.rs` (the hand-written reader for nextest's JUnit subset: parsed,
-  unparsable, or zero test cases — the last two UNVERIFIABLE, never "no failures found"; the
-  release-gate policy that consumes it is the flagship follow-up).
+  templates it writes), `junit.rs` (the reader for nextest's JUnit subset: parsed, unparsable, or
+  zero test cases — the last two UNVERIFIABLE, never "no failures found").
 - `baselines/` — `trust.yml` is the committed trust anchor (ADR 0010) and the **single home of
   the public key**; `<variant>.json` is a signed Baseline's canonical manifest and
   `<variant>.json.minisig` its signature; `trust.example.yml` is the template. The standalone
@@ -693,6 +744,12 @@ matter:
   hand-edited: its header names the generator, `rules_v`, selection, applying-claim count and an
   `sha256:` identity, and a regenerated file replaces it in the same commit as the claim that
   moved it.
+- `.config/nextest.toml` — the reviewed nextest profile: `[profile.ci] fail-fast = false`, and
+  `[profile.ci.junit]` carrying `path = "junit.xml"` and `report-skipped = "ignored"` (under the
+  `junit` table, because the top-level spelling is silently ignored in 0.9.149). Its artefact
+  `target/nextest/ci/junit.xml` is what `req gate --test-report` reads, and `report-skipped` is
+  what makes a skipped test *present* in it — which is how "a skipped test is not a pass" is
+  observable rather than assumed.
 - `.scratch/` — session scratch, gitignored; never a deliverable.
 - Path facts: there are none to pin, and that is the design. Every subcommand resolves its corpus
   at runtime (ADR 0012) — `--root <dir>`, else `REQ_ROOT`, else the nearest ancestor of the working

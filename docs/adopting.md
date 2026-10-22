@@ -60,11 +60,13 @@ the corpus. It prints the next steps, including the CI file. Confirm what you go
 
 ```bash
 req canon --verify   # exit 0, "rules_v 5; verified 1, candidates 0, mismatches 0"
-req gate             # exit 0, "verdict: PASS — every policy settled in the affirmative, and every claim was decided"
+req gate             # exit 3 — the starter claim links no test yet (ADR 0019); see "Link each claim…"
 ```
 
-If either is not exit 0, the corpus is not yours yet — report it with the command and the exit code
-(bottom of this page).
+If `req canon --verify` is not exit 0, the corpus is not yours yet — report it with the command and
+the exit code (bottom of this page). `req gate` exits **3** here by design, not by accident: the
+starter claim is machine-evidenced (the default) with no link and no report, an unexercised policy is
+never a pass, and it has no process declaration to fall back on. The section *Link each claim to its proving test* is what turns it green.
 
 ## Adopting from documents you already have
 
@@ -199,34 +201,10 @@ including the tri-state — and `req <command> --help` works before a corpus exi
    claims cannot be told from every claim having vanished, so never "clean up" a corpus down to
    nothing; delete a requirement by deleting its claim, deliberately.
 
-## Link a claim to the test that proves it (field only)
-
-A claim may say which tests prove it:
-
-```yaml
-tests:
-  - "parity::the_seed_corpus_holds"
-  - "view::an_edge_that_leaves_the_selection_is_named"
-evidence: machine          # the default; omit it
-```
-
-Each id is `classname::name` exactly as a JUnit report writes it, because that pair is the test's
-identity — a rename must show up as a *missing* id, never as a pass. The field is **authored and outside
-identity**: adding, removing or renaming a link moves no address. The signed Baseline attests it instead
-(`tests_hash`, envelope v4), so unlinking a claim after signing is FAIL.
-
-A claim the **process itself** establishes — a Decision, a signature, a workflow — declares
-`evidence: process` with **no** `tests:` list (naming both is a load error). Process is never inferred:
-an empty `tests:` list on a machine claim means *no link*, and is a finding, not a declaration.
-
-This change lands the field, the hash and the envelope. The **release gate** that reads a run's report
-(`req gate --test-report <junit.xml>`) and answers "does a test that proves each applying claim pass?"
-is ADR 0019's flagship follow-up; the four outcomes and the report wiring arrive with it.
-
 ## Sign the Baseline
 
-`req baseline --at <ts>` prints the canonical manifest (envelope v4, ADRs 0016 and 0019) — the exact bytes a
-signature covers — and **req never signs**: the signature is the human's act, and a key the tool could
+`req baseline --at <ts>` prints the canonical manifest (envelope v4, ADRs 0016 and 0019) — the exact
+bytes a signature covers — and **req never signs**: the signature is the human's act, and a key the tool could
 reach would prove nothing (ADR 0010). A manifest with no valid signature over it is *not yet a Baseline*,
 and verification says so.
 
@@ -240,7 +218,7 @@ req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not y
 
 - **`--at` is required and is the signing time.** It goes *inside* the signed bytes, so it cannot be
   backdated without breaking the signature. Req never invents one: emitting without `--at` is a usage
-  error (exit 2). A v3-or-later manifest also attests the Decision log's chain head, and emission refuses (exit 3)
+  error (exit 2). A v3 manifest also attests the Decision log's chain head, and emission refuses (exit 3)
   when that log is absent, unparsable or tampered — a head that attests nothing must not be signed.
 - **`-Sm` is `-S` (sign) with `-m <manifest>`**, and its default output name is `<manifest>.minisig` —
   exactly the file `--verify` looks for. Name it otherwise with `-x <path>` and pass `--signature <path>`.
@@ -259,12 +237,106 @@ req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not y
   (`valid_from`, `valid_until`, `revoked_at`): old Baselines stay verifiable against the old key, and a
   key revoked at or before a Baseline's signing time FAILS.
 - **An edit after signing is FAIL, not drift**: verification re-derives every address, so a claim edited
-  once the manifest was signed is the same class as a hand-edited digest. A v3-or-later manifest also FAILs when
-  the Decision log no longer re-derives the chain head it records; an absent log is UNVERIFIABLE, never
-  FAIL.
+  once the manifest was signed is the same class as a hand-edited digest. A v3-or-later manifest also
+  FAILs when the Decision log no longer re-derives the chain head it records; an absent log is
+  UNVERIFIABLE, never FAIL.
+- **v4 attests the evidence declaration and its links; v3 does not.** A v4 manifest records each
+  claim's `tests_hash`, so a `tests:` or `evidence:` edit after signing is **FAIL** — the same class as
+  an edited address. A v3 manifest still
+  verifies on its historical signed bytes and says **once** that it predates v4: its tests are *not
+  attested*, which is not a failure, and a release that wants attestation re-emits and re-signs as v4.
 - **A `rules_v` mismatch is UNVERIFIABLE** with the re-sign remedy: an address is derived from the rules
   version, so the comparison is void rather than failed. A v2 manifest still parses and is reported as
   *predates … re-issue and re-sign* — re-emit with `--at` and sign again.
+
+## Link each claim to its proving test
+
+A claim may carry `tests:` — the test ids that prove it. The list is **authored**, like its rationale,
+and it is a claim about evidence: link a claim only to the test that demonstrably proves it. **A wrong
+link is worse than no link** — no link is UNVERIFIABLE and says so, while a wrong link manufactures
+confidence.
+
+```yaml
+tests:
+  - "req::canon::a_rewording_keeps_its_address"
+```
+
+A test id is `classname::name` — the two attributes the report's `<testcase>` carries, joined by `::`
+— so the `classname` may itself contain `::`. Read the id out of the report rather than retyping it:
+an id compared exactly means a typo is "linked test not in the report", not a silent match.
+
+- **It is outside identity.** Adding, removing or renaming a link moves no address — a test rename must
+  never move a requirement. What moves instead is `tests_hash`, which the signed Baseline attests, so
+  unlinking — or flipping the evidence mode — after signing is FAIL rather than a silent edit.
+- **It is optional.** A **machine** claim with no `tests:` (or an empty list) simply links nothing; the
+  gate names it, per claim. That is the flagship answer, not a parse error.
+- **Leave unlinked what you cannot prove.** An unlinked claim is exit 3, never a PASS; an agent cannot
+  make it go away without adding a link that survives review.
+
+**Process evidence is a declaration, never a silence.** If the process itself establishes the claim — a
+recorded Decision, a signature, a workflow — say so, and link nothing:
+
+```yaml
+evidence: process
+tests: []
+```
+
+The gate reports it **PASS as declared**, names it (`* process-evidenced (declared, not machine-proven)`)
+and counts it; it is never folded into the machine pass. A process claim must carry no links (naming both
+is a load error, exit 3), and an empty `tests:` list on a machine claim is *no linked test* —
+UNVERIFIABLE, never process by accident.
+
+The report comes from **nextest** (ADR 0019) — adopted for the JUnit artefact, not for speed: measured
+2026-10-21, a warm `cargo test` took 2 s and `cargo nextest run` 2–3 s, both paying the ~24 s link over
+the same tests.
+
+```bash
+cargo install cargo-nextest --version 0.9.149 --locked   # pinned; verified at pin time
+cargo nextest run --profile ci                            # writes target/nextest/ci/junit.xml
+req gate --test-report target/nextest/ci/junit.xml deployment_mode=air_gapped
+```
+
+The profile is reviewed, not improvised (`.config/nextest.toml`):
+
+```toml
+[profile.ci]
+fail-fast = false
+
+[profile.ci.junit]
+path = "junit.xml"
+report-skipped = "ignored"
+```
+
+`report-skipped` belongs **under `[profile.ci.junit]`** — the top-level spelling is silently ignored in
+0.9.149 and would drop every `#[ignore]`d test from the artefact — and its value is `"ignored"`, not
+`"all"`, which would also list tests skipped by filters or partitions. `cargo test` is **replaced** by
+this run, not kept beside it: one run, one truth. One gap, named rather than hidden: nextest does not
+run doctests, so a `#[doc]` example needs its own step.
+
+The `tests_linked` policy answers four ways over the applying claims, and there is no fifth:
+
+| outcome | condition | fold |
+|---|---|---|
+| **PASS** | the claim links at least one test and at least one linked test **passed** | contributes pass |
+| **FAIL** | every linked test is present in the report and **none passed** (a `skipped` test is not a pass) | exit 1 |
+| **UNVERIFIABLE — *no linked test*** | the claim carries no `tests:` entry — the flagship answer, named per claim | exit 3 |
+| **UNVERIFIABLE — *linked test not in the report*** | a linked test id has no testcase in the report (renamed or deleted) — never folded into PASS | exit 3 |
+
+The four outcomes judge **machine** evidence: a claim declaring `evidence: process` is answered by its
+declaration, which is a reported fact, not a fifth outcome.
+
+An absent, unparsable or zero-testcase report is UNVERIFIABLE **once**, naming the reader's reason —
+never once per claim. `FAIL` outranks any UNVERIFIABLE; both outrank PASS, and the exit code is the
+existing fold. **A gate with no `--test-report` cannot exercise the policy and is UNVERIFIABLE (exit
+3)** — unless every applying claim declares `evidence: process`, in which case nothing machine-evidenced
+needs a report: a policy that cannot be exercised is not a pass, so the report is part of the gate
+invocation, not an optional extra.
+
+**The rename lesson.** A test id is the test's *identity*: rename the test and the claim points at an
+id the report no longer carries. The answer is *linked test not in the report* — UNVERIFIABLE, exit 3 —
+never a pass, because folding a rename into PASS is how a green build stops meaning anything. When you
+rename or delete a test, edit its claim in the same commit; the gate is what tells you that you did
+not.
 
 ## CI
 
@@ -322,6 +394,29 @@ jobs:
           req --version
       - name: every stored address still recomputes (variant-independent)
         run: req canon --verify
+      # The tests that prove the claims (ADR 0019). This template is Rust and uses nextest because
+      # it writes the JUnit/XUnit document `req gate --test-report` reads; on another stack, run
+      # your own test command and point `--test-report` at the report it writes. A claim with no
+      # linked test is a finding, never a pass — the gate below names it.
+      - name: the tests that prove the claims, as the report the gate reads
+        run: |
+          set -eu
+          cargo install cargo-nextest --version 0.9.149 --locked
+          # The reviewed profile, only when the project does not already own one: fail-fast off,
+          # so one failure cannot hide the rest, and the JUnit report with skipped tests present
+          # (a skipped test must be visible — it is not a pass).
+          if [ ! -f .config/nextest.toml ]; then
+            mkdir -p .config
+            cat > .config/nextest.toml <<'TOML'
+          [profile.ci]
+          fail-fast = false
+
+          [profile.ci.junit]
+          path = "junit.xml"
+          report-skipped = "ignored"
+          TOML
+          fi
+          cargo nextest run --profile ci
       - name: the release gate — every declared variant, and the default when none is declared
         run: |
           set -eu
@@ -340,7 +435,7 @@ jobs:
           rc=0
           rejected=0
           gate() {
-            out="$(req gate "$@" 2>&1)" && code=0 || code=$?
+            out="$(req gate --test-report target/nextest/ci/junit.xml "$@" 2>&1)" && code=0 || code=$?
             verdict="$(printf '%s' "$out" | sed -n 's/^verdict: //p' | head -1)"
             printf '| `%s` | %s | %s |\n' "${*:-<none>}" "$code" "${verdict:-no verdict line}" >> "$summary"
             # Fail outranks unverifiable, and nothing non-zero may be swallowed. The rule: 1 is
@@ -452,7 +547,7 @@ jobs:
                 continue
               fi
               releases=$((releases + 1))
-              capture "gate-${releases}" gate "${release[@]}" < /dev/null
+              capture "gate-${releases}" gate --test-report target/nextest/ci/junit.xml "${release[@]}" < /dev/null
             done < .req/variants
           fi
           # Only a file THIS STEP READ, declaring no line, is the default variant and its bare
@@ -543,7 +638,8 @@ a line that is empty after stripping the comment is skipped. Two rules matter:
   the offending line named, and a file whose every line was rejected is not the default variant:
   neither the gate step nor the artifact step falls back to the bare run for it.
 - **No release line declares the default variant.** A comment-only `.req/variants` describes exactly
-  one variant — the default — so the step runs the bare `req gate` only when the loop read no line.
+  one variant — the default — so the step runs the bare-variant `req gate` (still with
+  `--test-report target/nextest/ci/junit.xml`) only when the loop read no line.
   Once a line is declared, **the loop is the gate**: a bare run beside it is UNVERIFIABLE on any
   corpus carrying a selector (ADR 0015), and a false red beside green variants is how a real red
   gets ignored. The unscoped variant is still not a line — a blank line cannot be distinguished from
@@ -592,7 +688,9 @@ gate exits **3 (UNVERIFIABLE)** and names the claims it could not examine, with 
 invocation is the only one that can be green. So:
 
 **Every variant the project declares gets its own gate invocation.** That is what `.req/variants`
-is for. When you add an `applicability:` predicate to a claim, add its variant to `.req/variants`
+is for — and since ADR 0019 each invocation also takes the run's report
+(`--test-report target/nextest/ci/junit.xml`), because without it the `tests_linked` policy cannot be
+exercised and the gate is UNVERIFIABLE rather than green. When you add an `applicability:` predicate to a claim, add its variant to `.req/variants`
 in the same commit — otherwise the claim is inside no gate invocation at all, and the bare run tells
 you so: it exits 3 and names that claim among the undecided.
 
@@ -601,7 +699,9 @@ you so: it exits 3 and names that claim among the undecided.
 Nothing about the tool changes; only whether it is run. The gate becomes a ritual, and a ritual that
 is not enforced is not a gate. The cheapest enforcement is a `pre-push` hook that runs
 `req canon --verify` and then the same loop over `.req/variants` shown above — on a corpus carrying
-a selector the bare invocation is UNVERIFIABLE (ADR 0015), so the loop *is* the gate. Do not
+a selector the bare invocation is UNVERIFIABLE (ADR 0015), so the loop *is* the gate. Run the suite
+first (nextest, one profile, one report) and pass `--test-report` on every line, or the gate is
+UNVERIFIABLE for lack of evidence. Do not
 oversell it: a local hook is a reminder, not a record, and nothing outside your machine can see
 whether it ran.
 

@@ -114,20 +114,59 @@ its identity, so author it *before* `--fill`, and re-fill when you change it.
 Declare every release in `.req/variants`: one `key=value ...` context per line, `#` comments and blank
 lines skipped, e.g. `deployment_mode=air_gapped`; `req` does not read it; the CI step runs one gate per line.
 
+The gate also needs **test evidence** (ADR 0019): a claim may carry `tests:` — authored test ids,
+outside identity, attested in the signed Baseline — and the `tests_linked` policy reads the run's JUnit
+report.
+
 ```bash
-req gate deployment_mode=air_gapped
+cargo install cargo-nextest --version 0.9.149 --locked   # the pinned runner (ADR 0019)
+cargo nextest run --profile ci                            # writes target/nextest/ci/junit.xml
+req gate --test-report target/nextest/ci/junit.xml deployment_mode=air_gapped
 ```
 
-Exit **0**, first line `# Release gate: <n> applying claim(s), 0 undecided (an undecided claim is
-never treated as absent)`, last line `verdict: PASS — every policy settled in the affirmative, and
-every claim was decided`. The variant must be one your corpus describes: author the
+With every applying claim linked to a test that passed, exit **0**, first line
+`# Release gate: <n> applying claim(s), 0 undecided (an undecided claim is never treated as absent)`,
+last line `verdict: PASS — every policy settled in the affirmative, and every claim was decided`. The
+variant must be one your corpus describes: author the
 `applicability: deployment_mode == air_gapped` on the claims it scopes, in the same commit as the line;
 an entry nothing decides is refused — exit **3**, `selectors_confirmed` names the key (ADR 0006).
+
+The test-evidence policy answers four ways over the applying claims, and there is no fifth:
+
+| outcome | condition | fold |
+|---|---|---|
+| **PASS** | the claim links at least one test and at least one linked test **passed** | contributes pass |
+| **FAIL** | every linked test is present in the report and **none passed** (a `skipped` test is not a pass) | exit 1 |
+| **UNVERIFIABLE — *no linked test*** | the claim carries no `tests:` entry — the flagship answer, named per claim | exit 3 |
+| **UNVERIFIABLE — *linked test not in the report*** | a linked test id has no testcase in the report (renamed or deleted) — never folded into PASS | exit 3 |
+
+An absent, unparsable or zero-testcase report is UNVERIFIABLE **once**, naming the reader's reason;
+`FAIL` outranks any UNVERIFIABLE and both outrank PASS. Write the links with `tests:` on the claim,
+copying the test id out of the report — authoring, the report, and the rename lesson are in
+`docs/adopting.md` §Link each claim to its proving test. A link names a test by its `classname::name`
+id — exactly the two attributes the report's `<testcase>` carries, joined by `::`.
+
+**Some claims are established by the process, not a test** — a recorded Decision, a signature, a
+workflow. Say so, and link nothing:
+
+```yaml
+evidence: process
+tests: []
+```
+
+The four outcomes above judge **machine** evidence, and the default is machine: a `process` claim is
+answered **PASS as declared**, named (`* process-evidenced (declared, not machine-proven)`) and counted
+in `process_evidenced` — never folded into the machine pass, and never inferred from an empty `tests:`
+list (that is *no linked test*, exit 3). Naming both process and links is a load error (exit 3). A gate
+with no `--test-report` cannot exercise the machine policy and is UNVERIFIABLE (exit 3) — unless every
+applying claim declares `process`, which needs no report.
 
 A bare `req gate` on a corpus carrying a selector exits **3**, names the claims the invocation left
 undecided with the remedy, and ends `verdict: UNVERIFIABLE — nothing is wrong, but something cannot
 be confirmed`. That is correct since ADR 0015, not a bug: an undecided claim was not examined, and an
-unexamined claim is not a pass — while you declare no variants, the bare `req gate` is the gate (exit 0).
+unexamined claim is not a pass — while you declare no variants, the bare `req gate` is the gate, but
+it is only green with `--test-report`, because the machine test-evidence policy cannot be exercised
+without one (a corpus whose applying claims all declare `process` needs none).
 
 A release line is a `key=value` context, never an option: any argument that looks like an option
 rejects the line, because a help flag wins wherever it appears — `req gate deployment_mode=x --help`
@@ -140,8 +179,9 @@ nothing and exits **0** current (`[CURRENT] …`), **1** stale or hand-edited (f
 named — regenerate, never edit), **3** it cannot judge. Pin the path in `.req/projections` and run
 `req render --check <path>` for each in CI, exactly as `.req/variants` is gated. The copy-ready
 Action is `examples/github-workflows/req.yml` (the same bytes `req init` prints) and it runs
-`req canon --verify`, the variant gates and the JSON documents — add the projection check beside
-them if you commit a projection. On a CI runner the install needs read access to req's private
+`req canon --verify`, `cargo nextest run --profile ci` for the report, the variant gates (each with
+`--test-report`) and the JSON documents — add the projection check beside them if you commit a
+projection. On a CI runner the install needs read access to req's private
 host: the Action writes a read-only key from the `REQ_DEPLOY_KEY` secret into the job's temp dir
 (never `$HOME`) and removes it in a final `if: always()` step; the key step skips itself when the
 secret is unset, the case of a runner that already has access.
@@ -166,7 +206,9 @@ beside `--out` or `--check` is a usage error (exit 2).
 In CI the copy-ready Action writes those documents to `req-views/` and uploads them as an artifact,
 with **one gate document per declared release** (`gate-<n>.json`) — a bare `req gate` is
 UNVERIFIABLE on a selector-carrying corpus (ADR 0015), so the per-variant document is the one that
-carries the release verdict. A comment-only `.req/variants` makes `gate.json` the default variant's
+carries the release verdict. A `req.gate/1` document carries **six** `policies` (`tests_linked` after
+`rationale_present`) and a top-level `process_evidenced` array: a consumer that reads only the machine
+count would overstate what was proven. A comment-only `.req/variants` makes `gate.json` the default variant's
 document; an absent or unreadable one is the gate step's red, and then no gate document exists at
 all. Read the artifact, not the log; each document's exit class is recorded beside it, and the gate
 step remains what decides the build.
@@ -177,6 +219,14 @@ blocks and is never folded into a pass — **2** usage. An agent consumes the ex
 line, not the prose. `req render --check <path>` is the drift alarm: 0 current, 1 stale or
 hand-edited, 3 cannot judge — treat 3 as not current, and never as a pass.
 
-## What is not here yet
+## The honest limit
 
-The test-report and the claim↔test linkage (pack D) are not built: nothing in this path reports test evidence, and audit coverage is not test coverage.
+`req gate --test-report` says **which claims have no passing test** — named per claim, exit 3, never
+folded into a pass. It does not say that a linked test *proves* the claim: a link is a claim about
+evidence, attested in the signed Baseline, and reviewed like a rationale. A `process` declaration is
+evidence of a different kind: the gate can check that it is consistent and attested, never that the
+process check was run — so it is reported as declared, not as proven. A wrong link is worse than no
+link, because it manufactures confidence; `req audit`'s coverage is not test coverage either. And the
+report is an input, not a verdict — an absent, unparsable or empty one is UNVERIFIABLE, never "no
+failures found". One gap is named rather than hidden: nextest does not run doctests, so a future
+`#[doc]` example needs its own gate step.

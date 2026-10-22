@@ -65,9 +65,8 @@ _Avoid_: proof (the test is evidence; the link is a claim about it), coverage
 
 **Process evidence**:
 An authored declaration that a claim is established by the process itself — a Decision, a
-signature, a workflow — rather than by a linked test; attested in the Baseline and never
-inferred from an empty test list. How the release gate reports it is the flagship
-follow-up's decision, not part of the declaration.
+signature, a workflow — rather than by a linked test; reported as declared, never
+machine-proven, and never inferred from an empty test list.
 _Avoid_: machine-proven, verified (no test ran)
 
 **Baseline**:
