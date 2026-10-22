@@ -299,6 +299,43 @@ verify_baseline "$baseline_file"
 # The decision log: the gate re-checks the recorded decisions. See verify_decision above
 # for what each exit means — 1 and 3 both block.
 verify_decision
+
+# `--format json` (pack C): each of the four commands the pack scopes must emit a document a
+# consumer can parse. The step reads stdout and parses it; it deliberately **ignores the
+# command's exit code**, which the steps above already judge — a bare `gate` exits 3 on this
+# corpus and an unsigned `audit` exits 3 by design. This step's claim is "the document parses",
+# not "the verdict is green", so an open verdict is not a failure here while an absent or
+# unparseable document is. python3 missing is SKIP, never PASS.
+json_smoke() {
+  if [ "$dry" -eq 1 ]; then
+    printf 'PLAN  cargo run -q -- %s --format json | python3 -c json.load\n' "$*"
+    return 0
+  fi
+  # stderr carries the corpus-root line, never part of the document.
+  json_out="$(cargo run -q -- "$@" --format json 2>/dev/null)"
+  if [ -z "$json_out" ]; then
+    printf 'FAIL  --format json emitted no document for `%s`\n' "$*"
+    fail=1
+    return 0
+  fi
+  if printf '%s' "$json_out" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
+    printf 'PASS  --format json parses: req %s\n' "$*"
+  else
+    printf 'FAIL  --format json is not parseable JSON: req %s\n' "$*"
+    fail=1
+  fi
+}
+
+if [ "$dry" -eq 1 ] || command -v python3 >/dev/null 2>&1; then
+  say "the --format json documents parse (render, trace, gate, audit)"
+  json_smoke render
+  json_smoke trace
+  json_smoke gate
+  json_smoke audit
+else
+  skip "python3 missing: cannot parse-check the --format json documents"
+fi
+
 run cargo run -q -- bench   # seed parity corpus: 0 PASS / 1 FAIL / 3 UNVERIFIABLE
 # External corpora (other projects' real requirement prose, labelled by
 # construction). Same hard gate; see docs/canonical-hashing.md 6.3. v2 adds the

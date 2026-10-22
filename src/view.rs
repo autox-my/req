@@ -33,7 +33,10 @@
 
 use crate::canon::{RULES_V, address_hex, canonical_json, evaluate_claim};
 use crate::digest::sha256_hex;
+use crate::format::{self, Format, SCHEMA_RENDER, SCHEMA_TRACE};
 use crate::select::{Applies, Context, applies, parse_predicate};
+use serde::Serialize;
+use serde::ser::{SerializeStruct, Serializer};
 use std::path::{Path, PathBuf};
 
 /// One claim, as the view needs it: its identity, what it says, and how it selected.
@@ -61,7 +64,10 @@ pub struct Row {
 
 /// What a trace could not settle. Both are outcomes, not warnings: `dangling` is
 /// UNVERIFIABLE, `undecided_edges` needs a decision from whoever owns the variant.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+///
+/// `Serialize` is derived so `--format json` carries the findings **verbatim** — the document is
+/// the same classification the text path prints, not a second one.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
 pub struct TraceFindings {
     pub dangling: Vec<String>,
     pub undecided_edges: Vec<String>,
@@ -233,6 +239,177 @@ fn stored_marker(stored: &crate::fill::StoredState) -> String {
         crate::fill::StoredState::Candidate(why) => format!("  [candidate: {why}]"),
         crate::fill::StoredState::Mismatch(why) => format!("  [MISMATCH: {why}]"),
     }
+}
+
+// ---------------------------------------------------------------------------
+// JSON documents (pack C)
+// ---------------------------------------------------------------------------
+//
+// One row shape for both views, built from the real [`Row`] — not a second struct a field
+// could be added to without the other rendering noticing. `stored`, `relations_hash` and
+// `rationale_hash` are what the gate and the audit surface *judge*, not what a consumer reads,
+// so they stay out of the document; the rendering's contract is exactly the fields below.
+
+/// One outgoing relation in the document's shape.
+#[derive(Serialize)]
+struct RelationDocument<'a> {
+    relation: &'a str,
+    to: &'a str,
+}
+
+/// The provenance a row exposes: source and date, the same two the text view prints.
+#[derive(Serialize)]
+struct RationaleDocument<'a> {
+    source: &'a str,
+    date: &'a str,
+}
+
+impl Serialize for Row {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let relations: Vec<RelationDocument<'_>> = self
+            .relations
+            .iter()
+            .map(|(kind, to)| RelationDocument { relation: kind, to })
+            .collect();
+        let rationale = RationaleDocument {
+            source: &self.rationale_source,
+            date: &self.rationale_date,
+        };
+        let mut row = serializer.serialize_struct("Row", 8)?;
+        row.serialize_field("claim_id", &self.claim_id)?;
+        row.serialize_field("statement", &self.statement)?;
+        row.serialize_field("modality", &self.modality)?;
+        // The address is the loaded claim's own address, rendered with the algorithm that
+        // derives it — never re-derived or hand-written here.
+        row.serialize_field("address", &format!("sha256:{}", self.address))?;
+        row.serialize_field("applies", self.applies.as_str())?;
+        row.serialize_field("selectors", &self.selectors)?;
+        row.serialize_field("relations", &relations)?;
+        row.serialize_field("rationale", &rationale)?;
+        row.end()
+    }
+}
+
+/// `render`'s document. The three sections keep the text path's separation: an undecided claim
+/// is in `undecided`, never in `applies`.
+#[derive(Serialize)]
+struct RenderDocument<'a> {
+    schema: &'static str,
+    generator: &'static str,
+    rules_v: u32,
+    selection: &'a Context,
+    applies: Vec<&'a Row>,
+    undecided: Vec<&'a Row>,
+    outside: Vec<&'a Row>,
+    identity: String,
+}
+
+/// One edge in the document's shape — used for both directions, because they are the same edge
+/// seen from the storing side and the derived side.
+#[derive(Serialize)]
+struct EdgeDocument<'a> {
+    from: &'a str,
+    relation: &'a str,
+    to: &'a str,
+}
+
+/// `trace`'s document: the outgoing edges, the derived incoming edges (REQ-0020 stores each
+/// relation once), and the findings.
+#[derive(Serialize)]
+struct TraceDocument<'a> {
+    schema: &'static str,
+    generator: &'static str,
+    rules_v: u32,
+    selection: &'a Context,
+    edges: Vec<EdgeDocument<'a>>,
+    derived_incoming: Vec<EdgeDocument<'a>>,
+    findings: &'a TraceFindings,
+}
+
+/// The rows a view sorts for both renderings: claim id order, whatever order the loader used.
+fn sorted_rows(rows: &[Row]) -> Vec<&Row> {
+    let mut sorted: Vec<&Row> = rows.iter().collect();
+    sorted.sort_by(|a, b| a.claim_id.cmp(&b.claim_id));
+    sorted
+}
+
+/// The `render` document. The identity is [`identity_digest`] over the applying addresses — the
+/// same digest the committed projection's header carries, so the two artefacts cannot disagree
+/// about what was released.
+pub fn render_document(rows: &[Row], context: &Context) -> String {
+    let sorted = sorted_rows(rows);
+    let section = |state: Applies| -> Vec<&Row> {
+        sorted
+            .iter()
+            .copied()
+            .filter(|row| row.applies == state)
+            .collect()
+    };
+    let addresses: Vec<String> = sorted
+        .iter()
+        .filter(|row| row.applies == Applies::Yes)
+        .map(|row| row.address.clone())
+        .collect();
+    let document = RenderDocument {
+        schema: SCHEMA_RENDER,
+        generator: "render",
+        rules_v: RULES_V,
+        selection: context,
+        applies: section(Applies::Yes),
+        undecided: section(Applies::Unknown),
+        outside: section(Applies::No),
+        identity: format!("sha256:{}", identity_digest(&addresses)),
+    };
+    format::document(&document)
+}
+
+/// The `trace` document, and the findings the plain verdict folds into its exit code. The
+/// findings come from [`trace`] — the same call the text path makes — so the document cannot
+/// classify an edge differently from the report beside it.
+pub fn trace_document(rows: &[Row], context: &Context) -> (String, TraceFindings) {
+    let (_, findings) = trace(rows, context);
+    let sorted = sorted_rows(rows);
+
+    let mut edges = Vec::new();
+    for row in &sorted {
+        for (kind, to) in &row.relations {
+            edges.push(EdgeDocument {
+                from: &row.claim_id,
+                relation: kind,
+                to,
+            });
+        }
+    }
+    // The reverse view is derived by traversal, exactly as the text matrix derives it: each
+    // stored relation contributes one incoming edge to its target.
+    let mut derived_incoming = Vec::new();
+    for target in &sorted {
+        for other in &sorted {
+            for (kind, to) in &other.relations {
+                if to == &target.claim_id {
+                    derived_incoming.push(EdgeDocument {
+                        from: &other.claim_id,
+                        relation: kind,
+                        to: &target.claim_id,
+                    });
+                }
+            }
+        }
+    }
+
+    let document = TraceDocument {
+        schema: SCHEMA_TRACE,
+        generator: "trace",
+        rules_v: RULES_V,
+        selection: context,
+        edges,
+        derived_incoming,
+        findings: &findings,
+    };
+    (format::document(&document), findings)
 }
 
 // ---------------------------------------------------------------------------
@@ -454,12 +631,21 @@ enum Mode {
 struct Invocation {
     mode: Mode,
     context: Context,
+    format: Format,
 }
 
 /// Parse the argv of `render`/`trace`. A help flag never reaches here: `main.rs` answers it
 /// before the handler, wherever it appears.
 fn parse_invocation(args: &[String], command: &str) -> Result<Invocation, i32> {
-    let usage = || format!("usage: req {command} [--out <path>] [--check <path>] [key=value ...]");
+    let usage = || {
+        format!(
+            "usage: req {command} [--out <path>] [--check <path>] [--format text|json] \
+             [key=value ...]"
+        )
+    };
+    // The format flag is stripped first, by the shared parser, so its own errors and the rest of
+    // the command's grammar are read in one place each.
+    let (format, args) = format::take_format(args, &usage())?;
     let mut out: Option<PathBuf> = None;
     let mut check: Option<PathBuf> = None;
     let mut context = Context::new();
@@ -518,7 +704,22 @@ fn parse_invocation(args: &[String], command: &str) -> Result<Invocation, i32> {
         (None, None) => Mode::Plain,
         (Some(_), Some(_)) => unreachable!("the parse above refuses both flags"),
     };
-    Ok(Invocation { mode, context })
+    // v1 renders JSON to stdout only. A committed projection's header contract was designed for
+    // text, and pretending it already works for JSON would be a half-feature; the error says
+    // exactly where the extension point is.
+    if format == Format::Json && !matches!(mode, Mode::Plain) {
+        eprintln!(
+            "{}\n`--format json` writes to stdout only: a JSON projection on disk with \
+             `--out`/`--check` is a follow-on, not this version",
+            usage()
+        );
+        return Err(2);
+    }
+    Ok(Invocation {
+        mode,
+        context,
+        format,
+    })
 }
 
 /// The view and whether its plain verdict is open (unsettled). `--out`/`--check` do not use the
@@ -535,12 +736,25 @@ fn project(generator: &str, rows: &[Row], context: &Context) -> (String, bool) {
     }
 }
 
-/// `req render [--out <path>] [--check <path>] [key=value ...]`
+/// The JSON rendering of a plain view. The open/settled answer is derived from the same findings
+/// the document carries, so the exit code is the verdict's and never the rendering's.
+fn json_document(generator: &str, rows: &[Row], context: &Context) -> (String, bool) {
+    if generator == GENERATOR_TRACE {
+        let (document, findings) = trace_document(rows, context);
+        let open = !findings.dangling.is_empty() || !findings.undecided_edges.is_empty();
+        (format!("{document}\n"), open)
+    } else {
+        let open = rows.iter().any(|row| row.applies == Applies::Unknown);
+        (format!("{}\n", render_document(rows, context)), open)
+    }
+}
+
+/// `req render [--out <path>] [--check <path>] [--format text|json] [key=value ...]`
 pub fn run_render(args: &[String], root: &Path) -> i32 {
     run_view(args, root, GENERATOR_RENDER)
 }
 
-/// `req trace [--out <path>] [--check <path>] [key=value ...]`
+/// `req trace [--out <path>] [--check <path>] [--format text|json] [key=value ...]`
 pub fn run_trace(args: &[String], root: &Path) -> i32 {
     run_view(args, root, GENERATOR_TRACE)
 }
@@ -564,8 +778,13 @@ fn run_view(args: &[String], root: &Path, generator: &str) -> i32 {
                     return 3;
                 }
             };
-            let (view, open) = project(generator, &rows, &invocation.context);
-            print!("{view}");
+            // The plain verdict is computed once, for whichever rendering is asked for: the
+            // document and the exit code cannot disagree about whether the view is settled.
+            let (output, open) = match invocation.format {
+                Format::Text => project(generator, &rows, &invocation.context),
+                Format::Json => json_document(generator, &rows, &invocation.context),
+            };
+            print!("{output}");
             if open { 3 } else { 0 }
         }
         Mode::Out(path) => {

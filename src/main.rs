@@ -7,15 +7,19 @@
 //!   req [--root <dir>] canon --verify      — check the stored derived fields against the parse
 //!   req [--root <dir>] compare A.yml B.yml — what kind of change is this between two claims?
 //!   req [--root <dir>] select k=v [...]    — which claims apply in this variant? (tri-state)
-//!   req [--root <dir>] render k=v [...]    — the spec view for that selection
-//!   req [--root <dir>] trace k=v [...]     — the traceability view, with derived incoming edges
+//!   req [--root <dir>] render [--format text|json] k=v [...]
+//!                                          — the spec view for that selection
+//!   req [--root <dir>] trace [--format text|json] k=v [...]
+//!                                          — the traceability view, with derived incoming edges
 //!   req [--root <dir>] impact <claim-id>   — what depends on that claim, transitively
-//!   req [--root <dir>] gate k=v [...]      — may this selection ship? (policies over applying claims)
+//!   req [--root <dir>] gate [--format text|json] k=v [...]
+//!                                          — may this selection ship? (policies over applying claims)
 //!   req [--root <dir>] propose             — the Tier-2 funnel: blocking, then provider adjudication
 //!   req [--root <dir>] baseline --at <ts>   — emit the canonical manifest a human signs (ADR 0016)
 //!   req [--root <dir>] baseline --verify F — verify a signed Baseline: drift, authority, trust,
 //!                                             signature, with the key judged at its signed_at
-//!   req [--root <dir>] audit [--baseline F] — the audit packet: coverage, provenance, undecided
+//!   req [--root <dir>] audit [--baseline F] [--format text|json]
+//!                                          — the audit packet: coverage, provenance, undecided
 //!   req [--root <dir>] decision [--fill]   — the decision log and its hash chain (step 8)
 //!   req init                               — create a corpus in the working directory
 //!
@@ -184,7 +188,7 @@ exit: 0 every claim decided, 3 at least one claim left undecided, 2 usage.
 `AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
 
 const RENDER_HELP: &str = "\
-usage: req render [--out <path>] [--check <path>] [key=value ...]
+usage: req render [--out <path>] [--check <path>] [--format text|json] [key=value ...]
 
 Prints the spec view for a selection: every applying claim's address, modality, statement,
 selector and outgoing relations, with the undecided claims in their own section and the
@@ -196,6 +200,11 @@ addresses. `--check <path>` regenerates the projection and compares bytes — it
 question and writes nothing; a committed projection is checked, never hand-edited. The two are
 one question each: give one of them, once.
 
+`--format text|json` selects the rendering (default `text`). `--format json` prints the same view
+as a `req.render/1` document on stdout: schema, generator, `rules_v`, the selection, the three
+sections and the identity digest. It is stdout only — `--out`/`--check` are text projections, and
+pairing either with `--format json` is a usage error (exit 2).
+
 exit: 0 settled (plain), written (--out), or current (--check); 1 a committed projection is
 stale or was hand-edited (--check); 3 anything an undecided claim leaves open (plain), a
 projection that cannot be written (--out), or one this build cannot judge — no header, another
@@ -204,7 +213,7 @@ build's rules_v, an unreproducible selection, or another command's projection (-
 `AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
 
 const TRACE_HELP: &str = "\
-usage: req trace [--out <path>] [--check <path>] [key=value ...]
+usage: req trace [--out <path>] [--check <path>] [--format text|json] [key=value ...]
 
 Prints the traceability matrix for a selection: the outgoing edges, the **derived** incoming
 edges (each relation is stored once, on the outgoing side), and the findings. Every edge that
@@ -217,6 +226,11 @@ generator (`req trace`). `--check <path>` regenerates and compares bytes, and wr
 committed projection is checked, never hand-edited. A projection made by the other command is
 UNVERIFIABLE here rather than stale: two commands are two artefacts.
 
+`--format text|json` selects the rendering (default `text`). `--format json` prints the same
+matrix as a `req.trace/1` document on stdout: schema, generator, `rules_v`, the selection, the
+edges, the derived incoming edges and the findings. It is stdout only — `--out`/`--check` are
+text projections, and pairing either with `--format json` is a usage error (exit 2).
+
 exit: 0 the edge graph is settled (plain), written (--out), or current (--check); 1 a committed
 projection is stale or was hand-edited (--check); 3 an edge into a claim the corpus does not
 hold or into one the variant leaves undecided leaves the matrix open (plain), a projection that
@@ -226,12 +240,17 @@ an unreproducible selection, or another command's projection (--check); 2 usage.
 `AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
 
 const GATE_HELP: &str = "\
-usage: req gate [key=value ...]
+usage: req gate [--format text|json] [key=value ...]
 
 Runs the release policies over the claims a variant leaves applying — addresses current,
 relations resolve, dependencies decided, rationale present — and confirms the invocation
 itself. A claim the invocation leaves undecided was not examined, and that is not a pass: a
 bare gate on a corpus carrying a selector is UNVERIFIABLE.
+
+`--format text|json` selects the rendering (default `text`). `--format json` prints the same
+answers as a `req.gate/1` document on stdout: schema, generator, `rules_v`, the selection, the
+folded verdict, the five policies and the undecided claims with what each is missing. The
+verdict is the same fold the exit code applies, so the document and the process cannot disagree.
 
 exit: 0 every policy passed and every claim decided, 1 a defect, 3 something that cannot be
 confirmed (an unfilled claim, a relation that does not resolve, a dependency left undecided,
@@ -285,12 +304,17 @@ verification path).
 `AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
 
 const AUDIT_HELP: &str = "\
-usage: req audit [--baseline <file>] [key=value ...]
+usage: req audit [--baseline <file>] [--format text|json] [key=value ...]
 
 Prints the audit packet for a Baseline: every applying claim's address, coverage state,
 provenance and outgoing relations, then the undecided claims in their own section, then the
 findings. Coverage is derived from the Baseline's drift; whether a signature is valid belongs
 to `req baseline --verify`, and this packet never asserts authority it did not check.
+
+`--format text|json` selects the rendering (default `text`). `--format json` prints the same
+packet as a `req.audit/1` document on stdout: schema, generator, `rules_v`, the selection,
+whether anything is ratified, the coverage lists (`not_judged` as its reason string) and the
+findings in order, each carrying the class the text packet prints.
 
 exit: 0 every applying claim covered and still matching, 1 a defect (drift, or no
 provenance), 3 nothing ratified, something uncovered, or coverage NOT JUDGED because the
