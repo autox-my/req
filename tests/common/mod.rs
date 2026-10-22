@@ -113,6 +113,71 @@ pub fn rationale(mut row: Row, source: &str) -> Row {
     row
 }
 
+/// A nextest-shaped JUnit document over the test ids a corpus's claims link, every one **passing**.
+///
+/// The gate's `tests_linked` policy reads a *report*; a test that judges another policy needs one
+/// that settles the evidence, or every assertion would be about the missing report instead of the
+/// rule under test. Scanning the claims is deliberate: the fixture's links and the report's cases
+/// cannot drift apart, and a claim that links nothing is simply absent from the report (which is
+/// the no-link finding, not this helper's business).
+///
+/// It is a fixture, never a claim about the real suite: `scripts/check.sh` feeds the gate the
+/// report nextest actually wrote.
+pub fn passing_junit(claims_dir: &std::path::Path, out: &std::path::Path) -> std::path::PathBuf {
+    let mut ids: Vec<String> = Vec::new();
+    let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(claims_dir)
+        .expect("the fixture has a claims/ directory")
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension().is_some_and(|ext| ext == "yml")
+                && path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .is_some_and(|stem| stem.starts_with("REQ-"))
+        })
+        .collect();
+    entries.sort();
+    for path in entries {
+        let text = std::fs::read_to_string(&path).expect("a claim is readable");
+        let mut in_tests = false;
+        for line in text.lines() {
+            if line.starts_with("tests:") {
+                in_tests = !line.trim_end().ends_with("[]");
+                continue;
+            }
+            if in_tests {
+                let trimmed = line.trim();
+                if let Some(rest) = trimmed.strip_prefix("- ") {
+                    let id = rest.trim().trim_matches('"');
+                    if id.contains("::") {
+                        ids.push(id.to_string());
+                    }
+                } else if !trimmed.starts_with('-') {
+                    in_tests = false;
+                }
+            }
+        }
+    }
+    let mut xml = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<testsuites name=\"nextest-run\" \
+         tests=\"{N}\" skipped=\"0\" failures=\"0\" errors=\"0\">\n    \
+         <testsuite name=\"req\" tests=\"{N}\" skipped=\"0\" errors=\"0\" failures=\"0\">\n",
+    )
+    .replace("{N}", &ids.len().to_string());
+    for id in &ids {
+        let (classname, name) = id
+            .rsplit_once("::")
+            .expect("a test id carries `classname::name`");
+        xml.push_str(&format!(
+            "        <testcase name=\"{name}\" classname=\"{classname}\"/>\n"
+        ));
+    }
+    xml.push_str("    </testsuite>\n</testsuites>\n");
+    std::fs::write(out, xml).expect("writes the fixture JUnit report");
+    out.to_path_buf()
+}
+
 /// The releases this repository declares, from `.req/variants`, as raw `key=value ...` lines.
 ///
 /// **One reader, so the tests and the script cannot disagree about which lines exist.** The grammar

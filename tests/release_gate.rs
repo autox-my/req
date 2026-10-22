@@ -4,7 +4,7 @@ mod common;
 
 use common::{rationale, row, stored};
 use req::fill::StoredState;
-use req::gate::{Outcome, evaluate, exit_code};
+use req::gate::{Outcome, evaluate_claims, exit_code};
 use req::select::{Applies, Context};
 
 #[test]
@@ -13,7 +13,7 @@ fn a_clean_selection_passes_every_policy() {
         row("REQ-A", Applies::Yes, &[("refines", "REQ-B")]),
         row("REQ-B", Applies::Yes, &[]),
     ];
-    let results = evaluate(&rows, &Context::new());
+    let results = evaluate_claims(&rows, &Context::new());
     assert_eq!(exit_code(&results, 0), 0, "{results:?}");
     assert!(results.iter().all(|r| r.outcome == Outcome::Pass));
 }
@@ -24,7 +24,7 @@ fn a_clean_selection_passes_every_policy() {
 /// definite defect still outranks it, because "we found a problem" is the stronger statement.
 #[test]
 fn an_undecided_claim_is_unverifiable_and_a_defect_outranks_it() {
-    let clean = evaluate(&[row("REQ-A", Applies::Yes, &[])], &Context::new());
+    let clean = evaluate_claims(&[row("REQ-A", Applies::Yes, &[])], &Context::new());
     assert_eq!(exit_code(&clean, 0), 0, "{clean:?}");
     assert_eq!(
         exit_code(&clean, 1),
@@ -32,7 +32,7 @@ fn an_undecided_claim_is_unverifiable_and_a_defect_outranks_it() {
         "one claim the gate did not examine is enough: {clean:?}"
     );
 
-    let defect = evaluate(
+    let defect = evaluate_claims(
         &[stored(
             row("REQ-A", Applies::Yes, &[]),
             StoredState::Mismatch("stored address does not recompute".to_string()),
@@ -58,7 +58,7 @@ fn claims_outside_the_selection_do_not_fail_the_gate() {
         ),
         rationale(row("REQ-C", Applies::No, &[]), ""),
     ];
-    let results = evaluate(&rows, &Context::new());
+    let results = evaluate_claims(&rows, &Context::new());
     assert_eq!(exit_code(&results, 0), 0, "{results:?}");
 }
 
@@ -68,7 +68,7 @@ fn a_hand_edited_digest_fails_and_an_unfilled_claim_does_not_pass() {
         row("REQ-A", Applies::Yes, &[]),
         StoredState::Mismatch("stored address does not recompute".to_string()),
     )];
-    let results = evaluate(&tampered, &Context::new());
+    let results = evaluate_claims(&tampered, &Context::new());
     assert_eq!(exit_code(&results, 0), 1);
     assert_eq!(results[0].outcome, Outcome::Fail);
     assert!(results[0].offenders[0].contains("does not recompute"));
@@ -77,7 +77,7 @@ fn a_hand_edited_digest_fails_and_an_unfilled_claim_does_not_pass() {
         row("REQ-A", Applies::Yes, &[]),
         StoredState::Candidate("unfilled".to_string()),
     )];
-    let results = evaluate(&unfilled, &Context::new());
+    let results = evaluate_claims(&unfilled, &Context::new());
     assert_eq!(
         exit_code(&results, 0),
         3,
@@ -92,7 +92,7 @@ fn a_defect_outranks_an_open_question() {
         rationale(row("REQ-A", Applies::Yes, &[]), ""),
         row("REQ-B", Applies::Yes, &[("refines", "REQ-GONE")]),
     ];
-    let results = evaluate(&rows, &Context::new());
+    let results = evaluate_claims(&rows, &Context::new());
     assert_eq!(exit_code(&results, 0), 1, "{results:?}");
 }
 
@@ -102,7 +102,7 @@ fn an_undecided_dependency_blocks_the_release() {
         row("REQ-A", Applies::Yes, &[("refines", "REQ-B")]),
         row("REQ-B", Applies::Unknown, &[]),
     ];
-    let results = evaluate(&rows, &Context::new());
+    let results = evaluate_claims(&rows, &Context::new());
     assert_eq!(exit_code(&results, 0), 3);
     let decided = results
         .iter()
@@ -118,7 +118,7 @@ fn an_undecided_dependency_blocks_the_release() {
 /// empty-corpus edge of it, which no corpus fixture can produce.
 #[test]
 fn a_selection_with_nothing_applying_verifies_nothing() {
-    let results = evaluate(&[], &Context::new());
+    let results = evaluate_claims(&[], &Context::new());
     let policy = results
         .iter()
         .find(|r| r.name == "selectors_confirmed")
@@ -199,6 +199,41 @@ mod cli {
             .expect("integration tests run with CARGO_BIN_EXE_req set")
     }
 
+    /// Write a JUnit report of the given `(test id, state)` cases, where `state` is
+    /// `"passed"`, `"failed"` or `"skipped"`. The ids are `classname::name`, exactly the identity a
+    /// claim's `tests:` entry names, so a test can speak the report's language without a lot of
+    /// XML.
+    pub fn write_junit(path: &Path, cases: &[(&str, &str)]) {
+        let mut xml = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<testsuites name=\"nextest-run\" \
+             tests=\"{}\" skipped=\"0\" failures=\"0\" errors=\"0\">\n",
+            cases.len()
+        );
+        xml.push_str("    <testsuite name=\"fixture\">\n");
+        for (id, state) in cases {
+            let (classname, name) = id
+                .rsplit_once("::")
+                .expect("a test id is `classname::name`");
+            match *state {
+                "passed" => xml.push_str(&format!(
+                    "        <testcase name=\"{name}\" classname=\"{classname}\"/>\n"
+                )),
+                "failed" => xml.push_str(&format!(
+                    "        <testcase name=\"{name}\" classname=\"{classname}\">\
+                     <failure message=\"assertion failed\" type=\"test failure\">boom</failure>\
+                     </testcase>\n"
+                )),
+                "skipped" => xml.push_str(&format!(
+                    "        <testcase name=\"{name}\" classname=\"{classname}\">\
+                     <skipped message=\"ignored\"/></testcase>\n"
+                )),
+                other => panic!("unknown fixture state {other:?}"),
+            }
+        }
+        xml.push_str("    </testsuite>\n</testsuites>\n");
+        std::fs::write(path, xml).expect("writes the fixture report");
+    }
+
     /// The dogfood corpus, whose selector vocabulary the oracle read: `deployment_mode ==
     /// air_gapped`, `runs >= 20`, `corpus_set == parity` / `parity_and_adversarial`, `set ==
     /// direction_gold_structural`, `field == value`.
@@ -206,10 +241,20 @@ mod cli {
     /// on the cwd walk-up. `pub` so the dogfood tests at the crate root — which assert the same
     /// thing about `.req/variants` — do not re-derive the binary and the invocation.
     pub fn dogfood(args: &[&str]) -> Outcome {
-        gate_at(&PathBuf::from(env!("CARGO_MANIFEST_DIR")), args)
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        // The dogfood gate reads the *repository's* links; this fixture report answers them all
+        // as passed so a test about the release context is not re-answering the evidence question.
+        // The real gate step in `scripts/check.sh` feeds it the report nextest actually wrote.
+        let report = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("dogfood-junit-{}.xml", std::process::id()));
+        crate::common::passing_junit(&root.join("claims"), &report);
+        let mut full: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
+        full.push("--test-report".to_string());
+        full.push(report.to_string_lossy().into_owned());
+        gate_at(&root, &full)
     }
 
-    fn gate_at(root: &Path, args: &[&str]) -> Outcome {
+    fn gate_at(root: &Path, args: &[String]) -> Outcome {
         let output = Command::new(req_bin())
             .arg("--root")
             .arg(root)
@@ -267,9 +312,19 @@ mod cli {
         /// parity-clean shape (they must be: `canon --fill` refuses a contradicted parse); the
         /// derived fields are written by `canon --fill`, never by this fixture.
         pub fn claim(&self, id: &str, applicability: &[&str]) {
+            // A default link into the fixture report, so a test about **another** policy is not
+            // re-answering the evidence question; the evidence tests use `claim_with` explicitly.
+            let link = format!("fixture::{id}");
+            self.claim_with(id, applicability, &[link.as_str()], "machine");
+        }
+
+        /// A claim with an explicit evidence declaration: `tests` are the ids its report must
+        /// carry (or none), and `evidence` is `machine` or `process`. Written through one
+        /// template so a fixture cannot be half-migrated to the new file format.
+        pub fn claim_with(&self, id: &str, applicability: &[&str], tests: &[&str], evidence: &str) {
             std::fs::write(
                 self.0.join("claims").join(format!("{id}.yml")),
-                claim_text(id, applicability),
+                claim_text(id, applicability, tests, evidence),
             )
             .expect("writes a claim");
         }
@@ -291,8 +346,35 @@ mod cli {
             );
         }
 
+        /// The gate over this fixture, with a report that passes every link the fixture's claims
+        /// carry. A test about another policy must not be answering "was a test report supplied?"
+        /// instead — that question has its own tests, which call [`Fixture::gate_raw`] or pass a
+        /// report of their own.
         pub fn gate(&self, args: &[&str]) -> Outcome {
-            gate_at(self.path(), args)
+            let report = self.passing_report();
+            self.gate_with_report(args, &report)
+        }
+
+        /// The gate with no `--test-report` at all: the policy-cannot-be-exercised state.
+        pub fn gate_raw(&self, args: &[&str]) -> Outcome {
+            let full: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
+            gate_at(self.path(), &full)
+        }
+
+        /// The gate with a report of the caller's choosing.
+        pub fn gate_with_report(&self, args: &[&str], report: &Path) -> Outcome {
+            let mut full: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
+            full.push("--test-report".to_string());
+            full.push(report.to_string_lossy().into_owned());
+            gate_at(self.path(), &full)
+        }
+
+        /// A JUnit fixture whose every claimed link passes.
+        pub fn passing_report(&self) -> PathBuf {
+            let path = self
+                .path()
+                .join(format!("junit-{}.xml", std::process::id()));
+            crate::common::passing_junit(&self.path().join("claims"), &path)
         }
 
         /// Overwrite the `address:` line `canon --fill` already wrote. The fixture does this on
@@ -326,7 +408,16 @@ mod cli {
     /// One authored claim. The `canonical`/`address` block is deliberately empty: it is the anchor
     /// `canon --fill` writes into, and `Fixture::fill` asserts the fill succeeded before any test
     /// observes the gate.
-    fn claim_text(id: &str, applicability: &[&str]) -> String {
+    fn claim_text(id: &str, applicability: &[&str], tests: &[&str], evidence: &str) -> String {
+        let tests_block = if tests.is_empty() {
+            "tests: []\n".to_string()
+        } else {
+            let mut block = String::from("tests:\n");
+            for test in tests {
+                block.push_str(&format!("  - {test:?}\n"));
+            }
+            block
+        };
         let block = if applicability.is_empty() {
             "applicability: []\n".to_string()
         } else {
@@ -353,6 +444,7 @@ conditions: []
 temporal: null
 quantifier: null
 unstructured: false
+{tests_block}evidence: {evidence}
 canonical:
   rules_v: 0
   subject_registry: 0
@@ -1067,4 +1159,230 @@ fn a_bare_gate_is_unverifiable_and_names_every_undecided_claim() {
         "the gate must state the remedy, not only the finding: {}",
         out.text
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The test-evidence policy (ADR 0019): the four outcomes, the report-level unverifiable, and the
+// process declaration that is reported PASS-as-declared and **never inferred from an empty list**.
+// These run the CLI so the exit codes are the fold the acceptance table names, not a policy's
+// own field.
+// ---------------------------------------------------------------------------------------------
+
+mod evidence {
+    use super::cli::{self, Fixture, write_junit};
+
+    /// The gate over a one-claim corpus and a report of the caller's choosing.
+    fn gate_with(tag: &str, tests: &[&str], cases: &[(&str, &str)]) -> cli::Outcome {
+        let fixture = Fixture::new(tag);
+        fixture.claim_with("REQ-9001", &[], tests, "machine");
+        fixture.fill();
+        let report = fixture.path().join("report.xml");
+        write_junit(&report, cases);
+        fixture.gate_with_report(&[], &report)
+    }
+
+    /// **UNVERIFIABLE — no linked test.** The flagship answer: a claim the gate cannot show a
+    /// passing proof for is named, and the exit code is the existing 3.
+    #[test]
+    fn a_claim_with_no_linked_test_is_unverifiable_and_named() {
+        let fixture = Fixture::new("evidence-no-link");
+        fixture.claim_with("REQ-9001", &[], &[], "machine");
+        fixture.claim_with("REQ-9002", &[], &["fixture::b"], "machine");
+        fixture.fill();
+        let report = fixture.path().join("report.xml");
+        write_junit(&report, &[("fixture::b", "passed")]);
+        let out = fixture.gate_with_report(&[], &report);
+        assert_eq!(
+            out.code, 3,
+            "no link is UNVERIFIABLE, never a pass:\n{}",
+            out.text
+        );
+        let policy = out.policy("tests_linked");
+        assert!(policy.starts_with("[UNVERIFIABLE]"), "{policy}");
+        assert!(
+            policy.contains("REQ-9001: no linked test"),
+            "the claim is named: {policy}"
+        );
+        // The linked-and-passing claim is not an offender.
+        assert!(!policy.contains("REQ-9002"), "{policy}");
+    }
+
+    /// **UNVERIFIABLE — linked test not in the report.** The rename defence: a renamed or deleted
+    /// test must never read as a pass.
+    #[test]
+    fn a_linked_test_missing_from_the_report_is_unverifiable_never_pass() {
+        let out = gate_with(
+            "evidence-renamed",
+            &["fixture::renamed_away"],
+            &[("fixture::other", "passed")],
+        );
+        assert_eq!(out.code, 3, "{}", out.text);
+        let policy = out.policy("tests_linked");
+        assert!(policy.starts_with("[UNVERIFIABLE]"), "{policy}");
+        assert!(
+            policy.contains("linked test not in the report: fixture::renamed_away"),
+            "{policy}"
+        );
+    }
+
+    /// **FAIL — a linked test failed.** A failure outranks the open questions around it.
+    #[test]
+    fn a_failed_linked_test_fails_the_gate() {
+        let out = gate_with(
+            "evidence-failed",
+            &["fixture::a", "fixture::b"],
+            &[("fixture::a", "failed"), ("fixture::b", "passed")],
+        );
+        assert_eq!(out.code, 1, "a failed proof is a defect:\n{}", out.text);
+        let policy = out.policy("tests_linked");
+        assert!(policy.starts_with("[FAIL]"), "{policy}");
+        assert!(
+            policy.contains("linked test failed: fixture::a"),
+            "{policy}"
+        );
+    }
+
+    /// **FAIL — every linked test present and none passed.** A skipped test is present and is
+    /// **not** a pass; that is the distinction the outcome table exists for.
+    #[test]
+    fn a_skipped_test_is_not_a_pass() {
+        let out = gate_with(
+            "evidence-skipped",
+            &["fixture::ignored"],
+            &[("fixture::ignored", "skipped")],
+        );
+        assert_eq!(
+            out.code, 1,
+            "a skipped test is present and not a pass:\n{}",
+            out.text
+        );
+        let policy = out.policy("tests_linked");
+        assert!(policy.starts_with("[FAIL]"), "{policy}");
+        assert!(policy.contains("a skipped test is not a pass"), "{policy}");
+
+        // A skipped test beside a passed one is not a failure: any linked test that passed is
+        // enough to prove the claim (the failure branch is "none passed").
+        let out = gate_with(
+            "evidence-skip-and-pass",
+            &["fixture::ignored", "fixture::passing"],
+            &[
+                ("fixture::ignored", "skipped"),
+                ("fixture::passing", "passed"),
+            ],
+        );
+        assert_eq!(out.code, 0, "{}", out.text);
+        assert!(
+            out.policy("tests_linked").starts_with("[PASS]"),
+            "{}",
+            out.text
+        );
+    }
+
+    /// **The report itself.** No report, an unreadable one, or one with zero test cases is
+    /// UNVERIFIABLE **once**, naming the reason — never "no failures found", and never repeated
+    /// per claim (noise is how a real red gets ignored).
+    #[test]
+    fn an_unreadable_report_is_unverifiable_once_naming_the_reason() {
+        let missing = gate_with("evidence-no-report", &["fixture::a"], &[]);
+        // (The empty report is its own case below; first the missing file.)
+        assert_eq!(missing.code, 3, "{}", missing.text);
+
+        let fixture = Fixture::new("evidence-unreadable");
+        fixture.claim_with("REQ-9001", &[], &["fixture::a"], "machine");
+        fixture.claim_with("REQ-9002", &[], &["fixture::b"], "machine");
+        fixture.fill();
+        let out = fixture.gate_raw(&[]);
+        assert_eq!(out.code, 3, "{}", out.text);
+        let policy = out.policy("tests_linked");
+        assert_eq!(
+            policy.matches("no --test-report was supplied").count(),
+            1,
+            "the report-level reason is stated once, not once per claim: {policy}"
+        );
+        assert!(policy.starts_with("[UNVERIFIABLE]"), "{policy}");
+
+        let unreadable = fixture.gate_with_report(&[], &fixture.path().join("absent.xml"));
+        assert_eq!(unreadable.code, 3, "{}", unreadable.text);
+        let policy = unreadable.policy("tests_linked");
+        assert_eq!(
+            policy.matches("the test report cannot be read").count(),
+            1,
+            "{policy}"
+        );
+
+        let empty = fixture.path().join("empty.xml");
+        write_junit(&empty, &[]);
+        let zero = fixture.gate_with_report(&[], &empty);
+        assert_eq!(
+            zero.code, 3,
+            "zero test cases verify nothing:\n{}",
+            zero.text
+        );
+        assert!(
+            zero.policy("tests_linked")
+                .contains("carries no test cases"),
+            "{}",
+            zero.text
+        );
+    }
+
+    /// **A flag without its value is a usage error**, before the corpus or the report is touched:
+    /// exit 2, not UNVERIFIABLE — a malformed invocation is not a question about evidence.
+    #[test]
+    fn test_report_without_a_value_is_a_usage_error() {
+        let fixture = Fixture::new("evidence-missing-value");
+        fixture.claim("REQ-9001", &[]);
+        fixture.fill();
+        let out = fixture.gate_raw(&["--test-report"]);
+        assert_eq!(out.code, 2, "{}", out.text);
+        assert!(
+            out.text.contains("--test-report needs a value"),
+            "{}",
+            out.text
+        );
+    }
+
+    /// **A process declaration is an answer, not a missing link.** It passes as declared, is
+    /// named per claim and counted; an empty `tests:` list is *never* inferred to be one.
+    #[test]
+    fn a_process_declaration_passes_as_declared_and_is_counted() {
+        let fixture = Fixture::new("evidence-process");
+        fixture.claim_with("REQ-9001", &[], &[], "process");
+        fixture.claim_with("REQ-9002", &[], &[], "process");
+        fixture.fill();
+        // No report at all: nothing machine-evidenced needs it.
+        let out = fixture.gate_raw(&[]);
+        assert_eq!(out.code, 0, "{}", out.text);
+        let policy = out.policy("tests_linked");
+        assert!(policy.starts_with("[PASS]"), "{policy}");
+        assert!(
+            policy.contains("process-evidenced (declared, not machine-proven): REQ-9001, REQ-9002"),
+            "{policy}"
+        );
+        assert!(
+            out.text.contains("process-evidenced: 2"),
+            "the summary must carry the count: {}",
+            out.text
+        );
+
+        // The same corpus with the declaration removed is NOT process-evidenced: the default is
+        // machine, and an empty link list is the no-link finding. This is the mutation the outcome
+        // table calls out — process must never be inferred from empty tests.
+        let machine = Fixture::new("evidence-process-not-inferred");
+        machine.claim_with("REQ-9001", &[], &[], "machine");
+        machine.fill();
+        let out = machine.gate_raw(&[]);
+        assert_eq!(out.code, 3, "{}", out.text);
+        assert!(
+            !out.text.contains("process-evidenced"),
+            "an empty `tests:` list must never be reported as process evidence: {}",
+            out.text
+        );
+        assert!(
+            out.policy("tests_linked")
+                .contains("no --test-report was supplied"),
+            "{}",
+            out.text
+        );
+    }
 }

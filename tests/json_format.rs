@@ -17,6 +17,8 @@
 //! can consume structure instead of scraping text. The key set may grow; the top-level keys
 //! named here may not vanish.
 
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -81,6 +83,17 @@ impl Corpus {
             "`req init` must create the fixture corpus:\n{}\n{}",
             out.stdout, out.stderr
         );
+        // Link the starter claim to a test the fixture report carries: the release gate now asks
+        // for evidence, and every test in this file judges a *rendering*, not the missing report.
+        let claim = fs::read_to_string(dir.join("claims/REQ-0001.yml")).expect("the starter claim");
+        fs::write(
+            dir.join("claims/REQ-0001.yml"),
+            claim.replace(
+                "unstructured: false\n",
+                "unstructured: false\ntests:\n  - \"fixture::REQ-0001\"\n",
+            ),
+        )
+        .expect("links the starter claim");
         Corpus(dir)
     }
 
@@ -134,6 +147,7 @@ impl Corpus {
         };
         let text = first
             .replace("claim_id: REQ-0001", &format!("claim_id: {id}"))
+            .replace("fixture::REQ-0001", &format!("fixture::{id}"))
             .replace(
                 "statement: \"The API shall respond to a health check within 200 ms.\"",
                 &format!("statement: {statement:?}"),
@@ -144,6 +158,22 @@ impl Corpus {
         // The derived fields are the derivation's to write: the claim moved, so its address
         // must be re-derived exactly as a human would do it.
         self.refill();
+    }
+
+    /// Write the JUnit report the gate reads, from the links the fixture claims carry, and return
+    /// its path. Regenerated per call, so a claim added after the last report is still covered.
+    fn report(&self) -> String {
+        let path = self.path().join("junit.xml");
+        common::passing_junit(&self.path().join("claims"), &path);
+        path.to_string_lossy().into_owned()
+    }
+
+    /// `req gate` with this fixture's report, and any extra flags/context.
+    fn run_gate(&self, extra: &[&str]) -> Outcome {
+        let report = self.report();
+        let mut args = vec!["gate", "--test-report", report.as_str()];
+        args.extend_from_slice(extra);
+        run_at(self.path(), &args)
     }
 
     fn refill(&self) {
@@ -632,7 +662,7 @@ fn gate_json_has_the_pinned_shape() {
         &[],
         &[],
     );
-    let out = run_at(corpus.path(), &["gate", "--format", "json"]);
+    let out = corpus.run_gate(&["--format", "json"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     let document = parse(&out.stdout);
     assert_keys(
@@ -640,6 +670,7 @@ fn gate_json_has_the_pinned_shape() {
         &[
             "generator",
             "policies",
+            "process_evidenced",
             "rules_v",
             "schema",
             "selection",
@@ -652,6 +683,8 @@ fn gate_json_has_the_pinned_shape() {
     assert_eq!(document["rules_v"], req::canon::RULES_V);
     assert_eq!(document["verdict"], "pass");
     assert_eq!(document["undecided"], serde_json::json!([]));
+    // Nothing here is a process declaration, and an empty `tests:` list is never inferred as one.
+    assert_eq!(document["process_evidenced"], serde_json::json!([]));
 
     let policies = document["policies"].as_array().expect("an array");
     let names: Vec<&str> = policies
@@ -665,6 +698,7 @@ fn gate_json_has_the_pinned_shape() {
             "relations_resolve",
             "dependencies_decided",
             "rationale_present",
+            "tests_linked",
             "selectors_confirmed",
         ],
         "the policies keep the order the text report and the docs name"
@@ -711,8 +745,8 @@ fn gate_json_verdict_and_exit_code_agree_for_all_three_classes() {
         (&undecided, 3, "unverifiable"),
         (&defect, 1, "fail"),
     ] {
-        let text = run_at(corpus.path(), &["gate"]);
-        let json = run_at(corpus.path(), &["gate", "--format", "json"]);
+        let text = corpus.run_gate(&[]);
+        let json = corpus.run_gate(&["--format", "json"]);
         assert_eq!(
             text.code, expected_code,
             "the text run's class is the fixture's: {}",
@@ -732,7 +766,7 @@ fn gate_json_verdict_and_exit_code_agree_for_all_three_classes() {
     }
 
     // The undecided claim is named with what the invocation is missing, never dropped.
-    let json = run_at(undecided.path(), &["gate", "--format", "json"]);
+    let json = undecided.run_gate(&["--format", "json"]);
     let document = parse(&json.stdout);
     assert_eq!(
         document["undecided"],
@@ -751,7 +785,7 @@ fn gate_json_verdict_and_exit_code_agree_for_all_three_classes() {
         "REQ-0001",
         "The API shall answer a readiness check within 200 ms.",
     );
-    let json = run_at(both.path(), &["gate", "--format", "json"]);
+    let json = both.run_gate(&["--format", "json"]);
     assert_eq!(
         json.code, 1,
         "Fail outranks Unverifiable under both renderings"
