@@ -318,7 +318,13 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             // A cost measurement needs every edge, and re-deriving the blocking graph elsewhere would
             // be a second implementation of the tokenizer that could drift from this one.
             list_all = true;
-            index += 1;
+            // A **bare** flag: the increment at the top of the loop already consumed it, and there is no
+            // value to consume. Advancing again ate the next argument — a selector in first position
+            // vanished (a measurement silently covering the default context: 15 applying instead of 16)
+            // and `--pairs --gold <file>` became a usage error. Audited 2026-10-22 across every parse loop
+            // in this crate: the other five (`view`, `audit`, `baseline`, `format`, `root`) advance only
+            // for a flag that takes a value, and `canon`/`decision` dispatch on `args.first()` without
+            // consuming anything.
             continue;
         }
         if arg == "--min-confidence" {
