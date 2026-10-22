@@ -1,4 +1,4 @@
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0012
 statement: >-
   The req tool shall need no network access for any claim operation when the

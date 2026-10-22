@@ -1,4 +1,4 @@
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0005
 statement: >-
   The req tool shall require human ratification before any two claims are merged.

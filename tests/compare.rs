@@ -341,7 +341,17 @@ impl Drop for Fixture {
 #[test]
 fn a_side_declaring_a_format_this_build_cannot_establish_is_not_judged() {
     let f = Fixture::new("a2-foreign-schema")
-        .claim("REQ-0001.yml", &claim_text("REQ-0001", "req.claim/1"))
+        .claim(
+            "REQ-0001.yml",
+            &claim_text(
+                "REQ-0001",
+                &format!(
+                    "{}{}",
+                    req::canon::CLAIM_SCHEMA_PREFIX,
+                    req::canon::CLAIM_SCHEMA_V + 1
+                ),
+            ),
+        )
         .claim("REQ-0002.yml", &claim_text("REQ-0002", &claim_schema()));
 
     let (code, out) = f.compare("REQ-0001.yml", "REQ-0002.yml");
@@ -354,7 +364,7 @@ fn a_side_declaring_a_format_this_build_cannot_establish_is_not_judged() {
         "the verdict must say nothing inside the file was judged:\n{out}"
     );
     assert!(
-        out.contains("req.claim/1"),
+        out.contains(&format!("req.claim/{}", req::canon::CLAIM_SCHEMA_V + 1)),
         "the verdict must name the declared format:\n{out}"
     );
 }

@@ -1,4 +1,4 @@
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0004
 statement: >-
   The req tool's semantic layer shall emit proposals for reviewer ratification.

@@ -1,4 +1,4 @@
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0016
 statement: >-
   The req tool shall resolve the applicability of an undecided feature as UNKNOWN

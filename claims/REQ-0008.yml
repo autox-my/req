@@ -1,4 +1,4 @@
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0008
 statement: >-
   The benchmark harness shall report a false merge rate of exactly zero on the

@@ -199,9 +199,33 @@ including the tri-state — and `req <command> --help` works before a corpus exi
    claims cannot be told from every claim having vanished, so never "clean up" a corpus down to
    nothing; delete a requirement by deleting its claim, deliberately.
 
+## Link a claim to the test that proves it (field only)
+
+A claim may say which tests prove it:
+
+```yaml
+tests:
+  - "parity::the_seed_corpus_holds"
+  - "view::an_edge_that_leaves_the_selection_is_named"
+evidence: machine          # the default; omit it
+```
+
+Each id is `classname::name` exactly as a JUnit report writes it, because that pair is the test's
+identity — a rename must show up as a *missing* id, never as a pass. The field is **authored and outside
+identity**: adding, removing or renaming a link moves no address. The signed Baseline attests it instead
+(`tests_hash`, envelope v4), so unlinking a claim after signing is FAIL.
+
+A claim the **process itself** establishes — a Decision, a signature, a workflow — declares
+`evidence: process` with **no** `tests:` list (naming both is a load error). Process is never inferred:
+an empty `tests:` list on a machine claim means *no link*, and is a finding, not a declaration.
+
+This change lands the field, the hash and the envelope. The **release gate** that reads a run's report
+(`req gate --test-report <junit.xml>`) and answers "does a test that proves each applying claim pass?"
+is ADR 0019's flagship follow-up; the four outcomes and the report wiring arrive with it.
+
 ## Sign the Baseline
 
-`req baseline --at <ts>` prints the canonical manifest (envelope v3, ADR 0016) — the exact bytes a
+`req baseline --at <ts>` prints the canonical manifest (envelope v4, ADRs 0016 and 0019) — the exact bytes a
 signature covers — and **req never signs**: the signature is the human's act, and a key the tool could
 reach would prove nothing (ADR 0010). A manifest with no valid signature over it is *not yet a Baseline*,
 and verification says so.
@@ -216,7 +240,7 @@ req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not y
 
 - **`--at` is required and is the signing time.** It goes *inside* the signed bytes, so it cannot be
   backdated without breaking the signature. Req never invents one: emitting without `--at` is a usage
-  error (exit 2). A v3 manifest also attests the Decision log's chain head, and emission refuses (exit 3)
+  error (exit 2). A v3-or-later manifest also attests the Decision log's chain head, and emission refuses (exit 3)
   when that log is absent, unparsable or tampered — a head that attests nothing must not be signed.
 - **`-Sm` is `-S` (sign) with `-m <manifest>`**, and its default output name is `<manifest>.minisig` —
   exactly the file `--verify` looks for. Name it otherwise with `-x <path>` and pass `--signature <path>`.
@@ -235,7 +259,7 @@ req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not y
   (`valid_from`, `valid_until`, `revoked_at`): old Baselines stay verifiable against the old key, and a
   key revoked at or before a Baseline's signing time FAILS.
 - **An edit after signing is FAIL, not drift**: verification re-derives every address, so a claim edited
-  once the manifest was signed is the same class as a hand-edited digest. A v3 manifest also FAILs when
+  once the manifest was signed is the same class as a hand-edited digest. A v3-or-later manifest also FAILs when
   the Decision log no longer re-derives the chain head it records; an absent log is UNVERIFIABLE, never
   FAIL.
 - **A `rules_v` mismatch is UNVERIFIABLE** with the re-sign remedy: an address is derived from the rules

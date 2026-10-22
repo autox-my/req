@@ -4,12 +4,12 @@
 //!   1. the stored address recomputes from the stored canonical form (hashing §5);
 //!   2. nothing authored is touched — the file is edited surgically, not re-emitted.
 
-use req::canon::{address_hex, canonical_json, canonicalize_statement};
+use req::canon::{address_hex, canonical_json, canonicalize_statement, evaluate_claim};
 use req::fill::{StoredState, fill_text, verify_text};
-use req::model::{ClaimFile, Registry};
+use req::model::{ClaimFile, Evidence, Registry, tests_digest};
 
 const SAMPLE: &str = "\
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-9999
 statement: >-
   The system shall respond within 200 ms.
@@ -160,17 +160,95 @@ fn verify_accepts_a_filled_file_and_catches_tampering() {
 #[test]
 fn verify_text_refuses_a_format_this_build_does_not_write() {
     let (json, _) = derived();
-    let foreign = SAMPLE.replace("schema: req.claim/0", "schema: req.claim/1");
+    let foreign = SAMPLE.replace("schema: req.claim/1", "schema: req.claim/2");
     assert_ne!(foreign, SAMPLE, "the fixture's declaration moved");
 
     match verify_text(&foreign, &json, 3) {
         StoredState::Candidate(why) => {
             assert!(why.contains("NOT JUDGED"), "{why}");
             assert!(
-                why.contains("req.claim/1"),
+                why.contains("req.claim/2"),
                 "the declared value is named: {why}"
             );
         }
         other => panic!("a format this build cannot establish is not {other:?}"),
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// ADR 0019: the authored evidence declaration is outside identity and attested beside it.
+// ---------------------------------------------------------------------------------------------
+
+/// **The human's ruling, pinned**: adding or removing a `tests:` entry (or flipping the evidence
+/// mode) leaves the claim's **address** untouched. Identity is the canonical form over meaning;
+/// a test rename is not a meaning change, so it must never move an address.
+#[test]
+fn adding_or_removing_a_test_link_moves_no_address() {
+    let address_of = |text: &str| {
+        let claim: ClaimFile = yaml_serde::from_str(text).expect("the fixture is a claim file");
+        let verdict = evaluate_claim(&claim, &Registry::empty());
+        address_hex(&canonical_json(&verdict.form))
+    };
+    let base = address_of(SAMPLE);
+    let with = |block: &str| {
+        let text = SAMPLE.replace(
+            "unstructured: false\n",
+            &format!("unstructured: false\n{block}"),
+        );
+        assert_ne!(text, SAMPLE, "the fixture carries the anchor");
+        address_of(&text)
+    };
+    // One link, two links, and a process declaration: the form does not carry any of them.
+    assert_eq!(
+        with("tests:\n  - \"a::b\"\n"),
+        base,
+        "adding a link moved the address"
+    );
+    assert_eq!(
+        with("tests:\n  - \"a::b\"\n  - \"c::d\"\n"),
+        base,
+        "a second link moved the address"
+    );
+    assert_eq!(
+        with("tests: []\nevidence: process\n"),
+        base,
+        "the evidence declaration moved the address"
+    );
+    // ...and a rename is just a different string in the same list.
+    assert_eq!(
+        with("tests:\n  - \"renamed::away\"\n"),
+        base,
+        "a rename inside `tests:` moved the address"
+    );
+}
+
+/// The attested digest, pinned against a **hand-computed oracle** rather than recomputed the way
+/// the code computes it: `printf 'req.tests.v1\0{"evidence":"machine","tests":[]}' | shasum -a 256`.
+/// The declaration is order-free (sorted at hash time) and the evidence mode is *inside* it, so
+/// flipping machine to process cannot leave the signed bytes unchanged.
+#[test]
+fn the_evidence_digest_matches_an_independent_oracle() {
+    const EMPTY_MACHINE: &str = "f70c34ce463f8c0294ac8846abea5b911d5933c42a9d978522bff8c6b5445d53";
+    const ONE_MACHINE: &str = "db5945dbc66ff28c2b42f765b09cecfeab4d7cf34598814784d94b1261e427ed";
+    const EMPTY_PROCESS: &str = "f3d1bcc93f181d5f66b7793f7496ccd9fc75ee66bd6431d274a74f4ed739422c";
+
+    assert_eq!(tests_digest(&[], Evidence::Machine), EMPTY_MACHINE);
+    assert_eq!(
+        tests_digest(&["a::b".to_string()], Evidence::Machine),
+        ONE_MACHINE
+    );
+    assert_eq!(tests_digest(&[], Evidence::Process), EMPTY_PROCESS);
+    assert_ne!(
+        tests_digest(&[], Evidence::Machine),
+        tests_digest(&[], Evidence::Process),
+        "the evidence mode is attested, or a quiet machine->process flip would be invisible"
+    );
+
+    // Sorted at hash time: authored order is not meaning.
+    let forward = vec!["b::x".to_string(), "a::y".to_string()];
+    let backward = vec!["a::y".to_string(), "b::x".to_string()];
+    assert_eq!(
+        tests_digest(&forward, Evidence::Machine),
+        tests_digest(&backward, Evidence::Machine)
+    );
 }

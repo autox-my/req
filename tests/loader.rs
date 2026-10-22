@@ -54,7 +54,7 @@ subjects:
 fn claim_text(claim_id: &str) -> String {
     format!(
         "\
-schema: req.claim/0
+schema: req.claim/1
 claim_id: {claim_id}
 statement: >-
   The req tool shall treat a single claim as the unit of requirements authorship,
@@ -509,40 +509,51 @@ fn a_malformed_schema_is_a_broken_file_not_a_version_question() {
 }
 
 #[test]
-fn the_older_direction_classifies_and_is_worded_as_a_migration_candidate() {
-    // No fixture can declare an *older* format while `CLAIM_SCHEMA_V` is 0 — that is what the
-    // version being the first one means — so the direction is exercised against an explicit build
-    // version rather than reasoned about: an untested branch is free to be wrong on the day the
-    // first format bump arrives, which is the day it matters most. `rules_mismatch`'s direction is
-    // reachable the same way, by a manifest declaring another `rules_v`.
+fn the_older_direction_is_a_migration_candidate_at_the_loader() {
+    // `CLAIM_SCHEMA_V` is 1 now, so an older file exists for real rather than in the future
+    // tense: a `req.claim/0` claim is **NOT JUDGED** — a migration candidate, not a broken file
+    // and never a silent load. A format bump moves no address, so the remedy is to migrate the
+    // declaration and re-fill, not to reword the claim.
     let older = format!("{}{}", req::canon::CLAIM_SCHEMA_PREFIX, 0);
     assert_eq!(
-        classify_claim_schema_at(&older, 1),
+        classify_claim_schema(&older),
         ClaimSchema::Older(0),
         "a file from the previous format is a migration candidate, not a broken file"
     );
     assert_eq!(
         classify_claim_schema_at(&older, 0),
         ClaimSchema::Current,
-        "the same value against this build is Current"
-    );
-
-    // The wording is the contract: a reader who is told only "could not be read" goes looking for
-    // a syntax error that is not there.
-    let reason = ClaimSchema::Older(0)
-        .reason(&older)
-        .expect("a mismatch has a reason");
-    assert!(reason.contains("NOT JUDGED"), "{reason}");
-    assert!(reason.contains("predates"), "{reason}");
-    assert!(
-        reason.contains("migration candidate"),
-        "an older format is a migration, and a format bump moves no address: {reason}"
-    );
-    assert!(
-        reason.contains(&claim_schema()),
-        "the remedy names the value to migrate to: {reason}"
+        "the same value against the build that wrote it is Current"
     );
     assert_eq!(classify_claim_schema(&claim_schema()), ClaimSchema::Current);
+
+    let f = Fixture::new("schema-older").claim(
+        "REQ-0001.yml",
+        &claim_text("REQ-0001").replace(
+            &format!("schema: {}", claim_schema()),
+            &format!("schema: {older}"),
+        ),
+    );
+    let err = load_claims(f.path()).expect_err("an older format must not load silently");
+    assert!(err.contains(&older), "names the declared value: {err}");
+    assert!(err.contains("NOT JUDGED"), "{err}");
+    assert!(
+        err.contains("migration candidate"),
+        "an older format is a migration: {err}"
+    );
+    assert!(
+        err.contains("format bump moves no address"),
+        "the remedy must not suggest the address moved: {err}"
+    );
+    assert!(
+        err.contains(&claim_schema()),
+        "the remedy names the value to migrate to: {err}"
+    );
+    assert_eq!(
+        run_claim_diagnostics_at(f.path()),
+        3,
+        "a migration candidate is UNVERIFIABLE, never a pass"
+    );
 }
 
 /// Every `req.claim/<n>` literal one line carries. Scanning the line means a reformatting cannot
@@ -778,4 +789,65 @@ fn the_committed_corpus_loads_under_the_strict_loader() {
         ],
         "the committed corpus is REQ-0001..REQ-0021, one claim per file"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The evidence declaration's file contract (ADR 0019): an empty id names nothing, a duplicate
+// means nothing, and a process declaration cannot also carry machine links.
+// ---------------------------------------------------------------------------------------------
+
+/// A `tests:` block inserted into the real claim shape, so the only new thing is the declaration
+/// under test.
+fn with_tests(block: &str) -> String {
+    let text = claim_text("REQ-0001").replace(
+        "unstructured: false\n",
+        &format!("unstructured: false\n{block}"),
+    );
+    assert!(
+        text.contains(block),
+        "the fixture carries the inserted block"
+    );
+    text
+}
+
+#[test]
+fn an_empty_test_id_is_refused_by_the_loader() {
+    let f = Fixture::new("tests-empty-id").claim("REQ-0001.yml", &with_tests("tests:\n  - \"\"\n"));
+    let err = load_claims(f.path()).expect_err("an empty test id names no test");
+    assert!(err.contains("empty"), "{err}");
+    assert!(err.contains("REQ-0001.yml"), "the file is named: {err}");
+}
+
+#[test]
+fn a_duplicate_test_id_is_refused_by_the_loader() {
+    let f = Fixture::new("tests-duplicate-id").claim(
+        "REQ-0001.yml",
+        &with_tests("tests:\n  - \"a::b\"\n  - \"a::b\"\n"),
+    );
+    let err = load_claims(f.path()).expect_err("a duplicate link attests nothing extra");
+    assert!(err.contains("twice"), "{err}");
+    assert!(err.contains("a::b"), "the id is named: {err}");
+}
+
+#[test]
+fn a_process_declaration_with_links_is_a_corpus_error() {
+    let f = Fixture::new("tests-process-and-links").claim(
+        "REQ-0001.yml",
+        &with_tests("tests:\n  - \"a::b\"\nevidence: process\n"),
+    );
+    let err = load_claims(f.path()).expect_err("machine or process, never both");
+    assert!(err.contains("never both"), "{err}");
+    assert!(err.contains("evidence: process"), "{err}");
+}
+
+#[test]
+fn a_process_declaration_without_links_loads() {
+    let f = Fixture::new("tests-process-ok").claim(
+        "REQ-0001.yml",
+        &with_tests("tests: []\nevidence: process\n"),
+    );
+    let claims = load_claims(f.path()).expect("a process declaration is a valid claim");
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].claim.evidence, req::model::Evidence::Process);
+    assert!(claims[0].claim.tests.is_empty());
 }

@@ -1,4 +1,4 @@
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-0003
 statement: >-
   The req tool shall express permanent product variation as a selection governed by

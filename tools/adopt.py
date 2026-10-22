@@ -1087,7 +1087,7 @@ def self_check():
         claim_id="REQ-0016",
         rules_v=5,
         registry_v=1,
-        schema="req.claim/0",
+        schema="req.claim/1",
     )
 
     rows = [
@@ -1183,10 +1183,10 @@ def self_check():
             "version: the two axes are read from the binary's output",
             parse_version(
                 "req 0.1.0\n  rules_v            5\n  baseline_envelope  3\n"
-                "  decision_chain     1\n  claim_schema       req.claim/0\n"
+                "  decision_chain     1\n  claim_schema       req.claim/1\n"
                 "  built from         deadbee\n"
             ),
-            (5, "req.claim/0"),
+            (5, "req.claim/1"),
         ),
         (
             "version: a build that does not name the axes cannot be drafted against",

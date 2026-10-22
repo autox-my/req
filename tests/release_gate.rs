@@ -337,7 +337,7 @@ mod cli {
             block
         };
         format!(
-            r#"schema: req.claim/0
+            r#"schema: req.claim/1
 claim_id: {id}
 statement: >-
   The req tool shall require numeric claim fields to be serialized as exact

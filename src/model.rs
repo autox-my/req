@@ -50,6 +50,10 @@ pub const RELATIONS_TAG: &[u8] = b"req.relations.v1\0";
 /// The rationale's domain prefix, for the same reason.
 pub const RATIONALE_TAG: &[u8] = b"req.rationale.v1\0";
 
+/// The authored test links' domain prefix (ADR 0019), for the same reason: the tests digest must
+/// never trade hashes with the relations or rationale surfaces it sits beside.
+pub const TESTS_TAG: &[u8] = b"req.tests.v1\0";
+
 /// The relations as the manifest attests them: `sha256(RELATIONS_TAG ‖ serde_json::to_string(
 /// relations))` — **plain serde JSON** of the typed struct, fields in declaration order. Not
 /// `canon::canonical_json`, which normalizes numbers and strings and produces different bytes;
@@ -73,6 +77,107 @@ pub fn rationale_digest(rationale: &Rationale) -> String {
             .expect("Rationale serializes infallibly")
             .as_bytes(),
     )
+}
+
+/// How a claim's evidence is established (ADR 0019).
+///
+/// **The default is `machine`, and that default is load-bearing.** A claim with no `tests:`
+/// entries is a claim whose evidence is *absent* — it must be reported, never read as
+/// process-evidenced. A process declaration is explicit and authored; an empty list can never
+/// imply one. The gate's mutation note records the check that proves it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Evidence {
+    /// A linked test in the report proves the claim.
+    #[default]
+    Machine,
+    /// The claim is established by the process itself (a Decision, a signature, a workflow),
+    /// declared by a human. Reported PASS-as-declared, named per claim, and counted — never
+    /// shrunk into the machine count.
+    Process,
+}
+
+impl Evidence {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Evidence::Machine => "machine",
+            Evidence::Process => "process",
+        }
+    }
+}
+
+/// The linked tests as the manifest attests them: `sha256(TESTS_TAG ‖ serde_json::to_string(
+/// {evidence, tests}))` — **plain serde JSON** of the declared evidence mode and the sorted
+/// test ids, the same writer as [`relations_digest`], so the byte format is unambiguous to a
+/// re-implementation.
+///
+/// The sort is the whole point of the separation: a claim's `tests:` list is **authored and
+/// order-free**, and hashing it in document order would let a meaningless reordering of two
+/// test ids change what the Baseline attests. Sorted at hash time, never written into the
+/// canonical form — a test rename must not move the claim's address (ADR 0019).
+///
+/// The evidence mode rides the same digest because it is part of the same declaration: without
+/// it, flipping `machine` to `process` (and dropping the links) would leave both the address and
+/// the attested list untouched, which is precisely the quiet unlink the Baseline exists to catch.
+pub fn tests_digest(tests: &[String], evidence: Evidence) -> String {
+    #[derive(Serialize)]
+    struct EvidenceSurface<'a> {
+        evidence: &'a str,
+        tests: Vec<&'a String>,
+    }
+    let mut sorted: Vec<&String> = tests.iter().collect();
+    sorted.sort();
+    let surface = EvidenceSurface {
+        evidence: evidence.as_str(),
+        tests: sorted,
+    };
+    crate::digest::sha256_hex_prefixed(
+        TESTS_TAG,
+        serde_json::to_string(&surface)
+            .expect("the evidence surface serializes infallibly")
+            .as_bytes(),
+    )
+}
+
+/// Validate a claim's authored evidence declaration: its test links and the mode they sit under.
+///
+/// Three file-contract rules, not identity rules, and the loader is where they are enforced:
+/// a `tests:` entry that is empty names nothing while looking like a link (the gate would read it
+/// as a test absent from the report, which is the right verdict for a rename but the wrong one for
+/// a typo); a duplicate makes the attested digest depend on a repetition that means nothing; and a
+/// **process declaration that also links tests** is a contradiction — the evidence is machine or
+/// process, never both (ADR 0019). The check is deliberately *not* a normalizer: an id is compared
+/// exactly as authored, so a whitespace variant is a link to a test that does not exist rather
+/// than a silent match.
+pub fn validate_tests(tests: &[String], evidence: Evidence) -> Result<(), String> {
+    // A process declaration and machine links are two different answers to the same question.
+    // Refusing the contradiction here keeps a claim from being counted as process-evidenced
+    // while carrying links nobody runs, or the reverse.
+    if evidence == Evidence::Process && !tests.is_empty() {
+        return Err(
+            "declares `evidence: process` and also links tests: a claim's evidence is machine \
+             (proven by its linked tests) or process (declared by a human), never both — remove \
+             one of them"
+                .to_string(),
+        );
+    }
+    let mut seen: BTreeMap<&str, ()> = BTreeMap::new();
+    for test in tests {
+        if test.trim().is_empty() {
+            return Err(
+                "has a `tests:` entry that is empty: an empty id names no test — remove it or \
+                 write the test id the report carries"
+                    .to_string(),
+            );
+        }
+        if seen.insert(test.as_str(), ()).is_some() {
+            return Err(format!(
+                "lists the test id {test:?} twice: the link is a set, and a repetition would \
+                 change the attested `tests_hash` without naming another test"
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -112,6 +217,20 @@ pub struct ClaimFile {
     pub temporal: Option<String>,
     pub quantifier: Option<String>,
     pub unstructured: bool,
+    /// The tests that prove this claim, authored by a human: `[classname::name]` ids as the
+    /// JUnit report carries them. **Optional** (absent = no link, which the gate reports as a
+    /// finding), **order-free** (hashed sorted), **attested** in the Baseline (`tests_hash`,
+    /// envelope v4) and **never part of identity** — the canonical form does not carry it, so
+    /// adding, removing or renaming a link moves no address (ADR 0019). A rename is therefore
+    /// visible as "linked test not in the report", never as a pass.
+    #[serde(default)]
+    pub tests: Vec<String>,
+    /// How this claim's evidence is established: `machine` (the default — a linked test in the
+    /// report must pass) or `process` (declared by a human; reported PASS-as-declared, named and
+    /// counted, never inferred from an empty `tests:` list). Authored, outside identity, and
+    /// attested together with the links (`tests_hash`, ADR 0019).
+    #[serde(default)]
+    pub evidence: Evidence,
     pub canonical: CanonicalCache,
     pub address: Option<String>,
     pub rationale: Rationale,

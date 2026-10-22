@@ -13,7 +13,7 @@ use req::canon::{canonical_json, evaluate_claim};
 use req::model::{ClaimFile, Registry};
 
 const CLAIM: &str = "\
-schema: req.claim/0
+schema: req.claim/1
 claim_id: REQ-X
 statement: The system shall log each command.
 modality: SHALL
