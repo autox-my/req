@@ -506,7 +506,10 @@ fi
 # goes unchecked is exactly the hole the SKIP/`FAST` distinction exists to show. With no debug
 # binary the script's own resolution runs, and failing to find one is a red, never a pass.
 if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/quickstart.sh" ] && command -v python3 >/dev/null 2>&1; }; then
-  if [ "$dry" -eq 0 ] && [ -x "$PWD/target/debug/req" ]; then
+  # `plan` prints this same choice, from this same call site: `-x` picks the command, it does
+  # not gate the check, so consulting it in a plan is what makes the plan show the binding the
+  # default run uses.
+  if [ -x "$PWD/target/debug/req" ]; then
     run env REQ_BIN="$PWD/target/debug/req" bash "$PWD/tools/quickstart.sh"
   else
     run bash "$PWD/tools/quickstart.sh"

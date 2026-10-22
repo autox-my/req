@@ -24,8 +24,9 @@
 #     one exists and `cargo build -q --offline` is only the last resort;
 #   * no $HOME writes — no command here sets HOME, and every corpus command runs in
 #     $WORK with REQ_ROOT unset, so the root is resolved by walking up from $WORK.
-#     (The one possible exception is the build fallback: cargo uses CARGO_HOME, which
-#     this script defaults to <repo>/.cargo-home only when that in-repo dir exists.)
+#     (The build fallback is the one exception to "nothing else": cargo writes
+#     CARGO_HOME, which this script defaults to <repo>/.cargo-home only when that
+#     in-repo dir exists; its build output goes to $WORK/target, never the checkout.)
 #     Python would be the other: the system interpreter caches compiled stdlib
 #     modules under $HOME/Library/Caches/com.apple.python (measured: 54 files on a
 #     fresh HOME), so bytecode writing is switched off for the whole run below.
@@ -150,7 +151,7 @@ claim_count() {
 }
 
 digest_of() { # extract the sha256:… token from a render line
-  printf '%s\n' "$1" | sed -n 's/.*\(sha256:[0-9a-f]*\).*/\1/p' | head -1
+  printf '%s\n' "$1" | sed -n 's/.*\(sha256:[0-9a-f]\{64\}\).*/\1/p' | head -1
 }
 
 # --- preflight: resolve the repo, the binary and the scratch dir --------------------
@@ -184,23 +185,33 @@ if [ -n "${REQ_BIN:-}" ]; then
   REQ_BIN="$(cd "$(dirname "$REQ_CAND")" && pwd -P)/$(basename "$REQ_CAND")"
 else
   REQ_BIN=""
-  for REQ_CAND in "$REPO_ROOT/target/debug/req" "$REPO_ROOT/target/release/req"; do
+  # A caller may redirect the build directory (CARGO_TARGET_DIR — `scripts/check.sh` deliberately
+  # does not set it), and then the binary is there, not under `$REPO_ROOT/target`.
+  TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/target}"
+  case "$TARGET_DIR" in
+    /*) : ;;
+    *) TARGET_DIR="$REPO_ROOT/$TARGET_DIR" ;;
+  esac
+  for REQ_CAND in "$TARGET_DIR/debug/req" "$TARGET_DIR/release/req"; do
     if [ -f "$REQ_CAND" ] && [ -x "$REQ_CAND" ]; then
       REQ_BIN="$(cd "$(dirname "$REQ_CAND")" && pwd -P)/$(basename "$REQ_CAND")"
       break
     fi
   done
   if [ -z "$REQ_BIN" ]; then
-    log "no prebuilt binary at target/debug/req or target/release/req — building offline"
+    log "no prebuilt binary under $TARGET_DIR — building offline into the scratch dir"
     if [ -z "${CARGO_HOME:-}" ] && [ -d "$REPO_ROOT/.cargo-home" ]; then
       CARGO_HOME="$REPO_ROOT/.cargo-home"
       export CARGO_HOME
     fi
     command -v cargo >/dev/null 2>&1 \
       || fail "no prebuilt req binary and cargo is not on PATH"
-    ( cd "$REPO_ROOT" && cargo build -q --offline ) \
-      || fail "cargo build -q --offline failed in $REPO_ROOT"
-    REQ_CAND="$REPO_ROOT/target/debug/req"
+    # Build INTO $WORK: the rehearsal must not write into the checkout, which is the property
+    # the header states (and which a redirected CARGO_TARGET_DIR would otherwise dodge while
+    # still writing `target/`). `--locked` keeps the committed Cargo.lock from moving.
+    ( cd "$REPO_ROOT" && CARGO_TARGET_DIR="$WORK_DIR/target" cargo build -q --offline --locked ) \
+      || fail "cargo build -q --offline --locked failed in $REPO_ROOT"
+    REQ_CAND="$WORK_DIR/target/debug/req"
     [ -f "$REQ_CAND" ] && [ -x "$REQ_CAND" ] \
       || fail "cargo build produced no executable at $REQ_CAND"
     REQ_BIN="$(cd "$(dirname "$REQ_CAND")" && pwd -P)/$(basename "$REQ_CAND")"
@@ -331,7 +342,7 @@ run_step "req canon --fill writes the derived fields" 0 \
 require_out "filled 1, already current 1, refused 0"
 # The fill completed the draft: a real address, and the predicate it was authored with.
 require_grep '^address: [0-9a-f]{8,}$' claims/REQ-0002.yml "the fill wrote no address"
-require_grep '^  form: ' claims/REQ-0002.yml "the fill wrote no canonical form"
+require_grep '^  form: [|]-$' claims/REQ-0002.yml "the fill wrote no canonical form"
 require_grep '^  - deployment_mode == air_gapped$' claims/REQ-0002.yml \
   "the fill dropped the authored applicability predicate"
 
@@ -412,7 +423,8 @@ if [ "${QUICKSTART_KEEP:-0}" = "1" ]; then
 else
   # Remove exactly the directory mktemp created for this run, and nothing else.
   case "$WORK_DIR" in
-    "${TMP_BASE}"/req-quickstart.*) rm -rf "$WORK_DIR" ;;
+    "${TMP_BASE}"/req-quickstart.*) rm -rf "$WORK_DIR" \
+      || fail "could not remove the scratch dir: $WORK_DIR" ;;
     *) fail "refusing to remove an unexpected scratch path: $WORK_DIR" ;;
   esac
 fi
