@@ -42,6 +42,10 @@ use std::path::{Path, PathBuf};
 /// (`tests_hash`, ADR 0019); v3 attests the Decision log's chain head and the signer's timestamp
 /// (ADR 0016); v2 attests the audit surface (ADR 0013).
 pub const BASELINE_VERSION: u32 = 4;
+/// The first envelope that attests each claim's authored test links (ADR 0019). A manifest older
+/// than this predates the disclosure, and the disclosure is about tests — not about whatever the
+/// oldest supported envelope happens to be.
+pub const TESTS_ATTESTED_FROM: u32 = 4;
 
 /// The **oldest envelope this build still verifies**.
 ///
@@ -1650,8 +1654,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     // "Predates what this build writes" is a relationship, not the coincidence that the oldest
     // supported envelope happens to be one below the write version: key it off both constants so
     // a future bump cannot tell a freshly written manifest that it predates itself.
-    if manifest.version < BASELINE_VERSION && manifest.version >= OLDEST_VERIFIABLE_BASELINE_VERSION
-    {
+    if (OLDEST_VERIFIABLE_BASELINE_VERSION..TESTS_ATTESTED_FROM).contains(&manifest.version) {
         println!(
             "  - predates envelope v{BASELINE_VERSION}: the authored test links are NOT attested \
              by this manifest (ADR 0019) — re-issue and re-sign to attest them"

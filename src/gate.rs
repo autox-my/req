@@ -15,7 +15,9 @@
 //!   decided; a selection that leaves a claim undecided is Unverifiable, never Pass.
 //!
 //! One policy judges the **invocation** rather than a claim: what the `key=value` context
-//! selected, and whether the corpus's own selector predicates confirm it.
+//! selected, and whether the corpus's own selector predicates confirm it. One policy, added by
+//! ADR 0019, judges the **evidence**: does a test that proves each applying claim pass? (Its
+//! process-evidence arm is a declared answer, not an exception: see [`TestEvidence`].)
 //!
 //! The verdict joins that answer to the selection: a run that leaves **any claim undecided**
 //! is UNVERIFIABLE, because the invocation did not decide what it claims to release — the
@@ -34,6 +36,8 @@
 use crate::canon::RULES_V;
 use crate::fill::StoredState;
 use crate::format::{self, Format, SCHEMA_GATE};
+use crate::junit::TestOutcome;
+use crate::model::Evidence;
 use crate::select::{Applies, Context, Predicate, evaluate as evaluate_predicate, parse_predicate};
 use crate::view::Row;
 use rust_decimal::Decimal;
@@ -75,6 +79,11 @@ pub struct PolicyResult {
     pub detail: &'static str,
     pub outcome: Outcome,
     pub offenders: Vec<String>,
+    /// Claims whose evidence is an explicit **process declaration** rather than a machine link.
+    /// They do not decide the outcome (a declared process is a pass-as-declared), but they are
+    /// **named and counted**, because a count that hides its subjects is how "declared" starts to
+    /// read as "proven". Empty for every policy but `tests_linked`.
+    pub process: Vec<String>,
 }
 
 impl PolicyResult {
@@ -98,7 +107,14 @@ impl PolicyResult {
             detail,
             outcome,
             offenders,
+            process: Vec::new(),
         }
+    }
+
+    /// Attach the process-evidenced claims the policy reports beside its outcome.
+    fn with_process(mut self, process: Vec<String>) -> Self {
+        self.process = process;
+        self
     }
 }
 
@@ -219,8 +235,141 @@ fn selectors_confirmed(rows: &[Row], context: &Context) -> PolicyResult {
     )
 }
 
+/// The evidence the invocation supplied for the `tests_linked` policy (ADR 0019).
+///
+/// Three states, because a missing report and an unreadable one are different remedies but the
+/// same class: neither is "no failures found". A **process declaration is not a report**: a claim
+/// that declares `evidence: process` is answered by its declaration, and a claim that declares
+/// nothing (the default, `machine`) is answered only by the report.
+#[derive(Debug, Clone, Copy)]
+pub enum TestEvidence<'a> {
+    /// No `--test-report` was supplied.
+    Absent,
+    /// The supplied report could not be read or parsed; the reason is the reader's.
+    Unreadable(&'a str),
+    /// The parsed report. An empty one is a distinct state the policy reports (zero test cases
+    /// verify nothing).
+    Report(&'a crate::junit::Report),
+}
+
+/// The `tests_linked` policy: for every applying claim, does a test that proves it pass?
+///
+/// The four outcomes, and there is no fifth:
+///
+/// * **PASS** — the claim links at least one test and at least one linked test **passed**;
+/// * **FAIL** — every linked test is present in the report and **none passed** (a `skipped` test
+///   is not a pass); a linked test that **failed** outranks any unverifiable;
+/// * **UNVERIFIABLE — no linked test** — the claim carries no `tests:` entry, the flagship answer,
+///   named per claim;
+/// * **UNVERIFIABLE — linked test not in the report** — a linked test id has no testcase (renamed
+///   or deleted), never folded into PASS.
+///
+/// Plus two **report-level** unverifiables, reported **once** rather than once per claim: no
+/// report was supplied, or the report cannot be read / carries zero test cases. A policy that
+/// cannot be exercised is not a pass. A claim that declares `evidence: process` is PASS **as
+/// declared**: named in [`PolicyResult::process`] and counted in the summary, never inferred from
+/// an empty `tests:` list.
+fn tests_linked(applying: &[&Row], evidence: TestEvidence<'_>) -> PolicyResult {
+    const DETAIL: &str = "every applying claim's linked test passed, or the claim declares process \
+                          evidence; a claim with no link, or a linked test the report does not \
+                          carry, cannot be confirmed";
+    let (process, machine): (Vec<&Row>, Vec<&Row>) = applying
+        .iter()
+        .partition(|row| row.evidence == Evidence::Process);
+    let process_ids: Vec<String> = process.iter().map(|row| row.claim_id.clone()).collect();
+
+    // Nothing machine-evidenced here: the declarations are the answer, and no report is needed.
+    if machine.is_empty() {
+        return PolicyResult::new("tests_linked", DETAIL, Vec::new(), Vec::new())
+            .with_process(process_ids);
+    }
+
+    let mut failed: Vec<String> = Vec::new();
+    let mut unverifiable: Vec<String> = Vec::new();
+    match evidence {
+        // A policy that cannot be exercised is not a pass — and the remedy is named.
+        TestEvidence::Absent => unverifiable.push(format!(
+            "no --test-report was supplied, so the {} machine-evidenced claim(s) cannot be judged",
+            machine.len()
+        )),
+        TestEvidence::Unreadable(reason) => {
+            unverifiable.push(format!("the test report cannot be read: {reason}"));
+        }
+        TestEvidence::Report(report) if report.is_empty() => unverifiable
+            .push("the test report carries no test cases, so it verifies nothing".to_string()),
+        TestEvidence::Report(report) => {
+            for row in machine {
+                if row.tests.is_empty() {
+                    // The flagship answer. "No link" is never a pass, however green the suite is.
+                    unverifiable.push(format!("{}: no linked test", row.claim_id));
+                    continue;
+                }
+                let mut saw_pass = false;
+                let mut absent: Vec<&str> = Vec::new();
+                let mut failed_tests: Vec<&str> = Vec::new();
+                for id in &row.tests {
+                    match report.outcome(id) {
+                        Some(TestOutcome::Passed) => saw_pass = true,
+                        Some(TestOutcome::Failed) => failed_tests.push(id),
+                        // Present, and deliberately not a pass. It only becomes a FAIL below when
+                        // it is *all* there is; alone it cannot confirm the claim either.
+                        Some(TestOutcome::Skipped) => {}
+                        None => absent.push(id),
+                    }
+                }
+                if !failed_tests.is_empty() {
+                    // A failure outranks any unverifiable, whatever else is missing.
+                    failed.push(format!(
+                        "{}: linked test failed: {}",
+                        row.claim_id,
+                        failed_tests.join(", ")
+                    ));
+                } else if !absent.is_empty() {
+                    // The rename defence: a linked test the report no longer carries is not a
+                    // test that passed.
+                    unverifiable.push(format!(
+                        "{}: linked test not in the report: {}",
+                        row.claim_id,
+                        absent.join(", ")
+                    ));
+                } else if !saw_pass {
+                    // Every linked test present and none passed: skipped is not a pass.
+                    failed.push(format!(
+                        "{}: every linked test is present and none passed — a skipped test is \
+                         not a pass ({})",
+                        row.claim_id,
+                        row.tests.join(", ")
+                    ));
+                }
+            }
+        }
+    }
+    PolicyResult::new("tests_linked", DETAIL, failed, unverifiable).with_process(process_ids)
+}
+
 /// Evaluate every policy over a selection's applying claims, and the invocation that made it.
-pub fn evaluate(rows: &[Row], context: &Context) -> Vec<PolicyResult> {
+///
+/// `evidence` is the test report the invocation supplied; [`TestEvidence::Absent`] is a real state
+/// and not a no-op, because a release whose claims carry no machine evidence cannot be confirmed.
+pub fn evaluate(rows: &[Row], context: &Context, evidence: TestEvidence<'_>) -> Vec<PolicyResult> {
+    let mut results = evaluate_claims(rows, context);
+    let applying: Vec<&Row> = rows
+        .iter()
+        .filter(|row| row.applies == Applies::Yes)
+        .collect();
+    // Inserted before the invocation policy, keeping the claim policies first and `tests_linked`
+    // the sibling of `rationale_present` the docs name. Position does not affect the fold.
+    results.insert(results.len() - 1, tests_linked(&applying, evidence));
+    results
+}
+
+/// The five claim-and-invocation policies, without the test-evidence policy (`tests_linked` is
+/// added by [`evaluate`], which is what the CLI calls).
+///
+/// A seam for the tests that judge one policy over hand-built rows: it is not an alternative
+/// answer the CLI can give — [`evaluate`] is what `req gate` calls, so no invocation can skip
+/// the evidence.
+pub fn evaluate_claims(rows: &[Row], context: &Context) -> Vec<PolicyResult> {
     let known: BTreeSet<&str> = rows.iter().map(|r| r.claim_id.as_str()).collect();
     let state_of = |id: &str| rows.iter().find(|r| r.claim_id == id).map(|r| r.applies);
     let applying: Vec<&Row> = rows.iter().filter(|r| r.applies == Applies::Yes).collect();
@@ -333,7 +482,8 @@ struct UndecidedDocument {
     missing: Vec<String>,
 }
 
-/// `gate`'s document: the folded verdict, the five policies, and the undecided claims. The
+/// `gate`'s document: the folded verdict, the six policies, the process-evidenced claims and
+/// the undecided claims. The
 /// verdict is computed from the same `exit_code` the command returns, so the document and the
 /// process cannot disagree.
 #[derive(Serialize)]
@@ -344,6 +494,10 @@ struct GateDocument<'a> {
     selection: &'a Context,
     verdict: &'static str,
     policies: Vec<PolicyDocument<'a>>,
+    /// Claims whose evidence is an explicit process declaration (ADR 0019), sorted. They pass as
+    /// declared and are named here so a consumer cannot mistake the machine count for the whole
+    /// answer.
+    process_evidenced: &'a [String],
     undecided: Vec<UndecidedDocument>,
 }
 
@@ -395,30 +549,66 @@ fn undecided_document(rows: &[Row], context: &Context) -> Vec<UndecidedDocument>
         .collect()
 }
 
-/// `req gate [--format text|json] [key=value ...]`
+/// `req gate [--test-report <junit.xml>] [--format text|json] [key=value ...]`
 ///
 /// Exit: **0** every policy passed **and** every claim in the corpus was decided, **1** a policy
 /// failed, **3** a policy could not be settled *or* the selection left a claim undecided (the
 /// claims are named, with the remedy), **2** usage. Fail outranks unverifiable, and an undecided
 /// claim outranks a pass.
 pub fn run(args: &[String], root: &std::path::Path) -> i32 {
-    let usage = "usage: req gate [--format text|json] [key=value ...]";
+    let usage = "usage: req gate [--test-report <junit.xml>] [--format text|json] [key=value ...]";
     let (format, args) = match format::take_format(args, usage) {
         Ok(parsed) => parsed,
         Err(code) => return code,
     };
     let mut context = Context::new();
-    for arg in &args {
-        match arg.split_once('=') {
-            Some((key, value)) if !key.is_empty() => {
-                context.insert(key.to_string(), value.to_string());
+    let mut test_report: Option<String> = None;
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        if arg == "--test-report" {
+            index += 1;
+            match args.get(index) {
+                Some(path) => {
+                    test_report = Some(path.clone());
+                }
+                None => {
+                    eprintln!("--test-report needs a value: {usage}");
+                    return 2;
+                }
             }
-            _ => {
-                eprintln!("{usage}");
+        } else if let Some(path) = arg.strip_prefix("--test-report=") {
+            // The `--flag=value` spelling most CI snippets and GNU habits produce. Without this arm it
+            // fell through to the selector parser and became a *context entry* — a silent answer to a
+            // question nobody asked, which is the one failure mode the gate must not have.
+            if path.is_empty() {
+                eprintln!("--test-report needs a value: {usage}");
                 return 2;
             }
+            test_report = Some(path.to_string());
+        } else {
+            match arg.split_once('=') {
+                Some((key, value)) if !key.is_empty() => {
+                    context.insert(key.to_string(), value.to_string());
+                }
+                _ => {
+                    eprintln!("{usage}");
+                    return 2;
+                }
+            }
         }
+        index += 1;
     }
+    // Read the report before the corpus: a usage error or an unreadable file is answered the same
+    // way whether or not the corpus loads, and the reason is the reader's own.
+    let loaded_report = test_report
+        .as_deref()
+        .map(|path| crate::junit::Report::load(std::path::Path::new(path)));
+    let evidence = match &loaded_report {
+        None => TestEvidence::Absent,
+        Some(Err(reason)) => TestEvidence::Unreadable(reason),
+        Some(Ok(report)) => TestEvidence::Report(report),
+    };
     let rows = match crate::view::load_rows(&context, root) {
         Ok(rows) => rows,
         Err(e) => {
@@ -434,8 +624,16 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         .collect();
     // Evaluated once, before either rendering: the verdict is the same fold in both, and the
     // exit code is returned from it in both.
-    let results = evaluate(&rows, &context);
+    let results = evaluate(&rows, &context, evidence);
     let code = exit_code(&results, undecided.len());
+    // The process-evidenced claims, sorted once: they are reported beside the outcome (never as
+    // offenders, because a declaration is a pass-as-declared) and must be visible as a count.
+    let mut process_evidenced: Vec<String> = results
+        .iter()
+        .flat_map(|result| result.process.iter().cloned())
+        .collect();
+    process_evidenced.sort();
+    process_evidenced.dedup();
     if format == Format::Json {
         let document = GateDocument {
             schema: SCHEMA_GATE,
@@ -451,6 +649,9 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                     details: &result.offenders,
                 })
                 .collect(),
+            // A process declaration is an answer, so it is not an offender; it is still a fact a
+            // consumer must see, and it is named rather than only counted (ADR 0019).
+            process_evidenced: &process_evidenced,
             undecided: undecided_document(&rows, &context),
         };
         println!("{}", format::document(&document));
@@ -539,6 +740,20 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         for offender in &result.offenders {
             println!("  - {offender}");
         }
+        if !result.process.is_empty() {
+            // Named, not folded into the pass: a declaration is evidence of a different kind.
+            println!(
+                "  * process-evidenced (declared, not machine-proven): {}",
+                result.process.join(", ")
+            );
+        }
+    }
+    if !process_evidenced.is_empty() {
+        println!(
+            "\nprocess-evidenced: {} — declared, not machine-proven: {}",
+            process_evidenced.len(),
+            process_evidenced.join(", ")
+        );
     }
     println!(
         "\nverdict: {}",

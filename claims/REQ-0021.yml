@@ -15,6 +15,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::evidence::no_command_rewrites_or_merges_claims_automatically"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

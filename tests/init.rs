@@ -306,16 +306,54 @@ fn the_fresh_corpus_is_green() {
         verify.stdout
     );
 
+    // The release gate now asks the flagship question too: does a test that proves the claim
+    // pass? A fresh corpus has no evidence yet, so the honest first answer is UNVERIFIABLE,
+    // naming the claim — not PASS over a link nobody wrote.
     let gate = run_at(fx.path(), &["gate"]);
     assert_eq!(
-        gate.code, 0,
-        "the adopter's first commit must have a working gate, not a red one:\n{}\n{}",
+        gate.code, 3,
+        "a corpus with no evidence is UNVERIFIABLE, never a pass:\n{}\n{}",
         gate.stdout, gate.stderr
     );
     assert!(
-        gate.stdout.contains("verdict: PASS"),
-        "the gate's verdict line:\n{}",
+        gate.stdout.contains("tests_linked") && gate.stdout.contains("no --test-report"),
+        "the gate names the policy it cannot exercise:\n{}",
         gate.stdout
+    );
+
+    // Supply the evidence: link the starter claim and hand the gate the report that carries it.
+    let claim_path = fx.join("claims/REQ-0001.yml");
+    let claim = std::fs::read_to_string(&claim_path).expect("reads the starter claim");
+    let linked = claim.replace(
+        "unstructured: false\n",
+        "unstructured: false\ntests:\n  - \"init::starter\"\n",
+    );
+    assert_ne!(linked, claim, "the link was authored");
+    std::fs::write(&claim_path, linked).expect("writes the linked claim");
+    let report = fx.join("junit.xml");
+    std::fs::write(
+        &report,
+        "<?xml version=\"1.0\"?>\n<testsuites name=\"init\"><testsuite name=\"init\">\
+         <testcase name=\"starter\" classname=\"init\"/></testsuite></testsuites>\n",
+    )
+    .expect("writes the report");
+    let evidenced = run_at(
+        fx.path(),
+        &[
+            "gate",
+            "--test-report",
+            report.to_str().expect("a UTF-8 fixture path"),
+        ],
+    );
+    assert_eq!(
+        evidenced.code, 0,
+        "a linked passing test is the proof the gate asks for:\n{}\n{}",
+        evidenced.stdout, evidenced.stderr
+    );
+    assert!(
+        evidenced.stdout.contains("verdict: PASS"),
+        "the gate's verdict line:\n{}",
+        evidenced.stdout
     );
 
     // Diagnostics settle too: a claim that ships with flags would redden the adopter's
@@ -862,7 +900,9 @@ fn gate_script() -> String {
 /// shell programs and one running says nothing about the other.
 #[cfg(unix)]
 fn artifact_script() -> String {
-    run_block_containing("capture \"gate-${releases}\" gate \"${release[@]}\"")
+    run_block_containing(
+        "capture \"gate-${releases}\" gate --test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\" \"${release[@]}\"",
+    )
 }
 
 /// The shell body of the `run: |` block in the snippet `req init` prints that contains `anchor`.
@@ -1053,8 +1093,9 @@ fn the_ci_gate_step_script_behaves_as_an_adopter_needs() {
     write_variants(&fx, "# nothing declared yet\n");
     let (code, text) = run_gate_step(&fx, &script);
     assert_eq!(
-        code, 0,
-        "a comment-only file falls back to the default variant: {text}"
+        code, 3,
+        "a comment-only file falls back to the default variant, and a corpus with no evidence \
+         is UNVERIFIABLE (the excerpt names the missing report): {text}"
     );
     assert_eq!(summary_rows(&text).len(), 1, "exactly one gate run: {text}");
     assert!(
@@ -1155,10 +1196,12 @@ fn the_ci_gate_step_script_behaves_as_an_adopter_needs() {
         );
     }
 
-    // (3) Blank and comment-only lines are skipped, never turned into a bare run.
+    // (3) Blank and comment-only lines are skipped, never turned into a bare run. The bare
+    // variant is UNVERIFIABLE here for the same honest reason as case (1): the fresh corpus has
+    // no evidence yet, so the step is red and names the policy it could not exercise.
     write_variants(&fx, "\n   \n# a comment\n\n");
     let (code, text) = run_gate_step(&fx, &script);
-    assert_eq!(code, 0, "{text}");
+    assert_eq!(code, 3, "{text}");
     assert_eq!(summary_rows(&text).len(), 1, "one run: {text}");
     assert!(
         text.contains("`<none>`"),
@@ -1390,8 +1433,8 @@ fn the_json_views_step_captures_documents_and_never_fabricates_a_gate() {
         "render --format json",
         "trace --format json",
         "audit --format json",
-        "gate deployment_mode=air_gapped --format json",
-        "gate field=value --format json",
+        "gate --test-report target/nextest/ci/junit.xml deployment_mode=air_gapped --format json",
+        "gate --test-report target/nextest/ci/junit.xml field=value --format json",
     ];
     assert_eq!(
         argv.iter().map(String::as_str).collect::<Vec<_>>(),

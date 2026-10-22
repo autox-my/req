@@ -87,6 +87,12 @@ jobs:
           rustup run 1.99.0 cargo --version
           rustup run 1.99.0 rustfmt --version
           rustup run 1.99.0 cargo clippy --version
+          # Publish the toolchain to LATER steps: a runner does not carry one step's `export`
+          # forward, so without these two lines the next `cargo` is a 127. `$HOME/.cargo/bin` is
+          # where rustup put the shims (and where `cargo install` will put the test runner), and
+          # RUSTUP_HOME is the tree those shims resolve.
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "RUSTUP_HOME=$HOME/.rustup" >> "$GITHUB_ENV"
 
       - name: the review CLI, installed from the committed lockfile
         run: |
@@ -137,6 +143,32 @@ jobs:
             echo "::error::origin/main has no $ANCHOR_PATH — fail closed, never fall back to this checkout (a pull request could then supply the trust anchor that judges it)"
             exit 1
           fi
+
+      - name: the pinned test runner — a prebuilt binary, never a compile
+        run: |
+          set -eu
+          # ADR 0019: nextest is adopted for its JUnit artefact, not for speed. `cargo install`
+          # **compiles** ~300 crates (8+ minutes in CI, measured); the release ships a prebuilt
+          # binary, so this step downloads one instead. Pin BOTH the version and the tarball's
+          # sha256: the hash is provenance, and a swapped artefact must fail HERE rather than
+          # become the test runner. (The 0.9.149 notes advise the prebuilt download over
+          # `cargo nextest self update`, which is why no self-update appears anywhere.)
+          #
+          # `scripts/check.sh` still verifies the version at run time — a different installed
+          # version is a FAIL naming both, never a silent substitution.
+          VERSION=0.9.149
+          TARGET=x86_64-unknown-linux-gnu
+          SHA256=32d1d8c0567b7a80bee2bad8bb09125c846da96bc009b2de11ec08557290c770
+          url="https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-${VERSION}/cargo-nextest-${VERSION}-${TARGET}.tar.gz"
+          tmp="$(mktemp -d)"
+          curl --proto '=https' --tlsv1.2 -fsSL "$url" -o "$tmp/nextest.tar.gz"
+          echo "${SHA256}  $tmp/nextest.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/nextest.tar.gz" -C "$tmp"
+          # One root-level member (`cargo-nextest`, 0755); absent = a layout change, named here.
+          test -x "$tmp/cargo-nextest"
+          mkdir -p "$GITHUB_WORKSPACE/.cargo-home/bin"
+          install -m 0755 "$tmp/cargo-nextest" "$GITHUB_WORKSPACE/.cargo-home/bin/cargo-nextest"
+          "$GITHUB_WORKSPACE/.cargo-home/bin/cargo-nextest" --version
 
       - name: the gate — the exit code and the log both count
         run: |

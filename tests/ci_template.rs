@@ -194,10 +194,47 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         ("capture trace trace", 1, "the traceability document"),
         ("capture audit audit", 1, "the audit packet document"),
         (
-            "capture \"gate-${releases}\" gate \"${release[@]}\" < /dev/null",
+            "capture \"gate-${releases}\" gate --test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\" \"${release[@]}\" < /dev/null",
             1,
             "the per-variant gate document, with the `/dev/null` stdin the loop comment calls \
              load-bearing (a `req` that read stdin would shorten the release list and end green)",
+        ),
+        (
+            "does not declare [profile.ci], [profile.ci.junit] and path",
+            1,
+            "the template verifies the nextest profile it depends on instead of assuming it: an \
+             adopter's own config without the profile makes the gate read a missing report",
+        ),
+        (
+            "capture gate gate --test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\" < /dev/null",
+            1,
+            "the default-variant JSON capture reads the same report as the gate step: without it the \
+             document says `unverifiable` beside a green gate",
+        ),
+        (
+            "cargo nextest run --profile ci",
+            1,
+            "the suite whose JUnit report the gate reads: without it `--test-report` has nothing \
+             to read and the gate is UNVERIFIABLE, not green",
+        ),
+        (
+            "cargo install cargo-nextest --version 0.9.149 --locked",
+            1,
+            "the pinned test runner (ADR 0019): an unpinned install would let the artefact's shape \
+             drift, exactly as an unpinned `ocr` would let the review's",
+        ),
+        (
+            "report-skipped = \"ignored\"",
+            1,
+            "a skipped test is present in the artefact — it is not a pass, and a report that \
+             silently omits it would read as one",
+        ),
+        (
+            "--test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\"",
+            3,
+            "the gate step and **both** JSON captures (per-variant and default-variant) read the same \
+             artefact: a document captured without it was the review's finding — `unverifiable` \
+             beside a green gate",
         ),
         (
             "[ \"$variants_read\" -eq 1 ]",
@@ -208,9 +245,10 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         ),
         (
             "if: always()",
-            3,
-            "the capture and the upload must run on a red build — the run an agent most needs to \
-             read",
+            5,
+            "every step that must run on a red build: the invalidation of a stale report (before the \
+             run, so a skipped step cannot leave yesterday's), the capture and the upload — plus the \
+             two comments that name the property",
         ),
         (
             "if-no-files-found: error",

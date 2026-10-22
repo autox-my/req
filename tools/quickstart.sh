@@ -10,6 +10,9 @@
 #     rules v5), and `--fill` writes the derived fields `--verify` then checks;
 #   * a corpus carrying a selector makes bare `gate` UNVERIFIABLE (exit 3, ADR 0015)
 #     while the declared variant gates PASS, and every claim is decided;
+#   * the release gate's test-evidence policy (ADR 0019) answers honestly before any link
+#     exists ("no linked test", exit 3), and the declared variant gates PASS once each
+#     claim is linked to a test the supplied report carries as passing;
 #   * `render --out` writes a projection, `render --check` proves it current, and an
 #     edited projection is STALE (exit 1) — the alarm can fail, so it is a check.
 #
@@ -356,7 +359,7 @@ anchor = "applicability: []"
 if text.count(anchor) != 1:
     raise SystemExit("expected exactly one 'applicability: []' line in %s" % path)
 path.write_text(text.replace(anchor, "applicability:\n  - deployment_mode == air_gapped"))
-print("authored applicability: deployment_mode == air_gapped")
+print("authored applicability: deployment_mode == air_gapped", file=sys.stderr)
 PY
 )"
 RC=$?
@@ -399,8 +402,55 @@ run_step "bare req gate is UNVERIFIABLE on a selector-carrying corpus (ADR 0015)
   "req gate" req gate
 require_out "verdict: UNVERIFIABLE"
 
-run_step "req gate deployment_mode=air_gapped (the release gate)" 0 \
+# The release gate now also asks the flagship question — does a test that proves each
+# applying claim pass? — and a claim with no link is a finding, not a pass. With no report
+# supplied the policy cannot be exercised at all (exit 3); that is the honest first answer,
+# and the next two steps are the remedy a real project applies.
+run_step "gate with no test evidence is UNVERIFIABLE (a policy that cannot be exercised)" 3 \
   "req gate deployment_mode=air_gapped" req gate deployment_mode=air_gapped
+require_out "no --test-report"
+
+step_start "link each claim to its proving test and write the report the gate reads"
+python3 - "$WORK_DIR/claims/REQ-0001.yml" "$WORK_DIR/claims/REQ-0002.yml" <<'PY'
+import pathlib
+import sys
+
+for path in sys.argv[1:]:
+    claim = pathlib.Path(path)
+    text = claim.read_text()
+    # A draft is `unstructured: true`; a structured claim is `unstructured: false`. Either way
+    # exactly one line carries the field, and the link goes right after it (authored, before
+    # the derived `canonical:` block).
+    anchors = [a for a in ("unstructured: false\n", "unstructured: true\n") if text.count(a) == 1]
+    if len(anchors) != 1:
+        raise SystemExit("expected exactly one `unstructured:` line in %s" % claim)
+    anchor = anchors[0]
+    claim_id = claim.stem
+    test_id = "quickstart::%s" % claim_id.lower().replace("-", "_")
+    claim.write_text(text.replace(anchor, anchor + 'tests:\n  - "%s"\n' % test_id))
+    print("linked %s -> %s" % (claim_id, test_id), file=sys.stderr)
+PY
+RC=$?
+if [ "$RC" -ne 0 ]; then
+  printf -- '--- step failed: %s\n    exit: %s (allowed: 0)\n' "$STEP_NAME" "$RC" >&2
+  fail "$STEP_NAME (exit $RC)"
+fi
+# A stand-in for the adopter's own nextest run: the artefact nextest writes, carrying the two
+# linked tests as passed. The gate is a reader, and what it can prove is what the report says.
+printf '%s\n' \
+  '<?xml version="1.0" encoding="UTF-8"?>' \
+  '<testsuites name="quickstart" tests="2" skipped="0" failures="0" errors="0">' \
+  '    <testsuite name="quickstart">' \
+  '        <testcase name="req_0001" classname="quickstart"/>' \
+  '        <testcase name="req_0002" classname="quickstart"/>' \
+  '    </testsuite>' \
+  '</testsuites>' > quickstart-junit.xml \
+  || fail "$STEP_NAME: cannot write the JUnit report"
+step_ok
+
+run_step "req gate deployment_mode=air_gapped (the release gate, with evidence)" 0 \
+  "req gate --test-report quickstart-junit.xml deployment_mode=air_gapped" \
+  req gate --test-report quickstart-junit.xml deployment_mode=air_gapped
 # A boundary, not a substring: `0 undecided` also occurs inside `10 undecided`.
 require_out_re '(^|[^0-9])0 undecided' 
 require_out "verdict: PASS"

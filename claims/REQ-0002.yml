@@ -15,6 +15,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::decision::canonical_bytes_are_stable_and_the_hash_covers_the_road_not_taken"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

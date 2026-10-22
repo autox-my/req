@@ -63,9 +63,26 @@ if [ -z "$TC" ]; then
   printf 'FAIL  no rust toolchain with cargo under $HOME/.rustup/toolchains\n'
   exit 2
 fi
-export PATH="$TC:$CACHE_ROOT/tools/ocr/node_modules/.bin:$PATH"
+# `.cargo-home/bin` first: the sandbox denies writes to $HOME, so the pinned test runner is
+# installed into the workspace's cargo home (see below), and a worktree shares it through the
+# git common dir. The ambient PATH is kept last, so CI's `~/.cargo/bin` (where the workflow
+# installs the same pin) still resolves when the workspace copy is absent.
+export PATH="$TC:$CACHE_ROOT/tools/ocr/node_modules/.bin:$CACHE_ROOT/.cargo-home/bin:$PATH"
 export CARGO_HOME="$CACHE_ROOT/.cargo-home"
 export OCR_NO_UPDATE=1
+
+# The **nextest pin** (ADR 0019): the gate's test runner is adopted for its JUnit artefact, not
+# for speed, and an unpinned runner would make the artefact's shape a thing that drifts.
+# `cargo install cargo-nextest --version 0.9.149 --locked` (CI does exactly this); verified at pin
+# time, never bumped opportunistically, and NOT a Cargo.lock change — it is tool provenance, like
+# the pinned `ocr` CLI.
+NEXTEST_PIN="0.9.149"
+# The artefact the release gate reads. Removed before the run so a *stale* report can never answer
+# for a run that failed to produce one: a report nobody generated is UNVERIFIABLE, never a pass.
+#  relocates the build tree (CI does); nextest writes the report under it. The
+# default stays **relative**, so the planned and executed lines are the same text wherever the run
+# starts from.
+JUNIT_REPORT="${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml"
 
 fail=0
 dry=0
@@ -287,7 +304,37 @@ else
   skip "clippy not installed (rustup component add clippy)"
 fi
 
-run cargo test
+# The suite — and its evidence — in **one run** (ADR 0019): `cargo test` is replaced, not kept
+# beside, because one run is one truth. The `ci` profile is the reviewed `.config/nextest.toml`
+# (`fail-fast = false`, and the JUnit report under `[profile.ci.junit]` with
+# `report-skipped = "ignored"`), so this run writes the report the release gate below reads.
+#
+# nextest does **not run doctests**. The repository has none today; the gap is named here rather
+# than discovered: a future `#[doc]` example needs its own step, or it will be silently unrun.
+#
+# A *stale* report is deleted first: if this step fails to produce one, the gate must read absence
+# (UNVERIFIABLE), never yesterday's pass. `--fast` keeps this step — it is the suite, not a
+# runtime-heavy extra — so it is never a `FAST` skip.
+if [ "$dry" -eq 0 ]; then
+  rm -f "$JUNIT_REPORT"
+fi
+if [ "$dry" -eq 1 ] || command -v cargo-nextest >/dev/null 2>&1; then
+  # Verified at pin time: a different installed version would write a different artefact shape,
+  # so it is a FAIL naming both versions, never a silent substitution. The install command is the
+  # remedy, exactly as the ocr pin prints its own.
+  if [ "$dry" -eq 0 ]; then
+    installed="$(cargo nextest --version 2>/dev/null | sed -n 's/^cargo-nextest \([0-9][^ ]*\).*/\1/p' | head -1)"
+    if [ "$installed" != "$NEXTEST_PIN" ]; then
+      printf 'FAIL  cargo-nextest %s is not the pinned %s: install it with `cargo install cargo-nextest --version %s --locked`\n' "${installed:-<none>}" "$NEXTEST_PIN" "$NEXTEST_PIN"
+      fail=1
+    fi
+    printf 'nextest pinned: %s (installed: %s)\n' "$NEXTEST_PIN" "${installed:-unknown}"
+  fi
+  run cargo nextest run --profile ci
+else
+  # A skipped check is never a pass. CI installs the pin, so this SKIP makes the job red there.
+  skip "cargo-nextest not installed (cargo install cargo-nextest --version $NEXTEST_PIN --locked)"
+fi
 run cargo run -q -- canon   # exit 3 = UNVERIFIABLE (never a pass)
 # The stored addresses must match the current rules and recompute from the stored
 # bytes: a rules bump without a re-fill exits 3 (candidates), a hand-edited digest
@@ -388,7 +435,10 @@ if [ -r "$PWD/.req/variants" ]; then
     read -r -a release <<< "${variant_line%%#*}"
     [ "${#release[@]}" -gt 0 ] || continue
     # </dev/null: nothing in the body may consume the remaining releases from this file's stdin.
-    run cargo run -q -- gate "${release[@]}" < /dev/null
+    # The evidence the policy reads: the report the test step just wrote. `req gate` without it
+    # answers UNVERIFIABLE (a policy that cannot be exercised is not a pass), and a report the
+    # run did not produce is absence, not "no failures found".
+    run cargo run -q -- gate --test-report "$JUNIT_REPORT" "${release[@]}" < /dev/null
     variants_gated=$((variants_gated + 1))
   done < "$PWD/.req/variants"
   # "Nothing was examined" is not a pass. A file of only comments iterates zero times, and an

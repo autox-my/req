@@ -15,6 +15,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::select::an_undecided_key_is_unknown_never_false"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

@@ -72,10 +72,15 @@ Git-native storage is table stakes, not the moat.
 ## Development
 
 ```bash
+cargo install cargo-nextest --version 0.9.149 --locked   # the JUnit report the release gate reads
 cargo build --release
 cargo run -q -- bench     # the gate: zero false merges, or the build is red
-./scripts/check.sh        # fmt, clippy, tests, canon + Baseline verification, every corpus
+./scripts/check.sh        # fmt, clippy, nextest + its report, canon + Baseline verification, every corpus
 ```
+
+The test run is `cargo nextest run --profile ci` under a reviewed `.config/nextest.toml`; it replaces
+`cargo test` (one run, one truth) and its report is what `req gate --test-report` reads to answer
+which claims have no passing test.
 
 Changes go through a feature branch and a pull request. CI runs the same gate that runs
 locally, and an AI review reads the diff and blocks on critical or high findings. The

@@ -240,16 +240,17 @@ an unreproducible selection, or another command's projection (--check); 2 usage.
 `AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
 
 const GATE_HELP: &str = "\
-usage: req gate [--format text|json] [key=value ...]
+usage: req gate [--format text|json] [--test-report <file>] [key=value ...]
 
 Runs the release policies over the claims a variant leaves applying — addresses current,
-relations resolve, dependencies decided, rationale present — and confirms the invocation
-itself. A claim the invocation leaves undecided was not examined, and that is not a pass: a
+relations resolve, dependencies decided, rationale present, and (with `--test-report <file>`)
+tests linked — and confirms the invocation itself. Without a report the linked-test policy cannot
+be exercised and answers UNVERIFIABLE; a machine claim with no link is a finding, never a pass. A claim the invocation leaves undecided was not examined, and that is not a pass: a
 bare gate on a corpus carrying a selector is UNVERIFIABLE.
 
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 answers as a `req.gate/1` document on stdout: schema, generator, `rules_v`, the selection, the
-folded verdict, the five policies and the undecided claims with what each is missing. The
+folded verdict, the six policies and the undecided claims with what each is missing. The
 verdict is the same fold the exit code applies, so the document and the process cannot disagree.
 
 exit: 0 every policy passed and every claim decided, 1 a defect, 3 something that cannot be

@@ -401,13 +401,18 @@ fn print_next_steps() {
          \x20 1. Edit `statement` — the slots below it are its authored parse — then re-run\n\
          \x20    `req canon --fill`. `req canon --verify` is the check that gates; `req canon`\n\
          \x20    only reports, and always exits 0.\n\
-         \x20 2. Add .req/variants beside the corpus: one `key=value ...` gate invocation per\n\
+         \x20 2. Give the claim its evidence. Link the test that proves it — add `tests:` with\n\
+         \x20    the `classname::name` id the JUnit report carries — or declare\n\
+         \x20    `evidence: process` when a Decision or a signature is the proof.\n\
+         \x20    `req gate --test-report <junit.xml>` answers UNVERIFIABLE until it can show a\n\
+         \x20    passing proof, naming the claim: that is the flagship answer, not a defect.\n\
+         \x20 3. Add .req/variants beside the corpus: one `key=value ...` gate invocation per\n\
          \x20    line, `#` comments, and a comment-only file while you declare no variants.\n\
          \x20    Every variant gets its own gate invocation — a claim the invocation leaves\n\
          \x20    undecided is not examined, so `gate` exits 3 (UNVERIFIABLE) and names it.\n\
          \x20    Add a variant here in the same commit that adds the `applicability:` that\n\
          \x20    needs it (ADR 0015: the invocation that decides every claim is the gate).\n\
-         \x20 3. Add .github/workflows/req.yml (GitHub) or .forgejo/workflows/req.yml (Forgejo —\n\
+         \x20 4. Add .github/workflows/req.yml (GitHub) or .forgejo/workflows/req.yml (Forgejo —\n\
          \x20    Forgejo reads .github/workflows/ only while no .forgejo/workflows/ exists):\n"
     );
     print!("{CI_SNIPPET}");
@@ -417,7 +422,7 @@ fn print_next_steps() {
          \x20    `git rev-parse --short origin/main`; req is deliberately unpublished\n\
          \x20    (publish = false), so the rev IS the provenance.\n\
          \n\
-         \x20 4. Report a req bug at {ISSUES_URL} — include the statement, the command, its\n\
+         \x20 5. Report a req bug at {ISSUES_URL} — include the statement, the command, its\n\
          \x20    exit code, and `req --version` (rules_v decides a verdict).\n"
     );
 }
@@ -489,6 +494,50 @@ jobs:
           req --version
       - name: every stored address still recomputes (variant-independent)
         run: req canon --verify
+      # The tests that prove the claims (ADR 0019). This template is Rust and uses nextest because
+      # it writes the JUnit/XUnit document `req gate --test-report` reads; on another stack, run
+      # your own test command and point `--test-report` at the report it writes. A claim with no
+      # linked test is a finding, never a pass — the gate below names it.
+      # No stale report may answer for this run. `if: always()` is the point: when an earlier step
+      # fails, every ordinary step after it is skipped — and on a cached or self-hosted workspace
+      # yesterday's `target/nextest/ci/junit.xml` would then survive for the artifacts step below,
+      # which would publish it as a `pass` beside a red build.
+      - name: invalidate any stale test report
+        if: always()
+        run: rm -f "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml"
+
+      - name: the tests that prove the claims, as the report the gate reads
+        run: |
+          set -eu
+          cargo install cargo-nextest --version 0.9.149 --locked
+          # The reviewed profile, only when the project does not already own one: fail-fast off,
+          # so one failure cannot hide the rest, and the JUnit report with skipped tests present
+          # (a skipped test must be visible — it is not a pass).
+          if [ ! -f .config/nextest.toml ]; then
+            mkdir -p .config
+            cat > .config/nextest.toml <<'TOML'
+          [profile.ci]
+          fail-fast = false
+
+          [profile.ci.junit]
+          path = "junit.xml"
+          report-skipped = "ignored"
+          TOML
+          fi
+          # The profile and the report path are what `--profile ci` and `--test-report` assume. When
+          # the project already owns a config, verify it declares both — do not assume: a config
+          # without `[profile.ci]` makes `--profile ci` fail, and one without `[profile.ci.junit]`
+          # writes no report at all, so the gate would read a missing file and answer UNVERIFIABLE
+          # beside tests that passed. The likely adopter fix is to drop `--test-report`, which relaxes
+          # the policy — so this is a named error, not a puzzle.
+          if ! grep -q '^\[profile\.ci\]' .config/nextest.toml \
+             || ! grep -q '^\[profile\.ci\.junit\]' .config/nextest.toml \
+             || ! grep -q 'path = "junit.xml"' .config/nextest.toml \
+             || ! grep -q 'fail-fast = false' .config/nextest.toml; then
+            echo "::error::.config/nextest.toml exists but does not declare [profile.ci], [profile.ci.junit] and path = \"junit.xml\": add them, or point --test-report at the report your own test command writes"
+            exit 1
+          fi
+          cargo nextest run --profile ci
       - name: the release gate — every declared variant, and the default when none is declared
         run: |
           set -eu
@@ -507,7 +556,7 @@ jobs:
           rc=0
           rejected=0
           gate() {
-            out="$(req gate "$@" 2>&1)" && code=0 || code=$?
+            out="$(req gate --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" "$@" 2>&1)" && code=0 || code=$?
             verdict="$(printf '%s' "$out" | sed -n 's/^verdict: //p' | head -1)"
             printf '| `%s` | %s | %s |\n' "${*:-<none>}" "$code" "${verdict:-no verdict line}" >> "$summary"
             # Fail outranks unverifiable, and nothing non-zero may be swallowed. The rule: 1 is
@@ -619,7 +668,7 @@ jobs:
                 continue
               fi
               releases=$((releases + 1))
-              capture "gate-${releases}" gate "${release[@]}" < /dev/null
+              capture "gate-${releases}" gate --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" "${release[@]}" < /dev/null
             done < .req/variants
           fi
           # Only a file THIS STEP READ, declaring no line, is the default variant and its bare
@@ -627,7 +676,7 @@ jobs:
           # above already reported: the other views are kept, but no `gate.json` may read `pass`
           # beside it.
           if [ "$releases" -eq 0 ] && [ "$variants_read" -eq 1 ] && [ "$rejected" -eq 0 ]; then
-            capture gate gate < /dev/null
+            capture gate gate --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" < /dev/null
           elif [ "$releases" -eq 0 ] && [ "$variants_read" -eq 0 ]; then
             printf 'no readable regular .req/variants: the gate step above is red, so no gate document is written\n' >&2
           elif [ "$releases" -eq 0 ]; then

@@ -15,6 +15,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::evidence::derived_claims_are_accepted_without_constraint"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

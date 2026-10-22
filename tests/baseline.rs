@@ -2482,9 +2482,9 @@ fn the_default_gate_run_verifies_the_committed_baseline() {
     );
     // ...and it is the default run being planned, not the single step.
     assert!(
-        planned
-            .iter()
-            .any(|line| line.starts_with("PLAN ") && line.contains("cargo test")),
+        planned.iter().any(
+            |line| line.starts_with("PLAN ") && line.contains("cargo nextest run --profile ci")
+        ),
         "{stdout}"
     );
     assert!(stdout.contains("GATE: UNVERIFIABLE"), "{stdout}");
@@ -2522,7 +2522,7 @@ fn the_fast_run_skips_the_expensive_checks_and_never_reads_as_the_gate() {
     }
     // ...the steps that decide behaviour are still planned...
     for kept in [
-        "PLAN cargo test",
+        "PLAN cargo nextest run --profile ci",
         "PLAN cargo run -q -- canon",
         "PLAN cargo run -q -- bench",
         "PLAN cargo run -q -- gate",
@@ -2951,9 +2951,19 @@ fn the_default_gate_run_gates_every_declared_release() {
         let expected: Vec<&str> = variant.split_whitespace().collect();
         let planned_gate = |line: &str| {
             let words: Vec<&str> = line.split_whitespace().collect();
-            words.starts_with(&["PLAN", "cargo", "run", "-q", "--", "gate"])
-                && words.len() == 6 + expected.len()
-                && words[6..] == expected[..]
+            // The gate step carries the report the test run wrote: the evidence is part of the
+            // invocation, not a file the gate might find later.
+            words.starts_with(&[
+                "PLAN",
+                "cargo",
+                "run",
+                "-q",
+                "--",
+                "gate",
+                "--test-report",
+                "target/nextest/ci/junit.xml",
+            ]) && words.len() == 8 + expected.len()
+                && words[8..] == expected[..]
         };
         assert!(
             planned.iter().any(|line| planned_gate(line)),

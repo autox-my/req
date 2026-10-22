@@ -74,32 +74,40 @@ reports it the same way. The two classes are therefore **coupled**: if either ev
 | `address` | `sha256("req.claim.v1\0" \|\| canonical_form_bytes)` | written by the same derivation (`req canon --fill`, or `req init`'s starter claim); `req canon --verify` enforces `sha256(tag \|\| stored form) == address` (REQ-0017) |
 | `rationale` | object: `source`, `date`, `rejected_alternatives[]`, `assumptions[]` | all four **required** (an omitted list is a parse error, not an empty one); the losing side is preserved — never a string field |
 | `relations[]` | `{type, to}` outgoing only | **required** (an omitted key is a parse error: relations sit outside the canonical form, so a dropped key leaves the address untouched while the edges vanish); incoming relations are always *derived* by traversal, never stored (REQ-0020); `relations: []` = a root claim |
-| `tests` | the test ids that prove the claim — **authored**, optional | `[String]` of `classname::name` ids (the `classname` and the test's `name` the JUnit report writes, joined by `::`); **outside the canonical form**, so adding, removing or renaming a link moves no address (ADR 0019); on a **machine** claim (the default) absent or `[]` = no linked test (the release-gate policy names it; this change only records it), never a parse error; under `evidence: process` the list is empty by definition; attested in the signed Baseline by `tests_hash`, hashed over the **sorted** list; an empty or duplicated string in the list is a load error — a link that names no test, or names one twice, is not a link |
+| `tests` | the test ids that prove the claim — **authored**, optional | `[String]` of `classname::name` ids (the `classname` and the test's `name` the JUnit report writes, joined by `::`); **outside the canonical form**, so adding, removing or renaming a link moves no address (ADR 0019); on a **machine** claim (the default) absent or `[]` = no linked test, which the gate names (a finding, never a parse error); under `evidence: process` the list is empty by definition; attested in the signed Baseline by `tests_hash`, hashed over the **sorted** list; an empty or duplicated string in the list is a load error — a link that names no test, or names one twice, is not a link |
 | `evidence` | how the claim's evidence is established — `machine` (default) or `process` | authored, optional (omitted = `machine`); `process` is an explicit declaration that the **process itself** establishes the claim — a Decision, a signature, a workflow — and it must carry **no** `tests:` (naming both is a load error: machine or process, never both); **outside identity**, attested together with the links by `tests_hash`; an empty `tests:` list never implies `process` — that is the *no linked test* finding, not a declaration |
 
 Reference types (`to`, `source`) use `claim_id`s, addresses, or repo paths —
 whatever stays stable under rewording.
 
-## Test links and process evidence (ADR 0019, proposed)
+## Test links and process evidence (ADR 0019)
 
 `tests:` is authored and **outside the canonical form**: no address moves when a link is added,
 removed or renamed. What the Baseline attests instead is the whole declaration — `tests_hash` =
 `sha256("req.tests.v1\0" ‖ serde_json of {"evidence": "machine"|"process", "tests": <sorted ids>})`,
 written beside `relations_hash`/`rationale_hash` since envelope v4 — so unlinking a claim, or flipping
-its evidence mode, after signing is **FAIL**, exactly as a changed rationale is (ADR 0013 / ADR 0016).
-A **v3** manifest still verifies on its historical signed bytes and says once that it predates v4: its
-tests are *not attested*, which is not a failure because it never claimed to attest them.
+its evidence mode, after signing is **FAIL**, exactly as a changed rationale is (ADR 0013 / ADR 0016). A **v3** manifest still verifies on its
+historical signed bytes and says once that it predates v4: its tests are *not attested*, which is not a
+failure because it never claimed to attest them. The gate reads the links when it is given a run's
+report (`req gate --test-report <junit.xml>`), and its `tests_linked` policy answers four ways over the
+**applying** claims: **PASS** when the claim links at least one test and at least one linked test
+**passed**; **FAIL** when every linked test is present in the report and **none passed** (a `skipped`
+test is not a pass); **UNVERIFIABLE — *no linked test*** when the claim carries no `tests:` entry — the
+flagship answer, named per claim; and **UNVERIFIABLE — *linked test not in the report*** when a linked
+id has no testcase in the report (renamed or deleted), which is never folded into PASS. The last two are
+the rename defence: a test id is the test's *identity*, so renaming the test leaves the claim pointing at
+an id the report no longer carries, and the answer is "cannot tell", never "passed". `FAIL` outranks any
+UNVERIFIABLE and both outrank PASS — the exit code is the existing fold, not a new one. An absent,
+unparsable or zero-testcase report is UNVERIFIABLE **once**, naming the reader's reason, never once per
+claim.
 
-The evidence mode is the second half of the declaration. `machine` is the default: a linked test in a
-run's JUnit report is the proof. `process` is an explicit authored statement that the **process
-itself** establishes the claim — a Decision, a signature, a workflow — and it must carry no `tests:`
-(naming both is a load error, exit 3: machine or process, never both). **Process is never inferred**:
-an empty `tests:` list on a machine claim means *no linked test*, not a declaration.
-
-The **release-gate policy** that reads a report (`req gate --test-report <junit.xml>`) and answers
-PASS / FAIL / the two UNVERIFIABLE reasons is ADR 0019's flagship follow-up, not part of this change:
-this tree lands the field, the hash and the envelope, so the policy has something authoritative to
-read. The gate's CLI and the four-outcome table arrive with it.
+The four outcomes judge **machine** evidence. A claim whose evidence is the process itself declares
+`evidence: process` with `tests: []`: the gate answers it **PASS as declared**, names it
+(`* process-evidenced (declared, not machine-proven): …`) under the `tests_linked` block and counts it in
+the summary and in `req.gate/1`'s `process_evidenced` array — never folded into the machine pass.
+**Process is never inferred**: an empty list on a machine claim is *no linked test*, UNVERIFIABLE, and
+naming both process evidence and links is a load error (exit 3). With only process claims in scope, the
+gate needs no `--test-report`.
 
 ## The parity invariant (what `req canon` must check)
 
@@ -200,11 +208,12 @@ than proceeding over a corpus it could not read:
   rationale's `rejected_alternatives`/`assumptions` (the losing side of a decision would
   be dropped from the record). Writing them as `[]` is how a claim says "none"; omitting
   them is the failure this project treats as catastrophic. `tests` is the deliberate
-  exception (ADR 0019): it is **optional**, because a claim whose proof does not exist yet is not
-  a malformed claim — the field records evidence, it does not summon it. `evidence` is optional
-  for the opposite reason: its absence has a defined meaning (`machine`), so a required key would
-  add nothing — while `process` is never a default, because it is a claim about the process that
-  only a human can make.
+  exception (ADR 0019): it is **optional**, because "this claim has no linked test" must be a
+  fact the gate can *name* — exit 3, UNVERIFIABLE — rather than a parse error, and because a
+  claim whose proof does not exist yet is not a malformed claim. The omission is still not
+  silent: `tests_linked` reports it on every run, per claim. `evidence` is optional for the opposite
+  reason: its absence has a defined meaning (`machine`), so a required key would add nothing — while
+  `process` is never a default, because it is a claim about the process that only a human can make.
 
 Directory entries that are not claims (`README.md`, editor droppings) are left alone;
 that is a naming rule, not a silence. One deliberate exception runs the other way: an

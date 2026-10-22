@@ -16,6 +16,9 @@ exception: null
 temporal: null
 quantifier: null
 unstructured: false
+tests:
+  - "req::evidence::canonical_forms_serialize_quantities_as_exact_decimal_strings"
+evidence: machine
 canonical:
   rules_v: 5
   subject_registry: 1

@@ -1149,9 +1149,9 @@ fn the_default_gate_run_verifies_the_decision_log() {
     );
     // ...and it is the default run being planned, not the single step.
     assert!(
-        planned
-            .iter()
-            .any(|line| line.starts_with("PLAN ") && line.contains("cargo test")),
+        planned.iter().any(
+            |line| line.starts_with("PLAN ") && line.contains("cargo nextest run --profile ci")
+        ),
         "{stdout}"
     );
     // The override is the *standalone* step's seam: the full gate never honours it, so a stray
