@@ -31,10 +31,13 @@
 //! rewritten. An excluded claim is not the variant's problem, which is the one way a corpus
 //! carrying such a predicate can go green without touching the grammar.
 
+use crate::canon::RULES_V;
 use crate::fill::StoredState;
-use crate::select::{Applies, Context, Predicate, parse_predicate};
+use crate::format::{self, Format, SCHEMA_GATE};
+use crate::select::{Applies, Context, Predicate, evaluate as evaluate_predicate, parse_predicate};
 use crate::view::Row;
 use rust_decimal::Decimal;
+use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +53,17 @@ impl Outcome {
             Outcome::Pass => "PASS",
             Outcome::Fail => "FAIL",
             Outcome::Unverifiable => "UNVERIFIABLE",
+        }
+    }
+
+    /// The lowercase spelling the JSON document uses. `as_str` stays uppercase because the text
+    /// report's bytes are load-bearing; the document's `outcome` values are `pass`/`fail`/
+    /// `unverifiable` by the pack's shape.
+    pub fn as_json(&self) -> &'static str {
+        match self {
+            Outcome::Pass => "pass",
+            Outcome::Fail => "fail",
+            Outcome::Unverifiable => "unverifiable",
         }
     }
 }
@@ -303,21 +317,104 @@ pub fn exit_code(results: &[PolicyResult], undecided: usize) -> i32 {
     }
 }
 
-/// `req gate [key=value ...]`
+/// One policy, as the JSON document carries it. `details` is the offenders list: the claims that
+/// decided the outcome, never the policy's prose description.
+#[derive(Serialize)]
+struct PolicyDocument<'a> {
+    policy: &'a str,
+    outcome: &'a str,
+    details: &'a [String],
+}
+
+/// One claim the invocation left undecided, and what a caller would have to supply to decide it.
+#[derive(Serialize)]
+struct UndecidedDocument {
+    claim_id: String,
+    missing: Vec<String>,
+}
+
+/// `gate`'s document: the folded verdict, the five policies, and the undecided claims. The
+/// verdict is computed from the same `exit_code` the command returns, so the document and the
+/// process cannot disagree.
+#[derive(Serialize)]
+struct GateDocument<'a> {
+    schema: &'static str,
+    generator: &'static str,
+    rules_v: u32,
+    selection: &'a Context,
+    verdict: &'static str,
+    policies: Vec<PolicyDocument<'a>>,
+    undecided: Vec<UndecidedDocument>,
+}
+
+/// The word for a verdict code: one mapping, used for the document only — the text report keeps
+/// its own longer explanation.
+fn verdict_word(code: i32) -> &'static str {
+    match code {
+        0 => "pass",
+        1 => "fail",
+        _ => "unverifiable",
+    }
+}
+
+/// The undecided claims, sorted by id, each with the context keys that would decide it.
+///
+/// `missing` is a **key** for an `Eq`/`Ge` predicate the context leaves open, and the predicate's
+/// own text for a selector outside the grammar — no context can decide that one, so naming a key
+/// would send the caller looking for a value that does not exist. Deduplicated and sorted
+/// (`BTreeSet`), because a document is deterministic.
+fn undecided_document(rows: &[Row], context: &Context) -> Vec<UndecidedDocument> {
+    let mut sorted: Vec<&Row> = rows
+        .iter()
+        .filter(|row| row.applies == Applies::Unknown)
+        .collect();
+    sorted.sort_by(|a, b| a.claim_id.cmp(&b.claim_id));
+    sorted
+        .into_iter()
+        .map(|row| {
+            let mut missing: BTreeSet<String> = BTreeSet::new();
+            for text in &row.selectors {
+                let predicate = parse_predicate(text);
+                if evaluate_predicate(&predicate, context) != Applies::Unknown {
+                    continue;
+                }
+                match predicate {
+                    Predicate::Eq { key, .. } | Predicate::Ge { key, .. } => {
+                        missing.insert(key);
+                    }
+                    Predicate::Unsupported { text } => {
+                        missing.insert(text);
+                    }
+                }
+            }
+            UndecidedDocument {
+                claim_id: row.claim_id.clone(),
+                missing: missing.into_iter().collect(),
+            }
+        })
+        .collect()
+}
+
+/// `req gate [--format text|json] [key=value ...]`
 ///
 /// Exit: **0** every policy passed **and** every claim in the corpus was decided, **1** a policy
 /// failed, **3** a policy could not be settled *or* the selection left a claim undecided (the
 /// claims are named, with the remedy), **2** usage. Fail outranks unverifiable, and an undecided
 /// claim outranks a pass.
 pub fn run(args: &[String], root: &std::path::Path) -> i32 {
+    let usage = "usage: req gate [--format text|json] [key=value ...]";
+    let (format, args) = match format::take_format(args, usage) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
     let mut context = Context::new();
-    for arg in args {
+    for arg in &args {
         match arg.split_once('=') {
             Some((key, value)) if !key.is_empty() => {
                 context.insert(key.to_string(), value.to_string());
             }
             _ => {
-                eprintln!("usage: req gate [key=value ...]");
+                eprintln!("{usage}");
                 return 2;
             }
         }
@@ -335,6 +432,30 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         .filter(|r| r.applies == Applies::Unknown)
         .map(|r| r.claim_id.as_str())
         .collect();
+    // Evaluated once, before either rendering: the verdict is the same fold in both, and the
+    // exit code is returned from it in both.
+    let results = evaluate(&rows, &context);
+    let code = exit_code(&results, undecided.len());
+    if format == Format::Json {
+        let document = GateDocument {
+            schema: SCHEMA_GATE,
+            generator: "gate",
+            rules_v: RULES_V,
+            selection: &context,
+            verdict: verdict_word(code),
+            policies: results
+                .iter()
+                .map(|result| PolicyDocument {
+                    policy: result.name,
+                    outcome: result.outcome.as_json(),
+                    details: &result.offenders,
+                })
+                .collect(),
+            undecided: undecided_document(&rows, &context),
+        };
+        println!("{}", format::document(&document));
+        return code;
+    }
     println!(
         "# Release gate: {applying} applying claim(s), {} undecided \
          (an undecided claim is never treated as absent)",
@@ -412,7 +533,6 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             );
         }
     }
-    let results = evaluate(&rows, &context);
     for result in &results {
         println!("\n[{}] {}", result.outcome.as_str(), result.name);
         println!("  {}", result.detail);
@@ -420,7 +540,6 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             println!("  - {offender}");
         }
     }
-    let code = exit_code(&results, undecided.len());
     println!(
         "\nverdict: {}",
         match code {

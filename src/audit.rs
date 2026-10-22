@@ -20,8 +20,11 @@
 //! clean audit of an unsigned model.
 
 use crate::baseline::{self, Manifest};
+use crate::canon::RULES_V;
+use crate::format::{self, Format, SCHEMA_AUDIT};
 use crate::select::{Applies, Context};
 use crate::view::Row;
+use serde::Serialize;
 use std::collections::BTreeSet;
 
 /// Which claims a signed Baseline covers, and how well. Derived from [`baseline::drift`].
@@ -322,7 +325,46 @@ pub fn findings(
     (failed, open)
 }
 
-/// `req audit [--baseline <file>] [key=value ...]`
+/// [`Coverage`] as the document carries it — the same five lists, `not_judged` as the reason
+/// string when coverage could not be judged.
+#[derive(Serialize)]
+struct CoverageDocument<'a> {
+    signed: &'a [String],
+    drifted: &'a [String],
+    uncovered: &'a [String],
+    missing: &'a [String],
+    not_judged: Option<&'a str>,
+}
+
+impl<'a> From<&'a Coverage> for CoverageDocument<'a> {
+    fn from(coverage: &'a Coverage) -> Self {
+        CoverageDocument {
+            signed: &coverage.signed,
+            drifted: &coverage.drifted,
+            uncovered: &coverage.uncovered,
+            missing: &coverage.missing,
+            not_judged: coverage.not_judged.as_deref(),
+        }
+    }
+}
+
+/// `audit`'s document: whether anything is ratified, the coverage the packet derived, and the
+/// packet's findings **in order**, each carrying the class the text packet prints ("FAIL: …" /
+/// "UNVERIFIABLE: …") so the fold stays visible in the data.
+#[derive(Serialize)]
+struct AuditDocument<'a> {
+    schema: &'static str,
+    generator: &'static str,
+    rules_v: u32,
+    selection: &'a Context,
+    ratified: bool,
+    /// `None` when no Baseline was supplied: nothing was compared, which is not the same fact
+    /// as a comparison with an empty result, and the document must not blur them.
+    coverage: Option<CoverageDocument<'a>>,
+    findings: Vec<String>,
+}
+
+/// `req audit [--baseline <file>] [--format text|json] [key=value ...]`
 ///
 /// Exit: **0** every applying claim signed and provable, **1** a defect (drift, or no
 /// provenance), **2** usage; **3** when nothing is ratified, when something ratified is
@@ -330,6 +372,11 @@ pub fn findings(
 /// answered as coverage NOT JUDGED, because a comparison across two rule sets is void, and no
 /// claim was compared rather than something found uncovered.
 pub fn run(args: &[String], root: &std::path::Path) -> i32 {
+    let usage = "usage: req audit [--baseline <file>] [--format text|json] [key=value ...]";
+    let (format, args) = match format::take_format(args, usage) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
     let mut context = Context::new();
     let mut baseline_path: Option<String> = None;
     let mut index = 0;
@@ -354,7 +401,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                 context.insert(key.to_string(), value.to_string());
             }
             _ => {
-                eprintln!("usage: req audit [--baseline <file>] [key=value ...]");
+                eprintln!("{usage}");
                 return 2;
             }
         }
@@ -397,8 +444,9 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     };
 
     let coverage = manifest.as_ref().map(|manifest| coverage(&rows, manifest));
-    print!("{}", packet(&rows, &effective, manifest.as_ref()));
     let (failed, open) = findings(&rows, manifest.as_ref(), coverage.as_ref());
+    // Computed once, before either rendering: the verdict is the same fold in both, and the exit
+    // code is returned from it in both.
     let code = if !failed.is_empty() {
         1
     } else if !open.is_empty() {
@@ -406,6 +454,26 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     } else {
         0
     };
+    if format == Format::Json {
+        let document = AuditDocument {
+            schema: SCHEMA_AUDIT,
+            generator: "audit",
+            rules_v: RULES_V,
+            selection: &effective,
+            ratified: manifest.is_some(),
+            coverage: coverage.as_ref().map(CoverageDocument::from),
+            // The packet prints these in this order (defects, then open questions); the JSON
+            // carries the same strings and the same order, with the class kept as a prefix.
+            findings: failed
+                .iter()
+                .map(|reason| format!("FAIL: {reason}"))
+                .chain(open.iter().map(|reason| format!("UNVERIFIABLE: {reason}")))
+                .collect(),
+        };
+        println!("{}", format::document(&document));
+        return code;
+    }
+    print!("{}", packet(&rows, &effective, manifest.as_ref()));
     println!(
         "\nverdict: {}",
         match code {

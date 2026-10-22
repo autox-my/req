@@ -20,6 +20,10 @@ pub mod decision;
 // `model::relations_digest` / `rationale_digest` and ADR 0013's formula.
 pub(crate) mod digest;
 pub mod fill;
+// `--format`: the text rendering or a JSON document, shared by the four commands pack C scopes
+// (render, trace, audit, gate). A rendering seam, not an identity seam: nothing here computes an
+// address or an identity.
+pub mod format;
 pub mod funnel;
 pub mod gate;
 pub mod impact;

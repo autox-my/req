@@ -2777,9 +2777,12 @@ fn the_default_gate_run_gates_every_declared_release() {
 }
 
 /// A throwaway root holding a copy of `scripts/check.sh` beside a **fake toolchain whose `cargo`
-/// exits 0**, so a test can drive the script to its banner on a tree that is only the script: every
-/// `cargo …` step "passes", and the only thing that can fail the run is the branch under test.
-/// `Fixture` owns the name's uniqueness and the cleanup — including on a panicking assertion.
+/// exits 0 and prints an empty JSON object**, so a test can drive the script to its banner on a
+/// tree that is only the script: every `cargo …` step "passes", and the only thing that can fail
+/// the run is the branch under test. The object is what the `--format json` smoke step parses —
+/// the same reason the real binary prints one — so the fixture's cargo is a stand-in for the
+/// command as well as for the toolchain. `Fixture` owns the name's uniqueness and the cleanup —
+/// including on a panicking assertion.
 #[cfg(unix)]
 fn script_fixture(tag: &str) -> Fixture {
     use std::os::unix::fs::PermissionsExt;
@@ -2792,7 +2795,8 @@ fn script_fixture(tag: &str) -> Fixture {
     .expect("copies check.sh");
     let bin = fixture.path().join("home/.rustup/toolchains/fake/bin");
     std::fs::create_dir_all(&bin).expect("creates the fake toolchain");
-    std::fs::write(bin.join("cargo"), "#!/bin/sh\nexit 0\n").expect("writes the stub cargo");
+    std::fs::write(bin.join("cargo"), "#!/bin/sh\necho '{}'\nexit 0\n")
+        .expect("writes the stub cargo");
     std::fs::set_permissions(bin.join("cargo"), std::fs::Permissions::from_mode(0o755))
         .expect("makes the stub executable");
     fixture

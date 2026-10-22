@@ -861,8 +861,10 @@ fn the_gate_plans_the_committed_projection_check() {
 /// A throwaway root holding a copy of `scripts/check.sh`, the repository's `.req/variants` (so the
 /// release-gate step is not the one failing), and a **fake toolchain whose `cargo` exits 0** — the
 /// same fixture shape `tests/baseline.rs` uses. Every `cargo …` step "passes", so whatever flips
-/// the banner is the branch under test. Without this, deleting either projection FAIL branch would
-/// leave the suite green: the release-gate lesson, applied to R4.
+/// the banner is the branch under test; an invocation carrying `--format json` prints an empty
+/// document, because the gate's JSON smoke step parses one rather than echoing it. Without this,
+/// deleting either projection FAIL branch would leave the suite green: the release-gate lesson,
+/// applied to R4.
 #[cfg(unix)]
 struct ScriptFixture(PathBuf);
 
@@ -889,6 +891,7 @@ impl ScriptFixture {
         let stub = "#!/bin/sh\n\
                     case \"$*\" in\n\
                       *\" render --check \"*) exit \"${PROJECTION_STUB_EXIT:-0}\" ;;\n\
+                      *\" --format json\") printf '{}\\n' ;;\n\
                     esac\n\
                     exit 0\n";
         fs::write(bin.join("cargo"), stub).expect("writes the stub cargo");

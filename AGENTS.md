@@ -211,8 +211,9 @@ export OCR_NO_UPDATE=1
   **2** usage. The grammar is deliberately tiny (`key == value`, `key >= number`); anything
   else is `UNKNOWN` with its text shown. Selection changes no address: a variant is a
   projection over one model.
-- Views: `cargo run -q -- render [--out <path>] [--check <path>] [key=value ...]` and
-  `cargo run -q -- trace [--out <path>] [--check <path>] [key=value ...]` — the spec view and
+- Views: `cargo run -q -- render [--out <path>] [--check <path>] [--format text|json]
+  [key=value ...]` and `cargo run -q -- trace [--out <path>] [--check <path>]
+  [--format text|json] [key=value ...]` — the spec view and
   the traceability matrix for a selection (design step 9). Both are **projections**: they read
   claims, never write one. `render` shows applies / undecided / outside-the-selection with each
   claim's address, modality, statement, selector and outgoing relations; `trace` prints the
@@ -224,6 +225,15 @@ export OCR_NO_UPDATE=1
   `trace` **names** every edge that leaves the selection — to an excluded claim (legitimate,
   reported) or to an undecided one (a gap needing a decision) — and names a relation to a
   claim not in the corpus `UNVERIFIABLE`, never ignored.
+  **JSON rendering (pack C)**: `--format text|json` defaults to `text`, which is byte-identical
+  to a bare command; `--format json` prints the same view as a `req.render/1` (or
+  `req.trace/1`) document on stdout — `schema`, `generator`, `rules_v` as payload data, the
+  `selection`, the rows/edges and (render) the `identity` digest over the sorted applying
+  addresses. The document is a rendering of the verdict, never a new class of answer: the exit
+  code is the same under both formats. It is stdout only — `--out`/`--check` are text
+  projections, so `--format json` beside either is a usage error (exit 2), naming the follow-on.
+  A row is one shape for both commands (`claim_id`, `statement`, `modality`, `address`,
+  `applies`, `selectors`, `relations`, `rationale`); the audit surface's internals stay out.
   **A projection may be committed** (ADR 0018): `--out <path>` writes the view with a one-line
   HTML-comment header naming the `generator`, `rules_v`, `selection`, applying-claim `claims`
   count and an `identity=sha256:<hex>` digest over the sorted applying addresses, exiting **0**
@@ -241,7 +251,8 @@ export OCR_NO_UPDATE=1
   when a listed path is missing or the list checked none, and prints how many it checked.
 - Impact and release gate: `cargo run -q -- impact <claim-id> [key=value ...]` walks the
   relations **backwards** (derived, REQ-0020) and reports every dependent nearest-first
-  with its selection state; `cargo run -q -- gate [key=value ...]` runs five policies —
+  with its selection state; `cargo run -q -- gate [--format text|json] [key=value ...]` runs
+  five policies —
   `addresses_current`, `relations_resolve`, `dependencies_decided` and `rationale_present`
   over the **applying** claims, and `selectors_confirmed` over the **invocation**: a variant
   in which nothing applies verified nothing; a `key=value` entry no applicability predicate
@@ -261,6 +272,11 @@ export OCR_NO_UPDATE=1
   tri-state honest: a claim the variant **excludes** is not the variant's problem, and an
   **undecided** one is never treated as absent. An `impact` answer that a broken relation
   could have made incomplete says so (exit 3) instead of quietly shortening the list.
+  `--format json` prints the same answers as a `req.gate/1` document: the `selection`, the
+  folded `verdict` (`pass`/`fail`/`unverifiable` — the same fold the exit code applies, computed
+  once), the five `policies` with `pass`/`fail`/`unverifiable` outcomes and their `details`, and
+  the `undecided` claims with the `missing` context keys. Exit codes are identical under both
+  formats.
 - Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--max-pairs N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [--pairs] [key=value ...]` — the funnel's
   deterministic half. It skips pairs Tier-1 already resolved (equal address), **blocks** the
   rest on shared content terms (default 2), and hands only those to a provider. Exit **0**
@@ -371,7 +387,8 @@ export OCR_NO_UPDATE=1
   trust boundary as the gate and the rule file: a change cannot supply the anchor that judges it.
   Under that anchor, rotation is **two PRs**: add the new key beside the old (old-key signatures
   still verify), then re-sign; revoke or expire the old key only after both have merged.
-- Audit packet: `cargo run -q -- audit [--baseline <file>] [key=value ...]` — the last compiled
+- Audit packet: `cargo run -q -- audit [--baseline <file>] [--format text|json]
+  [key=value ...]` — the last compiled
   view: for every **applying** claim it prints the address, the coverage state, the provenance
   (rationale source and date) and the outgoing relations, then the **undecided** claims in their
   own section, then its findings. Exit **0** every applying claim covered and still matching,
@@ -387,6 +404,11 @@ export OCR_NO_UPDATE=1
   passed on an unsigned model would be worse than no audit. It reports **coverage**, and says
   so: whether a signature is *valid* belongs to `req baseline --verify`, and this packet never
   asserts authority it did not check.
+  `--format json` prints the same packet as a `req.audit/1` document: `ratified` (whether a
+  Baseline was supplied), the `coverage` lists (`not_judged` as its reason string, `null` when
+  no Baseline was supplied and nothing was compared), and the packet's `findings` in order, each
+  string carrying the class the text packet prints (`FAIL: …` / `UNVERIFIABLE: …`). Exit codes
+  are identical under both formats.
 - Decision log: `cargo run -q -- decision [--fill] [--verify]` — the recorded decisions and their
   **hash chain** (design step 8, ADR 0005). One decision per file under `decisions/DEC-*.yml`
   (zero-padded so file order is chronological), each committing to its predecessor by
