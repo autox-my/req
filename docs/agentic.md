@@ -129,6 +129,10 @@ undecided with the remedy, and ends `verdict: UNVERIFIABLE — nothing is wrong,
 be confirmed`. That is correct since ADR 0015, not a bug: an undecided claim was not examined, and an
 unexamined claim is not a pass — while you declare no variants, the bare `req gate` is the gate (exit 0).
 
+A release line is a `key=value` context, never an option: a line like `--help` is rejected and makes
+the step red, because `req gate --help` exits 0 having gated nothing (a help flag wins wherever it
+appears in argv) — and a green step with no release examined is the false pass this rule removes.
+
 Commit the document as a projection: `req render --out docs/spec.md` writes it, and
 `req render --check docs/spec.md` is the alarm. `--out` exits **0** (`[WROTE] …`); `--check` writes
 nothing and exits **0** current (`[CURRENT] …`), **1** stale or hand-edited (first differing line

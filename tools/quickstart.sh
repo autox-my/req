@@ -25,8 +25,9 @@
 #   * no $HOME writes — no command here sets HOME, and every corpus command runs in
 #     $WORK with REQ_ROOT unset, so the root is resolved by walking up from $WORK.
 #     (The build fallback is the one exception to "nothing else": cargo writes
-#     CARGO_HOME, which this script defaults to <repo>/.cargo-home only when that
-#     in-repo dir exists; its build output goes to $WORK/target, never the checkout.)
+#     CARGO_HOME, which this script takes from <repo>/.cargo-home when that in-repo
+#     dir exists and otherwise points at $WORK/cargo-home; its build output goes to
+#     $WORK/target, never the checkout or the user's ~/.cargo.)
 #     Python would be the other: the system interpreter caches compiled stdlib
 #     modules under $HOME/Library/Caches/com.apple.python (measured: 54 files on a
 #     fresh HOME), so bytecode writing is switched off for the whole run below.
@@ -138,6 +139,16 @@ require_absent() {
   [ ! -e "$1" ] || fail "$STEP_NAME: unexpected file $1 (cwd $PWD)"
 }
 
+require_out_re() { # <extended-regex>: the captured output must match it, not merely contain it
+  if printf '%s\n' "$OUT" | grep -Eq "$1"; then
+    :
+  else
+    printf -- '--- assertion failed: %s\n    expected output to match: %s\n    output:\n%s\n' \
+      "$STEP_NAME" "$1" "$OUT" >&2
+    fail "$STEP_NAME: output did not match: $1"
+  fi
+}
+
 require_grep() { # <pattern> <file> <why>
   grep -Eq "$1" "$2" || fail "$STEP_NAME: $3 ($2 does not match /$1/)"
 }
@@ -166,6 +177,17 @@ WORK_DIR="$(mktemp -d "${TMP_BASE}/req-quickstart.XXXXXX")" || {
   printf 'QUICKSTART %ss\n' "$(( $(date +%s) - START ))"
   exit 1
 }
+# `mktemp -d` returns a RELATIVE path when TMPDIR is relative. Every later use of $WORK_DIR happens
+# after `cd "$WORK_DIR"`, so a relative one would resolve against the scratch dir itself (a count
+# of 0, a build landing outside $WORK, an `rm -rf` of the wrong path). Make it absolute now.
+if ! WORK_DIR="$(cd "$WORK_DIR" && pwd -P)"; then
+  fail "cannot resolve the scratch dir to an absolute path"
+fi
+# The same resolution for the base: on macOS `/var` is a symlink to `/private/var`, so the
+# cleanup guard below must compare the RESOLVED directory with the RESOLVED scratch path.
+if ! TMP_BASE="$(cd "$TMP_BASE" && pwd -P)"; then
+  fail "cannot resolve the temp base to an absolute path"
+fi
 
 log "req quickstart: repo $REPO_ROOT"
 log "req quickstart: scratch $WORK_DIR"
@@ -200,8 +222,17 @@ else
   done
   if [ -z "$REQ_BIN" ]; then
     log "no prebuilt binary under $TARGET_DIR — building offline into the scratch dir"
-    if [ -z "${CARGO_HOME:-}" ] && [ -d "$REPO_ROOT/.cargo-home" ]; then
-      CARGO_HOME="$REPO_ROOT/.cargo-home"
+    if [ -z "${CARGO_HOME:-}" ]; then
+      if [ -d "$REPO_ROOT/.cargo-home" ]; then
+        CARGO_HOME="$REPO_ROOT/.cargo-home"
+      else
+        # Never the user's `~/.cargo`: this script's property is that nothing is written outside
+        # $WORK. On a fresh checkout there is no in-repo cargo home to borrow, and the offline
+        # build then fails loudly — the honest outcome, since the fallback is for a checkout
+        # that has built at least once.
+        CARGO_HOME="$WORK_DIR/cargo-home"
+        mkdir -p "$CARGO_HOME"
+      fi
       export CARGO_HOME
     fi
     command -v cargo >/dev/null 2>&1 \
@@ -363,7 +394,8 @@ require_out "verdict: UNVERIFIABLE"
 
 run_step "req gate deployment_mode=air_gapped (the release gate)" 0 \
   "req gate deployment_mode=air_gapped" req gate deployment_mode=air_gapped
-require_out "0 undecided"
+# A boundary, not a substring: `0 undecided` also occurs inside `10 undecided`.
+require_out_re '(^|[^0-9])0 undecided' 
 require_out "verdict: PASS"
 
 run_step "req render --out docs/spec.md writes the projection" 0 \

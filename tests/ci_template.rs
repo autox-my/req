@@ -223,6 +223,30 @@ fn the_ci_snippet_has_one_text_in_three_places() {
             "the upload: without it the documents die with the runner and no reviewing agent ever \
              reads them",
         ),
+        (
+            "release line starts with an option",
+            3,
+            "a release line is a `key=value` context, never an option: `req gate --help` exits 0 \
+             having gated nothing, so an option-shaped line would leave the gate step green and \
+             the capture would move help text into the artifact",
+        ),
+        (
+            "req_deploy_key",
+            4,
+            "the deploy key gets a path of its own: overwriting `$HOME/.ssh/id_ed25519` would take \
+             a self-hosted runner's identity away from every other job",
+        ),
+        (
+            "IdentitiesOnly=yes",
+            1,
+            "only that key is offered to the private host — never the runner's default identity",
+        ),
+        (
+            "[ \"$rejected\" -eq 0 ]",
+            1,
+            "a variants file whose every line was rejected is not the default variant: no bare \
+             `gate.json` is written beside the gate step's red",
+        ),
     ] {
         let found = printed.matches(fragment).count();
         assert!(

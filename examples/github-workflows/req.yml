@@ -23,14 +23,21 @@ jobs:
             exit 0
           fi
           mkdir -p "$HOME/.ssh"
-          printf '%s\n' "$REQ_DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
-          chmod 600 "$HOME/.ssh/id_ed25519"
+          # A path of its own: overwriting `$HOME/.ssh/id_ed25519` would take the identity away
+          # from every other job on a self-hosted runner, so the install points `-i` at this.
+          printf '%s\n' "$REQ_DEPLOY_KEY" > "$HOME/.ssh/req_deploy_key"
+          chmod 600 "$HOME/.ssh/req_deploy_key"
       - name: req, installed at a pinned rev
-        env:
-          GIT_SSH_COMMAND: "ssh -o ControlMaster=no -o ControlPath=none -o StrictHostKeyChecking=accept-new"
         run: |
           set -eu
-          CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install \
+          # The install reaches a private host. A key from `REQ_DEPLOY_KEY` (written by the step
+          # above to a path of its own) is offered with `IdentitiesOnly`, so a self-hosted
+          # runner's default identity is neither overwritten nor offered to this host by accident.
+          ssh_command="ssh -o ControlMaster=no -o ControlPath=none -o StrictHostKeyChecking=accept-new"
+          if [ -f "$HOME/.ssh/req_deploy_key" ]; then
+            ssh_command="ssh -i $HOME/.ssh/req_deploy_key -o IdentitiesOnly=yes $ssh_command"
+          fi
+          CARGO_NET_GIT_FETCH_WITH_CLI=true GIT_SSH_COMMAND="$ssh_command" cargo install \
             --git ssh://git@git.xantu-barb.ts.net/fdx/req.git \
             --rev <PIN> --root "$HOME/.local" --locked
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -78,6 +85,12 @@ jobs:
             variant_line="${variant_line%$'\r'}"
             read -r -a release <<< "${variant_line%%#*}"
             [ "${#release[@]}" -gt 0 ] || continue
+            # A release line is a `key=value` context, never an option. `req gate --help` exits 0
+            # having gated nothing (a help flag wins wherever it appears), so an option-shaped
+            # line would leave this step green with no release examined.
+            case "${release[0]}" in
+              -*) printf 'release line starts with an option: %s\n' "${release[*]}" >&2; rc=1; continue ;;
+            esac
             # /dev/null: nothing in the body may consume the remaining releases from this
             # file's stdin — a command that reads stdin would shorten the list without error, and
             # the loop would end early with a green step. scripts/check.sh guards the same loop
@@ -132,12 +145,17 @@ jobs:
           # declared, the bare view IS the default variant's document.
           releases=0
           variants_read=0
+          rejected=0
           if [ -f .req/variants ] && [ -r .req/variants ]; then
             variants_read=1
             while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
               variant_line="${variant_line%$'\r'}"
               read -r -a release <<< "${variant_line%%#*}"
               [ "${#release[@]}" -gt 0 ] || continue
+              # The gate step above is red on this line; capture nothing rather than help text.
+              case "${release[0]}" in
+                -*) printf 'release line starts with an option, not captured: %s\n' "${release[*]}" >&2; rejected=1; continue ;;
+              esac
               releases=$((releases + 1))
               capture "gate-${releases}" gate "${release[@]}" < /dev/null
             done < .req/variants
@@ -146,10 +164,12 @@ jobs:
           # gate the document. A missing, unreadable or non-regular file is the red the gate step
           # above already reported: the other views are kept, but no `gate.json` may read `pass`
           # beside it.
-          if [ "$releases" -eq 0 ] && [ "$variants_read" -eq 1 ]; then
+          if [ "$releases" -eq 0 ] && [ "$variants_read" -eq 1 ] && [ "$rejected" -eq 0 ]; then
             capture gate gate < /dev/null
-          elif [ "$variants_read" -eq 0 ]; then
+          elif [ "$releases" -eq 0 ] && [ "$variants_read" -eq 0 ]; then
             printf 'no readable regular .req/variants: the gate step above is red, so no gate document is written\n' >&2
+          elif [ "$releases" -eq 0 ]; then
+            printf 'a release line starts with an option: the gate step above is red, so no gate document is written\n' >&2
           fi
       - name: keep the views for the reviewing agent
         if: always()

@@ -7,3 +7,8 @@
 # corpus and the claims are checked out, which is a decision about the whole tree and not about
 # the projection being compared.
 docs/spec.md text eol=lf
+# The CI snippet is compared **byte for byte** across three files (`tests/ci_template.rs`): a
+# CRLF checkout would make the comparison fail on an unchanged tree, exactly as it would for the
+# projection above. Pinned per path, for the same reason.
+docs/adopting.md text eol=lf
+examples/github-workflows/req.yml text eol=lf

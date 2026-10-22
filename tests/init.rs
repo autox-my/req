@@ -172,6 +172,15 @@ fn init_creates_a_filled_corpus_in_the_current_directory() {
     );
     assert_written(fx.path());
 
+    // The snippet is printed **exactly**, not merely present in the const: removing
+    // `print!("{CI_SNIPPET}")` (or indenting the body) would leave every equality and
+    // fragment pin green while `req init` stopped giving the adopter the CI file.
+    assert!(
+        out.stdout.contains(req::init::CI_SNIPPET),
+        "`init` must print the CI snippet byte for byte:\n{}",
+        out.stdout
+    );
+
     // The next steps are printed, not written: a tool must not guess a forge. Every
     // item the pack requires is named — where to report a bug, and the per-variant rule.
     for required in [
@@ -1345,40 +1354,58 @@ fn view_files(fx: &Fixture) -> Vec<String> {
 
 /// The JSON-views step is the pack's new surface, and the only part of the snippet with real
 /// shell logic that nothing executed: `gate_script` runs the *gate* step, and the byte/pin checks
-/// cannot tell a working `capture` from a broken one. Three behaviours decide whether an agent
+/// cannot tell a working `capture` from a broken one. Five behaviours decide whether an agent
 /// reads a verdict or a fabrication:
 ///
-/// 1. a declared release writes its own `gate-<n>.json`, the flag reaches `req` *after* the
-///    variant args (or `gate` would gate nothing), and no `.tmp` survives;
-/// 2. a command that fails **without writing a document** (the unreadable-corpus shape: exit 3,
-///    empty stdout) leaves no file at all — a zero-byte document is what a consumer would parse
-///    and believe;
-/// 3. an absent `.req/variants` is the gate step's red, so the step keeps the views but writes no
-///    bare `gate.json` that could read `pass` beside it.
+/// 1. every declared release gets its own document, the flag reaches `req` *after* the variant
+///    args (or `gate` would gate nothing), and no `.tmp` survives;
+/// 2. a non-zero command that DID write a document keeps it — the `-s` gate is about bytes,
+///    never a proxy for the exit class;
+/// 3. a command that fails **without writing a document** (the unreadable-corpus shape) leaves
+///    no file at all, and neither does a zero-exit command with empty stdout;
+/// 4. an absent `.req/variants`, or a file whose only line is option-shaped, is the gate step's
+///    red: the views are kept and no bare `gate.json` that could read `pass` is written.
 #[cfg(unix)]
 #[test]
 fn the_json_views_step_captures_documents_and_never_fabricates_a_gate() {
     let script = artifact_script();
 
     let fx = Fixture::new("ci-json-views");
-    write_variants(&fx, "deployment_mode=air_gapped\n");
+    write_variants(&fx, "deployment_mode=air_gapped\nfield=value\n");
     let (code, text, argv) = run_artifact_step(&fx, &script, Some("{\"verdict\":\"pass\"}"), 0);
     assert_eq!(code, 0, "{text}");
     assert_eq!(
         view_files(&fx),
-        ["audit.json", "gate-1.json", "render.json", "trace.json"],
-        "a declared release writes three views and one gate document:\n{text}"
+        [
+            "audit.json",
+            "gate-1.json",
+            "gate-2.json",
+            "render.json",
+            "trace.json"
+        ],
+        "two declared releases write two gate documents, not one overwritten twice:\n{text}"
     );
     let expected = [
         "render --format json",
         "trace --format json",
         "audit --format json",
         "gate deployment_mode=air_gapped --format json",
+        "gate field=value --format json",
     ];
     assert_eq!(
         argv.iter().map(String::as_str).collect::<Vec<_>>(),
         expected,
         "`--format json` must come after the variant args, or `gate` selects nothing"
+    );
+
+    let fx = Fixture::new("ci-json-views-open-verdict");
+    write_variants(&fx, "deployment_mode=air_gapped\n");
+    let (code, text, _) =
+        run_artifact_step(&fx, &script, Some("{\"verdict\":\"unverifiable\"}"), 3);
+    assert_eq!(code, 0, "{text}");
+    assert!(
+        fx.join("req-views/gate-1.json").is_file(),
+        "a document written under a non-zero exit is complete and must be kept:\n{text}"
     );
 
     let fx = Fixture::new("ci-json-views-empty");
@@ -1395,20 +1422,60 @@ fn the_json_views_step_captures_documents_and_never_fabricates_a_gate() {
     );
     assert!(text.contains("NO DOCUMENT"), "{text}");
 
-    let fx = Fixture::new("ci-json-views-no-variants");
-    let (code, text, argv) = run_artifact_step(&fx, &script, Some("{\"verdict\":\"pass\"}"), 0);
+    let fx = Fixture::new("ci-json-views-empty-zero");
+    write_variants(&fx, "deployment_mode=air_gapped\n");
+    let (code, text, _) = run_artifact_step(&fx, &script, None, 0);
     assert_eq!(code, 0, "{text}");
-    assert_eq!(
-        view_files(&fx),
-        ["audit.json", "render.json", "trace.json"],
-        "no variants file is the gate step's red: the views are kept, no gate document:\n{text}"
-    );
     assert!(
-        text.contains("no readable regular .req/variants"),
-        "the missing gate document must be named:\n{text}"
+        view_files(&fx).is_empty(),
+        "a zero exit with empty stdout still writes no document: {:?}\n{text}",
+        view_files(&fx)
     );
+
+    for (name, variants) in [
+        ("ci-json-views-no-variants", None),
+        ("ci-json-views-option-line", Some("--help\n")),
+    ] {
+        let fx = Fixture::new(name);
+        if let Some(text) = variants {
+            write_variants(&fx, text);
+        }
+        let (code, text, argv) = run_artifact_step(&fx, &script, Some("{\"verdict\":\"pass\"}"), 0);
+        assert_eq!(code, 0, "{text}");
+        assert_eq!(
+            view_files(&fx),
+            ["audit.json", "render.json", "trace.json"],
+            "{name}: the views are kept, and no gate document is fabricated:\n{text}"
+        );
+        assert!(
+            !argv.iter().any(|call| call.starts_with("gate ")),
+            "{name}: the gate must not be captured beside a red gate step: {argv:?}"
+        );
+    }
+}
+
+/// A release line is a `key=value` context, never an option. `req gate --help` exits 0 having
+/// gated nothing (a help flag wins wherever it appears in argv), so an option-shaped line would
+/// leave the gate step green with no release examined — the false green the whole step exists to
+/// prevent. The loop must reject it before it becomes a gate invocation.
+#[cfg(unix)]
+#[test]
+fn an_option_shaped_release_line_is_red_not_a_green_no_op() {
+    let script = gate_script();
+    let fx = Fixture::new("ci gate option line");
+    write_variants(&fx, "--help\n");
+    let (code, text) = run_gate_step(&fx, &script);
+    assert_eq!(code, 1, "an option-shaped line must be red:\n{text}");
     assert!(
-        !argv.iter().any(|call| call.starts_with("gate ")),
-        "the gate must not be captured beside a red gate step: {argv:?}"
+        text.contains("release line starts with an option"),
+        "the refusal must name the line:\n{text}"
+    );
+    // The rejected line is not gated; the step still runs its bare default (the same fallback a
+    // comment-only file gets), and the sticky `rc` keeps the whole step red.
+    let rows = summary_rows(&text);
+    assert_eq!(rows.len(), 1, "only the bare default run, not the rejected line:\n{text}");
+    assert!(
+        rows[0].contains("<none>"),
+        "the rejected line must never become a gate row:\n{text}"
     );
 }
