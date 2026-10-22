@@ -173,6 +173,16 @@ fn parse_testcase(
 ) -> Result<(), String> {
     let name = required_attribute(attrs, "name")?;
     let classname = required_attribute(attrs, "classname")?;
+    // Presence is not identity: `name=""` would make the id `classname::`, a plausible-looking
+    // string no claim could ever link to intentionally. An id that cannot be written is not a
+    // test report entry.
+    if name.is_empty() || classname.is_empty() {
+        return Err(format!(
+            "`<testcase>` has an empty {} attribute: the id is `classname::name` and an empty \
+             part names no test",
+            if name.is_empty() { "name" } else { "classname" }
+        ));
+    }
     let id = format!("{classname}::{name}");
     let mut outcome = TestOutcome::Passed;
 

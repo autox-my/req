@@ -324,7 +324,7 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
             missing.push("`tests_hash` for every claim");
         }
         if !missing.is_empty() {
-            let carries = if manifest.version >= 4 {
+            let carries = if manifest.version == BASELINE_VERSION {
                 "`signed_at`, `authority` and a `tests_hash` per claim"
             } else {
                 "`signed_at` and `authority`"

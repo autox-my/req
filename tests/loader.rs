@@ -841,6 +841,16 @@ fn a_process_declaration_with_links_is_a_corpus_error() {
 }
 
 #[test]
+fn a_machine_claim_with_links_loads() {
+    let f = Fixture::new("tests-machine-ok")
+        .claim("REQ-0001.yml", &with_tests("tests:\n  - \"a::b\"\n"));
+    let claims = load_claims(f.path()).expect("a machine claim with links is a valid claim");
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].claim.evidence, req::model::Evidence::Machine);
+    assert_eq!(claims[0].claim.tests, vec!["a::b".to_string()]);
+}
+
+#[test]
 fn a_process_declaration_without_links_loads() {
     let f = Fixture::new("tests-process-ok").claim(
         "REQ-0001.yml",

@@ -185,6 +185,20 @@ fn a_testcase_without_a_classname_is_an_error() {
 }
 
 #[test]
+fn an_empty_name_or_classname_is_an_error_not_an_id() {
+    // Presence is not identity: `<testcase name="" classname="s"/>` would join the id space as
+    // `s::`, a string no claim could link to intentionally. A report entry with no writable id is
+    // not an entry.
+    for xml in [
+        r#"<testsuites><testsuite name="s"><testcase name="" classname="s"/></testsuite></testsuites>"#,
+        r#"<testsuites><testsuite name="s"><testcase name="a" classname=""/></testsuite></testsuites>"#,
+    ] {
+        let reason = parse_err(xml);
+        assert!(reason.contains("empty"), "{reason}");
+    }
+}
+
+#[test]
 fn junk_with_no_root_element_is_an_error() {
     for input in ["this is not a test report", "", "<testsuite", "<"] {
         let reason = parse_err(input);
