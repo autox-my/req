@@ -194,7 +194,7 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         ("capture trace trace", 1, "the traceability document"),
         ("capture audit audit", 1, "the audit packet document"),
         (
-            "capture \"gate-${releases}\" gate --test-report target/nextest/ci/junit.xml \"${release[@]}\" < /dev/null",
+            "capture \"gate-${releases}\" gate --test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\" \"${release[@]}\" < /dev/null",
             1,
             "the per-variant gate document, with the `/dev/null` stdin the loop comment calls \
              load-bearing (a `req` that read stdin would shorten the release list and end green)",
@@ -206,7 +206,7 @@ fn the_ci_snippet_has_one_text_in_three_places() {
              adopter's own config without the profile makes the gate read a missing report",
         ),
         (
-            "capture gate gate --test-report target/nextest/ci/junit.xml < /dev/null",
+            "capture gate gate --test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\" < /dev/null",
             1,
             "the default-variant JSON capture reads the same report as the gate step: without it the \
              document says `unverifiable` beside a green gate",
@@ -230,7 +230,7 @@ fn the_ci_snippet_has_one_text_in_three_places() {
              silently omits it would read as one",
         ),
         (
-            "--test-report target/nextest/ci/junit.xml",
+            "--test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\"",
             3,
             "the gate step and **both** JSON captures (per-variant and default-variant) read the same \
              artefact: a document captured without it was the review's finding — `unverifiable` \

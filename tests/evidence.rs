@@ -741,3 +741,84 @@ fn no_command_rewrites_or_merges_claims_automatically() {
         "fill rewrote an authored statement"
     );
 }
+
+/// Every claim's linked test id must exist — checked under `cargo test`, not only in CI.
+///
+/// `tests/release_gate.rs`'s dogfood report is synthesized *from* these links and marks every one
+/// passed, so it can never fail on a stale, renamed or typo'd id: the real report lives only in
+/// `scripts/check.sh`, outside the suite. This is the oracle that can fail under `cargo test` — a
+/// checked-in list of the ids as nextest writes them (`classname::name`), taken from a real report
+/// at pin time, plus the report itself when one is on disk.
+#[test]
+fn every_linked_test_id_exists() {
+    let oracle: Vec<String> =
+        std::fs::read_to_string(repo_root().join("tests/linked-test-ids.txt"))
+            .expect("the linked-id oracle is readable")
+            .lines()
+            .filter(|line| {
+                let line = line.trim();
+                !line.is_empty() && !line.starts_with('#')
+            })
+            .map(|line| line.trim().to_string())
+            .collect();
+
+    let mut found: Vec<String> = Vec::new();
+    let mut missing = Vec::new();
+    for claim in std::fs::read_dir(repo_root().join("claims")).expect("reads claims/") {
+        let path = claim.expect("reads a directory entry").path();
+        let text = std::fs::read_to_string(&path).expect("reads a claim");
+        let Some(block) = text
+            .find("\ntests:\n")
+            .map(|start| &text[start + "\ntests:\n".len()..])
+        else {
+            continue;
+        };
+        for line in block
+            .lines()
+            .take_while(|line| line.trim_start().starts_with('-'))
+        {
+            let id = line.trim().trim_start_matches('-').trim().trim_matches('"');
+            found.push(id.to_string());
+            if !oracle.iter().any(|listed| listed == id) {
+                missing.push(format!("{}: {id}", path.display()));
+            }
+        }
+    }
+    assert!(
+        !found.is_empty(),
+        "no claim links were read — this test would pass vacuously"
+    );
+    assert!(
+        missing.is_empty(),
+        "a linked test id is not in tests/linked-test-ids.txt (stale, renamed or typo'd — \
+         regenerate it from a real report): {missing:?}"
+    );
+
+    // When a real report is on disk (a local nextest run), the links must be in *it* too.
+    let report = repo_root().join("target/nextest/ci/junit.xml");
+    if let Ok(text) = std::fs::read_to_string(&report) {
+        let mut rest = text.as_str();
+        let mut real: Vec<String> = Vec::new();
+        while let Some(at) = rest.find("<testcase ") {
+            rest = &rest[at + 10..];
+            let Some(end) = rest.find('>') else { break };
+            let element = &rest[..end];
+            let attr = |name: &str| -> Option<String> {
+                let key = format!("{name}=\"");
+                let start = element.find(&key)? + key.len();
+                let tail = &element[start..];
+                tail.find('"').map(|stop| tail[..stop].to_string())
+            };
+            if let (Some(name), Some(classname)) = (attr("name"), attr("classname")) {
+                real.push(format!("{classname}::{name}"));
+            }
+            rest = &rest[end..];
+        }
+        let absent: Vec<&String> = found.iter().filter(|id| !real.contains(id)).collect();
+        assert!(
+            absent.is_empty(),
+            "the report at {} does not carry these linked ids: {absent:?}",
+            report.display()
+        );
+    }
+}

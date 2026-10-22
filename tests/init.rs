@@ -901,7 +901,7 @@ fn gate_script() -> String {
 #[cfg(unix)]
 fn artifact_script() -> String {
     run_block_containing(
-        "capture \"gate-${releases}\" gate --test-report target/nextest/ci/junit.xml \"${release[@]}\"",
+        "capture \"gate-${releases}\" gate --test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\" \"${release[@]}\"",
     )
 }
 

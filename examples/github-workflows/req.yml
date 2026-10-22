@@ -109,7 +109,7 @@ jobs:
           rc=0
           rejected=0
           gate() {
-            out="$(req gate --test-report target/nextest/ci/junit.xml "$@" 2>&1)" && code=0 || code=$?
+            out="$(req gate --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" "$@" 2>&1)" && code=0 || code=$?
             verdict="$(printf '%s' "$out" | sed -n 's/^verdict: //p' | head -1)"
             printf '| `%s` | %s | %s |\n' "${*:-<none>}" "$code" "${verdict:-no verdict line}" >> "$summary"
             # Fail outranks unverifiable, and nothing non-zero may be swallowed. The rule: 1 is
@@ -221,7 +221,7 @@ jobs:
                 continue
               fi
               releases=$((releases + 1))
-              capture "gate-${releases}" gate --test-report target/nextest/ci/junit.xml "${release[@]}" < /dev/null
+              capture "gate-${releases}" gate --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" "${release[@]}" < /dev/null
             done < .req/variants
           fi
           # Only a file THIS STEP READ, declaring no line, is the default variant and its bare
@@ -229,7 +229,7 @@ jobs:
           # above already reported: the other views are kept, but no `gate.json` may read `pass`
           # beside it.
           if [ "$releases" -eq 0 ] && [ "$variants_read" -eq 1 ] && [ "$rejected" -eq 0 ]; then
-            capture gate gate --test-report target/nextest/ci/junit.xml < /dev/null
+            capture gate gate --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" < /dev/null
           elif [ "$releases" -eq 0 ] && [ "$variants_read" -eq 0 ]; then
             printf 'no readable regular .req/variants: the gate step above is red, so no gate document is written\n' >&2
           elif [ "$releases" -eq 0 ]; then
