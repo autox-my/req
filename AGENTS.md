@@ -428,7 +428,10 @@ not the review of this repository's own changes: req itself still requires no ne
 A **measurement** run of the review is a separate, dispatch-only workflow:
 `.forgejo/workflows/review-measure.yml` reviews a chosen `to_sha` through a chosen `from_ref`, once, with
 the provider settings as inputs (`max_tools`, `no_filter`, `exclude`), and prints a single `MEASURE …`
-line (elapsed, rounds, tokens, findings by severity) — the record a duration comparison is built from.
+line (elapsed, rounds, tokens, findings by severity) followed by every finding **verbatim** — the record
+and the evidence a duration comparison is built from. A count alone cannot tell a real defect found by a
+narrower configuration from a false positive it induced, which is exactly the question a setting change
+has to answer.
 It deliberately has **its own job name**, so the required check's context (`OCR Review / ocr-review`)
 keeps meaning exactly one thing: the verdict on a pull request. A dispatched run is evidence about
 duration and findings and is **never a verdict**: it takes the rule file from `origin/main` (same trust
