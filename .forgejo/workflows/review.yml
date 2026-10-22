@@ -123,6 +123,14 @@ jobs:
             echo "== review attempt ${attempt}/3 =="
             # A congested endpoint can return transient errors for minutes; three attempts
             # with a pause ride out a bad window without failing the whole review.
+            # **`--no-filter`: measured, not assumed.** After the review agent, this CLI runs a set of LLM
+            # passes over the *comments* — `REVIEW_FILTER_TASK` (which candidates survive), `DEDUP_TASK`
+            # (merge near-duplicates), `RE_LOCATION_TASK` (pin each comment's line range). They cost ~22% of
+            # the review's work time (mean 677s -> 526s, three runs each on one 13-file diff) and they buy
+            # precision: without them every comment the agent produced is kept, unverified and un-relocated.
+            # The gate blocks only critical/high, so the price is reviewer attention on sharper-but-noisier
+            # mediums/lows — plus the risk of a spurious blocking finding. If a clean diff ever produces a
+            # critical/high, suspect this line first.
             # .forgejo diffs are reviewed in this job (the rule file's trust-material checklist applies); the bench exclusions are for generated corpora reviewed through their generator.
             if ocr review \
                  --from origin/main \
@@ -131,6 +139,7 @@ jobs:
                  --output ocr-result.json \
                  --rule "$RULE" \
                  --effort low \
+                 --no-filter \
                  --timeout 20 \
                  --exclude 'bench/corpus/**,bench/results/**'; then
               exit 0

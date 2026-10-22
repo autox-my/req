@@ -425,6 +425,15 @@ apply to the review that blocks merges, and a change cannot supply the rules tha
 CI review does send the diff to the configured provider. REQ-0012 governs the product's runtime,
 not the review of this repository's own changes: req itself still requires no network.
 
+The review runs with **`--no-filter`**: after the review agent, the CLI would otherwise run a second set of
+LLM passes over the *comments* — which candidates survive, merging near-duplicates, pinning each comment's
+line range. Those passes cost ~22% of the review's work time (measured: mean 677s → 526s, three runs each on
+one 13-file diff) and buy precision. Without them every comment the agent produced is kept, **unverified and
+un-relocated**, so the gate is faster and noisier: it still blocks only critical/high, and a sharper but
+false blocking finding is the price. Two consequences worth holding: a green review means *the reviewer
+reported nothing*, **not** that nothing was there — the same diff yields different findings per run; and if a
+clean diff ever produces a critical/high, suspect this line before distrusting the code.
+
 A **measurement** run of the review is a separate, dispatch-only workflow:
 `.forgejo/workflows/review-measure.yml` reviews a chosen `to_sha` through a chosen `from_ref`, once, with
 the provider settings as inputs (`max_tools`, `no_filter`, `exclude`), and prints a single `MEASURE …`
