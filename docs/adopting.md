@@ -22,7 +22,7 @@ CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install \
 
 `<PIN>` is the merge SHA of the req commit you depend on — read it with
 `git rev-parse --short origin/main`; do not copy a SHA out of any document. This exact form was
-measured at `2afbd68`: exit 0, and the installed binary reports `rules_v 5`.
+measured at `2afbd68`: exit 0, and the installed binary reported `rules_v 5` (a build at rules v6 reports `rules_v 6`; the exit code is the measurement).
 
 Three things make it work, and each one is a failure without it:
 
@@ -59,7 +59,7 @@ silently ignored root would create a corpus somewhere you did not ask for, so ru
 the corpus. It prints the next steps, including the CI file. Confirm what you got:
 
 ```bash
-req canon --verify   # exit 0, "rules_v 5; verified 1, candidates 0, mismatches 0"
+req canon --verify   # exit 0, "rules_v 6; verified 1, candidates 0, mismatches 0"
 req gate             # exit 3 — the starter claim links no test yet (ADR 0019); see "Link each claim…"
 ```
 

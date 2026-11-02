@@ -20,7 +20,7 @@ tests:
   - "req::fill::fill_writes_derived_fields_and_the_address_recomputes"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"store each claim file canonical form bytes such that recomputing the versioned-tag digest over them reproduces the stored address at all times","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}

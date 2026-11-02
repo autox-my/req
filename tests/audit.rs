@@ -58,7 +58,9 @@ fn ctx() -> Context {
 /// `baseline::drift` alone. (A real emitted manifest carries the log's head; this fixture cannot
 /// read one, and nothing here consults it.)
 fn baseline_for(rows: &[Row]) -> req::baseline::Manifest {
-    let mut manifest = manifest(rows, 5, &ctx());
+    // `RULES_V`, not a literal: the rules version is read by drift, and a literal 5 made every
+    // fixture NOT JUDGED the moment the rules moved to 6.
+    let mut manifest = manifest(rows, req::canon::RULES_V, &ctx());
     attest(
         &mut manifest,
         "2026-10-07T09:00:00Z",

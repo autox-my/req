@@ -97,7 +97,14 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
 - **T1.7 Subject registry** — project-scoped YAML mapping surface forms → canonical
   subject id (``the system``/``the device``/``the product`` → ``SYSTEM``). The registry
   is a reviewed, versioned artifact; unregistered synonyms are **not** collapsed
-  (Tier-2 may propose).
+  (Tier-2 may propose). **An alias matches only when it is the whole subject span** (rules
+  v6): the pre-modal words are resolved as one phrase, so ``the req tool`` is ``REQ_TOOL`` but
+  ``the req tool's semantic layer`` (possessive stripped by T1.1: ``the req tool semantic
+  layer``) is not a registered alias and stays a literal subject carrying every word. Through
+  rules v5 the longest alias covering a *prefix* won and the leftover words fell in no slot —
+  ``the req tool's semantic layer`` and ``the req tool's audit layer`` were both
+  ``REQ_TOOL``, a false merge in this repository's own REQ-0004. An alias is a collapse
+  decision for the registry's owner; the parser never extends one.
 - **T1.8 Conditions** — guard clauses (``when``/``while``/``if``/``unless``/``during``)
   extract to predicate slots; ``unless`` negates the guard; conditions get **sorted**
   for assembly. A claim that *gains* a condition is a different claim (a trap case).
@@ -119,6 +126,37 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
   - The bytes are **parsed by consumers** (porcelain, audit tooling, any
     re-implementation), so validity is a contract, not a description: a test asserts the
     stored form parses as JSON with exactly the documented keys, in sorted order.
+
+- **T1.10 Coverage invariant** (rules v6) — after a structured parse, **every word
+  position of the normalised statement must be attributed to a slot**: the subject (the
+  whole pre-modal span), the modality phrase (with the absorbed negation and comparative
+  of ``shall not exceed``), the comparator phrase, the value token (a digit run or a number
+  word) and its unit, the guard clauses (T1.8), the action, or the qualifier — or be a
+  **stopword**. Any unattributed position makes the claim **unstructured**: its ``raw`` is
+  the normalised statement (§4, the way REQ-0007 is addressed) and the lint
+  `uncovered_content` names the uncovered words in statement order
+  (``uncovered_content: once, on, outgoing, side, of, its, origin, claim``).
+  - **Positional, not token-set.** A word is covered because of the slot that holds *that
+    position*, never because its spelling appears somewhere in the form: a dropped
+    ``relation`` after ``serialize each relation exactly`` is uncovered although
+    ``relation`` is in the action. A numeric token that did not resolve to a value
+    (``200-300``), or whose attached suffix did not resolve to a unit (``5foobarbaz``),
+    does not hold its position either: the text it carried left the form.
+  - **Stopwords: ``a``, ``an``, ``the``, and nothing else.** Every stopword is a word that
+    can be swapped or deleted without moving the address, so the list is a false-merge
+    surface. Prepositions are not stopwords (``before``/``after``, ``on``/``off``). Widen
+    the list only when a recorded mutation case shows that a substitution cannot change
+    meaning.
+  - **What it does not prove.** The invariant proves that no word is dropped. It does
+    **not** prove word order is kept: slots that hold text (subject, action, qualifier,
+    conditions) keep their words in order already, but two statements that put the same
+    words in different slots is a question for the slots, not for coverage.
+  - **Evidence.** REQ-0020 (``exactly`` taken as the ``EQ`` comparator, no value follows,
+    every word after it in no slot: ``outgoing`` ≡ ``incoming``) and REQ-0004 (the prefix
+    subject match above) were two false merges in this repository's own corpus that no
+    benchmark mutation reached, because the v1–v3 mutations never touch a trailing clause
+    or a subject's head. The seed traps ``N-008``/``N-009`` and the ``external-v4``
+    any-position and possessive-head classes now do.
 
 **Example that must collapse** — ``The system shall respond within 200 ms`` ≡
 ``The system shall respond no later than 200 ms`` → subject ``the system``, action
@@ -245,6 +283,33 @@ as `req gate` lets Fail outrank Unverifiable.
 
 #### Recorded runs (append-only)
 
+- **Rules v6** — the coverage invariant (T1.10) and the whole-span subject (T1.7). Two
+  false merges found by hand in the repository's own corpus (REQ-0020, REQ-0004), which
+  every corpus then passed; per corpus, never pooled:
+  - **parity** — 17 pairs (the two new traps ``N-008``/``N-009`` are hand-written from
+    the spec): FMR 0/9, FSR 0/5, 2 structurally unverifiable.
+  - **external-v1/v2/v3** — FMR 0/160, 0/227, 0/625; FSR 0/150, 0/150, 0/389. The price is
+    visible and is not hidden: structurally unverifiable not-equivalent pairs rose
+    12→22, 18→32, 68→92 and the Tier-2 candidates 17→28, 17→28, 89→110, because
+    statements whose tail no slot held are now unstructured rather than silently
+    structured (the structured-equivalent denominator fell 161→150, 161→150, 410→389).
+  - **external-v4** (new; 2094 pairs, the v3 sources at the same pinned commits plus the
+    any-position and possessive-head not-equivalent classes) — FMR 0/1595, FSR 0/389, 327
+    structurally unverifiable, 110 Tier-2 candidates. It has teeth, measured by deleting the
+    rule: without the coverage invariant it collapses 8 any-position pairs, and with the
+    prefix subject match restored 178 possessive-head pairs. Those two numbers are
+    mutation runs, not recorded results.
+  - **direction gold set** — hard gate PASS, 0 dangerous confusions, accuracy 0.9961
+    over 1016 classified pairs (143 unclassifiable, was 109).
+  - **dogfood** — all 21 claims re-filled under rules v6: `req canon` 0 discrepancy
+    flags, `--verify` 21 verified / 0 candidates / 0 mismatches. Three addresses moved
+    (**re-canonicalization candidates**, §5): REQ-0004 ``ddc6992dd05b`` →
+    ``f545c40177ba`` and REQ-0021 ``fc5e269b978e`` → ``47dafd1eaad1`` (both now carry the
+    literal subject ``the req tool semantic layer``), and REQ-0020 ``d04ccf3bb7cf`` →
+    ``1ffac8e3e4e2``, which became **unstructured**. The other eighteen did not move.
+  - These are **seed and self-corpus** results plus other projects' prose labelled by
+    construction; the external falsification of the bet is still the headline measurement,
+    and nothing here validates it.
 - **Direction gold set, rules v5** — 1159 pairs (279 cosmetic + 880 mutations) from the
   three real sources: **accuracy 0.9962 over 1050 classified pairs, zero dangerous
   confusions**, FMR 0.0, FSR 0.0, 109 unclassifiable (coverage). Four mismatches remain,

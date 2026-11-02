@@ -20,7 +20,7 @@ tests:
   - "req::evidence::the_direction_gold_set_meets_its_accuracy_target"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"classify direction of change on the structural direction gold set with accuracy of","applicability":["set == direction_gold_structural"],"conditions":[],"exception":null,"modality":"SHALL","operator":"GE","qualifier":"","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":null,"value":"0.95"}

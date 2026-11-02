@@ -33,9 +33,25 @@ fn a_measurable_predicate_is_not_swept_up() {
     // The list is curated and narrow: "-ly" alone is not evidence, and a bound keeps a
     // claim structured whatever else it says.
     assert!(!unstructured("The system shall respond within 200 ms."));
-    assert!(!unstructured(
-        "The system shall report the count exactly once."
-    ));
+    // "exactly once" is not *qualitative* — no untestable_qualifier lint — but since rules v6
+    // (T1.10) it is not structured either: `once` is a word no slot holds (it is not a number
+    // word), and "exactly once" vs "exactly twice" must not share an address. The reason is the
+    // coverage lint, not the qualitative one.
+    let (form, lints) = canonicalize_statement(
+        "The system shall report the count exactly once.",
+        &Registry::empty(),
+    );
+    assert!(
+        !lints.iter().any(|l| l.code == "untestable_qualifier"),
+        "{lints:?}"
+    );
+    assert!(form.unstructured);
+    assert!(
+        lints
+            .iter()
+            .any(|l| l.code == "uncovered_content" && l.detail == "once"),
+        "{lints:?}"
+    );
 }
 
 #[test]

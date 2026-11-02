@@ -37,6 +37,12 @@ _Avoid_: collision
 **False split**:
 One claim resolving to two addresses; noise, never danger.
 
+**Uncovered content**:
+A word of a claim's statement that no slot of its canonical form holds, so changing it would
+move no address. A claim with any is unstructured, never silently structured.
+_Avoid_: dropped word, ignored text (and coverage, which the audit packet already uses for
+whether a claim still matches a signed Baseline)
+
 ### Structure
 
 **Relation**:

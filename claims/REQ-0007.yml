@@ -19,7 +19,7 @@ tests:
   - "req::evidence::authoring_is_frictionless_and_the_decision_boundary_is_not"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"","applicability":[],"conditions":[],"exception":null,"modality":"none","operator":null,"qualifier":"","raw":"authoring shall be friction-free and the decision boundary shall be deliberately high-friction, demanding role, meaning, and evidence there","subject":"","temporal":null,"unstructured":true,"unit":null,"value":null}
