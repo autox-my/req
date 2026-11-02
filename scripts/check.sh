@@ -537,6 +537,15 @@ else
   skip "python3 or tools/adopt.py missing: cannot self-check the document extractor"
 fi
 
+# The task-envelope validator's table (tools/orchestration/validate_envelope.py): the report
+# contract every delegated worker answers with (AGENTS.md, Orchestration). Pure, no filesystem
+# and no `req`, so `--fast` keeps it. A missing python3 or script prints SKIP, never PASS.
+if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/orchestration/validate_envelope.py" ] && command -v python3 >/dev/null 2>&1; }; then
+  run python3 "$PWD/tools/orchestration/validate_envelope.py" --self-check
+else
+  skip "python3 or tools/orchestration/validate_envelope.py missing: cannot self-check the envelope validator"
+fi
+
 # The five-minute path (`docs/agentic.md`), rehearsed for real against the binary this run just
 # built. `tools/quickstart.sh` does in a `mktemp -d` what the page tells an adopter to do — `req
 # init`, the extractor's dry run and `--write`, an authored applicability, `canon --fill` then
