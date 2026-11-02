@@ -541,7 +541,7 @@ gate.
 ```bash
 # from the repo root, to (re)install the pinned CLI
 npm --prefix tools/ocr install --no-fund --no-audit --cache "$PWD/.npm-cache"
-ocr --version        # must print open-code-review v1.13.0
+ocr --version        # must print open-code-review v1.13.3
 ```
 
 Delegation mode uses **no LLM**: OCR performs deterministic file selection and rule
@@ -551,7 +551,7 @@ it on every invocation:
 ```bash
 ocr delegate preview --format json [--from main --to feature/<name>] [--rule review/rule.json]
 ocr delegate rule --format json --rule review/rule.json <paths from the preview>
-ocr --version        # --format needs >= 1.9.0; we pin 1.13.0
+ocr --version        # --format needs >= 1.9.0; we pin 1.13.3
 ```
 
 If `--format` fails with `unknown flag: --format`, use text output for the rest of
@@ -560,8 +560,9 @@ This npm skips the package's `postinstall` under its `allowScripts` policy; the 
 binary comes from the platform optionalDependency — always verify `ocr --version`
 after installing.
 
-**The rule-file shape we own** (`review/rule.json`), verified against 1.13.0 — the
-vendor ships no schema, so it was established by probing the CLI, and two behaviours
+**The rule-file shape we own** (`review/rule.json`), established by probing 1.13.0 and
+re-measured at the 1.13.3 pin (`tools/review/check_rules.py` and `check_review_scope.py`
+probe the effect, not the exit status) — the vendor ships no schema, and two behaviours
 matter:
 
 ```json
