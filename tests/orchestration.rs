@@ -92,7 +92,8 @@ fn fix_envelope(extra: &str) -> String {
     )
 }
 
-const RED: &str = r#","red": {"test": "canon::t", "base_commit": "b56bca3", "failure": "assertion failed"}"#;
+const RED: &str =
+    r#","red": {"test": "canon::t", "base_commit": "b56bca3", "failure": "assertion failed"}"#;
 const MUTATIONS: &str =
     r#","mutations": [{"change": "delete the rule", "test_that_failed": "canon::t"}]"#;
 
