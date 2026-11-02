@@ -11,14 +11,34 @@
 # and dead configuration that warns on every run is worse than none.
 #
 # Configuration (Settings, then Actions):
-#   Secret   OCR_LLM_TOKEN      the provider key
-#   Variable OCR_LLM_URL        the provider base URL
-#   Variable OCR_LLM_PROTOCOL   openai or anthropic
-#   Variable OCR_LLM_MODEL      the model to review with
+#   Secret   OCR_LLM_TOKEN          the provider key
+#   Secret   OCR_LLM_EXTRA_HEADERS  optional, `name=value,name=value` — headers the provider
+#                                   requires beyond the key (opencode asks for x-opencode-session).
+#                                   A secret, not a variable: it is the channel a credential header
+#                                   would travel through, and variables are readable by anyone with
+#                                   read access and are not masked. Its value is never printed.
+#   Variable OCR_LLM_URL            the provider base URL
+#   Variable OCR_LLM_PROTOCOL       openai or anthropic
+#   Variable OCR_LLM_MODEL          the model to review with — required: the model is part of the
+#                                   reviewer's identity, and an unset one falls back to the CLI's
+#                                   default, so the gate would change without appearing in any diff
+#   Variable OCR_LLM_AUTH_HEADER    optional; empty means OCR's default, `Authorization: Bearer`
+#
+# OCR_LLM_AUTH_HEADER used to be hardcoded to `x-api-key` here, which ignored the repository
+# variable of the same name and sent the wrong header to a Bearer provider. It is forwarded now,
+# and the empty default is Bearer: a gateway that authenticates with x-api-key (the anthropic
+# protocol's convention) must set the variable to `x-api-key`. The test step prints the resolved
+# value, so a 401 names its own cause.
+#
+# Every one of these must be FORWARDED into the step that runs `ocr`, not merely set: a variable
+# that exists in the repository but is not listed under a step's `env:` is invisible to the CLI,
+# which then falls back to its own default. The same list appears in review-measure.yml.
 #
 # The protocol decides the path OCR appends — /chat/completions for openai, /v1/messages for
 # anthropic — so the URL must end with or without /v1 to match. Getting the pair wrong gives
-# either a doubled path (404) or "model is not supported on this endpoint" (400).
+# either a doubled path (404) or "model is not supported on this endpoint" (400). Measured in
+# the sibling sedia repository against opencode: .../zen/go/chat/completions is 404 and
+# .../zen/go/v1/chat/completions answers, so with protocol=openai the URL ends in /v1.
 
 name: OCR Review
 
@@ -73,7 +93,8 @@ jobs:
           OCR_LLM_PROTOCOL: ${{ vars.OCR_LLM_PROTOCOL }}
           OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_TOKEN }}
           OCR_LLM_MODEL: ${{ vars.OCR_LLM_MODEL }}
-          OCR_LLM_AUTH_HEADER: x-api-key
+          OCR_LLM_AUTH_HEADER: ${{ vars.OCR_LLM_AUTH_HEADER }}
+          OCR_LLM_EXTRA_HEADERS: ${{ secrets.OCR_LLM_EXTRA_HEADERS }}
         run: |
           if [ -z "${OCR_BIN:-}" ]; then
             echo "::error::OCR_BIN is not set — the runner did not carry $GITHUB_ENV to this step"
@@ -84,9 +105,23 @@ jobs:
             echo "::error::OCR_LLM_TOKEN is not set (Settings, Actions, Secrets)"
             exit 1
           fi
-          # Names and lengths, never the token: this line is what separates "the job was
-          # misconfigured" from "the provider refused a correct request".
-          echo "review env: protocol=${OCR_LLM_PROTOCOL:-unset} model=${OCR_LLM_MODEL:-unset} token_len=${#OCR_LLM_TOKEN}"
+          # The model is part of the reviewer's identity: an unset one would fall back to the
+          # CLI's default and change the gate without a diff.
+          if [ -z "${OCR_LLM_MODEL:-}" ]; then
+            echo "::error::OCR_LLM_MODEL is not set (Settings, Actions, Variables) — the reviewer is unnamed"
+            exit 1
+          fi
+          # Names, lengths and states, never a value: this line is what separates "the job was
+          # misconfigured" from "the provider refused a correct request". It answers "was it
+          # forwarded?" for the extra headers without parsing them — any parse of the value can
+          # echo a fragment of it, and a diagnostic that must not print its input should not
+          # parse its input.
+          if [ -n "${OCR_LLM_EXTRA_HEADERS:-}" ]; then EXTRA_STATE=set; else EXTRA_STATE=none; fi
+          echo "review env: protocol=${OCR_LLM_PROTOCOL:-unset} model=${OCR_LLM_MODEL} token_len=${#OCR_LLM_TOKEN} auth_header=${OCR_LLM_AUTH_HEADER:-default} extra_headers=${EXTRA_STATE}"
+          if [ -z "${OCR_LLM_AUTH_HEADER:-}" ]; then
+            echo "note: OCR_LLM_AUTH_HEADER is empty, so OCR sends 'Authorization: Bearer'."
+            echo "      A gateway that wants x-api-key needs the repository variable set to x-api-key."
+          fi
           ocr llm test
 
       - name: review the diff
@@ -95,7 +130,8 @@ jobs:
           OCR_LLM_PROTOCOL: ${{ vars.OCR_LLM_PROTOCOL }}
           OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_TOKEN }}
           OCR_LLM_MODEL: ${{ vars.OCR_LLM_MODEL }}
-          OCR_LLM_AUTH_HEADER: x-api-key
+          OCR_LLM_AUTH_HEADER: ${{ vars.OCR_LLM_AUTH_HEADER }}
+          OCR_LLM_EXTRA_HEADERS: ${{ secrets.OCR_LLM_EXTRA_HEADERS }}
           # The head SHA, not the branch name: a pull request from a fork has no branch ref
           # in this repository, while the SHA always resolves after a full checkout.
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
