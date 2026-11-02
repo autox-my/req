@@ -1,3 +1,7 @@
+---
+status: identity wording superseded by docs/adr/0020-the-address-is-a-meaning-fingerprint.md (the unit is a claim — that decision stands)
+---
+
 # The unit of requirements work is a claim, not a document
 
 Every incumbent models the wrong thing. ALM suites make the document the database, so

@@ -28,6 +28,10 @@ opinion:
 > the meaning; selectors give you 40 variants without 40 forks; signed decisions give you
 > an audit that holds up.
 
+(*Wording, 2026-11-02:* "content-address" here names the **meaning fingerprint** — a derived
+comparison primitive for drift and duplicate hints; a claim's identity is its `claim_id`, per
+[ADR 0020](adr/0020-the-address-is-a-meaning-fingerprint.md), proposed.)
+
 Why now: LLMs make semantic operations on natural-language claims tractable;
 content-addressing makes the audit reconstructible instead of archaeological; file-native
 storage makes offline and air-gapped work free. None of these existed when the incumbent
