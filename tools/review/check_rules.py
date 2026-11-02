@@ -81,6 +81,7 @@ ALLOW_LIST = {
     "README.md": "markdown — the CLI excludes it as unsupported_ext; hand-reviewed by rule",
     "CONTEXT.md": "markdown, glossary only — hand-reviewed by rule (the CLI excludes it)",
     "claims/README.md": "markdown — hand-reviewed by rule (the CLI excludes it)",
+    "p3-models.md": "markdown, the orchestrator's model-role table (AGENTS.md, Orchestration) — hand-reviewed (the CLI excludes it)",
     "bench/corpus/tier2-positives-v1-captures/": "generated capture data — reviewed through its generator, not line by line",
     "tools/ocr/package.json": "the pinned review CLI's own manifest — reviewed at pin time, not by our rule file",
     "tools/ocr/package-lock.json": "lockfile — the review CLI excludes lockfiles (default_path)",

@@ -806,6 +806,32 @@ matter:
 
 ---
 
+## Orchestration (delegated work)
+
+Work is run from one small **orchestrator** thread; the bulk goes to delegated children. This is
+process, not product: the *task envelope* below is unrelated to the Baseline's `baseline_envelope`.
+
+- **Specs are committed** under `docs/specs/<milestone>-*.md` before a child starts: a worktree
+  child sees only committed files (the untracked `prompts/` is invisible to it).
+- **Out:** a pointer-only brief (`docs/specs/brief-template.md`) — task id, spec path, branch
+  point, report contract, red test, verify command, forbidden paths. Never a restated spec.
+- **Back:** the only accepted final message is the JSON object in
+  `docs/specs/task-envelope.schema.json`, checked with
+  `python3 tools/orchestration/validate_envelope.py <file>` (its `--self-check` is in the gate).
+  A fix unit (`task_id` ends `-fix`) carries `red` and `mutations` — this file's TDD and
+  mutation-check rules, made reportable. A malformed envelope is re-delegated once, then the
+  task is `blocked`.
+- **Writers** run as `delegate_task` children with `isolation: "worktree"`, one writer per
+  worktree; they push a feature branch and open a pull request, never `main`. A **reviewer** runs
+  on a different model family, read-only, and returns an envelope whose `task_id` contains
+  `-review-`.
+- The orchestrator reads the envelope and `git diff <branch-point>...<branch> --name-only`
+  against the spec's allowed paths — a stray path rejects the branch — and does not read a
+  child's transcript. Models resolve through `orchestrator_capabilities` and `p3-models.md`,
+  never a hardcoded slug.
+- **Milestone close:** `docs/handoffs/<milestone>-close.md` (template:
+  `docs/handoffs/TEMPLATE.md`), then a fresh orchestrator thread seeded with that file.
+
 ## SDLC workflow (local — git worktree)
 
 Enforcement is agent discipline: there is no remote, no PR, no server-side gate yet

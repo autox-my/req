@@ -52,6 +52,10 @@
       "rule": "Docs are claims: when docs/ asserts a rule the code contradicts, that is a defect — fix one of them in the same commit that exposed it. Never quote external reference material verbatim. Every number must say which corpus and rules version produced it, and a seed-corpus pass must never be presented as the external falsification."
     },
     {
+      "path": "docs/specs/*.json",
+      "rule": "The task-envelope schema is the report contract between the orchestrator and every delegated worker (AGENTS.md, Orchestration). It is process tooling, never identity: nothing here may reach an address, a digest or a Baseline. A change must keep the schema and `tools/orchestration/validate_envelope.py` in agreement — the validator, not the schema, is what the orchestrator runs, so a field required here but not checked there (or the reverse) is a contract that silently does not hold; the validator's `--self-check` table must gain a case for any new rule. Never relax `red` for a fix unit or the one-question `blockers` rule.\n\nAlso apply the built-in system rubric for JSON (spelling in `json-keys`; the content of `json-values` is ignored): a custom rule REPLACES the system rubric for matched paths. Run `ocr delegate rule --format json docs/specs/task-envelope.schema.json` without --rule to see the built-in checklist."
+    },
+    {
       "path": "AGENTS.md",
       "rule": "Docs are claims: when AGENTS.md asserts a rule the code contradicts, that is a defect — fix one of them in the same commit that exposed it. Commands documented here must be the commands that exist, including their exit codes. Never quote external reference material verbatim."
     },
