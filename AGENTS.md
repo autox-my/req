@@ -515,7 +515,8 @@ not the review of this repository's own changes: req itself still requires no ne
 
 The review runs with **`--no-filter`**: after the review agent, the CLI would otherwise run a second set of
 LLM passes over the *comments* — which candidates survive, merging near-duplicates, pinning each comment's
-line range. Those passes cost ~22% of the review's work time (measured: mean 677s → 526s, three runs each on
+line range. Those passes cost ~22% of the review's work time (measured before the provider moved to opencode,
+so the model has changed and the figure is a lead, not a current number: mean 677s → 526s, three runs each on
 one 13-file diff) and buy precision. Without them every comment the agent produced is kept, **unverified and
 un-relocated**, so the gate is faster and noisier: it still blocks only critical/high, and a sharper but
 false blocking finding is the price. Two consequences worth holding: a green review means *the reviewer
