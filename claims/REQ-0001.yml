@@ -19,7 +19,7 @@ tests:
   - "req::evidence::a_claim_is_the_unit_of_authorship_review_and_merge"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"treat a single claim as the unit of requirements authorship, review, and merge","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}

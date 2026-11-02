@@ -18,7 +18,7 @@ unstructured: false
 tests: []
 evidence: process
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"deliver a non engineer author edit as a proposal inside an explicit working set","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}

@@ -19,7 +19,7 @@ tests:
   - "req::select::a_claims_applicability_is_its_selector"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"express permanent product variation as a selection governed by applicability predicates over","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"claim set","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":"1"}

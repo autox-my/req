@@ -40,7 +40,7 @@ equivalent:
   - id: E-008
     a: The system shall apply at least 12 kN to the pedal.
     b: At least 12 kN shall be applied to the pedal.
-    source: voice plus word order, hashing spec T1.10
+    source: voice plus word order (Tier-2; the hashing spec has no Tier-1 rule for it)
     note: agent elision is conventional in requirement prose, Tier-2 proposal expected, never auto-collapse
 
 not_equivalent:
@@ -72,3 +72,11 @@ not_equivalent:
     a: A conflict is recorded information about a disagreement, and the losing side is preserved.
     b: A merge conflict is a build failure.
     source: same vocabulary, different meaning, adversarial for similarity layers
+  - id: N-008
+    a: The req tool shall serialize each relation exactly once, on the outgoing side of its origin claim.
+    b: The req tool shall serialize each relation exactly once, on the incoming side of its origin claim.
+    source: dropped tail, T1.10 (rules v6) — "exactly" took the EQ comparator, no value followed, and the clause after it sat in no slot; outgoing vs incoming is the opposite storage rule, labelled from the spec, found in this repository's own REQ-0020
+  - id: N-009
+    a: The req tool's semantic layer shall emit proposals for reviewer ratification.
+    b: The req tool's audit layer shall emit proposals for reviewer ratification.
+    source: prefix subject match, T1.7 as written (rules v6) — a registered alias that is only the head of the subject span must not claim it; a semantic layer and an audit layer are different subjects, labelled from the spec, found in this repository's own REQ-0004

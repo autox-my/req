@@ -21,7 +21,7 @@ tests:
   - "req::evidence::the_core_crate_carries_no_network_client"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"need no network access for any claim operation","applicability":["deployment_mode == air_gapped"],"conditions":["when: the deployment is configured offline"],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}

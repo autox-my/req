@@ -306,24 +306,6 @@ impl Registry {
         let key = surface.trim().to_lowercase();
         self.alias_to_subject.get(&key).cloned().unwrap_or(key)
     }
-
-    /// Longest registered alias that covers a *prefix* of `words[0..max_span]`.
-    /// Returns (subject_id, words-consumed). This is the subject-boundary rule:
-    /// e.g. ["the","req","tool","semantic","layer"] → ("REQ_TOOL", 3) — the
-    /// remaining words belong to the action phrase, not the subject.
-    pub fn resolve_longest_prefix(
-        &self,
-        words: &[&str],
-        max_span: usize,
-    ) -> Option<(String, usize)> {
-        for j in (1..=max_span).rev() {
-            let phrase: String = words[..j].join(" ").to_lowercase();
-            if let Some(id) = self.alias_to_subject.get(phrase.as_str()) {
-                return Some((id.clone(), j));
-            }
-        }
-        None
-    }
 }
 
 // ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ tests:
   - "req::evidence::derived_claims_are_accepted_without_constraint"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"permit splitting a claim into derived claims without constraint","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}

@@ -19,7 +19,7 @@ tests:
   - "req::decision::canonical_bytes_are_stable_and_the_hash_covers_the_road_not_taken"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"record each acceptance or rejection of a change as a signed decision carrying role, meaning, timestamp, and any dissent","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}

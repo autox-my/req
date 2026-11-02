@@ -3,27 +3,27 @@ claim_id: REQ-0020
 statement: >-
   The req tool shall serialize each relation exactly once, on the outgoing side
   of its origin claim.
-modality: SHALL
+modality: UNSTRUCTURED
 subject: REQ_TOOL
-attribute: relation_storage
-operator: EQ
-value: outgoing_side_once
+attribute: null
+operator: null
+value: null
 unit: none
 conditions: []
 applicability: []
 exception: null
 temporal: null
 quantifier: null
-unstructured: false
+unstructured: true
 tests:
   - "req::view::incoming_relations_are_derived_from_the_outgoing_side"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
-    {"action":"serialize each relation","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"EQ","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: d04ccf3bb7cf58197d3352b7b7632528888a5bdc1fee61db1bf9c2cae8c60e4d
+    {"action":"","applicability":[],"conditions":[],"exception":null,"modality":"none","operator":null,"qualifier":"","raw":"the req tool shall serialize each relation exactly once, on the outgoing side of its origin claim","subject":"","temporal":null,"unstructured":true,"unit":null,"value":null}
+address: 1ffac8e3e4e2337253ef90447bf67a057a786127b57f7c02fe8a907092a6b7c4
 rationale:
   source: docs/claim-format.md
   date: 2026-10-07

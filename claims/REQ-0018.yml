@@ -20,7 +20,7 @@ tests:
   - "req::evidence::canonical_forms_serialize_quantities_as_exact_decimal_strings"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"require numeric claim fields to be serialized as exact decimal strings","applicability":["field == value"],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}

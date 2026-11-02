@@ -26,7 +26,7 @@ one out of a document. Exit **0**. This is the **only networked step** of the pa
 runs offline against the corpus (REQ-0012). The `export` is not decoration: a fresh shell does not
 have `$HOME/.local/bin` on `PATH`, and without it the next step's `req init` is `command not found`.
 
-`req --version` (exit **0**) prints `req 0.1.0`, then the versions that decide a verdict (`rules_v 5`
+`req --version` (exit **0**) prints `req 0.1.0`, then the versions that decide a verdict (`rules_v 6`
 among them), and `built from <short sha>`. Two lines decide what the binary is: **`rules_v`** makes a
 stored address current — an address is derived under a rules version, so a verdict is not reproducible,
 and a Baseline not comparable, under another one — and **`built from`** is the commit the binary came
@@ -44,7 +44,7 @@ Exit **0**, first line `Wrote a working, verified corpus in the current director
 three files: `claims/REQ-0001.yml` (the starter claim, already filled and verified through the same
 derivation `req canon --fill` uses, so its `canonical.form` and `address` are real),
 `claims/README.md` (the authoring loop) and `aliases/subjects.yml` (the subject registry). Confirming
-it: `req canon --verify` → exit **0**, `rules_v 5; verified 1, candidates 0, mismatches 0`. The
+it: `req canon --verify` → exit **0**, `rules_v 6; verified 1, candidates 0, mismatches 0`. The
 refusals, one line each:
 
 - `claims/` or `aliases/subjects.yml` already exists — exit **1**, nothing written: a corpus is never overwritten.
@@ -95,7 +95,7 @@ req canon --verify   # the check that gates
 is a flag, and the exit is 0 either way.
 
 `req canon --fill` re-derives `canonical.form` and `address` into the anchor lines: exit **0**,
-`rules_v 5; filled <n>, already current <n>, refused <n> (a refusal is UNVERIFIABLE, never a pass)`.
+`rules_v 6; filled <n>, already current <n>, refused <n> (a refusal is UNVERIFIABLE, never a pass)`.
 It **refuses** a claim whose authored slot contradicts the parse — exit **3**, `REFUSED`, nothing
 written, because an address over a contradicted parse would enshrine it.
 

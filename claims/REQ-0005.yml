@@ -19,7 +19,7 @@ tests:
   - "req::evidence::no_command_rewrites_or_merges_claims_automatically"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"require human ratification before any","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"claims are merged","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":"2"}

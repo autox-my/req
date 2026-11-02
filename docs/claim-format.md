@@ -224,9 +224,13 @@ written in some other encoding — so it fails the corpus rather than being skip
 
 `claims/REQ-0001 … claims/REQ-0021` were authored **structured-first**: the author
 supplied the parse deliberately, and `canonical.form`/`address` stayed `null` until the
-rules that define them existed. They are now **filled under rules v5** by
+rules that define them existed. They are now **filled under rules v6** by
 `req canon --fill`, and `req canon --verify` reports `21 verified, 0 candidates, 0
-mismatches`, so the corpus is address-addressed end to end.
+mismatches`, so the corpus is address-addressed end to end. Since rules v6's coverage
+invariant (hashing spec T1.10) REQ-0020 is `unstructured: true`: its statement carries a
+clause ("on the outgoing side of its origin claim") no slot could hold, and REQ-0004 and
+REQ-0021 carry the literal subject `the req tool semantic layer`, because the registry
+matches a whole subject span only.
 
 Two properties make the filled state trustworthy, and both are enforced rather than
 assumed:

@@ -539,7 +539,7 @@ fn row<'a>(stdout: &'a str, id: &str) -> &'a str {
 }
 
 #[test]
-fn the_corpus_has_zero_flags_and_sixteen_annotations() {
+fn the_corpus_has_zero_flags_and_fifteen_annotations() {
     let out = corpus(&["canon"]);
     assert_eq!(out.code, 0, "canon exit code:\n{}", out.stderr);
     assert!(
@@ -547,22 +547,24 @@ fn the_corpus_has_zero_flags_and_sixteen_annotations() {
         "a rule that fixed the flags by going silent would fail the annotation half:\n{}",
         out.stdout
     );
-    // 16, not the 17 the pack measured on a draft. The arithmetic is the oracle: 21 claims
-    // less the four numeric ones (REQ-0008..0011), less the one `UNSTRUCTURED` claim whose
-    // slots are null by design (REQ-0007) = 16. The 17 was the naive prototype's count of
-    // *flagged* claims, and it included REQ-0007 — the sentinel false positive this rule
-    // exists to prevent. The number is data: if a claim joins the corpus, it moves.
+    // 15 at rules v6 (it was 16 at v5, and the pack's draft measured 17). The arithmetic is the
+    // oracle: 21 claims less the four numeric ones (REQ-0008..0011), less the two `UNSTRUCTURED`
+    // claims whose slots are null by design (REQ-0007, and REQ-0020 since T1.10 — its dropped
+    // tail made it unstructured, and an unstructured claim carries no qualitative triple) = 15.
+    // The 17 was the naive prototype's count of *flagged* claims, and it included REQ-0007 — the
+    // sentinel false positive this rule exists to prevent. The number is data: if a claim joins
+    // the corpus, it moves.
     assert!(
-        out.stdout.contains("annotations: 16 claim(s)"),
-        "16 of 21 claims carry the qualitative triple (measured, not a constant):\n{}",
+        out.stdout.contains("annotations: 15 claim(s)"),
+        "15 of 21 claims carry the qualitative triple (measured, not a constant):\n{}",
         out.stdout
     );
 
-    // The arithmetic the count rests on: if a claim were lost, `16` would still print and this
+    // The arithmetic the count rests on: if a claim were lost, `15` would still print and this
     // test would pass on a corpus that had shrunk. Pin the denominator too.
     assert!(
         out.stdout.contains("claims: 21"),
-        "the count is 16 of 21; the denominator must be real:\n{}",
+        "the count is 15 of 21; the denominator must be real:\n{}",
         out.stdout
     );
 

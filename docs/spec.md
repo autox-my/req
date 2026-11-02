@@ -1,4 +1,4 @@
-<!-- req projection: generator=req render | rules_v=5 | selection=none | claims=15 | identity=sha256:98824d955ac517094a5930d4e7db3d076e237c331a6d52404fbc91e1d023810b -->
+<!-- req projection: generator=req render | rules_v=6 | selection=none | claims=15 | identity=sha256:2e285067c1290f3bcf422c90c6dcdc78435fa9db8af0aac76ccc5d8480449271 -->
 # Selection: (no context: nothing is decided by the caller)
 applies 15, undecided 6, outside the selection 0 (an undecided claim is never reported as excluded)
 
@@ -11,7 +11,7 @@ applies 15, undecided 6, outside the selection 0 (an undecided claim is never re
 - REQ-0003  57364f54a906  SHALL  The req tool shall express permanent product variation as a selection governed by applicability predicates over one claim set.
     selector: (none — applies to every variant)
     -> derives-from REQ-0001
-- REQ-0004  ddc6992dd05b  SHALL  The req tool's semantic layer shall emit proposals for reviewer ratification.
+- REQ-0004  f545c40177ba  SHALL  The req tool's semantic layer shall emit proposals for reviewer ratification.
     selector: (none — applies to every variant)
     -> refines REQ-0001
 - REQ-0005  6bbc0295880a  SHALL  The req tool shall require human ratification before any two claims are merged.
@@ -42,10 +42,10 @@ applies 15, undecided 6, outside the selection 0 (an undecided claim is never re
 - REQ-0019  25713319754e  SHALL  The req tool shall emit a lint finding for any construct its normalization rules cannot decide rather than guessing a resolution.
     selector: (none — applies to every variant)
     -> refines REQ-0007
-- REQ-0020  d04ccf3bb7cf  SHALL  The req tool shall serialize each relation exactly once, on the outgoing side of its origin claim.
+- REQ-0020  1ffac8e3e4e2  UNSTRUCTURED  The req tool shall serialize each relation exactly once, on the outgoing side of its origin claim.
     selector: (none — applies to every variant)
     -> derives-from REQ-0002
-- REQ-0021  fc5e269b978e  SHALL-NOT  The req tool's semantic layer shall never rewrite a claim or merge two claims automatically.
+- REQ-0021  47dafd1eaad1  SHALL-NOT  The req tool's semantic layer shall never rewrite a claim or merge two claims automatically.
     selector: (none — applies to every variant)
     -> derives-from REQ-0004
 

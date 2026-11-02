@@ -20,7 +20,7 @@ tests:
   - "req::funnel::a_pass_requires_a_measured_flip_rate_and_no_false_merge"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"report a tier 2 provider repeated-identical-input answer flip at a rate of","applicability":["runs >= 20"],"conditions":[],"exception":null,"modality":"SHALL","operator":"LE","qualifier":"","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":"none","value":"0.02"}

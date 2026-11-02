@@ -20,7 +20,7 @@ tests:
   - "req::bench::tests::fmr_is_zero_on_the_seed_corpus"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"report a false merge rate of","applicability":["corpus_set == parity_and_adversarial"],"conditions":[],"exception":null,"modality":"SHALL","operator":"EQ","qualifier":"on the parity and adversarial mutation corpora","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":null,"value":"0"}

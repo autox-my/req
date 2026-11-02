@@ -399,6 +399,9 @@ run cargo run -q -- bench   # seed parity corpus: 0 PASS / 1 FAIL / 3 UNVERIFIAB
   # across 47 project ids) plus StrictDoc and Doorstop, and adds the digit-grouping and
   # exact unit-scale equivalence classes. It caught the "may not" false merge (rules v4).
   run cargo run -q -- bench bench/corpus/external-v3.yml
+  # v4 (rules v6) adds the two classes the dropped-word false merges slipped through: any-position
+  # substitution and the possessive head (tools/corpus/build_external.py --version 4).
+  run cargo run -q -- bench bench/corpus/external-v4.yml
   # The direction gold set: same hard FMR gate plus the direction gate — a loosening
   # reported as no change (or as the opposite direction) is a dangerous confusion and
   # fails, exactly as a false merge does. See docs/canonical-hashing.md 6.3.

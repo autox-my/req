@@ -19,7 +19,7 @@ tests:
   - "req::select::an_undecided_key_is_unknown_never_false"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"resolve the applicability of an undecided feature as unknown rather than silently excluding it","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}

@@ -17,7 +17,7 @@ unstructured: false
 tests: []
 evidence: process
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"produce","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"EQ","qualifier":"commit per ratified logical decision","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":"1"}

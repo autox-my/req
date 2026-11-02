@@ -19,7 +19,7 @@ tests:
   - "req::evidence::no_command_starts_a_sync_or_polling_loop"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"operate a continuous two-way synchronization bridge between a web database and the requirement files","applicability":[],"conditions":[],"exception":null,"modality":"SHALL-NOT","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}

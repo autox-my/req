@@ -20,7 +20,7 @@ tests:
   - "req::evidence::the_parity_corpus_meets_its_false_split_target"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
     {"action":"show a false split rate of","applicability":["corpus_set == parity"],"conditions":[],"exception":null,"modality":"SHOULD","operator":"LE","qualifier":"on the parity corpus at v0","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":null,"value":"0.3"}

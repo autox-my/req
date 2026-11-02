@@ -30,10 +30,12 @@ use crate::model::Registry;
 /// the predicate span and made the canonical bytes valid JSON; 3 -> 4 stopped
 /// resolving "may not"/"may never" (ambiguous negation scope — a real false merge on
 /// the widened external corpus); 4 -> 5 put authored applicability into identity
-/// (ADR 0003 said it belonged there; the form had no field for it at all). Addresses
-/// computed under older rules are re-canonicalization candidates, never silently
+/// (ADR 0003 said it belonged there; the form had no field for it at all); 5 -> 6 added the
+/// coverage invariant (T1.10: no statement word leaves identity silently) and the whole-span
+/// subject match (T1.7 as written) after two false merges in this repository's own corpus.
+/// Addresses computed under older rules are re-canonicalization candidates, never silently
 /// rewritten (hashing spec §5).
-pub const RULES_V: u32 = 5;
+pub const RULES_V: u32 = 6;
 /// The claim **file format's** own version (`docs/claim-format.md`), an axis that moves
 /// independently of the normalization rules: a schema bump is a migration and moves no
 /// address, while a rules bump re-derives every address. Named here, beside the other
@@ -802,6 +804,13 @@ fn qualitative_predicate(action: &str, qualifier: &str) -> Option<String> {
 
 const GUARD_WORDS: &[&str] = &["when", "while", "unless", "during", "if"];
 
+/// The only words a statement may carry without a slot (T1.10). Every entry is a word that
+/// can be swapped or deleted **without moving the address**, so the list is a false-merge
+/// surface and is kept to articles. Prepositions are not here: "before"/"after" and
+/// "on"/"off" change meaning. Widen it only when a recorded mutation case shows that a
+/// substitution cannot.
+const COVERAGE_STOPWORDS: &[&str] = &["a", "an", "the"];
+
 fn is_word_boundary(text: &str, pos: usize, len: usize) -> bool {
     let bytes = text.as_bytes();
     let before_ok = pos == 0 || !bytes[pos - 1].is_ascii_alphanumeric();
@@ -1127,26 +1136,22 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
         });
     }
 
-    // T1.7 subject, v1: the *longest registered alias* covering a prefix of the
-    // pre-modal words wins; the leftover pre-modal words belong to the action
-    // phrase, not the subject ("the req tool's semantic layer" → REQ_TOOL +
-    // action-prefix "semantic layer"). Digit-rejection is narrowed to its real
-    // case: a value-led fragment (digit followed by a known unit, e.g. fatal for
-    // "12 kN shall be applied...") — while digit-bearing *names* ("a tier 2
-    // provider's…") now parse as subjects. No registered-hit span and no unit
-    // rejection ever silently widens what counts as the same subject.
-    let subject: Option<(String, usize)> = match modality {
+    // T1.7 subject (rules v6: the **whole span**). A registry alias matches only when it
+    // is the *entire* pre-modal span; anything else is a literal subject carrying every
+    // word. Through rules v5 the longest alias covering a *prefix* won and the leftover
+    // words fell in no slot, so "the req tool's semantic layer" and "the req tool's audit
+    // layer" were both `REQ_TOOL` — a false merge inside this repository's own corpus,
+    // and a violation of T1.7 as written ("unregistered synonyms are not collapsed").
+    // Digit-rejection is narrowed to its real case: a value-led fragment (digit followed
+    // by a known unit, e.g. fatal for "12 kN shall be applied...") — while digit-bearing
+    // *names* ("a tier 2 provider's…") parse as subjects.
+    let subject: Option<String> = match modality {
         Some(_) => {
             let subj: Vec<&str> = words[..modal_start.min(words.len())].to_vec();
             if subj.is_empty() || value_led_subject(&subj) {
                 None
             } else {
-                let max_span = subj.len().min(8);
-                Some(
-                    registry
-                        .resolve_longest_prefix(&subj, max_span)
-                        .unwrap_or_else(|| (registry.resolve(&subj.join(" ")), subj.len())),
-                )
+                Some(registry.resolve(&subj.join(" ")))
             }
         }
         None => None,
@@ -1154,15 +1159,15 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
 
     // qualifier: the post-value phrase — an identity field, never dropped. The
     // tail starts after the digit token plus whatever unit token was consumed.
-    let qualifier = match num_idx {
-        Some(i) => {
-            let tail_start = if unit_suffix.is_some() {
-                i + 1
-            } else {
-                i + 1 + _unit_consumed
-            };
-            words.get(tail_start..).unwrap_or(&[]).join(" ")
+    let tail_start = num_idx.map(|i| {
+        if unit_suffix.is_some() {
+            i + 1
+        } else {
+            i + 1 + _unit_consumed
         }
+    });
+    let qualifier = match tail_start {
+        Some(start) => words.get(start..).unwrap_or(&[]).join(" "),
         None => String::new(),
     };
 
@@ -1181,7 +1186,63 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
     }
     let unparseable = second_obligation || untestable_qualifier.is_some() || ambiguous_may_not;
 
-    let Some((subject, _span)) = subject.filter(|_| !unparseable) else {
+    // T1.10 coverage invariant (rules v6): every word *position* of the body must be held
+    // by a slot or be a stopword, or the claim is unstructured. Checked only for a parse
+    // that would otherwise be structured, so the lint names the one reason that is new
+    // rather than burying it under the others.
+    let mut uncovered_content = false;
+    if subject.is_some() && !unparseable {
+        let mut covered = vec![false; words.len()];
+        let mut mark = |range: std::ops::Range<usize>| {
+            for slot in covered.iter_mut().take(range.end).skip(range.start) {
+                *slot = true;
+            }
+        };
+        // subject: the whole pre-modal span, and the modal phrase (the absorbed
+        // `<modal> <negator> <stem>` phrase is the modality and the comparator at once).
+        mark(0..modal_start);
+        mark(modal_start..absorb_end.unwrap_or(modal_end).max(modal_end));
+        // action: the predicate span; comparator: its phrase, even when no value follows.
+        mark(action_start..action_end);
+        if comp_len > 0
+            && let Some(cs) = comp_start_abs
+        {
+            mark(cs..cs + comp_len);
+        }
+        // value (+ unit) and the qualifier tail. A numeric token that did not resolve to a
+        // value, or whose attached suffix did not resolve to a unit ("200-300", "5foobarbaz"),
+        // is *not* held: the text it carried left the form.
+        if let Some(n) = num_idx {
+            if value.is_some() && (unit_suffix.is_none() || unit.is_some()) {
+                mark(n..n + 1);
+                if unit_suffix.is_none() {
+                    mark(n + 1..n + 1 + _unit_consumed);
+                }
+            }
+            if let Some(start) = tail_start {
+                mark(start..words.len());
+            }
+        }
+        let uncovered: Vec<String> = words
+            .iter()
+            .zip(covered.iter())
+            .filter(|(w, held)| !**held && !COVERAGE_STOPWORDS.contains(*w))
+            .map(|(w, _)| {
+                let bare = w.trim_matches(|c: char| !c.is_alphanumeric());
+                if bare.is_empty() { *w } else { bare }.to_string()
+            })
+            .collect();
+        if !uncovered.is_empty() {
+            lints.push(Lint {
+                code: "uncovered_content".to_string(),
+                detail: uncovered.join(", "),
+            });
+            uncovered_content = true;
+        }
+    }
+    let unparseable = unparseable || uncovered_content;
+
+    let Some(subject) = subject.filter(|_| !unparseable) else {
         // Unstructured fallback (§4): the raw normalized statement.
         return (
             CanonicalForm {

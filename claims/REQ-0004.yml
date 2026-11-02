@@ -3,7 +3,7 @@ claim_id: REQ-0004
 statement: >-
   The req tool's semantic layer shall emit proposals for reviewer ratification.
 modality: SHALL
-subject: REQ_TOOL
+subject: the req tool semantic layer
 attribute: semantic_layer_output
 operator: EQ
 value: proposals_only
@@ -18,11 +18,11 @@ tests:
   - "req::funnel::a_provider_that_answers_is_recorded_with_its_verdict"
 evidence: machine
 canonical:
-  rules_v: 5
+  rules_v: 6
   subject_registry: 1
   form: |-
-    {"action":"emit proposals for reviewer ratification","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: ddc6992dd05b4da58ae21e5dda821d488f7fcaea04b9a5849ab8d11e00f2bf80
+    {"action":"emit proposals for reviewer ratification","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"the req tool semantic layer","temporal":null,"unstructured":false,"unit":null,"value":null}
+address: f545c40177ba2b7443b3c21368afb68429d1147278dfc3187a0e1d40972a5720
 rationale:
   source: docs/adr/0004-model-proposes-human-disposes.md
   date: 2026-10-07
