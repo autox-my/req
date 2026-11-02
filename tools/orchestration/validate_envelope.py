@@ -22,13 +22,22 @@ Beyond the required fields, the two TDD evidence fields are checked:
 - `red` {test, base_commit, failure}: the red-at-base proof. It must be well formed whenever it
   is present, and a fix unit must carry it: `task_id` ends in `-fix` (or a numbered `-fix1`).
 - `mutations` [{change, test_that_failed}]: named mutations and the test each must turn red
-  (AGENTS.md, "Mutation-check the load-bearing rule").
+  (AGENTS.md, "Mutation-check the load-bearing rule"). Well formed whenever present, and a fix
+  unit must carry it too, exactly like `red`: both are what a fix unit's claim to have tested
+  the load-bearing rule rests on.
+
+The published schema (docs/specs/task-envelope.schema.json) states the same contract, and
+`--self-check` compares the two (`schema_disagreements`), so a rule only one of them states
+fails the gate. The validator is the stricter authority; the summary's line cap is enforced
+here and described, not encoded, in the schema.
 """
 from __future__ import annotations
 
 import json
+import pathlib
 import re
 import sys
+import tempfile
 
 REQUIRED = {
     "task_id": str,
@@ -49,10 +58,14 @@ MIN_COMMIT = 7
 FIX_TASK = re.compile(r"-fix[0-9]*$")
 
 
+def is_fix_unit(doc: dict) -> bool:
+    task_id = doc.get("task_id")
+    return isinstance(task_id, str) and bool(FIX_TASK.search(task_id))
+
+
 def validate_red(doc: dict, errors: list[str]) -> None:
     red = doc.get("red")
-    task_id = doc.get("task_id")
-    is_fix = isinstance(task_id, str) and bool(FIX_TASK.search(task_id))
+    is_fix = is_fix_unit(doc)
 
     if red is None:
         if is_fix:
@@ -75,6 +88,8 @@ def validate_red(doc: dict, errors: list[str]) -> None:
 def validate_mutations(doc: dict, errors: list[str]) -> None:
     mutations = doc.get("mutations")
     if mutations is None:
+        if is_fix_unit(doc):
+            errors.append("a fix envelope (task_id ...-fix) requires mutations [{change, test_that_failed}]")
         return
     if not isinstance(mutations, list) or not mutations:
         errors.append("mutations must be a non-empty array of {change, test_that_failed}")
@@ -108,6 +123,11 @@ def validate(doc: object) -> list[str]:
                 errors.append(f"{key} must be a string or null")
         elif not isinstance(value, typ):
             errors.append(f"{key} must be {typ.__name__}")
+
+    for key in ("task_id", "branch"):
+        value = doc.get(key)
+        if isinstance(value, str) and not value.strip():
+            errors.append(f"{key} must not be empty")
 
     base = doc.get("base_commit")
     if isinstance(base, str) and len(base.strip()) < MIN_COMMIT:
@@ -158,6 +178,56 @@ def validate(doc: object) -> list[str]:
     return errors
 
 
+SCHEMA = pathlib.Path(__file__).resolve().parents[2] / "docs" / "specs" / "task-envelope.schema.json"
+
+
+def _conditional(schema: dict, discriminator: tuple[str, str, str]) -> dict | None:
+    """The `allOf` entry whose `if` pins `properties.<field>.<keyword>` to a value, or None."""
+    field, keyword, value = discriminator
+    for entry in schema.get("allOf", []):
+        pinned = entry.get("if", {}).get("properties", {}).get(field, {})
+        if pinned.get(keyword) == value:
+            return entry
+    return None
+
+
+def schema_disagreements(path: pathlib.Path = SCHEMA) -> list[str]:
+    """Where the published schema and this validator say different things.
+
+    The validator is the authority — it is what the orchestrator runs — and the schema is the
+    published description of the same contract, so a rule only one of them states is a contract
+    that silently does not hold. This compares the rules both can express: the required keys,
+    the status vocabulary, the identifier and commit lengths, and the three conditional rules
+    (fix unit, blocked, review). What a schema cannot express (the summary's line cap) is
+    stated in the schema's own description and enforced here only.
+    """
+    try:
+        schema = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return [f"cannot read the schema at {path}: {exc}"]
+    out: list[str] = []
+    props = schema.get("properties", {})
+    if set(schema.get("required", [])) != set(REQUIRED):
+        out.append(f"required keys differ: schema {sorted(schema.get('required', []))} vs validator {sorted(REQUIRED)}")
+    if set(props.get("status", {}).get("enum", [])) != STATUSES:
+        out.append("the status vocabulary differs")
+    if props.get("base_commit", {}).get("minLength") != MIN_COMMIT:
+        out.append(f"base_commit minLength is not {MIN_COMMIT}")
+    for key in ("task_id", "branch"):
+        if props.get(key, {}).get("minLength", 0) < 1:
+            out.append(f"{key} is not declared non-empty")
+    fix = _conditional(schema, ("task_id", "pattern", FIX_TASK.pattern))
+    if fix is None or set(fix.get("then", {}).get("required", [])) != {"red", "mutations"}:
+        out.append("the fix-unit rule (task_id ...-fix requires red and mutations) is not in the schema")
+    blocked = _conditional(schema, ("status", "const", "blocked"))
+    if blocked is None or "else" not in blocked or "then" not in blocked:
+        out.append("the blocked rule (one question when blocked, null otherwise) is not in the schema")
+    review = _conditional(schema, ("task_id", "pattern", "-review-"))
+    if review is None or review.get("else", {}).get("properties", {}).get("files_changed", {}).get("minItems") != 1:
+        out.append("the review rule (a non-review envelope names at least one file) is not in the schema")
+    return out
+
+
 def _base(**over) -> dict:
     doc = {
         "task_id": "M1-1",
@@ -182,6 +252,7 @@ def _without(key: str) -> dict:
 
 
 RED = {"test": "canon::x", "base_commit": "b56bca3", "failure": "assertion failed"}
+MUT = [{"change": "drop the rule", "test_that_failed": "canon::x"}]
 
 # (name, document, expected valid). Each invalid case breaks exactly one rule.
 CASES = [
@@ -200,7 +271,13 @@ CASES = [
     ("empty summary", _base(summary="   "), False),
     ("fix unit without red", _base(task_id="M1-1-fix"), False),
     ("numbered fix unit without red", _base(task_id="M1-1-fix2"), False),
-    ("fix unit with red", _base(task_id="M1-1-fix", red=RED), True),
+    ("fix unit with red but no mutations", _base(task_id="M1-1-fix", red=RED), False),
+    ("fix unit with mutations but no red", _base(task_id="M1-1-fix", mutations=MUT), False),
+    ("fix unit with red and mutations", _base(task_id="M1-1-fix", red=RED, mutations=MUT), True),
+    ("numbered fix unit with red and mutations", _base(task_id="M1-1-fix2", red=RED, mutations=MUT), True),
+    ("non-fix unit needs neither", _base(), True),
+    ("empty task_id", _base(task_id=""), False),
+    ("blank branch", _base(branch="   "), False),
     ("red missing failure", _base(red={"test": "canon::x"}), False),
     ("red with short base_commit", _base(red={**RED, "base_commit": "abc"}), False),
     ("mutations well formed", _base(mutations=[{"change": "drop rule", "test_that_failed": "t"}]), True),
@@ -212,6 +289,34 @@ CASES = [
 ]
 
 
+def _read_cases() -> list[tuple[str, int, int]]:
+    """(name, expected exit, got exit) for the file-reading half, in a throwaway directory."""
+    import contextlib
+    import io
+
+    rows = []
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / "binary.json").write_bytes(b"\xff\xfe\x00{")
+        (root / "notjson.json").write_text("{nope", encoding="utf-8")
+        (root / "good.json").write_text(json.dumps(_base()), encoding="utf-8")
+        for name, target, expected in (
+            ("a non-UTF-8 file is invalid, not a traceback", root / "binary.json", 1),
+            ("a file that is not JSON is invalid", root / "notjson.json", 1),
+            ("a good file is valid", root / "good.json", 0),
+            ("a missing file is an IO error", root / "absent.json", 2),
+        ):
+            sink = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(sink), contextlib.redirect_stdout(sink):
+                    got = check_file(str(target))
+            except Exception as exc:  # a traceback is the failure this case exists to catch
+                got = -1
+                print(f"      {name}: raised {type(exc).__name__}")
+            rows.append((name, expected, got))
+    return rows
+
+
 def self_check() -> int:
     bad = 0
     for name, doc, expected in CASES:
@@ -219,31 +324,43 @@ def self_check() -> int:
         if (not errors) != expected:
             bad += 1
             print(f"FAIL  {name}: expected {'valid' if expected else 'invalid'}, got {errors or 'valid'}")
+    reads = _read_cases()
+    for name, expected, got in reads:
+        if got != expected:
+            bad += 1
+            print(f"FAIL  {name}: expected exit {expected}, got {got}")
+    drift = schema_disagreements()
+    for line in drift:
+        bad += 1
+        print(f"FAIL  schema and validator disagree: {line}")
+    total = len(CASES) + len(reads) + 1
     if bad:
-        print(f"validate_envelope self-check: {bad} of {len(CASES)} case(s) wrong")
+        print(f"validate_envelope self-check: {bad} failure(s) over {total} check(s)")
         return 1
-    print(f"validate_envelope self-check: {len(CASES)} case(s) ok")
+    print(f"validate_envelope self-check: {total} check(s) ok")
     return 0
 
 
-def main() -> int:
-    args = sys.argv[1:]
-    if args == ["--self-check"]:
-        return self_check()
-    if len(args) > 1 or (args and args[0].startswith("-")):
-        print(__doc__.strip().splitlines()[0], file=sys.stderr)
-        print("usage: validate_envelope.py [path | --self-check]", file=sys.stderr)
-        return 2
-    if args:
-        try:
-            with open(args[0], "r", encoding="utf-8") as handle:
-                raw = handle.read()
-        except OSError as exc:
-            print(f"cannot read {args[0]}: {exc}", file=sys.stderr)
-            return 2
-    else:
-        raw = sys.stdin.read()
+def check_file(path: str | None) -> int:
+    """Validate one envelope read from `path` (None means stdin). Returns the exit code.
 
+    1 is reserved for "this is not a valid envelope", which includes bytes that are not UTF-8;
+    2 is for a file that cannot be read at all. Neither is ever a traceback.
+    """
+    try:
+        if path is None:
+            data = sys.stdin.buffer.read()
+        else:
+            with open(path, "rb") as handle:
+                data = handle.read()
+    except OSError as exc:
+        print(f"cannot read {path}: {exc}", file=sys.stderr)
+        return 2
+    try:
+        raw = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        print(f"INVALID: not UTF-8: {exc}", file=sys.stderr)
+        return 1
     try:
         doc = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -258,6 +375,17 @@ def main() -> int:
 
     print("VALID")
     return 0
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if args == ["--self-check"]:
+        return self_check()
+    if len(args) > 1 or (args and args[0].startswith("-")):
+        print(__doc__.strip().splitlines()[0], file=sys.stderr)
+        print("usage: validate_envelope.py [path | --self-check]", file=sys.stderr)
+        return 2
+    return check_file(args[0] if args else None)
 
 
 if __name__ == "__main__":

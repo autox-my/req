@@ -42,7 +42,7 @@
       "items": {
         "type": "string"
       },
-      "description": "For a worker: the files it changed, at least one. For a review envelope (task_id contains '-review-'): the files it flagged; may be empty."
+      "description": "For a worker: the files it changed, at least one (enforced by the allOf rule below). For a review envelope (task_id contains '-review-'): the files it flagged; may be empty."
     },
     "tests": {
       "type": "string",
@@ -60,7 +60,7 @@
         "string",
         "null"
       ],
-      "description": "Exactly one question when status is blocked: a single line ending in '?'. Otherwise null."
+      "description": "Exactly one question when status is blocked: a single line with one '?', at the end. Otherwise null. Enforced by the allOf rule below, not by this type alone."
     },
     "summary": {
       "type": "string",
@@ -95,7 +95,7 @@
     "mutations": {
       "type": "array",
       "minItems": 1,
-      "description": "Named mutations and the test each one must turn red. Evidence that the tests have teeth.",
+      "description": "Named mutations and the test each one must turn red. Evidence that the tests have teeth. Required for a fix unit (task_id ends in -fix or -fix2), like red.",
       "items": {
         "type": "object",
         "required": [
@@ -121,5 +121,71 @@
       "description": "The pull request URL, when the unit opened one."
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "task_id"
+        ],
+        "properties": {
+          "task_id": {
+            "pattern": "-fix[0-9]*$"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "red",
+          "mutations"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "blocked"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "blockers": {
+            "type": "string",
+            "pattern": "^\\s*[^\\r\\n?]*\\?\\s*$"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "blockers": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "task_id"
+        ],
+        "properties": {
+          "task_id": {
+            "pattern": "-review-"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "files_changed": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
 }
