@@ -51,8 +51,8 @@ author can satisfy by writing more prose beside the statement.
    policy was renamed, so the gate document is **`req.gate/2`**; its exit contract is unchanged.
 6. **`CLAIM_SCHEMA_V = 2`.** A `req.claim/1` file is a migration candidate (NOT JUDGED, exit 3) and the
    message names `tools/migrate_claims.py`, which turns the authored quantity-shaped slots (a numeric
-   `value`, an operator other than `EQ`/none, a unit other than `none` — the cases ADR 0014 made a flag
-   when unparsed) into pins and drops the rest, printing every drop.
+   `value` with the operator authored beside it (`EQ` included), an operator other than `EQ`/none, a unit
+   other than `none` — the cases ADR 0014 made a flag when unparsed) into pins and drops the rest, printing every drop.
 
 ## Consequences
 
@@ -74,12 +74,18 @@ The audit-surface digests (`relations_hash`, `rationale_hash`, `tests_hash`) are
 **Proven pure, not asserted.** The Baseline manifest carries no claim schema, so a pure format change
 leaves it valid. This repository's 21 dogfood claims migrated in the same change with every address
 unchanged against the list recorded before the edit (rules v6), and `baselines/air-gapped.json` (17 of
-them) stayed `[VERIFIED]` under its original signature. The migration created six pins on four claims
-(REQ-0008, REQ-0009, REQ-0010, REQ-0022), all agreeing.
+them) stayed `[VERIFIED]` under its original signature. The migration created eight pins on four claims
+(REQ-0008 `value`+`operator`, REQ-0009 `value`+`operator`, REQ-0010 `value`+`operator`, REQ-0022
+`value`+`operator`), all agreeing. (The first cut pinned the value alone where the authored operator
+was `EQ`; the CI review of M3 showed `exactly zero` could then weaken to `at most zero` with the pin
+still agreeing, so an authored operator beside a pinned value is pinned too.)
 
-**What remains open.** REQ-0017's statement still describes the stored-digest mechanism, and the test it
-links keeps its attested id; re-wording the claim or renaming the test moves what the signed Baseline
-attests, so both wait for a Decision and a re-signature. `tools/migrate_claims.py` is a starting point
+**REQ-0017 was re-worded in the same change.** Its old statement (each claim file stores its canonical
+form so the stored address recomputes) became false, so it now says the address is derived at load and
+attested in the signed Baseline, and its test link moved to `req::address_recompute::…`. That moved
+REQ-0017's address and `tests_hash` and nothing else: the Baseline was re-emitted and re-signed by the
+owner, so the "no address moves" property above holds for 20 of the 21 claims and REQ-0017 is the one
+deliberate exception. `tools/migrate_claims.py` is a starting point
 an adopter copies, not a subcommand: req never rewrites a claim on its own (REQ-0021).
 
 ## Considered Options

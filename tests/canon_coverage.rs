@@ -209,7 +209,7 @@ fn compare_cli(a: &str, b: &str, tag: &str) -> (i32, String) {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("tmp dir");
     // The version this build writes, not a literal: a schema bump must not turn this fixture
-    // into a NOT JUDGED failure whose cause is the literal (as tests/compare.rs does).
+    // into a NOT JUDGED failure whose cause is the literal.
     let schema = req::canon::claim_schema();
     let claim = |name: &str, statement: &str| -> String {
         let text = format!(

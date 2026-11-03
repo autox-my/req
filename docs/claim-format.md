@@ -273,7 +273,7 @@ file across:
 | `req.claim/1` | `req.claim/2` |
 |---|---|
 | `schema`, `claim_id`, `statement`, `applicability`, `relations`, `tests`, `evidence`, `rationale` | kept, byte for byte (`schema` rewritten to `req.claim/2`) |
-| a numeric `value`, an `operator` other than `EQ`/none, a `unit` other than `none` | `pins:` — the bound the author wrote is still checked against the parse |
+| a numeric `value` (with the `operator` authored beside it, `EQ` included), an `operator` other than `EQ`/none, a `unit` other than `none` | `pins:` — the bound the author wrote is still checked against the parse |
 | `modality`, `subject`, `conditions`, `unstructured` | dropped — derived from `statement` at load (pin `modality`/`subject` by hand where load-bearing) |
 | the qualitative `attribute`/`value` triple | dropped — not representable in the form, and the annotation category is removed |
 | `exception`, `temporal`, `quantifier` | dropped — never represented; authoring one is now a parse error |
@@ -291,9 +291,9 @@ repository's own migration proved by keeping all 21 dogfood addresses and its si
 authored **structured-first** under `req.claim/1` and migrated to `req.claim/2` by
 `tools/migrate_claims.py` (ADR 0022) with **no address moving** — the 21 addresses `req render`
 derives at rules v6 equal the ones the v1 files stored, and `baselines/air-gapped.json`, which
-attests 17 of them, still verifies under its original signature. The migration created six pins
-on four claims — REQ-0008 (`value`), REQ-0009 (`value`, `operator`), REQ-0010 (`value`,
-`operator`), REQ-0022 (`value`) — all of which agree with the derived parse. REQ-0007 is derived
+attests 17 of them, still verifies (REQ-0017 was then re-worded on purpose, see below, and the
+Baseline re-signed). The migration created eight pins on four claims — REQ-0008, REQ-0009,
+REQ-0010 and REQ-0022, each `value` and `operator` — all of which agree with the derived parse. REQ-0007 is derived
 unstructured, as it was authored unstructured. Rules v6's coverage invariant (hashing spec T1.10)
 refuses a structured parse that leaves a clause no slot holds, which is why the "exactly once" half
 of the old REQ-0020 is its own claim, REQ-0022 (one obligation per claim). REQ-0004 and REQ-0021
@@ -301,10 +301,11 @@ state their obligation without the head "semantic layer", so their subject is th
 `REQ_TOOL`; the registry matches a whole subject span only, and no alias was added for the dropped
 head.
 
-REQ-0017's statement still describes the `req.claim/1` mechanism (a stored canonical form whose
-digest reproduces a stored address). Re-wording it moves its address, which drifts the signed
-Baseline: that is a Decision and a re-signature, recorded as a follow-up rather than done in the
-format change.
+REQ-0017's statement described the `req.claim/1` mechanism (a stored canonical form whose digest
+reproduces a stored address). Under `req.claim/2` that was false, so it was re-worded in the format
+change: the address is derived at load and is the one the signed Baseline attests. That moved its
+address and `tests_hash`, so the Baseline was re-emitted and re-signed; it is the one claim whose
+address moved.
 
 `claims/` also seeds `bench/corpus/parity.yml` (E-008/E-009 come from this project's own
 genuine paraphrases).

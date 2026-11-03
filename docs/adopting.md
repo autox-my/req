@@ -193,7 +193,7 @@ including the tri-state — and `req <command> --help` works before a corpus exi
 3. **Values are canonical SI.** `within 200 ms` parses to `value "0.2"`, `unit s`: pin the exact
    decimal string the parser derives, not the units the prose used. `unit: ms` is a contradiction,
    and `"0.30"` is not a canonical decimal (`"0.3"` is), so it cannot be pinned.
-4. **`req canon` always exits 0.** It reports; it never gates. The check that gates is `req gate`:
+4. **`req canon` never fails on a flag.** It reports (it exits 3 only when the corpus cannot be read); it never gates. The check that gates is `req gate`:
    the loop in one sentence is edit → `req canon` to see the parse → `req gate`. A claim's
    `applicability:` list is part of its address (since rules v5), so editing it moves the address
    exactly as editing the statement does.
@@ -754,7 +754,7 @@ for an adopter's agent. The four prohibitions, and why each one matters:
 
 - **Never add a derived field to a claim file.** The parse, the canonical form and the address are derived at load and stored nowhere (`req.claim/2`); a file carrying `address`, `canonical` or any removed slot is a parse error that names the key. State a load-bearing slot as a pin instead — and never edit a pin to match a parse the statement was not meant to have.
 - **Never edit a committed projection.** Regenerate it with `req render --out`; `req render --check` is what proves it current. An edit moves bytes the corpus did not produce, and `--check` reports it.
-- **Never treat `req canon`'s exit 0 as a pass.** It reports the derived parse and each pin's verdict and always exits 0; the check that gates is `req gate`.
+- **Never treat `req canon`'s exit 0 as a pass.** It reports the derived parse and each pin's verdict and does not fail on a flag; the check that gates is `req gate`.
 - **Never auto-merge.** A change direction is classified for a human to ratify, two addresses that differ are different requirements, and ratification is the human's act (ADR 0004).
 
 ### What it can read

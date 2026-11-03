@@ -57,15 +57,9 @@ fn the_address_recomputes_from_the_canonical_bytes_and_matches_the_signed_manife
             "{}: the address does not recompute from its canonical bytes",
             loaded.claim.claim_id
         );
-        // Nothing derived is stored in the file (ADR 0022)…
-        for line in loaded.text.lines() {
-            assert!(
-                !line.starts_with("address:") && !line.starts_with("canonical:"),
-                "{}: a req.claim/2 file stores no fingerprint: {line}",
-                loaded.claim.claim_id
-            );
-        }
-        // …and the address the signed manifest *does* store is the one the claim derives.
+        // The address the signed manifest *does* store is the one the claim derives. (That no
+        // file stores a fingerprint is `tests/claim_v2.rs` (a) and (b): a stored `address:` or
+        // `canonical:` is a parse error naming the key.)
         if let Some(signed) = attested.get(loaded.claim.claim_id.as_str()) {
             assert_eq!(
                 *signed, derived.address,
@@ -84,8 +78,11 @@ fn the_address_recomputes_from_the_canonical_bytes_and_matches_the_signed_manife
     );
 }
 
-const SAMPLE: &str = "\
-schema: req.claim/2
+/// A claim file in the schema this build writes, not a literal.
+fn sample() -> String {
+    format!(
+        "\
+schema: {}
 claim_id: REQ-9999
 statement: >-
   The system shall respond within 200 ms.
@@ -96,7 +93,10 @@ rationale:
   date: 2026-10-07
   rejected_alternatives: []
   assumptions: []
-";
+",
+        req::canon::claim_schema()
+    )
+}
 
 /// **The human's ruling, pinned**: adding or removing a `tests:` entry (or flipping the evidence
 /// mode) leaves the claim's **address** untouched. Identity is the canonical form over meaning;
@@ -107,10 +107,11 @@ fn adding_or_removing_a_test_link_moves_no_address() {
         let claim = parse_claim(text).expect("the fixture is a claim file");
         derive(&claim, &Registry::empty()).address
     };
-    let base = address_of(SAMPLE);
+    let sample = sample();
+    let base = address_of(&sample);
     let with = |block: &str| {
-        let text = SAMPLE.replace("relations: []\n", &format!("relations: []\n{block}"));
-        assert_ne!(text, SAMPLE, "the fixture carries the anchor");
+        let text = sample.replace("relations: []\n", &format!("relations: []\n{block}"));
+        assert_ne!(text, sample, "the fixture carries the anchor");
         address_of(&text)
     };
     // One link, two links, and a process declaration: the form does not carry any of them.

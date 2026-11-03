@@ -603,7 +603,7 @@ fn derived_claims_are_accepted_without_constraint() {
     // The property, not the template's pin count: at least one pin verdict was rendered, and
     // none of them is a flag.
     assert!(
-        canon_out.contains("0 flagged") && !canon_out.contains("pins: 0 on"),
+        canon_out.contains(", 0 flagged") && !canon_out.contains("pins: 0 on"),
         "every derived claim's pins hold, and there are pins to hold: {canon_out}"
     );
 

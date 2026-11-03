@@ -378,7 +378,7 @@ fn the_draft_path_is_green_end_to_end() {
     let canon = req(fx.path(), &["canon"]);
     canon.assert_code(0, "req canon over the drafts");
     assert!(
-        canon.stdout.contains("claims: 3") && canon.stdout.contains("0 flagged"),
+        canon.stdout.contains("claims: 3 (") && canon.stdout.contains(", 0 flagged"),
         "the drafts load under the strict v2 loader, and no pin is flagged:\n{}",
         canon.stdout
     );
@@ -446,6 +446,58 @@ fn a_second_write_over_the_same_document_refuses_and_overwrites_nothing() {
     assert_eq!(
         before, after,
         "a refused run must write nothing and overwrite nothing"
+    );
+}
+
+/// The tool drafts the schema its template writes. A `req` that reports another one cannot load
+/// the draft, so the tool fails loud (UNVERIFIABLE, exit 3) naming both schemas, instead of
+/// writing an unloadable corpus and exiting 0. A fake `req` first on `PATH` is the seam: the tool
+/// asks `req --version` and nothing else before drafting.
+#[test]
+fn a_req_reporting_another_claim_schema_is_unverifiable_and_writes_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fx = Fixture::new("req-adopt-schema-mismatch");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    let init = req(fx.path(), &["init"]);
+    init.assert_code(0, "req init");
+
+    let bin = fx.path().join("fake-bin");
+    std::fs::create_dir_all(&bin).expect("fake bin dir");
+    let fake = bin.join("req");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\nprintf 'req 0.1.0\\n  rules_v            6\\n  claim_schema       req.claim/3\\n'\n",
+    )
+    .expect("fake req");
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+
+    let mut path_value = bin.as_os_str().to_os_string();
+    path_value.push(":");
+    path_value.push(std::env::var_os("PATH").unwrap_or_default());
+    let output = Command::new(python3())
+        .arg(adopt_py())
+        .args([
+            "--from",
+            "docs/capabilities.md",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ])
+        .current_dir(fx.path())
+        .env_remove("REQ_ROOT")
+        .env("PATH", path_value)
+        .output()
+        .expect("runs tools/adopt.py");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(3), "stderr:\n{stderr}");
+    assert!(
+        stderr.contains("req.claim/3") && stderr.contains("req.claim/2"),
+        "the message names the schema the binary reports and the one the tool drafts:\n{stderr}"
+    );
+    assert!(
+        !fx.exists("claims/REQ-0002.yml"),
+        "nothing is drafted against a schema the tool does not write"
     );
 }
 

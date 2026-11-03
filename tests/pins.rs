@@ -213,9 +213,14 @@ fn a_pin_that_could_never_agree_is_refused_at_load() {
 /// `attribute` the annotation category used to carry (ADR 0022 removed it).
 #[test]
 fn only_the_five_pinnable_keys_parse() {
-    let base = "schema: req.claim/2\nclaim_id: REQ-0001\nstatement: The API shall respond within 200 ms.\n\
-                applicability: []\nrelations: []\nrationale:\n  source: x\n  date: 2026-10-07\n  \
-                rejected_alternatives: []\n  assumptions: []\n";
+    // The schema this build writes, not a literal: a bump must not fail this test for a reason
+    // unrelated to pins.
+    let base = format!(
+        "schema: {}\nclaim_id: REQ-0001\nstatement: The API shall respond within 200 ms.\n\
+         applicability: []\nrelations: []\nrationale:\n  source: x\n  date: 2026-10-07\n  \
+         rejected_alternatives: []\n  assumptions: []\n",
+        req::canon::claim_schema()
+    );
     for key in [
         "modality: SHALL",
         "subject: API",

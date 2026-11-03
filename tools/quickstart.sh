@@ -163,9 +163,15 @@ require_grep() { # <pattern> <file> <why>
 }
 
 require_no_grep() { # <pattern> <file> <why>
-  if grep -Eq "$1" "$2"; then
-    fail "$STEP_NAME: $3 ($2 matches /$1/)"
-  fi
+  # grep answers 0 match, 1 no match, 2 could not read: only 1 is the answer asked for, so an
+  # unreadable file fails the step rather than passing as "no match".
+  local status=0
+  grep -Eq "$1" "$2" || status=$?
+  case "$status" in
+    0) fail "$STEP_NAME: $3 ($2 matches /$1/)" ;;
+    1) ;;
+    *) fail "$STEP_NAME: could not read $2 to check that $3 (grep exit $status)" ;;
+  esac
 }
 
 claim_count() {
@@ -351,8 +357,10 @@ require_out "wrote: 2 claim(s)"
 require_file claims/REQ-0002.yml
 require_file claims/REQ-0003.yml
 # A draft carries NOTHING derived (req.claim/2): no address, no canonical form, no guessed pin.
-require_no_grep '^(address|canonical|pins):' claims/REQ-0002.yml "the draft carries a derived field or a pin"
-require_grep '^applicability: \[\]$' claims/REQ-0002.yml "the draft has no empty applicability anchor"
+for draft in claims/REQ-0002.yml claims/REQ-0003.yml; do
+  require_no_grep '^(address|canonical|pins):' "$draft" "the draft carries a derived field or a pin"
+  require_grep '^applicability: \[\]$' "$draft" "the draft has no empty applicability anchor"
+done
 [ "$(claim_count)" -eq $((CLAIMS_BEFORE + 2)) ] \
   || fail "$STEP_NAME: expected $((CLAIMS_BEFORE + 2)) claims, found $(claim_count)"
 

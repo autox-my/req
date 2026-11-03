@@ -260,7 +260,11 @@ fn the_dogfood_addresses_are_the_pre_migration_list_and_none_is_stored() {
     );
 
     let out = req(&checkout(), &["render", "--format", "json"]);
-    let rendered = rendered_addresses(&out.stdout);
+    // Only the recorded ids: adding a legitimate claim later must not read as an address moving.
+    let rendered: Vec<(String, String)> = rendered_addresses(&out.stdout)
+        .into_iter()
+        .filter(|(id, _)| PRE_MIGRATION_ADDRESSES.iter().any(|(r, _)| r == id))
+        .collect();
     let expected: Vec<(String, String)> = PRE_MIGRATION_ADDRESSES
         .iter()
         .map(|(id, a)| {

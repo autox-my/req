@@ -1798,7 +1798,7 @@ pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
          {flagged} flagged; lints on {linted} claim(s) \
          (diagnostics: the parse is derived from `statement` at load and stored nowhere \
          (req.claim/2); a pin agrees or is a flag — a contradiction, or a slot the parse does \
-         not carry; `req canon` reports and always exits 0, and the check that gates pins is \
+         not carry; `req canon` reports and never fails on a flag, and the check that gates pins is \
          `req gate` (pins_hold))",
         claims.len()
     );

@@ -136,13 +136,46 @@ def scalar(lines):
         raise Refused(f"expected a one-line scalar, got a block: {''.join(lines)!r}")
     head = lines[index].rstrip("\r\n")
     raw = head.split(":", 1)[1].strip()
+    if raw[:1] in ("\"", "'"):
+        # Quoted first: a ` #` inside the quotes is part of the string, and only a comment after
+        # the closing quote is dropped.
+        quote = raw[0]
+        end = raw.find(quote, 1)
+        while quote == "\"" and end > 0 and raw[end - 1] == "\\":
+            end = raw.find(quote, end + 1)
+        if end < 0:
+            raise Refused(f"an unterminated quoted scalar: {raw!r}")
+        rest = raw[end + 1:].strip()
+        if rest and not rest.startswith("#"):
+            raise Refused(f"text after a quoted scalar: {raw!r}")
+        body = raw[1:end]
+        if quote == "\"":
+            body = body.replace("\\\"", "\"").replace("\\\\", "\\")
+        return body
     if " #" in raw:
         raw = raw.split(" #", 1)[0].strip()
     if raw in ("", "null", "~"):
         return None
-    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
-        return raw[1:-1]
     return raw
+
+
+PLAIN_SAFE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]*$")
+YAML_WORDS = {"y", "n", "yes", "no", "true", "false", "on", "off", "null", "~"}
+
+
+def yaml_scalar(text):
+    """`text` as a YAML scalar that reads back as the same string: plain when that is safe,
+    otherwise double-quoted with escapes (`%`, `@`, a backtick, ` #`, `: ` and the like are not
+    legal in a plain scalar)."""
+    if PLAIN_SAFE.match(text) and text.lower() not in YAML_WORDS:
+        return text
+    escaped = text.replace("\\", "\\\\").replace("\"", "\\\"")
+    return f'"{escaped}"'
+
+
+def quote_value(text):
+    """The canonical decimal, always double-quoted (a number must stay a string)."""
+    return f'"{text}"'
 
 
 def canonical_decimal(text):
@@ -211,8 +244,8 @@ def migrate_text(text):
     if pins:
         out.append("pins:\n")
         for key, pinned in pins:
-            quoted = f'"{pinned}"' if key == "value" else pinned
-            out.append(f"  {key}: {quoted}\n")
+            written = quote_value(pinned) if key == "value" else yaml_scalar(pinned)
+            out.append(f"  {key}: {written}\n")
     report.insert(0, "dropped " + "; ".join(dropped) if dropped else "dropped nothing")
     report.append(
         "pins: " + ", ".join(f"{k} {v}" for k, v in pins) if pins else "pins: none"
@@ -281,9 +314,18 @@ def run(paths, write):
         print(f"{refused} file(s) refused; nothing written", file=sys.stderr)
         return 1
     if write:
+        done = 0
         for path, migrated in planned:
-            with open(path, "w", encoding="utf-8", newline="") as handle:
-                handle.write(migrated)
+            try:
+                with open(path, "w", encoding="utf-8", newline="") as handle:
+                    handle.write(migrated)
+            except OSError as why:
+                print(f"{path}: cannot write ({why}); {done} of {len(planned)} file(s) were "
+                      "migrated before it, the rest are untouched — re-run after fixing it "
+                      "(already-migrated files are refused as req.claim/2, so it is safe)",
+                      file=sys.stderr)
+                return 1
+            done += 1
         print(f"migrated {len(planned)} file(s) to {V2}")
     else:
         print(f"dry run: {len(planned)} file(s) would be migrated to {V2}; nothing written "
@@ -426,6 +468,16 @@ def self_check():
     case("a unit other than none is a pin",
          migrate_text(with_unit)[0].endswith('pins:\n  value: "0.2"\n  operator: LE\n  unit: s\n'),
          migrate_text(with_unit)[0])
+    for unit, written in [("%", '"%"'), ("lb # force", '"lb # force"'), ("s", "s"),
+                          ("a: b", '"a: b"'), ("@x", '"@x"'), ("yes", '"yes"')]:
+        text = V1_QUALITATIVE.replace("value: claim", 'value: "1"').replace(
+            "unit: none", f'unit: "{unit}"')
+        got = migrate_text(text)[0]
+        case(f"a unit {unit!r} is written as {written} and nothing else",
+             got.endswith(f"  unit: {written}\n"), got)
+    case("a quoted scalar containing ` #` keeps its text",
+         scalar(['unit: "lb # force"  # why\n']) == "lb # force")
+    case("an unquoted scalar loses a trailing comment", scalar(["unit: s  # why\n"]) == "s")
     padded = V1_QUALITATIVE.replace("value: claim", 'value: "0.30"')
     case("a non-canonical numeral is pinned canonically, and said so",
          migrate_text(padded)[0].endswith('pins:\n  value: "0.3"\n  operator: EQ\n')

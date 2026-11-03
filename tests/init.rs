@@ -224,6 +224,12 @@ fn init_creates_a_working_corpus_in_the_current_directory() {
         "canonical SI, not 200 ms"
     );
     assert_eq!(pins.unit.as_deref(), Some("s"));
+    assert_eq!(
+        derived.pins.len(),
+        3,
+        "the starter claim ships three pins, each judged: {:?}",
+        derived.pins
+    );
     assert!(
         derived.pins.iter().all(|check| !check.flags()),
         "every pin the starter claim ships holds: {:?}",
@@ -274,7 +280,7 @@ fn init_creates_a_working_corpus_in_the_current_directory() {
     // not start by transcribing.
     let readme = fx.read("claims/README.md");
     for required in [
-        "req canon", // reports and always exits 0
+        "req canon", // reports and never gates
         "req gate",
         "pins:",
         "SI",

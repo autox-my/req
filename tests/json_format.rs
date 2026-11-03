@@ -146,24 +146,65 @@ impl Corpus {
             }
             block
         };
-        let text = first
-            .replace("claim_id: REQ-0001", &format!("claim_id: {id}"))
-            .replace("fixture::REQ-0001", &format!("fixture::{id}"))
-            .replace(
-                "statement: \"The API shall respond to a health check within 200 ms.\"",
-                &format!("statement: {statement:?}"),
-            )
-            .replace("applicability: []", &applicability_block)
-            .replace("relations: []", &relations_block);
-        // The starter's pins describe the starter's own statement; drop them from the copy.
+        // Every substitution must land: a template edit that moves one of these literals fails
+        // here, naming it, instead of leaving a copy that quietly kept the starter's statement.
+        let replaced = |text: String, old: &str, new: &str| -> String {
+            assert!(
+                text.contains(old),
+                "the starter claim no longer contains {old:?}: the fixture's substitution is a no-op"
+            );
+            text.replace(old, new)
+        };
+        let text = replaced(first, "claim_id: REQ-0001", &format!("claim_id: {id}"));
+        let text = replaced(text, "fixture::REQ-0001", &format!("fixture::{id}"));
+        let text = replaced(
+            text,
+            "statement: \"The API shall respond to a health check within 200 ms.\"",
+            &format!("statement: {statement:?}"),
+        );
+        let text = replaced(text, "applicability: []", &applicability_block);
+        let text = replaced(text, "relations: []", &relations_block);
+        // The starter's pins describe the starter's own statement: drop that block, and only
+        // that block (every following top-level key is kept), then check the authored fields
+        // survived and the pins did not.
         let text = match text.find("\npins:\n") {
-            Some(at) => text[..at + 1].to_string(),
+            Some(at) => {
+                let after = &text[at + 1..];
+                let end = after
+                    .lines()
+                    .skip(1)
+                    .position(|l| !l.is_empty() && !l.starts_with(' '))
+                    .map(|n| {
+                        after
+                            .lines()
+                            .take(n + 1)
+                            .map(|l| l.len() + 1)
+                            .sum::<usize>()
+                    });
+                match end {
+                    Some(len) => format!("{}{}", &text[..at + 1], &after[len..]),
+                    None => text[..at + 1].to_string(),
+                }
+            }
             None => text,
         };
         assert!(
             !text.contains("\npins:"),
             "the copied claim still carries the starter's pins:\n{text}"
         );
+        for key in [
+            "schema:",
+            "claim_id:",
+            "statement:",
+            "applicability:",
+            "relations:",
+            "rationale:",
+        ] {
+            assert!(
+                text.lines().any(|l| l.starts_with(key)),
+                "the copied claim lost `{key}`:\n{text}"
+            );
+        }
         fs::write(self.claim_path(id), text).expect("writes the second claim");
     }
 
