@@ -29,6 +29,12 @@ v3 (`V4_PINS`), so a difference between the two corpora is the new classes and n
 
 Usage: python3 tools/corpus/build_external.py > bench/corpus/external-v3.yml
        python3 tools/corpus/build_external.py --version 4 > bench/corpus/external-v4.yml
+       python3 tools/corpus/build_external.py --self-check    # the pure half; no network
+
+The v4 header also records what the pinned commits do not: the digest of the registry alias list
+(`_pick` indexes into it by position) and per-class emitted/attempted counts, so a mutation that
+silently stops matching shows as a shrunken denominator. v1-v3 headers are unchanged; the per-class
+table goes to stderr for every version.
 """
 import csv
 import hashlib
@@ -267,14 +273,12 @@ def t_final_third(s: str, pair_id: str):
     return _substitute(s, pair_id, final_third=True)
 
 
-def registry_aliases() -> list[str]:
-    """The surface forms `aliases/subjects.yml` registers, read without a YAML library (the file's
-    shape is fixed: `aliases:` followed by `- <surface>` lines). Needed by one class only: a
-    possessive head can fool the registry only when the subject IS a registered alias, and real
-    external prose seldom opens with "the req tool"."""
-    path = Path(__file__).resolve().parents[2] / "aliases" / "subjects.yml"
+def parse_aliases(text: str) -> list[str]:
+    """The surface forms in a subject registry's text, in file order, read without a YAML library
+    (the file's shape is fixed: `aliases:` followed by `- <surface>` lines). Order is kept because
+    `_pick` indexes into this list by position."""
     out, in_aliases = [], False
-    for line in path.read_text().splitlines():
+    for line in text.splitlines():
         stripped = line.strip()
         if stripped == "aliases:":
             in_aliases = True
@@ -282,8 +286,53 @@ def registry_aliases() -> list[str]:
             out.append(stripped[2:].strip())
         elif stripped:
             in_aliases = False
-    assert out, f"no aliases read from {path}"
+    assert out, "no aliases read from the registry text"
     return out
+
+
+def registry_aliases(path: Path | None = None) -> list[str]:
+    """The surface forms `aliases/subjects.yml` registers. Needed by one class only: a possessive
+    head can fool the registry only when the subject IS a registered alias, and real external prose
+    seldom opens with "the req tool"."""
+    path = path or Path(__file__).resolve().parents[2] / "aliases" / "subjects.yml"
+    return parse_aliases(path.read_text())
+
+
+def registry_digest(aliases: list[str]) -> str:
+    """`sha256:<hex>` over the alias surface forms in file order, newline-joined, no trailing
+    newline. Only the list `_pick` indexes into is hashed — never the whole YAML file — so an
+    unrelated registry edit does not look like a change to the corpus input, while a reorder (which
+    moves pairs) does."""
+    return "sha256:" + hashlib.sha256("\n".join(aliases).encode()).hexdigest()
+
+
+# Per-class counters: code -> [attempted, emitted]. A mutation whose shape does not match returns
+# None and its pair vanishes; without these the FMR denominator could shrink without a trace.
+def record(counts: dict, code: str, emitted: bool) -> None:
+    c = counts.setdefault(code, [0, 0])
+    c[0] += 1
+    c[1] += 1 if emitted else 0
+
+
+def dropped(counts: dict, code: str) -> int:
+    attempted, emitted = counts.get(code, (0, 0))
+    return attempted - emitted
+
+
+def counts_table(counts: dict, order: list[str]) -> list[str]:
+    return [f"{code}  emitted {counts.get(code, (0, 0))[1]}  "
+            f"attempted {counts.get(code, (0, 0))[0]}  dropped {dropped(counts, code)}"
+            for code in order]
+
+
+def provenance_text(aliases: list[str], counts: dict, order: list[str]) -> str:
+    """The sentence v4's `rules:` header ends with: what the corpus was built from besides the
+    pinned commits (the registry alias list) and its own per-class denominators."""
+    per_class = ", ".join(f"{code} {counts.get(code, (0, 0))[1]}/{counts.get(code, (0, 0))[0]}"
+                          for code in order)
+    return (f" Provenance: registry-aliases {registry_digest(aliases)} "
+            f"({len(aliases)} aliases, aliases/subjects.yml); "
+            f"per-class emitted/attempted: {per_class}.")
 
 
 def t_possessive_registered(s: str, pair_id: str):
@@ -346,16 +395,19 @@ def main(version: int = 3) -> int:
     pm_sha, pm, pm_total = promise_statements(pins.get("promise"))
 
     eq, ne = [], []
+    counts: dict = {}
     for src, sha, items in (("strictdoc", sd_sha, sd), ("doorstop", ds_sha, ds),
                             ("promise", pm_sha, pm)):
         for uid, text in items:
             for code, label, fn in EQUIV:
                 b = fn(text)
+                record(counts, code, bool(b and b != text))
                 if b and b != text:
                     eq.append((f"E-{src[:2].upper()}-{uid}-{code}", text, b,
                                f"{src}@{sha[:12]} {uid}", label))
             for code, label, fn in NOTEQUIV:
                 b = fn(text)
+                record(counts, code, bool(b and b != text))
                 if b and b != text:
                     ne.append((f"N-{src[:2].upper()}-{uid}-{code}", text, b,
                                f"{src}@{sha[:12]} {uid}", label))
@@ -365,6 +417,7 @@ def main(version: int = 3) -> int:
                     b = fn(text, pid)
                     # a mutation may return (rebased a, b) when it must change the a side too
                     a, b = b if isinstance(b, tuple) else (text, b)
+                    record(counts, code, bool(b and b != a))
                     if b and b != a:
                         ne.append((pid, a, b, f"{src}@{sha[:12]} {uid}", label))
 
@@ -374,6 +427,7 @@ def main(version: int = 3) -> int:
     ids = [pid for pid, *_ in eq + ne]
     assert len(ids) == len(set(ids)), "duplicate pair ids"
 
+    order = [code for code, *_ in EQUIV + NOTEQUIV + (NOTEQUIV_V4 if version >= 4 else [])]
     out = []
     out.append("schema: req.bench.corpus/0")
     out.append(f"version: {version}")
@@ -400,7 +454,8 @@ def main(version: int = 3) -> int:
            "<component> shall`, plus a variant whose subject is first rebased onto a registered "
            "alias from aliases/subjects.yml so that a prefix match of the registry is exercised "
            "— external prose seldom opens with a registered subject). It reads the same pinned commits as v3, so the difference "
-           "between the two is those classes and nothing else." if version >= 4 else "")))
+           "between the two is those classes and nothing else." if version >= 4 else "")
+        + (provenance_text(registry_aliases(), counts, order) if version >= 4 else "")))
     for title, group in (("equivalent", eq), ("not_equivalent", ne)):
         out.append(f"{title}:")
         for pid, a, b, src, label in group:
@@ -411,17 +466,95 @@ def main(version: int = 3) -> int:
             out.append(f"    note: {yaml_scalar(label)}")
     print("\n".join(out))
 
+    for line in counts_table(counts, order):
+        print(f"# {line}", file=sys.stderr)
     print(f"# equivalent={len(eq)} not_equivalent={len(ne)} "
           f"(sources: strictdoc={len(sd)}, doorstop={len(ds)}, "
           f"promise={len(pm)}/{pm_total} sampled)", file=sys.stderr)
     return 0
 
 
+def self_check() -> int:
+    """Table-drive the pure half (registry digest, counter arithmetic, header sentence): no network,
+    no corpus, no `req`. Expected values are written out by hand / by `shasum`, never produced by the
+    code under test."""
+    import tempfile
+    failures = []
+
+    def expect(name, got, want):
+        if got != want:
+            failures.append(f"{name}: got {got!r}, want {want!r}")
+
+    # shasum -a 256 over printf 'the req tool\nreq\nthe tool' (newline-joined, no trailing newline)
+    d_ab = "sha256:27af01b4f2f04ffbd559c03bd1613273f5ff6380cdbc750abd655b060f09d237"
+    # the same three aliases with the first two swapped
+    d_ba = "sha256:6d5876a23c53df8c9a08bbcc3456bb7039b848fa017a6c136a70a4444136adb3"
+    fixed = ["the req tool", "req", "the tool"]
+    swapped = ["req", "the req tool", "the tool"]
+    expect("digest of a fixed alias list", registry_digest(fixed), d_ab)
+    expect("digest is order-sensitive (swap moves it)", registry_digest(swapped), d_ba)
+
+    expect("a swap of two aliases moves the digest", registry_digest(fixed) != registry_digest(swapped),
+           True)
+
+    plain = "aliases:\n  - the req tool\n  - req\n  - the tool\n"
+    richer = ("schema: x\nrules: >\n  prose\nsubjects:\n  A:\n    label: A\n    aliases:\n"
+              "      - the req tool\n      - req\n      - the tool\n  B:\n    label: B\n")
+    expect("parse: aliases only", parse_aliases(plain), fixed)
+    expect("parse: other YAML keys around the same aliases", parse_aliases(richer), fixed)
+    expect("digest ignores other YAML keys",
+           registry_digest(parse_aliases(richer)), registry_digest(parse_aliases(plain)))
+    expect("parse: reordered file", parse_aliases("aliases:\n  - req\n  - the req tool\n"
+                                                  "  - the tool\n"), swapped)
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "subjects.yml"
+        f.write_text(richer)
+        expect("registry_aliases reads a given file", registry_aliases(f), fixed)
+    try:
+        parse_aliases("subjects: {}\n")
+        failures.append("parse: a file with no aliases must be refused")
+    except AssertionError:
+        pass
+
+    # counters: attempted counts every offer, emitted only the written pairs, dropped is the gap
+    c = {}
+    for code, emitted in (("AP", True), ("AP", True), ("AP", False), ("PR", False), ("EM", True)):
+        record(c, code, emitted)
+    expect("counter attempted", c["AP"][0], 3)
+    expect("counter emitted", c["AP"][1], 2)
+    expect("counter dropped", dropped(c, "AP"), 1)
+    expect("counter all dropped", dropped(c, "PR"), 1)
+    expect("counter none dropped", dropped(c, "EM"), 0)
+    expect("counter table lines (stderr)", counts_table(c, ["EM", "AP", "PR", "XX"]),
+           ["EM  emitted 1  attempted 1  dropped 0",
+            "AP  emitted 2  attempted 3  dropped 1",
+            "PR  emitted 0  attempted 1  dropped 1",
+            "XX  emitted 0  attempted 0  dropped 0"])
+
+    # header sentence: fixed order, emitted/attempted, then the registry digest
+    expect("header sentence",
+           provenance_text(fixed, c, ["EM", "AP", "PR"]),
+           f" Provenance: registry-aliases {d_ab} (3 aliases, aliases/subjects.yml); "
+           "per-class emitted/attempted: EM 1/1, AP 2/3, PR 0/1.")
+    expect("header order follows the given order, not the dict",
+           provenance_text(swapped, c, ["PR", "EM"]),
+           f" Provenance: registry-aliases {d_ba} (3 aliases, aliases/subjects.yml); "
+           "per-class emitted/attempted: PR 0/1, EM 1/1.")
+
+    for f in failures:
+        print(f"FAIL {f}", file=sys.stderr)
+    print(f"build_external self-check: {'FAIL' if failures else 'PASS'} "
+          f"({len(failures)} failing)")
+    return 1 if failures else 0
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if args == ["--self-check"]:
+        raise SystemExit(self_check())
     if args in ([], ["--version", "3"]):
         raise SystemExit(main(3))
     if args == ["--version", "4"]:
         raise SystemExit(main(4))
-    print("usage: build_external.py [--version 3|4]", file=sys.stderr)
+    print("usage: build_external.py [--version 3|4 | --self-check]", file=sys.stderr)
     raise SystemExit(2)

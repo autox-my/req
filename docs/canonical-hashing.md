@@ -302,6 +302,9 @@ as `req gate` lets Fail outrank Unverifiable.
     rule: without the coverage invariant it collapses 8 any-position pairs, and with the
     prefix subject match restored 178 possessive-head pairs. Those two numbers are
     mutation runs, not recorded results.
+    Its header also records what the pinned commits do not: the digest of the registry alias
+    list the possessive-registered class indexes into, and per-class emitted/attempted counts
+    (the denominators; e.g. `US 0/279`, so a dropped class shows as a shrunken one).
   - **direction gold set** — hard gate PASS, 0 dangerous confusions, accuracy 0.9961
     over 1016 classified pairs (143 unclassifiable, was 109).
   - **dogfood** — all 21 claims re-filled under rules v6: `req canon` 0 discrepancy
