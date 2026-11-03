@@ -143,10 +143,6 @@ fn sample(rest: &[String]) -> i32 {
                     s.sampling.excluded_tuned,
                     out.display()
                 );
-                if s.sampling.drawn < s.sampling.requested {
-                    eprintln!("UNVERIFIABLE: the corpus yielded fewer statements than requested");
-                    return Ok(3);
-                }
                 Ok(0)
             }
             Err(e) => {

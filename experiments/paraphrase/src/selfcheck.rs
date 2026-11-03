@@ -399,6 +399,16 @@ fn validators_reject() -> Result<(), String> {
     if !validate_statements(st).is_empty() {
         return Err("fixture statements invalid".into());
     }
+    // The sampler's eligibility contract is re-checked on a statements file, not trusted.
+    let mut bad = st.clone();
+    bad.statements[0].text = "Do it now.".to_string();
+    bad.statements[0].words = 3;
+    if !validate_statements(&bad)
+        .iter()
+        .any(|e| e.contains("not an eligible statement"))
+    {
+        return Err("a 3-word statement passed validate_statements".into());
+    }
     let base: GeneratorFile = l.generators[0].0.clone();
     let stem = base.generator.id.clone();
     let check = |name: &str, g: &GeneratorFile, sha: &str, needle: &str| -> Result<(), String> {
@@ -525,8 +535,9 @@ fn fixture_end_to_end() -> Result<(), String> {
             a.judges_used, a.judges_not_used_same_family
         ));
     }
-    if ha.shapes[0].shape != "action" || ha.shapes[0].count != 2 {
-        return Err(format!("gen-a top shape: {:?}", ha.shapes[0].shape));
+    let top = ha.shapes.first().ok_or("gen-a has no split shapes")?;
+    if top.shape != "action" || top.count != 2 {
+        return Err(format!("gen-a top shape: {:?}", top.shape));
     }
     if !a.alterations.false_merges.is_empty() {
         return Err("gen-a has no collapsing alteration".into());

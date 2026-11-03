@@ -121,7 +121,10 @@ pub fn read_json<T: for<'de> Deserialize<'de>>(
 
 /// Collapses whitespace and case, drops trailing sentence punctuation: "is this a copy".
 pub fn loose(text: &str) -> String {
-    text.split_whitespace()
+    // Markdown emphasis (`Doorstop **shall**`) is not a difference of wording: a copy that drops
+    // the markers is still a copy.
+    text.replace("**", "")
+        .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
         .trim_end_matches(['.', '!', '?'])
@@ -185,6 +188,28 @@ pub fn validate_statements(s: &Statements) -> Vec<String> {
     if s.sampling.excluded_tuned != s.sampling.excluded_tuned_ids.len() {
         errs.push("sampling.excluded_tuned disagrees with excluded_tuned_ids".to_string());
     }
+    // The tuned-on exclusion is central to the experiment's validity, so its record is checked,
+    // not just its length: unique ids, per-root counts that add up, and no excluded id in the sample.
+    let excluded: BTreeSet<&str> = s
+        .sampling
+        .excluded_tuned_ids
+        .iter()
+        .map(String::as_str)
+        .collect();
+    if excluded.len() != s.sampling.excluded_tuned_ids.len() {
+        errs.push("sampling.excluded_tuned_ids has duplicates".to_string());
+    }
+    if s.sampling.excluded_tuned_by_root.values().sum::<usize>() != s.sampling.excluded_tuned {
+        errs.push("sampling.excluded_tuned_by_root does not add up to excluded_tuned".to_string());
+    }
+    for st in &s.statements {
+        if excluded.contains(st.id.as_str()) {
+            errs.push(format!(
+                "{}: is in the sample and also in excluded_tuned_ids",
+                st.id
+            ));
+        }
+    }
     let mut ids = BTreeSet::new();
     let mut texts = BTreeSet::new();
     for st in &s.statements {
@@ -205,6 +230,14 @@ pub fn validate_statements(s: &Statements) -> Vec<String> {
         }
         if st.source.trim().is_empty() {
             errs.push(format!("{}: no source citation", st.id));
+        }
+        // The sampler's eligibility contract, re-checked: a file edited or built elsewhere must
+        // not score numbers over an ineligible sample (a 2-word sentence, a `should` requirement).
+        if !crate::sampler::is_single_obligation(&st.text) {
+            errs.push(format!(
+                "{}: not an eligible statement (one shall/must sentence of 6-40 words)",
+                st.id
+            ));
         }
         if st.words != st.text.split_whitespace().count() {
             errs.push(format!(

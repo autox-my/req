@@ -278,7 +278,7 @@ pub fn eligible<'a>(
 ) -> (Vec<&'a JudgeFile>, Vec<&'a JudgeFile>) {
     judges
         .iter()
-        .partition(|j| !j.judge.family.eq_ignore_ascii_case(&g.family))
+        .partition(|j| !j.judge.family.trim().eq_ignore_ascii_case(g.family.trim()))
 }
 
 pub fn score(inp: &Inputs) -> Record {
