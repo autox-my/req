@@ -79,6 +79,9 @@ Git-native storage is table stakes, not the moat.
   default is `NoProvider` until a provider survives held-out validation on a grown,
   blind-labelled corpus. Instruments in `tools/tier2/`, protocol in
   `docs/tier2-sample-protocol.md`.
+- **Paraphrase probe (instrument built, not yet run).** `experiments/paraphrase/` measures how often
+  independently worded text for one obligation fails to share a Tier-1 address — model-authored,
+  blind to Tier-1, judge-filtered, not human; a lower bound, not validation. Read its README first.
 
 ## Development
 

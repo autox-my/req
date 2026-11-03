@@ -1,0 +1,28 @@
+[package]
+name = "req-paraphrase"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Research: how often independently worded text for the same obligation fails to share a Tier-1 address (P-1). Not part of the req core; nothing here gates a release."
+publish = false
+
+# A standalone crate, deliberately NOT a member of the root workspace: the root Cargo.toml and
+# Cargo.lock are identity-path pins (any change is a Tier-1 rules bump), and this research must not
+# be able to move them. The empty table below makes cargo treat this directory as its own workspace
+# root, so the nested layout cannot be misread as membership.
+[workspace]
+
+[lib]
+name = "req_paraphrase"
+path = "src/lib.rs"
+
+[[bin]]
+name = "req-paraphrase"
+path = "src/main.rs"
+
+[dependencies]
+req = { path = "../.." }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+yaml_serde = "0.10"
+sha2 = "0.10"
