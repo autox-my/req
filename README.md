@@ -79,6 +79,9 @@ Git-native storage is table stakes, not the moat.
   `experiments/tier2/` ([ADR 0021](docs/adr/0021-tier-2-leaves-the-core.md)); the protocol is
   `experiments/tier2/docs/tier2-sample-protocol.md`. The core keeps only the single-pair
   `req propose` seam.
+- **Paraphrase probe (instrument built, not yet run).** `experiments/paraphrase/` measures how often
+  independently worded text for one obligation fails to share a Tier-1 address — model-authored,
+  blind to Tier-1, judge-filtered, not human; a lower bound, not validation. Read its README first.
 
 ## Development
 

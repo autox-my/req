@@ -1,0 +1,36 @@
+{
+  "schema": "req.paraphrase.statements/1",
+  "source_corpus": "hand-written fixture (not the real sample)",
+  "source_corpus_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "sampling": {
+    "method": "hand-written: three statements for the end-to-end self-check",
+    "requested": 3,
+    "drawn": 3,
+    "candidates": 3,
+    "eligible_texts": 3,
+    "excluded_tuned": 0,
+    "excluded_tuned_by_root": {},
+    "excluded_tuned_ids": [],
+    "tuned_check": "not applicable: fixture"
+  },
+  "statements": [
+    {
+      "id": "F-1",
+      "text": "The system shall respond to a search request within 2 seconds.",
+      "source": "fixture F-1",
+      "words": 11
+    },
+    {
+      "id": "F-2",
+      "text": "Users shall be able to export a report as PDF.",
+      "source": "fixture F-2",
+      "words": 10
+    },
+    {
+      "id": "F-3",
+      "text": "The server shall log every failed login attempt.",
+      "source": "fixture F-3",
+      "words": 8
+    }
+  ]
+}

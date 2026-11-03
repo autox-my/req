@@ -1,0 +1,387 @@
+{
+  "schema": "req.paraphrase.statements/1",
+  "source_corpus": "bench/corpus/external-v3.yml",
+  "source_corpus_sha256": "2417eccb19b49540e1f3e9e5dc321f12363d5e62da152179b0fc1eb147b026ab",
+  "sampling": {
+    "method": "sort the `a` side of every pair (equivalent + not_equivalent) by sha256(pair id) ascending; walk it, taking the first 60 that are single-obligation shall/must sentences of 6-40 words, whose text is new, and that the tuned-on check does not exclude",
+    "requested": 60,
+    "drawn": 60,
+    "candidates": 1124,
+    "eligible_texts": 165,
+    "excluded_tuned": 5,
+    "excluded_tuned_by_root": {
+      "bench/results": 3,
+      "tests": 2
+    },
+    "excluded_tuned_ids": [
+      "N-DO-REQ001-MW",
+      "E-ST-SDOC-SSS-78-CP",
+      "E-ST-SDOC-SSS-5-MS",
+      "N-PR-P19:r655-PS",
+      "N-PR-P27:r695-MW"
+    ],
+    "tuned_check": "Scanned 154 committed text file(s) under src, tests, docs, claims, bench/results, bench/corpus/parity.yml, README.md, CONTEXT.md, AGENTS.md for each candidate's pair id and for any run of 8 consecutive word tokens of its text (case- and punctuation-insensitive); a hit excludes the candidate. This sees verbatim and quoted-fragment reuse in committed files only. It cannot see tuning done from a paraphrased mention, from uncommitted work or from conversation, and the corpus's own source repositories were read while the rules were developed, so 'not tuned on' cannot be established: only 'not found quoted'. The generated corpora (external-v1..v4, direction-v1, tier2-*) are not scanned: they are built from the same pinned prose and would exclude every candidate."
+  },
+  "statements": [
+    {
+      "id": "E-ST-SDOC-SSS-56-CP",
+      "text": "The Requirements Tool shall provide a \"1000-feet view\" kind of requirements visualization.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-56",
+      "words": 12
+    },
+    {
+      "id": "N-PR-P36:r775-PS",
+      "text": "All source code and development related documents shall be controlled under a version control system.",
+      "source": "promise@b63dde159b41 P36:r775",
+      "words": 15
+    },
+    {
+      "id": "N-PR-P14:r610-PS",
+      "text": "New System version releases shall be released at the beginning of each NFL season.",
+      "source": "promise@b63dde159b41 P14:r610",
+      "words": 14
+    },
+    {
+      "id": "E-PR-P46:r905-MS",
+      "text": "The system shall display detailed invoice for current order once it is confirmed.",
+      "source": "promise@b63dde159b41 P46:r905",
+      "words": 13
+    },
+    {
+      "id": "E-PR-P7:r370-MS",
+      "text": "The System shall generate Inventory Quantity Adjustment document based on product daily sales data and product formulas.",
+      "source": "promise@b63dde159b41 P7:r370",
+      "words": 17
+    },
+    {
+      "id": "N-ST-SDOC-SSS-39-MW",
+      "text": "The Requirement Tool's source code shall be based on open source software components.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-39",
+      "words": 13
+    },
+    {
+      "id": "E-ST-SDOC-SSS-48-MS",
+      "text": "The Requirements Tool shall allow generating a Compliance Matrix document.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-48",
+      "words": 10
+    },
+    {
+      "id": "N-PR-P5:r270-PF",
+      "text": "The user shall enter new ratings based on the audit report",
+      "source": "promise@b63dde159b41 P5:r270",
+      "words": 11
+    },
+    {
+      "id": "N-ST-SDOC-SSS-76-MW",
+      "text": "The Requirements Tool's development process shall include the Requirements Tool's own requirements engineering.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-76",
+      "words": 13
+    },
+    {
+      "id": "E-ST-SDOC-SSS-96-CP",
+      "text": "The Requirements Tool shall support exporting documentation content to PDF, both individual documents and complete documentation trees.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-96",
+      "words": 17
+    },
+    {
+      "id": "N-PR-P45:r850-PF",
+      "text": "The system shall notify the user of any schedule changes.",
+      "source": "promise@b63dde159b41 P45:r850",
+      "words": 10
+    },
+    {
+      "id": "E-DO-REQ007-MS",
+      "text": "Doorstop **shall** provide a way to view requirements as a document.",
+      "source": "doorstop@f267ef67cb80 REQ007",
+      "words": 11
+    },
+    {
+      "id": "E-PR-P16:r630-MS",
+      "text": "The system shall have a help system that offers tips and explanation for each screen and each item on the screens upon demand.",
+      "source": "promise@b63dde159b41 P16:r630",
+      "words": 23
+    },
+    {
+      "id": "N-PR-P5:r245-PS",
+      "text": "The adjuster shall enter the preferred repair facility on the estimate assignment.",
+      "source": "promise@b63dde159b41 P5:r245",
+      "words": 12
+    },
+    {
+      "id": "N-PR-P38:r790-PS",
+      "text": "Customers must have a valid login id to enter into the site.",
+      "source": "promise@b63dde159b41 P38:r790",
+      "words": 12
+    },
+    {
+      "id": "N-DO-REQ013-PF",
+      "text": "Doorstop **shall** associate requirements changes to existing developer identification.",
+      "source": "doorstop@f267ef67cb80 REQ013",
+      "words": 9
+    },
+    {
+      "id": "E-DO-REQ015-CP",
+      "text": "Doorstop **shall** provide a lightweight installation method.",
+      "source": "doorstop@f267ef67cb80 REQ015",
+      "words": 7
+    },
+    {
+      "id": "E-PR-P3:r135-MS",
+      "text": "The system shall contain contact information (e-mail and phone number) for all people relevant to the system including (but not limited to) staff members students lecture instructors clinical lab instructors and clinical site administrators.",
+      "source": "promise@b63dde159b41 P3:r135",
+      "words": 34
+    },
+    {
+      "id": "N-PR-P1:r20-PF",
+      "text": "The system shall allow modification of the display.",
+      "source": "promise@b63dde159b41 P1:r20",
+      "words": 8
+    },
+    {
+      "id": "N-PR-P6:r345-MW",
+      "text": "The product shall be able to send meeting notifications via different kinds of end-user specified methods.",
+      "source": "promise@b63dde159b41 P6:r345",
+      "words": 16
+    },
+    {
+      "id": "N-ST-SDOC-SSS-6-PF",
+      "text": "The Requirements Tool shall provide controls for automatic generation of requirements UIDs.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-6",
+      "words": 12
+    },
+    {
+      "id": "N-PR-P4:r150-PF",
+      "text": "100% of the cardmember and merchant services representatives shall use the Disputes application regularly after a 2-day training course.",
+      "source": "promise@b63dde159b41 P4:r150",
+      "words": 19
+    },
+    {
+      "id": "E-PR-P7:r350-MS",
+      "text": "The System shall allow for a minimum of 6 users to work at the same time.",
+      "source": "promise@b63dde159b41 P7:r350",
+      "words": 16
+    },
+    {
+      "id": "N-PR-P46:r930-PF",
+      "text": "The system shall allow user to confirm the purchase.",
+      "source": "promise@b63dde159b41 P46:r930",
+      "words": 9
+    },
+    {
+      "id": "E-PR-P10:r510-MS",
+      "text": "Once a game is initiated the product shall display a defensive grid to each player",
+      "source": "promise@b63dde159b41 P10:r510",
+      "words": 15
+    },
+    {
+      "id": "E-DO-REQ014-MS",
+      "text": "Doorstop **shall** be scalable to support thousands of requirements.",
+      "source": "doorstop@f267ef67cb80 REQ014",
+      "words": 9
+    },
+    {
+      "id": "E-ST-SDOC-SSS-57-CP",
+      "text": "The Requirements Tool shall provide capabilities for validating requirements according to the EARS syntax.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-57",
+      "words": 14
+    },
+    {
+      "id": "E-PR-P3:r125-CP",
+      "text": "The system shall allow a Program Administrator or Nursing staff member to remove a student from a clinical lab section.",
+      "source": "promise@b63dde159b41 P3:r125",
+      "words": 20
+    },
+    {
+      "id": "N-ST-SDOC-SSS-51-MW",
+      "text": "The Requirements Tool shall allow management of documents with nested sections/chapters structure.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-51",
+      "words": 12
+    },
+    {
+      "id": "N-PR-P46:r885-PS",
+      "text": "The system shall display all the matching products based on the search.",
+      "source": "promise@b63dde159b41 P46:r885",
+      "words": 12
+    },
+    {
+      "id": "E-PR-P45:r860-MS",
+      "text": "The system shall show the meetings to the user in ascending time order by default.",
+      "source": "promise@b63dde159b41 P45:r860",
+      "words": 15
+    },
+    {
+      "id": "N-DO-REQ009-MW",
+      "text": "Doorstop **shall** provide the capability to baseline versions of requirements.",
+      "source": "doorstop@f267ef67cb80 REQ009",
+      "words": 10
+    },
+    {
+      "id": "E-ST-SDOC-SSS-71-MS",
+      "text": "The Requirements Tool shall support the Reverse Parent relationship.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-71",
+      "words": 9
+    },
+    {
+      "id": "N-DO-REQ008-MW",
+      "text": "Doorstop **shall** provide a way to view document items interactively.",
+      "source": "doorstop@f267ef67cb80 REQ008",
+      "words": 10
+    },
+    {
+      "id": "N-PR-P32:r725-PS",
+      "text": "It must be able to download the most recent medical record.",
+      "source": "promise@b63dde159b41 P32:r725",
+      "words": 11
+    },
+    {
+      "id": "E-PR-P7:r365-CP",
+      "text": "Product shall allow entering storing and modifying product menus used by POS terminals.",
+      "source": "promise@b63dde159b41 P7:r365",
+      "words": 13
+    },
+    {
+      "id": "N-ST-SDOC-SSS-85-MW",
+      "text": "The Requirements Tool shall provide a Web API interface.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-85",
+      "words": 9
+    },
+    {
+      "id": "N-PR-P46:r900-MW",
+      "text": "The system shall allow user to enter the contact number for support personnel to call.",
+      "source": "promise@b63dde159b41 P46:r900",
+      "words": 15
+    },
+    {
+      "id": "N-PR-P6:r285-PF",
+      "text": "The product shall allow the user to select a chosen language from one of the target market countries.",
+      "source": "promise@b63dde159b41 P6:r285",
+      "words": 18
+    },
+    {
+      "id": "N-ST-SDOC-SSS-91-PS",
+      "text": "The Requirements Tool shall provide browsing of the documentation tree.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-91",
+      "words": 10
+    },
+    {
+      "id": "N-PR-P5:r205-MW",
+      "text": "The product shall run on the existing hardware for all environments.",
+      "source": "promise@b63dde159b41 P5:r205",
+      "words": 11
+    },
+    {
+      "id": "N-ST-SDOC-SSS-13-PS",
+      "text": "The Requirements Tool shall support requirement trees with at least 10000 requirements.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-13",
+      "words": 12
+    },
+    {
+      "id": "E-PR-P46:r940-MS",
+      "text": "The product shall take initial load time depending on internet connection strength which also depends on the media from which the product is run.",
+      "source": "promise@b63dde159b41 P46:r940",
+      "words": 24
+    },
+    {
+      "id": "E-PR-P3:r145-CP",
+      "text": "Program Administrators/Nursing Staff Members shall have the ability to modify information relating to a Clinical Lab Section including the clinical site name the department/section for the lab the class instructor day and time of lab and contact information.",
+      "source": "promise@b63dde159b41 P3:r145",
+      "words": 38
+    },
+    {
+      "id": "N-ST-SDOC-SSS-97-PS",
+      "text": "The Requirements Tool shall provide identifying information, including title, release version, and project website links.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-97",
+      "words": 15
+    },
+    {
+      "id": "E-PR-P5:r240-MS",
+      "text": "The vehicle data shall include vehicle year make and model",
+      "source": "promise@b63dde159b41 P5:r240",
+      "words": 10
+    },
+    {
+      "id": "E-DO-REQ016-CP",
+      "text": "Doorstop **shall** be able to import content from other requirments management tools.",
+      "source": "doorstop@f267ef67cb80 REQ016",
+      "words": 12
+    },
+    {
+      "id": "N-PR-P10:r505-MW",
+      "text": "Once a game has been initiated the product shall make the players assigned to the game unavailable for selection from the list of players.",
+      "source": "promise@b63dde159b41 P10:r505",
+      "words": 24
+    },
+    {
+      "id": "N-PR-P20:r660-MW",
+      "text": "Responses to queries shall take no longer than 7 seconds to load onto the screen after the user submits the query.",
+      "source": "promise@b63dde159b41 P20:r660",
+      "words": 21
+    },
+    {
+      "id": "E-PR-P20:r665-MS",
+      "text": "The system shall permit only cafeteria staff members who are on the list of authorized Menu Managers to create or edit menus.",
+      "source": "promise@b63dde159b41 P20:r665",
+      "words": 22
+    },
+    {
+      "id": "N-ST-SDOC-SSS-82-MW",
+      "text": "The Requirements Tool shall be usable on the normal personal computers, e.g., do not require a special cloud deployment.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-82",
+      "words": 19
+    },
+    {
+      "id": "N-ST-SDOC-SSS-64-PF",
+      "text": "The Requirements Tool shall support structuring requirements in documents.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-64",
+      "words": 9
+    },
+    {
+      "id": "N-PR-P46:r925-PS",
+      "text": "The system shall allow user to select the financing option.",
+      "source": "promise@b63dde159b41 P46:r925",
+      "words": 10
+    },
+    {
+      "id": "N-PR-P5:r250-PS",
+      "text": "The estimator shall search for available recycled parts using a list of preferred parts suppliers.",
+      "source": "promise@b63dde159b41 P5:r250",
+      "words": 15
+    },
+    {
+      "id": "N-PR-P46:r875-PF",
+      "text": "The system shall allow user to select the product to configure.",
+      "source": "promise@b63dde159b41 P46:r875",
+      "words": 11
+    },
+    {
+      "id": "N-ST-SDOC-SSS-87-PF",
+      "text": "The Requirements Tool shall provide programmatic access to requirements data.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-87",
+      "words": 10
+    },
+    {
+      "id": "E-PR-P16:r625-CP",
+      "text": "The system shall use the SMTP mail protocol.",
+      "source": "promise@b63dde159b41 P16:r625",
+      "words": 8
+    },
+    {
+      "id": "N-PR-P3:r95-PS",
+      "text": "Only authorized users shall have access to the portion of the system that interfaces with CampusConnect.",
+      "source": "promise@b63dde159b41 P3:r95",
+      "words": 16
+    },
+    {
+      "id": "N-ST-SDOC-SSS-81-PF",
+      "text": "The Requirements Tool shall be capable of supporting a large number of users.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-81",
+      "words": 13
+    },
+    {
+      "id": "N-ST-SDOC-SSS-60-PS",
+      "text": "The Requirements Tool shall support exporting/importing requirements content from/to Excel.",
+      "source": "strictdoc@abf7be7daa2a SDOC-SSS-60",
+      "words": 10
+    }
+  ]
+}

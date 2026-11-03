@@ -1,0 +1,78 @@
+{
+  "schema": "req.paraphrase.restatements/1",
+  "generator": {
+    "id": "gen-a",
+    "family": "alpha",
+    "model": "hand-written-gen-a"
+  },
+  "statements_sha256": "258319e5e2e707f662900ffca7b8973ff8592401d34eb1584d900d42f5fd0d36",
+  "prompt": "Restate this requirement as a different engineer would write it, preserving exactly the same obligation (who, modality, action, bound, condition); do not copy phrasing; give 3 restatements; then give 1 alteration that changes exactly one element (modality, quantity, actor, action or condition) and name which element.\n\nAnswer with one JSON object and nothing else: {\"restatements\": [\"...\", \"...\", \"...\"], \"alteration\": {\"text\": \"...\", \"element\": \"modality|quantity|actor|action|condition\"}}",
+  "items": [
+    {
+      "statement_id": "F-1",
+      "restatements": [
+        {
+          "id": "F-1/R1",
+          "text": "The system must respond to a search request within 2 seconds."
+        },
+        {
+          "id": "F-1/R2",
+          "text": "A search request shall be answered by the system in no more than 2 seconds."
+        },
+        {
+          "id": "F-1/R3",
+          "text": "The system shall respond to search requests within two seconds."
+        }
+      ],
+      "alteration": {
+        "id": "F-1/ALT",
+        "text": "The system shall respond to a search request within 5 seconds.",
+        "element": "quantity"
+      }
+    },
+    {
+      "statement_id": "F-2",
+      "restatements": [
+        {
+          "id": "F-2/R1",
+          "text": "Users must be able to export a report as PDF"
+        },
+        {
+          "id": "F-2/R2",
+          "text": "A report can be exported to PDF by users."
+        },
+        {
+          "id": "F-2/R3",
+          "text": "Users shall have the ability to export reports in PDF format."
+        }
+      ],
+      "alteration": {
+        "id": "F-2/ALT",
+        "text": "Users may export a report as PDF.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "F-3",
+      "restatements": [
+        {
+          "id": "F-3/R1",
+          "text": "Every failed login attempt shall be logged by the server."
+        },
+        {
+          "id": "F-3/R2",
+          "text": "The server must log every failed login attempt."
+        },
+        {
+          "id": "F-3/R3",
+          "text": "The server shall record each failed login attempt."
+        }
+      ],
+      "alteration": {
+        "id": "F-3/ALT",
+        "text": "The server shall log every successful login attempt.",
+        "element": "condition"
+      }
+    }
+  ]
+}

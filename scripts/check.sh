@@ -569,6 +569,36 @@ else
   skip "python3 or tools/corpus/build_external.py missing: cannot self-check the corpus generator"
 fi
 
+# The paraphrase probe (experiments/paraphrase, P-1): a standalone research crate that depends on
+# `req` by path and has its own Cargo.lock, so it can never move the root pins. Its `--self-check`
+# (the Wilson interval, the difference-shape bucketing, the judge filter, the sampler, the
+# validators and the 3-statement fixture end to end) is measured at ~0.3s warm and ~5s for the
+# crate's first build in a target dir, so `--fast` keeps it. It never feeds the release gate: the
+# experiment's *results* are not a check, only its instrument is. `--locked`: a lockfile the build
+# would have to rewrite is a failure, not a silent update. The build tree is shared with the root
+# crate (CARGO_TARGET_DIR, else ./target). Missing rustfmt/clippy print SKIP, never PASS.
+paraphrase_manifest="experiments/paraphrase/Cargo.toml"
+if [ "$dry" -eq 1 ] || [ -f "$PWD/$paraphrase_manifest" ]; then
+  paraphrase_target="${CARGO_TARGET_DIR:-$PWD/target}"
+  if [ "$dry" -eq 1 ] || command -v rustfmt >/dev/null 2>&1; then
+    run cargo fmt --manifest-path "$paraphrase_manifest" -- --check
+  else
+    skip "rustfmt not installed: cannot format-check experiments/paraphrase"
+  fi
+  if [ "$fast" -eq 1 ]; then
+    fastskip "clippy for experiments/paraphrase"
+  elif [ "$dry" -eq 1 ] || command -v cargo-clippy >/dev/null 2>&1; then
+    run env CARGO_TARGET_DIR="$paraphrase_target" cargo clippy --locked --manifest-path "$paraphrase_manifest" --all-targets -- -D warnings
+  else
+    skip "clippy not installed: cannot lint experiments/paraphrase"
+  fi
+  run env CARGO_TARGET_DIR="$paraphrase_target" cargo run -q --locked --manifest-path "$paraphrase_manifest" -- --self-check
+else
+  # The same shape as the tools' self-checks above: a tree without the experiment (a fixture
+  # repo the gate's own tests build) prints SKIP, which is never a pass.
+  skip "$paraphrase_manifest missing: cannot self-check the paraphrase probe"
+fi
+
 # The five-minute path (`docs/adopting.md`, "For an agent"), rehearsed for real against the binary this run just
 # built. `tools/quickstart.sh` does in a `mktemp -d` what the page tells an adopter to do — `req
 # init`, the extractor's dry run and `--write`, an authored applicability, `canon --fill` then
