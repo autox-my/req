@@ -21,14 +21,12 @@
 #                      against a tampered and an empty log, and it reports
 #                      `DECISION STEP: PASS/FAIL`, never the gate's banner.
 #   --fast             run the full gate without the checks that cost the most to *run*
-#                      and tell you the least mid-iteration: `clippy`, the external
-#                      corpora (v1-v3) and the direction gold set, and the review-rule
-#                      and review-scope checks. Measured on the maintainer's machine:
-#                      85s -> ~60s. **Iteration only.** The banner reads `GATE: PASS
-#                      (FAST …)`, never the plain one, and a commit still requires the
-#                      full run — a fast green is not a merge verdict. Rejected beside
-#                      `baseline`/`decision` (one check is not the gate, and neither is
-#                      fast) and unknown flags stay usage errors.
+#                      and tell you the least mid-iteration: `clippy`, and the external
+#                      corpora (v1-v3) with the direction gold set. **Iteration only.**
+#                      The banner reads `GATE: PASS (FAST …)`, never the plain one, and a
+#                      commit still requires the full run — a fast green is not a merge
+#                      verdict. Rejected beside `baseline`/`decision` (one check is not the
+#                      gate, and neither is fast) and unknown flags stay usage errors.
 #   plan               print the command of every check the default run would execute,
 #                      from the same call sites, and execute no check. The probes that
 #                      gate a check are not consulted, so the plan lists a check whose
@@ -266,8 +264,8 @@ finish() {
   if [ $fail -eq 0 ]; then
     if [ "$fast" -eq 1 ]; then
       # Not the plain banner: a fast run did not check clippy, the external corpora or the
-      # review rules, so it is an iteration verdict and must not be quoted as a merge one.
-      printf 'GATE: PASS (FAST: iteration only — clippy, the external corpora and direction bench, and the review-rule checks did not run; a full scripts/check.sh is required before a commit)\n'
+      # direction gold set, so it is an iteration verdict and must not be quoted as a merge one.
+      printf 'GATE: PASS (FAST: iteration only — clippy, the external corpora and direction bench did not run; a full scripts/check.sh is required before a commit)\n'
     else
       printf 'GATE: PASS (skips above are not passes)\n'
     fi
@@ -600,61 +598,6 @@ if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/quickstart.sh" ] && command -v python3
   fi
 else
   skip "tools/quickstart.sh or python3 missing: cannot rehearse the quickstart"
-fi
-
-# The rule-file checks decide from `git ls-files` output and from the shape of review/rule.json,
-# and that decision logic needs neither `ocr` nor a review run — so it is table-driven here,
-# ahead of the review-tool probe, rather than behind a check that can SKIP into looking green.
-if [ "$fast" -eq 1 ]; then
-  fastskip "the review-rule self-check (check_rules.py --self-check)"
-elif [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/review/check_rules.py" ] && command -v python3 >/dev/null 2>&1; }; then
-  run python3 "$PWD/tools/review/check_rules.py" --self-check
-else
-  skip "python3 or tools/review/check_rules.py missing: cannot self-check the rule-file checks"
-fi
-
-# OCR is a review tool, not a gate: report the pin so version drift is visible. A plan
-# reports the rule-check it would run, but probes nothing — so `plan` executes no command
-# at all beyond the environment setup above.
-if [ "$fast" -eq 1 ]; then
-  # The review-rule effect probe spawns `ocr` twice; a review-configuration check, not a
-  # claim check — a claim edit cannot move it.
-  fastskip "the review-rule and review-scope checks (check_rules.py, check_review_scope.py)"
-elif [ "$dry" -eq 1 ] || command -v ocr >/dev/null 2>&1; then
-  if [ "$dry" -eq 0 ]; then
-    say "ocr (review tool, not a gate)"
-    ocr --version | head -1
-    # $PWD, not $CACHE_ROOT: the pin is repo content, and from a worktree $CACHE_ROOT is
-    # the main checkout — the 1.13.0 pin printed its own `ocr --version` 1.13.0 beside the
-    # main tree's `pinned: 1.12.12`. $CACHE_ROOT is for tool *state* (PATH above, cargo home).
-    pin="$(grep -o '"@alibaba-group/open-code-review": *"[^"]*"' \
-      "$PWD/tools/ocr/package.json" 2>/dev/null | cut -d'"' -f4)"
-    printf 'pinned: %s\n' "${pin:-unknown}"
-  fi
-  # The rule file is load-bearing for review, and this CLI ignores unknown keys and
-  # silently falls back for a glob that matches nothing — so its *effect* is checked,
-  # never its exit status.
-  if [ "$dry" -eq 1 ] || { [ -f "$PWD/review/rule.json" ] && command -v python3 >/dev/null 2>&1; }; then
-    # $PWD, not $CACHE_ROOT: this is repo content, and a worktree's copy is the one
-    # under test. $CACHE_ROOT is for tool *state* (cargo home, node_modules) — a script
-    # resolved there does not exist until the branch is merged, which the gate caught
-    # the first time it ran.
-    run python3 "$PWD/tools/review/check_rules.py"
-    # A rule that matches a path is not a rule that reaches the reviewer: the CLI also
-    # decides *which* files are selected, and review.yml's --exclude is the single string
-    # that wires review/rule.json's .forgejo/** checklist to the merge-blocking path. A
-    # checklist whose paths are filtered out upstream looks exactly like one that fired,
-    # so the workflow's own exclude is driven here and what reached the model is asserted.
-    run python3 "$PWD/tools/review/check_review_scope.py"
-    # The same check reads review/rule.json by hand, and `rule` is optional to JSON: a
-    # matched entry carrying no usable text must be *reported*, never raised into a
-    # traceback and an exit code nobody chose. Table-driven, and it runs no review.
-    run python3 "$PWD/tools/review/check_review_scope.py" --self-check
-  else
-    skip "python3 or review/rule.json missing: cannot verify rule globs"
-  fi
-else
-  skip "ocr not installed: npm --prefix tools/ocr install --cache .npm-cache"
 fi
 
 finish

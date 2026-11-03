@@ -2492,7 +2492,7 @@ fn the_default_gate_run_verifies_the_committed_baseline() {
 
 /// `--fast` is the iteration mode: it plans strictly fewer checks, its banner cannot be quoted
 /// as the gate's verdict, and where it could only be a no-op it is a usage error. Measured on the
-/// maintainer's machine: a warm full run is 59s, a fast one 25s.
+/// maintainer's machine (2026-11-03, single runs): a warm full run is ~34s, a fast one ~20s.
 #[cfg(unix)]
 #[test]
 fn the_fast_run_skips_the_expensive_checks_and_never_reads_as_the_gate() {
@@ -2512,8 +2512,6 @@ fn the_fast_run_skips_the_expensive_checks_and_never_reads_as_the_gate() {
     for skipped in [
         "FAST clippy --all-targets -- -D warnings",
         "FAST the external corpora (v1-v3) and the direction gold set",
-        "FAST the review-rule self-check",
-        "FAST the review-rule and review-scope checks",
     ] {
         assert!(
             fast_lines.iter().any(|line| line.starts_with(skipped)),
@@ -2559,7 +2557,6 @@ fn the_fast_run_skips_the_expensive_checks_and_never_reads_as_the_gate() {
         "PLAN cargo clippy",
         "external-v1",
         "direction-v1",
-        "check_rules.py",
         // The rehearsal is kept in both modes: this is the full plan's half of the pin, so a
         // block moved into a fast-only branch would leave the fast assertion green while the
         // full gate stopped checking the page's claim.
@@ -2569,6 +2566,25 @@ fn the_fast_run_skips_the_expensive_checks_and_never_reads_as_the_gate() {
             full_lines.iter().any(|line| line.contains(planned)),
             "the full plan must still plan `{planned}`:\n{full_out}"
         );
+    }
+
+    // The local review-tool checks were removed (M2-1, owner ruling 2026-11-03): the review that
+    // blocks merges is CI's, and nothing in either plan may name the deleted scripts, the review
+    // tool's pin report, or a FAST line for them. A step that reappears (or a stale name left in
+    // a banner) fails here rather than silently costing every iteration again.
+    for (label, out) in [("fast", &fast_out), ("full", &full_out)] {
+        for gone in [
+            "check_rules",
+            "check_review_scope",
+            "review-rule",
+            "review-scope",
+            "review tool, not a gate",
+        ] {
+            assert!(
+                !out.contains(gone),
+                "the {label} plan must not mention the removed review check `{gone}`:\n{out}"
+            );
+        }
     }
 
     // Where the flag could only be a no-op, or is unknown, it is rejected rather than ignored.
