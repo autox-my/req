@@ -549,6 +549,16 @@ else
   skip "python3 or tools/orchestration/validate_envelope.py missing: cannot self-check the envelope validator"
 fi
 
+# The external-corpus generator's pure half (tools/corpus/build_external.py): the registry-alias
+# digest (order-sensitive, alias-list only), the per-class counter arithmetic and the header
+# sentence. No network, no corpus, no `req`, so `--fast` keeps it. A missing python3 or script
+# prints SKIP, never PASS.
+if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/corpus/build_external.py" ] && command -v python3 >/dev/null 2>&1; }; then
+  run python3 "$PWD/tools/corpus/build_external.py" --self-check
+else
+  skip "python3 or tools/corpus/build_external.py missing: cannot self-check the corpus generator"
+fi
+
 # The five-minute path (`docs/agentic.md`), rehearsed for real against the binary this run just
 # built. `tools/quickstart.sh` does in a `mktemp -d` what the page tells an adopter to do — `req
 # init`, the extractor's dry run and `--write`, an authored applicability, `canon --fill` then
