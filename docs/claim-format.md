@@ -222,15 +222,17 @@ written in some other encoding — so it fails the corpus rather than being skip
 
 ## State of the seed corpus
 
-`claims/REQ-0001 … claims/REQ-0021` were authored **structured-first**: the author
+`claims/REQ-0001 … claims/REQ-0022` were authored **structured-first**: the author
 supplied the parse deliberately, and `canonical.form`/`address` stayed `null` until the
 rules that define them existed. They are now **filled under rules v6** by
-`req canon --fill`, and `req canon --verify` reports `21 verified, 0 candidates, 0
-mismatches`, so the corpus is address-addressed end to end. Since rules v6's coverage
-invariant (hashing spec T1.10) REQ-0020 is `unstructured: true`: its statement carries a
-clause ("on the outgoing side of its origin claim") no slot could hold, and REQ-0004 and
-REQ-0021 carry the literal subject `the req tool semantic layer`, because the registry
-matches a whole subject span only.
+`req canon --fill`, and `req canon --verify` reports `22 verified, 0 candidates, 0
+mismatches`, so the corpus is address-addressed end to end. Rules v6's coverage invariant
+(hashing spec T1.10) refuses a structured parse that leaves a clause no slot holds, which is
+why the "exactly once" half of the old REQ-0020 is its own claim, REQ-0022 (one obligation
+per claim): REQ-0020 keeps the outgoing-side obligation, structured, and REQ-0022 authors
+the single-home obligation as the value `1`. REQ-0004 and REQ-0021 state their obligation
+without the head "semantic layer", so their subject is the registered `REQ_TOOL`; the
+registry matches a whole subject span only, and no alias was added for the dropped head.
 
 Two properties make the filled state trustworthy, and both are enforced rather than
 assumed:

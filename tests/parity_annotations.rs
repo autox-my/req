@@ -548,23 +548,23 @@ fn the_corpus_has_zero_flags_and_fifteen_annotations() {
         out.stdout
     );
     // 15 at rules v6 (it was 16 at v5, and the pack's draft measured 17). The arithmetic is the
-    // oracle: 21 claims less the four numeric ones (REQ-0008..0011), less the two `UNSTRUCTURED`
-    // claims whose slots are null by design (REQ-0007, and REQ-0020 since T1.10 — its dropped
-    // tail made it unstructured, and an unstructured claim carries no qualitative triple) = 15.
-    // The 17 was the naive prototype's count of *flagged* claims, and it included REQ-0007 — the
-    // sentinel false positive this rule exists to prevent. The number is data: if a claim joins
-    // the corpus, it moves.
+    // oracle: 22 claims less the four numeric ones (REQ-0008..0011), less the three that carry
+    // no qualitative triple: REQ-0007 (`UNSTRUCTURED`, slots null by design), REQ-0020 (structured
+    // again since M1-4, but its attribute/value slots are null) and REQ-0022 (the numeric value 1)
+    // = 15. The 17 was the naive prototype's count of *flagged* claims, and it included REQ-0007 —
+    // the sentinel false positive this rule exists to prevent. The number is data: if a claim
+    // joins the corpus, it moves.
     assert!(
         out.stdout.contains("annotations: 15 claim(s)"),
-        "15 of 21 claims carry the qualitative triple (measured, not a constant):\n{}",
+        "15 of 22 claims carry the qualitative triple (measured, not a constant):\n{}",
         out.stdout
     );
 
     // The arithmetic the count rests on: if a claim were lost, `15` would still print and this
     // test would pass on a corpus that had shrunk. Pin the denominator too.
     assert!(
-        out.stdout.contains("claims: 21"),
-        "the count is 15 of 21; the denominator must be real:\n{}",
+        out.stdout.contains("claims: 22"),
+        "the count is 15 of 22; the denominator must be real:\n{}",
         out.stdout
     );
 

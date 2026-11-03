@@ -71,6 +71,90 @@ fn incoming_relations_are_derived_from_the_outgoing_side() {
     assert!(findings.undecided_edges.is_empty());
 }
 
+/// REQ-0022: a relation is serialized exactly once. The committed corpus is the oracle: each
+/// edge is written in its origin claim's file exactly once, and a second home for it (a mirrored
+/// reverse key on the target) is refused by the loader rather than accepted.
+///
+/// The strict bar (would a failure reject the requirement?): three ways to give an edge a second
+/// home, one assertion each — the same entry repeated inside its origin's list, the same
+/// relation written again in the *target's* file as an edge back (a mirrored copy is a two-claim
+/// cycle, whatever its type), and a reverse-edge key the loader would accept. A cycle that is a
+/// genuine, different obligation would also fail the second one: that is a deliberate false
+/// split, and a human decides it.
+#[test]
+fn a_relation_is_serialized_exactly_once_on_its_origin_claim() {
+    use std::collections::BTreeMap;
+
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let claims = req::canon::load_claims(&root).expect("the committed corpus loads");
+
+    // (origin, type, target) -> how many times the corpus writes that edge down.
+    let mut written: BTreeMap<(String, String, String), usize> = BTreeMap::new();
+    for loaded in &claims {
+        for relation in &loaded.claim.relations {
+            *written
+                .entry((
+                    loaded.claim.claim_id.clone(),
+                    relation.kind.clone(),
+                    relation.to.clone(),
+                ))
+                .or_default() += 1;
+        }
+    }
+    // REQ-0022 is itself the sibling the split made: its edge to REQ-0020 must be in the set,
+    // which also keeps this test from passing over an empty relation map.
+    assert_eq!(
+        written.get(&(
+            "REQ-0022".to_string(),
+            "refines".to_string(),
+            "REQ-0020".to_string()
+        )),
+        Some(&1),
+        "REQ-0022 must refine REQ-0020, written once: {written:?}"
+    );
+    let repeated: Vec<_> = written.iter().filter(|(_, n)| **n != 1).collect();
+    assert!(
+        repeated.is_empty(),
+        "an edge is written twice: {repeated:?}"
+    );
+
+    // The second home that only the *target's* file can create: A->B written in A, and again as
+    // B->A in B. The keys differ (origin differs), so the count above cannot see it.
+    let mirrored_pairs: Vec<_> = written
+        .keys()
+        .filter(|(a, _, b)| written.keys().any(|(a2, _, b2)| a2 == b && b2 == a))
+        .collect();
+    assert!(
+        mirrored_pairs.is_empty(),
+        "an edge is also written on its target's side: {mirrored_pairs:?}"
+    );
+
+    // A mirrored key on the target side is refused by the strict loader rather than accepted as
+    // a second copy of the edge.
+    let mirrored = std::fs::read_to_string(root.join("claims/REQ-0022.yml"))
+        .expect("REQ-0022 exists")
+        .replace(
+            "relations:",
+            "referenced_by:\n  - type: refines\n    to: REQ-0020\nrelations:",
+        );
+    // Removed on every path, a failing assertion included.
+    struct Scratch(std::path::PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).ok();
+        }
+    }
+    let scratch = Scratch(std::env::temp_dir().join(format!(
+        "req-0022-mirror-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    )));
+    std::fs::create_dir_all(scratch.0.join("claims")).expect("scratch corpus");
+    std::fs::write(scratch.0.join("claims/REQ-0022.yml"), mirrored).expect("scratch claim");
+    let err = req::canon::load_claims(&scratch.0).expect_err("a reverse-edge key must not load");
+    assert!(err.contains("referenced_by"), "{err}");
+}
+
 #[test]
 fn an_edge_that_leaves_the_selection_is_named() {
     let rows = vec![

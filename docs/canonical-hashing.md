@@ -326,6 +326,16 @@ as `req gate` lets Fail outrank Unverifiable.
   - These are **seed and self-corpus** results plus other projects' prose labelled by
     construction; the external falsification of the bet is still the headline measurement,
     and nothing here validates it.
+- **Dogfood re-wording (M1-4), rules v6** — no rule moved; three claims were re-worded and
+  one split, so only claim addresses moved (**re-canonicalization candidates**, §5):
+  REQ-0004 ``f545c40177ba`` → ``ddc6992dd05b`` and REQ-0021 ``47dafd1eaad1`` →
+  ``fc5e269b978e`` (the head "semantic layer" dropped from the statement; the subject is the
+  registered ``REQ_TOOL`` again), REQ-0020 ``1ffac8e3e4e2`` → ``b455b84714c2`` (structured
+  again: "exactly once" moved to the new REQ-0022, ``01e9dc781ad7``). `req canon` 0 flags,
+  `--verify` 22 verified / 0 candidates / 0 mismatches; the other eighteen did not move, and
+  no bench pair moved either (every `bench/results` record is byte-identical). No Decision
+  names any of the three addresses (`DEC-0001` ratifies REQ-0016), so none is orphaned.
+  The Baseline `baselines/air-gapped.json` is re-emitted and awaits the owner's signature.
 - **Direction gold set, rules v5** — 1159 pairs (279 cosmetic + 880 mutations) from the
   three real sources: **accuracy 0.9962 over 1050 classified pairs, zero dangerous
   confusions**, FMR 0.0, FSR 0.0, 109 unclassifiable (coverage). Four mismatches remain,
