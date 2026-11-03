@@ -544,6 +544,37 @@ fn an_unreadable_document_is_unverifiable() {
 /// `--subject` is gone with `req.claim/2`'s subject slot (ADR 0022): the subject is derived from
 /// the statement. An adopter's script still passing it is told so — a usage error naming the
 /// flag — rather than having it silently ignored.
+/// A corpus that still holds `req.claim/1` files is a migration candidate to the loader. Drafting
+/// into it would exit 0 and leave the corpus red, so the tool refuses up front and names the
+/// migration tool.
+#[test]
+fn a_corpus_of_older_claim_files_is_unverifiable_and_names_the_migrator() {
+    let fx = Fixture::new("req-adopt-older-corpus");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    fx.write(
+        "claims/REQ-0009.yml",
+        "schema: req.claim/1\nclaim_id: REQ-0009\nstatement: An old claim.\n",
+    );
+    let out = adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
+    );
+    out.assert_code(3, "an older corpus");
+    assert!(
+        out.stderr.contains("req.claim/1") && out.stderr.contains("tools/migrate_claims.py"),
+        "the message names the older schema and the migration tool:\n{}",
+        out.stderr
+    );
+    assert!(!fx.exists("claims/REQ-0010.yml"), "nothing is drafted");
+}
+
 #[test]
 fn a_subject_flag_is_a_usage_error_since_the_subject_is_derived() {
     let fx = Fixture::new("req-adopt-nosubject");
@@ -558,6 +589,7 @@ fn a_subject_flag_is_a_usage_error_since_the_subject_is_derived() {
             "system",
             "--date",
             "2026-10-21",
+            "--write",
         ],
     );
     out.assert_code(2, "a removed --subject");

@@ -62,7 +62,8 @@ pub struct Row {
     /// They are **not** in `impl Serialize for Row`: the document's row shape is the view a
     /// consumer reads (`claim_id`, `statement`, `modality`, `address`, `applies`, `selectors`,
     /// `relations`, `rationale`), and the evidence declaration is audit-surface data like
-    /// `pins`/`relations_hash`/`rationale_hash` — it rides the Baseline, not the projection.
+    /// `relations_hash`/`rationale_hash` — it rides the Baseline, not the projection. (`pins` are
+    /// judged by the gate but not attested by the Baseline: ADR 0022's named loss.)
     /// Adding them would be a document-shape change, not a rendering detail.
     pub tests: Vec<String>,
     /// The declared evidence mode (machine by default, process when a human said so), and the

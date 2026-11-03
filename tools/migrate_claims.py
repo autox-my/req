@@ -159,7 +159,8 @@ def scalar(lines):
     return raw
 
 
-PLAIN_SAFE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]*$")
+# Letter- or underscore-first only: a digit-first scalar (`1`, `1.0`, `1e3`) reads back as a number.
+PLAIN_SAFE = re.compile(r"^[A-Za-z_][A-Za-z0-9_./-]*$")
 YAML_WORDS = {"y", "n", "yes", "no", "true", "false", "on", "off", "null", "~"}
 
 
@@ -227,6 +228,11 @@ def migrate_text(text):
             )
         pins.append(("operator", operator))
     if unit not in (None, "", "none"):
+        if unit != unit.strip():
+            raise Refused(
+                f"`unit: {unit!r}` has leading or trailing space, which req.claim/2 refuses in "
+                "a pin: fix the unit by hand first"
+            )
         pins.append(("unit", unit))
 
     out = []
@@ -485,6 +491,18 @@ def self_check():
          "schema: req.claim/2\n" in migrate_text(commented_schema)[0]
          and "schema: req.claim/1" not in migrate_text(commented_schema)[0],
          migrate_text(commented_schema)[0])
+    for unit in ("1", "1.0", "1e3", "0x1f"):
+        text = V1_QUALITATIVE.replace("value: claim", 'value: "1"').replace(
+            "unit: none", f'unit: "{unit}"')
+        case(f"a numeric-looking unit {unit!r} is quoted so it stays a string",
+             migrate_text(text)[0].endswith(f'  unit: "{unit}"\n'), migrate_text(text)[0])
+    padded_unit = V1_QUALITATIVE.replace("value: claim", 'value: "1"').replace(
+        "unit: none", 'unit: " ms"')
+    try:
+        migrate_text(padded_unit)
+        case("a padded unit is refused", False, "not refused")
+    except Refused as why:
+        case("a padded unit is refused", "leading or trailing space" in str(why), str(why))
     case("a quoted scalar containing ` #` keeps its text",
          scalar(['unit: "lb # force"  # why\n']) == "lb # force")
     case("an unquoted scalar loses a trailing comment", scalar(["unit: s  # why\n"]) == "s")

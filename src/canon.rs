@@ -1483,9 +1483,11 @@ pub fn parse_claim(text: &str) -> Result<crate::model::ClaimFile, String> {
         if !removed.is_empty() {
             return Err(format!(
                 "carries {}, removed in {current} (ADR 0022): the parse is derived from \
-                 `statement` when the claim is loaded and nothing derived is stored — state a \
-                 load-bearing slot under `pins:` (modality, subject, operator, value, unit), or \
-                 migrate the file with tools/migrate_claims.py",
+                 `statement` when the claim is loaded and nothing derived is stored. A removed \
+                 `modality`, `subject`, `operator`, `value` or `unit` can be stated as a pin under \
+                 `pins:`; `conditions`, `exception`, `temporal`, `quantifier`, `attribute`, \
+                 `unstructured`, `canonical` and `address` have no pin: the statement must carry \
+                 them. `tools/migrate_claims.py` migrates a whole `req.claim/1` file",
                 removed.join(", "),
                 current = claim_schema()
             ));
@@ -1786,6 +1788,20 @@ pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
                 lints.join(",")
             },
         );
+        // What the row cannot hold: the words a lint names, and the identity-bearing parts of the
+        // form (a condition or qualifier that reached the address, or did not).
+        if !derived.unstructured() {
+            if !form.conditions.is_empty() {
+                let conditions: Vec<&str> = form.conditions.iter().map(String::as_str).collect();
+                println!("  conditions: {}", conditions.join("; "));
+            }
+            if !form.qualifier.is_empty() {
+                println!("  qualifier: {}", form.qualifier);
+            }
+        }
+        for lint in &derived.lints {
+            println!("  lint {}: {}", lint.code, lint.detail);
+        }
         pins += derived.pins.len();
         pinned_claims += usize::from(!derived.pins.is_empty());
         for check in &derived.pins {

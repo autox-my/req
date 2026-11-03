@@ -499,7 +499,8 @@ fn the_older_direction_is_a_migration_candidate_at_the_loader() {
     // `req.claim/1` or `req.claim/0` claim is **NOT JUDGED** — a migration candidate, not a
     // broken file and never a silent load. A format bump moves no address, so the remedy is to
     // migrate the file (`tools/migrate_claims.py`), not to reword the claim.
-    for older_v in [0, req::canon::CLAIM_SCHEMA_V - 1] {
+    // Every older format, so a later bump cannot quietly stop proving the earliest ones.
+    for older_v in 0..req::canon::CLAIM_SCHEMA_V {
         let older = format!("{}{}", req::canon::CLAIM_SCHEMA_PREFIX, older_v);
         assert_eq!(
             classify_claim_schema(&older),

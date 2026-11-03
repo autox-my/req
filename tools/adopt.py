@@ -81,6 +81,7 @@ VERSION_SCHEMA_RE = re.compile(r"^[ \t]*claim_schema[ \t]+(?P<value>\S+)[ \t]*$"
 CLAIM_SCHEMA_RE = re.compile(r"^req\.claim/\d+$")
 # The one schema `CLAIM_TEMPLATE` writes; a binary reporting another cannot load the draft.
 DRAFT_SCHEMA = "req.claim/2"
+SCHEMA_LINE_RE = re.compile(r"^schema:\s*(?P<value>\S+)\s*$", re.MULTILINE)
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 CLAIMS_DIR = "claims"
@@ -519,6 +520,13 @@ def read_corpus(root):
             raise Unverifiable(
                 f"{entry}: no `claim_id:` line — this corpus cannot be read as a corpus; "
                 "`req canon` names the defect"
+            )
+        declared = SCHEMA_LINE_RE.search(text)
+        if declared is not None and declared.group("value") != DRAFT_SCHEMA:
+            raise Unverifiable(
+                f"{entry} declares `schema: {declared.group('value')}`, but this tool drafts "
+                f"{DRAFT_SCHEMA} claims: a corpus the loader reads as a migration candidate would "
+                "stay red after a draft is added — run tools/migrate_claims.py on the corpus first"
             )
         claim_id = match.group("value").strip()
         # Both numbers are reserved: the declared id is what the claim is, and the file name is

@@ -209,6 +209,20 @@ fn a_pin_that_could_never_agree_is_refused_at_load() {
     }
 }
 
+/// The rule is enforced **at load**, not only by `validate_pins`: a claim file with a
+/// non-canonical pinned value is a parse error naming the key.
+#[test]
+fn an_invalid_pin_value_is_refused_by_the_claim_parser() {
+    let text = format!(
+        "schema: {}\nclaim_id: REQ-0001\nstatement: The API shall respond within 200 ms.\n\
+         applicability: []\nrelations: []\nrationale:\n  source: x\n  date: 2026-10-07\n  \
+         rejected_alternatives: []\n  assumptions: []\npins:\n  value: \"0.30\"\n",
+        req::canon::claim_schema()
+    );
+    let error = parse_claim(&text).expect_err("`0.30` is not a canonical decimal string");
+    assert!(error.contains("value"), "{error}");
+}
+
 /// `pins:` is strict: a key that is not pinnable is a parse error, and so is the qualitative
 /// `attribute` the annotation category used to carry (ADR 0022 removed it).
 #[test]

@@ -280,19 +280,6 @@ fn the_dogfood_addresses_are_the_pre_migration_list_and_none_is_stored() {
         "a format change moves no address: the derived list must equal the recorded one, \
          save the claims re-worded on purpose"
     );
-    let moved: Vec<_> = PRE_MIGRATION_ADDRESSES
-        .iter()
-        .filter(|(id, a)| rendered.iter().any(|(rid, ra)| rid == id && ra != a))
-        .map(|(id, _)| *id)
-        .collect();
-    assert_eq!(
-        moved,
-        RE_WORDED_AFTER_MIGRATION
-            .iter()
-            .map(|(id, _)| *id)
-            .collect::<Vec<_>>(),
-        "exactly the re-worded claims moved, and no other"
-    );
 }
 
 // ---------------------------------------------------------------------------

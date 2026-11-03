@@ -749,7 +749,8 @@ fn gate_json_has_the_pinned_shape() {
         // `checked` (the number of pins judged) is on `pins_hold` alone.
         if policy["policy"] == "pins_hold" {
             assert_keys(policy, &["checked", "details", "outcome", "policy"]);
-            assert!(policy["checked"].is_u64(), "{policy}");
+            // The starter claim pins three keys (operator, value, unit); nothing else here pins.
+            assert_eq!(policy["checked"], 3, "{policy}");
             continue;
         }
         assert_keys(policy, &["details", "outcome", "policy"]);
@@ -813,6 +814,21 @@ fn gate_json_verdict_and_exit_code_agree_for_all_three_classes() {
             serde_json::to_string_pretty(&document).expect("re-serializes")
         );
     }
+
+    // The FAIL is `pins_hold`'s, for the reason the fixture names, not some other policy's.
+    let defect_document = parse(&defect.run_gate(&["--format", "json"]).stdout);
+    let pins_hold = defect_document["policies"]
+        .as_array()
+        .expect("policies")
+        .iter()
+        .find(|p| p["policy"] == "pins_hold")
+        .expect("pins_hold is in the document");
+    assert_eq!(pins_hold["outcome"], "fail", "{pins_hold}");
+    assert_eq!(
+        pins_hold["details"],
+        serde_json::json!(["REQ-0001: pin value 0.2 contradicts the parse (0.5)"]),
+        "{pins_hold}"
+    );
 
     // The undecided claim is named with what the invocation is missing, never dropped.
     let json = undecided.run_gate(&["--format", "json"]);
