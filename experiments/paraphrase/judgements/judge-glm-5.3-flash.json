@@ -1,0 +1,1797 @@
+{
+  "schema": "req.paraphrase.judgements/1",
+  "judge": {
+    "id": "judge-glm-5.3-flash",
+    "family": "glm",
+    "model": "glm-5.3-flash"
+  },
+  "statements_sha256": "c30e295b3f38ef5547c25b380bd0c1cb92b07f0848dca3a1602a5549f3db0081",
+  "prompt": "Two requirement statements follow. Do they impose the same obligation (same actor, modality, action, bound and condition)? Answer with exactly one word: yes, no or unsure. Answer unsure if you cannot tell; do not guess.",
+  "verdicts": [
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-56-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-56-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-56-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P36:r775-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P14:r610-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P14:r610-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P14:r610-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P36:r775-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P46:r905-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P36:r775-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P46:r905-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P46:r905-MS/R2",
+      "verdict": "unsure"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P7:r370-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P7:r370-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P7:r370-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-39-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-39-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-48-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-39-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P5:r270-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P5:r270-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-48-MS/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-48-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P45:r850-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P45:r850-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P45:r850-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-DO-REQ007-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-DO-REQ007-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-DO-REQ007-MS/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P5:r245-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-76-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-76-MW/R1",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-76-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P5:r245-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P16:r630-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P16:r630-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-96-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P5:r245-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-96-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P16:r630-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-DO-REQ015-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-DO-REQ015-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-96-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-DO-REQ015-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P38:r790-PS/R1",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P38:r790-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-DO-REQ013-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P38:r790-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-DO-REQ013-PF/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-DO-REQ013-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P3:r135-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P3:r135-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P6:r345-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P3:r135-MS/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P6:r345-MW/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-6-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P6:r345-MW/R3",
+      "verdict": "unsure"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-6-PF/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r930-PF/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-6-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r930-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P4:r150-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P4:r150-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P4:r150-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r930-PF/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P7:r350-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P7:r350-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P7:r350-MS/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-DO-REQ014-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-DO-REQ014-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-57-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-57-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-57-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P10:r510-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P10:r510-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-51-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-DO-REQ014-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-51-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P3:r125-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-51-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P3:r125-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P3:r125-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r885-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r885-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r885-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P45:r860-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P45:r860-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-DO-REQ009-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P45:r860-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-DO-REQ009-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-71-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-71-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-DO-REQ009-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P10:r510-MS/R1",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-ST-SDOC-SSS-71-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P32:r725-PS/R2",
+      "verdict": "unsure"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P32:r725-PS/R1",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-85-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-85-MW/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P32:r725-PS/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-DO-REQ008-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-DO-REQ008-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-85-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P7:r365-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P7:r365-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-DO-REQ008-MW/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r900-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P7:r365-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r900-MW/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-91-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-91-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P6:r285-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-91-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P6:r285-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r900-MW/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-13-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-13-PS/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P6:r285-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-13-PS/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P5:r205-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P5:r205-MW/R1",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P5:r205-MW/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P46:r940-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P46:r940-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P46:r940-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P5:r240-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P5:r240-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P3:r145-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P5:r240-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P3:r145-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-97-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-97-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P3:r145-CP/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-DO-REQ016-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-97-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-DO-REQ016-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-DO-REQ016-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P10:r505-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P10:r505-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P20:r660-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P10:r505-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P20:r660-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P20:r665-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P20:r665-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P20:r665-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P20:r660-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-82-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-82-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-64-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-82-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-64-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-64-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P5:r250-PS/R1",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P5:r250-PS/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P5:r250-PS/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P16:r625-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P3:r95-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P16:r625-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P3:r95-PS/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r875-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "E-PR-P16:r625-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P3:r95-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r875-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r875-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-81-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-87-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-87-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-81-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-60-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-81-PF/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-87-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-60-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-ST-SDOC-SSS-60-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P1:r20-PF/R1",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r925-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r925-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P1:r20-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-56-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-56-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P46:r925-PS/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P36:r775-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-56-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P36:r775-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-haiku-5-5",
+      "item_id": "N-PR-P1:r20-PF/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P36:r775-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P14:r610-PS/R1",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P14:r610-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P14:r610-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P46:r905-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P46:r905-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P46:r905-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P7:r370-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P7:r370-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P7:r370-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-39-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-39-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-39-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-48-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-48-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-48-MS/R1",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-76-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P5:r270-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-76-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P5:r270-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P16:r630-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P16:r630-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P16:r630-MS/R3",
+      "verdict": "unsure"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P5:r270-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P45:r850-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P45:r850-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-96-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-96-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-76-MW/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-96-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P45:r850-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P5:r245-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P5:r245-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P5:r245-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P38:r790-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P38:r790-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P3:r135-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P3:r135-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-DO-REQ013-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P38:r790-PS/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-DO-REQ013-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-DO-REQ013-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P3:r135-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-DO-REQ015-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-57-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-57-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-DO-REQ015-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-DO-REQ015-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r930-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r930-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-57-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P10:r510-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P10:r510-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r930-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P10:r510-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P7:r350-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P7:r350-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-DO-REQ014-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-DO-REQ014-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P4:r150-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-DO-REQ014-MS/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P4:r150-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P4:r150-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r885-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-51-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r885-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r885-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-51-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-51-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P3:r125-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P3:r125-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P3:r125-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P45:r860-MS/R3",
+      "verdict": "unsure"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P45:r860-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P45:r860-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-71-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-71-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-ST-SDOC-SSS-71-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-DO-REQ008-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-85-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-DO-REQ008-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-85-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P7:r365-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-DO-REQ008-MW/R1",
+      "verdict": "unsure"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-85-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P7:r365-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P7:r365-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P32:r725-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P32:r725-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-91-PS/R1",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P32:r725-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-91-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r900-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r900-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-91-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r900-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P6:r285-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P6:r285-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P5:r205-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P5:r205-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P6:r285-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P5:r205-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-13-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-13-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P46:r940-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-13-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P46:r940-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-97-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P46:r940-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-97-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-97-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-DO-REQ016-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-DO-REQ016-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P5:r240-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P5:r240-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P5:r240-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-DO-REQ016-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P3:r145-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P3:r145-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P10:r505-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P10:r505-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-64-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-64-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P3:r145-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P20:r665-MS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P20:r665-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P10:r505-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P20:r665-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P20:r660-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-64-PF/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P20:r660-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P20:r660-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r925-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-82-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-82-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r925-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-87-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-87-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-87-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P16:r625-CP/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P16:r625-CP/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r925-PS/R3",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r875-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r875-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-PR-P16:r625-CP/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P46:r875-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P5:r250-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P5:r250-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P5:r250-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P3:r95-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-81-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P3:r95-PS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-81-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P3:r95-PS/R2",
+      "verdict": "unsure"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-DO-REQ007-MS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-DO-REQ007-MS/R2",
+      "verdict": "no"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "E-DO-REQ007-MS/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P1:r20-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-81-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P1:r20-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P6:r345-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P1:r20-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P6:r345-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-6-PF/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-PR-P6:r345-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-6-PF/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-DO-REQ009-MW/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-DO-REQ009-MW/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-DO-REQ009-MW/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-60-PS/R2",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-6-PF/R3",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-60-PS/R1",
+      "verdict": "yes"
+    },
+    {
+      "generator": "gen-deepseek-v4.1-flash",
+      "item_id": "N-ST-SDOC-SSS-60-PS/R3",
+      "verdict": "yes"
+    }
+  ]
+}
