@@ -23,7 +23,7 @@ Outcomes as everywhere: 0 measured, 1 a worksheet is invalid, 2 usage, 3 UNVERIF
 decided twice, so there is no ceiling to report (stated, never reported as zero).
 
 Usage:
-    python3 tools/tier2/agreement.py --worksheet bench/corpus/tier2-pilot-v0.yml \\
+    python3 experiments/tier2/tools/agreement.py --worksheet experiments/tier2/corpus/tier2-pilot-v0.yml \\
         --a filled-alice.yml --b filled-bob.yml
 """
 

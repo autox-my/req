@@ -29,7 +29,7 @@ def main():
     ap.add_argument("--decomp-file", default=".scratch/decompositions.jsonl")
     ap.add_argument("--limit", type=int, default=0)
     args = ap.parse_args()
-    pairs = yaml.safe_load(open("bench/corpus/tier2-positives-v1.yml"))["pairs"]
+    pairs = yaml.safe_load(open("experiments/tier2/corpus/tier2-positives-v1.yml"))["pairs"]
     done = set()
     if os.path.exists(args.decomp_file):
         for line in open(args.decomp_file):

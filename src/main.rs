@@ -14,7 +14,8 @@
 //!   req [--root <dir>] impact <claim-id>   — what depends on that claim, transitively
 //!   req [--root <dir>] gate [--format text|json] k=v [...]
 //!                                          — may this selection ship? (policies over applying claims)
-//!   req [--root <dir>] propose             — the Tier-2 funnel: blocking, then provider adjudication
+//!   req [--root <dir>] propose <a.yml> <b.yml> [--provider-cmd <cmd>]
+//!                                          — one pair put to a provider: an unratified proposal
 //!   req [--root <dir>] baseline --at <ts>   — emit the canonical manifest a human signs (ADR 0016)
 //!   req [--root <dir>] baseline --verify F — verify a signed Baseline: drift, authority, trust,
 //!                                             signature, with the key judged at its signed_at
@@ -40,7 +41,7 @@
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
 use req::{
-    audit, baseline, bench, canon, compare, decision, fill, funnel, gate, impact, init, root,
+    audit, baseline, bench, canon, compare, decision, fill, gate, impact, init, propose, root,
     select, view,
 };
 use std::path::Path;
@@ -59,7 +60,7 @@ usage: req [--root <dir>] <command> [args]
                                   the variant projections and the release gate
   impact <claim-id>               what depends on that claim, transitively
   init                            create a corpus in the current directory (no root lookup)
-  propose                         the Tier-2 funnel: blocking, then provider adjudication
+  propose <a.yml> <b.yml>         one pair put to a provider: an unratified proposal (ADR 0021)
   baseline --at <ts>              the manifest a human signs (--at is the signing time)
   baseline --verify <file>        verify one (a v3 manifest's signed_at judges the key)
   audit [--baseline <file>]       the audit packet: coverage, provenance, undecided
@@ -273,18 +274,18 @@ shortened says so instead of reading as complete), 2 usage.
 `AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
 
 const PROPOSE_HELP: &str = "\
-usage: req propose [--min-shared N] [--max-pairs N] [--gold <file>] [--provider-cmd <cmd>]
-                   [--repeats N] [--min-confidence N] [--pairs] [key=value ...]
+usage: req propose <a.yml> <b.yml> [--provider-cmd <cmd>]
 
-Runs the Tier-2 funnel over the claims: skips pairs the address already resolves, blocks the
-rest on shared content terms, then puts the candidates to a provider. The provider proposes;
-a human disposes. Without `--provider-cmd` the offline provider answers Unverifiable — never
-\"unrelated\" — so an offline run refuses to guess.
+Puts ONE explicit pair of claims to a Tier-2 provider and prints its answer as `proposal
+(unratified): <label>`, with the provider command recorded verbatim. The provider proposes; a
+human disposes (ADR 0004): it never writes a file and never changes an address. The command
+(run through `sh -c`) is given `ID:`, `A:`, `B:`, `DIFF:` and `CHOOSE:` lines on stdin and prints
+a label (equivalent, related, unrelated) or a JSON object with `choice` and `confidence`. Without
+`--provider-cmd` there is no provider and the answer is UNVERIFIABLE — never \"unrelated\". The
+corpus-wide funnel (blocking, gold set, flip rate) is research in `experiments/tier2/`, ADR 0021.
 
-exit: 0 every candidate adjudicated, 1 a gold-set FAIL (a false merge, an unreachable
-equivalent, or a flip rate above 2%), 3 anything unadjudicated or deferred (no provider, a
-provider that declined, or `--max-pairs` stopping short), 2 usage. Under `--gold` the gold
-result is the verdict; an unmeasured flip rate is UNVERIFIABLE, never a pass.
+exit: 0 a proposal was produced, 3 UNVERIFIABLE (no provider, or one that failed, declined or
+answered with no readable label, or a claim that will not load), 2 usage.
 
 `AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
 
@@ -392,7 +393,7 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         name: "propose",
-        run: |args, corpus| funnel::run(args, corpus),
+        run: |args, corpus| propose::run(args, corpus),
         help: PROPOSE_HELP,
     },
     Command {

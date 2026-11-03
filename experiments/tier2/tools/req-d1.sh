@@ -1,5 +1,5 @@
 #!/bin/sh
-# A local Tier-2 provider for `req propose --provider-cmd`, backed by Liquid d1-3B served by
+# A local Tier-2 provider for `req-tier2 --provider-cmd` (and the core `req propose`), backed by Liquid d1-3B served by
 # llama.cpp's decision-model API (`POST /v1/systemone`).
 #
 # req's contract on stdin:  "ID:", "A:", "B:", "DIFF:", "CHOOSE:" — matched by prefix, never by

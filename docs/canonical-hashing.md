@@ -276,7 +276,7 @@ third. Labels are versioned YAML in the repository.
 | Trap-class FMR | per adversarial class (LE/LT, modality, unit, condition, subject) | = 0.0 per class |
 | Direction accuracy | correct / classified labelled pairs on the direction gold set | reported; soft target ≥ 0.95 |
 | Dangerous direction confusion | a safety-relevant change reported as *no change*, or as the **opposite** direction | **= 0 — hard gate** (see below) |
-| Tier-2 stability | provider output flip rate over ≥ 20 identical runs | ≤ 2% or the provider is not review-trustworthy |
+| Tier-2 stability | provider output flip rate over ≥ 20 identical runs | ≤ 2% or the provider is not review-trustworthy (measured by `experiments/tier2/`, not a core gate: REQ-0011 is retired, ADR 0021) |
 | Tier-2 precision/recall | proposals vs labels | reported, never auto-applied |
 
 **Why direction gates on the dangerous confusion, not on accuracy.** The earlier
@@ -408,6 +408,10 @@ as `req gate` lets Fail outrank Unverifiable.
      the rule should require a comparator-*shaped* word, not merely a non-filler one.
 
 ### 6.4 Tier-2 provider funnel (if/when the gate passes)
+
+*Status (ADR 0021, 2026-11-03): the funnel below is research and lives in `experiments/tier2/`; the core
+keeps only the single-pair `req propose <a.yml> <b.yml>` seam, whose answer is an unratified proposal.
+The design that follows is unchanged.*
 
 Deterministic content addressing is O(1) per claim; semantic *proposals* are pairwise and
 must be funneled, not fused:

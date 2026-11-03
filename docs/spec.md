@@ -1,6 +1,6 @@
 <!-- req projection: generator=req render | rules_v=6 | selection=none | claims=16 | identity=sha256:51da68b947f4820a22c00b6eee69ff5c6656e4d0491f3e50261c8ee1f225c9f9 -->
 # Selection: (no context: nothing is decided by the caller)
-applies 16, undecided 6, outside the selection 0 (an undecided claim is never reported as excluded)
+applies 16, undecided 5, outside the selection 0 (an undecided claim is never reported as excluded)
 
 ## Applies (16)
 - REQ-0001  f559f5a905e4  SHALL  The req tool shall treat a single claim as the unit of requirements authorship, review, and merge.
@@ -52,7 +52,7 @@ applies 16, undecided 6, outside the selection 0 (an undecided claim is never re
     selector: (none — applies to every variant)
     -> refines REQ-0020
 
-## Undecided (6)
+## Undecided (5)
 - REQ-0008  29decbdac12b  SHALL  The benchmark harness shall report a false merge rate of exactly zero on the parity and adversarial mutation corpora.
     selector: corpus_set == parity_and_adversarial
     -> derives-from REQ-0005
@@ -61,10 +61,6 @@ applies 16, undecided 6, outside the selection 0 (an undecided claim is never re
     -> refines REQ-0008
 - REQ-0010  e4f9b4878326  SHOULD  The benchmark harness should show a false split rate of at most 0.30 on the parity corpus at v0.
     selector: corpus_set == parity
-    -> refines REQ-0008
-- REQ-0011  29c770f569b3  SHALL  The benchmark harness shall report a tier 2 provider's repeated-identical-input answer flip at a rate of at most 2 percent.
-    selector: runs >= 20
-    -> derives-from REQ-0004
     -> refines REQ-0008
 - REQ-0012  efa29f8ef62d  SHALL  The req tool shall need no network access for any claim operation when the deployment is configured offline.
     selector: deployment_mode == air_gapped
