@@ -78,6 +78,8 @@ REGISTRY_VERSION_RE = re.compile(r"^version:[ \t]*(?P<value>\d+)[ \t]*$", re.MUL
 VERSION_RULES_RE = re.compile(r"^[ \t]*rules_v[ \t]+(?P<value>\d+)[ \t]*$", re.MULTILINE)
 VERSION_SCHEMA_RE = re.compile(r"^[ \t]*claim_schema[ \t]+(?P<value>\S+)[ \t]*$", re.MULTILINE)
 CLAIM_SCHEMA_RE = re.compile(r"^req\.claim/\d+$")
+# The one schema `CLAIM_TEMPLATE` writes; a binary reporting another cannot load the draft.
+DRAFT_SCHEMA = "req.claim/2"
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 CLAIMS_DIR = "claims"
@@ -582,6 +584,12 @@ def read_axes():
             f"{completed.stderr.strip() or 'no output'}"
         )
     axes = parse_version(completed.stdout)
+    if axes is not None and axes[1] != DRAFT_SCHEMA:
+        raise Unverifiable(
+            f"`{binary}` reports claim_schema {axes[1]}, but this tool drafts {DRAFT_SCHEMA} "
+            "claims: a draft under another schema would not load — use a matching req build or "
+            "the matching copy of this tool"
+        )
     if axes is None:
         raise Unverifiable(
             f"`{binary} --version` does not name `rules_v` and `claim_schema` — a build "

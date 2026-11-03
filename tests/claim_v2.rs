@@ -11,6 +11,8 @@
 //! * (h) the REQ-0020 pair differs by one meaning-bearing word, by construction;
 //! * every other case states its input and the verdict the spec names for it.
 
+mod common;
+
 use std::path::{Path, PathBuf};
 
 /// The 21 claims' `claim_id → address`, recorded at 3935d0b (rules v6) before anything was
@@ -502,11 +504,9 @@ fn pins_hold_passes_when_every_pin_agrees_and_counts_them() {
 
 #[test]
 fn the_gate_document_is_req_gate_2_with_pins_hold_first() {
-    let variant = std::fs::read_to_string(checkout().join(".req/variants"))
-        .expect(".req/variants")
-        .lines()
-        .map(|l| l.split('#').next().unwrap_or("").trim().to_string())
-        .find(|l| !l.is_empty())
+    let variant = common::variant_lines()
+        .into_iter()
+        .next()
         .expect("a declared release");
     let mut args = vec!["gate", "--format", "json"];
     args.extend(variant.split_whitespace());

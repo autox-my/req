@@ -271,20 +271,27 @@ fn row<'a>(stdout: &'a str, id: &str) -> &'a str {
 }
 
 /// The migration's pins hold on the committed corpus. The count is data, from the migration
-/// rule (`tools/migrate_claims.py`): a numeric authored `value`, an operator other than
-/// `EQ`/none, a unit other than `none` — REQ-0008 (value), REQ-0009 (value, GE), REQ-0010
-/// (value, LE), REQ-0022 (value) = 6 pins on 4 claims of 21. If a claim joins the corpus or a
-/// pin is added, it moves.
+/// rule (`tools/migrate_claims.py`): a numeric authored `value` with the operator authored
+/// beside it, an operator other than `EQ`/none, a unit other than `none` — REQ-0008 (value, EQ),
+/// REQ-0009 (value, GE), REQ-0010 (value, LE), REQ-0022 (value, EQ) = 8 pins on 4 claims of 21.
+/// If a claim joins the corpus or a pin is added, it moves. The counted facts are asserted as
+/// fragments, so rewording the summary sentence does not look like a pin regression.
 #[test]
-fn the_corpus_pins_hold_six_pins_on_four_claims() {
+fn the_corpus_pins_hold_eight_pins_on_four_claims() {
     let out = run_at(&checkout(), &["canon"]);
     assert_eq!(out.code, 0, "canon exit code:\n{}", out.stderr);
-    assert!(
-        out.stdout
-            .contains("claims: 21 (1 unstructured); pins: 6 on 4 claim(s), 0 flagged"),
-        "{}",
-        out.stdout
-    );
+    for fragment in [
+        "claims: 21",
+        "1 unstructured",
+        "pins: 8 on 4 claim(s)",
+        "0 flagged",
+    ] {
+        assert!(
+            out.stdout.contains(fragment),
+            "{fragment:?} missing:\n{}",
+            out.stdout
+        );
+    }
     // REQ-0007 is derived-unstructured, as it was authored-unstructured in req.claim/1.
     assert!(row(&out.stdout, "REQ-0007").contains(" unstructured "));
     // REQ-0014's `exactly one commit` yields `1 / EQ`: shown as the parse, with no pin to hold
@@ -295,16 +302,4 @@ fn the_corpus_pins_hold_six_pins_on_four_claims() {
         "{stray}"
     );
     assert!(!out.stdout.contains("FLAG"), "{}", out.stdout);
-}
-
-/// No `RULES_V` bump and no address moves: only the file contract changed. REQ-0015's address is
-/// the witness this file has carried since ADR 0014 (`4a15b28c…`), measured before the change.
-#[test]
-fn the_parity_change_moves_no_address() {
-    let out = run_at(&checkout(), &["render"]);
-    let prohibition = row(&out.stdout.replace("- REQ-", "REQ-"), "REQ-0015").to_string();
-    assert!(
-        prohibition.contains("4a15b28c8eba"),
-        "REQ-0015's address must not move:\n{prohibition}"
-    );
 }

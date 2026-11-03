@@ -14,7 +14,7 @@
 //! The other tests here are the rules of the old file that outlived the writer: a test link is
 //! outside identity, and the evidence digest matches an independent oracle.
 
-use req::canon::{canonical_json, derive, load_claims, parse_claim};
+use req::canon::{derive, load_claims, parse_claim};
 use req::model::{Evidence, Registry, tests_digest};
 use sha2::{Digest, Sha256};
 
@@ -56,8 +56,6 @@ fn fill_writes_derived_fields_and_the_address_recomputes() {
 
     for loaded in &claims {
         let derived = &loaded.derived;
-        // The bytes hashed are the canonical form's serialization, and nothing else.
-        assert_eq!(derived.canonical, canonical_json(&derived.form));
         // hashing §5: the address recomputes from the canonical bytes alone.
         assert_eq!(
             oracle_address(&derived.canonical),

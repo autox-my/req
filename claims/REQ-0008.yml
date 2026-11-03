@@ -19,3 +19,4 @@ relations:
     to: REQ-0005
 pins:
   value: "0"
+  operator: EQ

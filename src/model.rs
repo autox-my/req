@@ -180,8 +180,8 @@ pub fn validate_tests(tests: &[String], evidence: Evidence) -> Result<(), String
     Ok(())
 }
 
-/// The keys `req.claim/1` carried and `req.claim/2` removed (ADR 0022): the fifteen authored
-/// slots that re-stated the parse, and the two stored derived fields. A `req.claim/2` file that
+/// The keys `req.claim/1` carried and `req.claim/2` removed (ADR 0022): the eleven authored
+/// parse slots that re-stated the statement, and the two stored derived fields (thirteen keys). A `req.claim/2` file that
 /// still carries one is a **parse error naming the key** — never silently ignored, because the
 /// author who wrote `value: "0.3"` beside the statement meant something, and the place to say it
 /// now is `pins:`.

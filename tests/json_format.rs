@@ -97,9 +97,10 @@ impl Corpus {
         Corpus(dir)
     }
 
-    /// The starter corpus plus a second claim with the same authored slots (so the statement's
-    /// action may differ without touching the parity invariant), the given applicability and
-    /// outgoing relations. Nothing derived is written: the loader derives it (ADR 0022).
+    /// The starter corpus plus a second claim with the given statement, applicability and
+    /// outgoing relations. It carries **no pins**: it is judged only by what it derives, so a
+    /// statement without a 200 ms bound is not a `pins_hold` failure by inheritance. Nothing
+    /// derived is written: the loader derives it (ADR 0022).
     fn with_second_claim(
         name: &str,
         statement: &str,
@@ -154,6 +155,15 @@ impl Corpus {
             )
             .replace("applicability: []", &applicability_block)
             .replace("relations: []", &relations_block);
+        // The starter's pins describe the starter's own statement; drop them from the copy.
+        let text = match text.find("\npins:\n") {
+            Some(at) => text[..at + 1].to_string(),
+            None => text,
+        };
+        assert!(
+            !text.contains("\npins:"),
+            "the copied claim still carries the starter's pins:\n{text}"
+        );
         fs::write(self.claim_path(id), text).expect("writes the second claim");
     }
 

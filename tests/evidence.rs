@@ -600,9 +600,11 @@ fn derived_claims_are_accepted_without_constraint() {
         canon_code, 0,
         "the loader accepts the derived claims: {canon_out}{canon_err}"
     );
+    // The property, not the template's pin count: at least one pin verdict was rendered, and
+    // none of them is a flag.
     assert!(
-        canon_out.contains("pins: 12 on 4 claim(s), 0 flagged"),
-        "every derived claim's pins hold: {canon_out}"
+        canon_out.contains("0 flagged") && !canon_out.contains("pins: 0 on"),
+        "every derived claim's pins hold, and there are pins to hold: {canon_out}"
     );
 
     let (code, stdout, stderr) = run_here(scratch.path(), &["trace"]);

@@ -49,8 +49,8 @@ pub const RULES_V: u32 = 6;
 /// is a migration candidate (NOT JUDGED) rather than silently accepted by a build that writes a
 /// field the old file's contract did not have.
 ///
-/// 1 -> 2 (ADR 0022): a claim is **authored**, its parse is **derived**. The fifteen authored
-/// slots that re-stated the parse and the stored `canonical`/`address` are removed; an optional
+/// 1 -> 2 (ADR 0022): a claim is **authored**, its parse is **derived**. The eleven authored
+/// parse slots that re-stated the statement and the stored `canonical`/`address` are removed; an optional
 /// `pins:` states what the parse must be where it is load-bearing. The address derivation and
 /// its bytes do not change, so the bump moves no address — the dogfood list and the signed
 /// Baseline are the proof. A `req.claim/1` file is a migration candidate

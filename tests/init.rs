@@ -284,7 +284,6 @@ fn init_creates_a_working_corpus_in_the_current_directory() {
         "tools/adopt.py",
         // The runnable form: required flags, and --write because the default is a dry run.
         "--from",
-        "--subject",
         "--write",
     ] {
         assert!(

@@ -208,9 +208,12 @@ fn compare_cli(a: &str, b: &str, tag: &str) -> (i32, String) {
     let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("coverage-{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("tmp dir");
+    // The version this build writes, not a literal: a schema bump must not turn this fixture
+    // into a NOT JUDGED failure whose cause is the literal (as tests/compare.rs does).
+    let schema = req::canon::claim_schema();
     let claim = |name: &str, statement: &str| -> String {
         let text = format!(
-            "schema: req.claim/2\nclaim_id: {name}\nstatement: >-\n  {statement}\n\
+            "schema: {schema}\nclaim_id: {name}\nstatement: >-\n  {statement}\n\
              applicability: []\nrationale:\n  source: docs/claim-format.md\n  date: 2026-10-07\n  \
              rejected_alternatives: []\n  assumptions: []\nrelations: []\n"
         );

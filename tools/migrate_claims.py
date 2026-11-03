@@ -17,9 +17,12 @@ What a migration does (docs/claim-format.md, "Migrating from req.claim/1"):
   `relations`, `tests`, `evidence` and `rationale` **byte for byte** — the text of each kept
   block is copied, never re-serialized, so the rationale object, the folded statement and every
   comment inside a kept block survive exactly;
-* turns the authored **quantity-shaped** slots into `pins:` — a numeric `value`, an `operator`
-  other than `EQ`/`none`, a `unit` other than `none` (the cases ADR 0014 made a flag when the
-  parse missed them, so a bound the author wrote is still checked against the parse);
+* turns the authored **quantity-shaped** slots into `pins:` — a numeric `value` (with the
+  `operator` authored beside it, `EQ` included: an equality on a pinned value is load-bearing,
+  and `exactly zero` must not weaken to `at most zero` unflagged), an `operator` other than
+  `EQ`/`none`, a `unit` other than `none` (the cases ADR 0014 made a flag when the parse missed
+  them, so a bound the author wrote is still checked against the parse). An operator that is
+  not a `req.claim/2` comparator is refused, never carried into a pin the loader would reject;
 * drops every other `req.claim/1` key and **prints each drop**: `modality`, `subject`,
   `attribute`, `conditions`, `exception`, `temporal`, `quantifier`, `unstructured` (the parse
   derives them), the qualitative `attribute`/`value` triple (not representable in the form, and
@@ -68,6 +71,8 @@ REMOVED = (
     "canonical",
     "address",
 )
+# The comparators `req.claim/2` accepts in a pin (src/model.rs PIN_OPERATORS).
+PIN_OPERATORS = ("LT", "LE", "EQ", "GE", "GT", "NE")
 TOP_KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):(\s|$)")
 DECIMAL = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)$")
 
@@ -124,9 +129,12 @@ def split_blocks(text):
 
 def scalar(lines):
     """The plain or quoted scalar a one-line `key: value` block carries, or None for null."""
-    if len(lines) != 1 and any(l.strip() and not l.lstrip().startswith("#") for l in lines[1:]):
+    # A comment above the key belongs to its block (split_blocks), so find the key line first and
+    # judge only what follows it.
+    index = next(i for i, l in enumerate(lines) if TOP_KEY.match(l.rstrip("\r\n")))
+    if any(l.strip() and not l.lstrip().startswith("#") for l in lines[index + 1:]):
         raise Refused(f"expected a one-line scalar, got a block: {''.join(lines)!r}")
-    head = [l for l in lines if TOP_KEY.match(l.rstrip("\r\n"))][0].rstrip("\r\n")
+    head = lines[index].rstrip("\r\n")
     raw = head.split(":", 1)[1].strip()
     if " #" in raw:
         raw = raw.split(" #", 1)[0].strip()
@@ -178,7 +186,12 @@ def migrate_text(text):
         pins.append(("value", numeric))
         if numeric != value:
             report.append(f"value {value!r} canonicalized to {numeric!r}")
-    if operator not in (None, "", "none", "EQ"):
+    if operator not in (None, "", "none") and (operator != "EQ" or numeric is not None):
+        if operator not in PIN_OPERATORS:
+            raise Refused(
+                f"`operator: {operator}` is not a req.claim/2 comparator "
+                f"({', '.join(PIN_OPERATORS)}): re-word the statement and decide the pin by hand"
+            )
         pins.append(("operator", operator))
     if unit not in (None, "", "none"):
         pins.append(("unit", unit))
@@ -404,8 +417,10 @@ def self_check():
         case(f"`{key}` does not survive", f"\n{key}:" not in "\n" + migrated, migrated)
 
     eq_numeric = V1_QUALITATIVE.replace("value: claim", 'value: "1"')
-    case("a numeric EQ value pins the value only",
-         migrate_text(eq_numeric)[0].endswith('pins:\n  value: "1"\n'), migrate_text(eq_numeric)[0])
+    case("a numeric EQ value pins the value and its EQ",
+         migrate_text(eq_numeric)[0].endswith('pins:\n  value: "1"\n  operator: EQ\n'),
+         migrate_text(eq_numeric)[0])
+    case("a qualitative EQ pins nothing", "pins:" not in migrate_text(V1_QUALITATIVE)[0])
     with_unit = V1_QUALITATIVE.replace("value: claim", 'value: "0.2"').replace(
         "unit: none", "unit: s").replace("operator: EQ", "operator: LE")
     case("a unit other than none is a pin",
@@ -413,7 +428,7 @@ def self_check():
          migrate_text(with_unit)[0])
     padded = V1_QUALITATIVE.replace("value: claim", 'value: "0.30"')
     case("a non-canonical numeral is pinned canonically, and said so",
-         migrate_text(padded)[0].endswith('pins:\n  value: "0.3"\n')
+         migrate_text(padded)[0].endswith('pins:\n  value: "0.3"\n  operator: EQ\n')
          and any("canonicalized" in line for line in migrate_text(padded)[1]),
          repr(migrate_text(padded)))
     null_op = V1_QUALITATIVE.replace("operator: EQ", "operator: null").replace("value: claim", "value: null")
@@ -428,7 +443,15 @@ def self_check():
     header = "# a header\n" + V1_QUALITATIVE
     case("a header comment survives", migrate_text(header)[0].startswith("# a header\nschema: req.claim/2\n"))
 
+    commented = V1_QUALITATIVE.replace("value: claim", '# the bound\nvalue: "7"')
+    case("a comment above a pinned slot does not break the scalar read",
+         migrate_text(commented)[0].endswith('pins:\n  value: "7"\n  operator: EQ\n'),
+         migrate_text(commented)[0])
+
     for name, text, needle in [
+        ("a non-comparator operator is refused",
+         V1_QUALITATIVE.replace("operator: EQ", "operator: APPROX").replace("value: claim", 'value: "1"'),
+         "not a req.claim/2 comparator"),
         ("an already-v2 file is refused", V2_QUANTITY, "already req.claim/2"),
         ("another schema is refused", V1_QUALITATIVE.replace("req.claim/1", "req.claim/0"), "migrates req.claim/1 only"),
         ("an unknown key is refused", V1_QUALITATIVE + "colour: blue\n", "not a req.claim/1 key"),
@@ -440,6 +463,54 @@ def self_check():
             case(name, False, "not refused")
         except Refused as why:
             case(name, needle in str(why), str(why))
+
+    import contextlib
+    import io
+    import tempfile
+
+    def drive(paths, write):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = run(paths, write)
+        return code, out.getvalue(), err.getvalue()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        good = os.path.join(tmp, "REQ-0001.yml")
+        also = os.path.join(tmp, "REQ-0002.yml")
+        bad = os.path.join(tmp, "REQ-0003.yml")
+        ignored = os.path.join(tmp, "NOTES.yml")
+        for path, text in [(good, V1_QUALITATIVE), (also, V1_QUANTITY), (ignored, "x: 1\n")]:
+            with open(path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(text)
+
+        def disk():
+            return {p: open(p, encoding="utf-8", newline="").read() for p in (good, also, ignored)}
+
+        before = disk()
+        code, _, _ = drive([tmp], write=False)
+        case("a dry run exits 0 and writes nothing", code == 0 and disk() == before)
+        code, out, _ = drive([tmp], write=True)
+        after = disk()
+        case("--write rewrites the claim files and exits 0",
+             code == 0 and after[good].startswith("schema: req.claim/2\n")
+             and after[also].endswith('pins:\n  value: "0.95"\n  operator: GE\n'), out)
+        case("a directory selects REQ-*.yml only", after[ignored] == before[ignored])
+        code, out, _ = drive([tmp], write=True)
+        case("a second --write refuses the already-v2 files, exits 1 and changes nothing",
+             code == 1 and disk() == after, out)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ok = os.path.join(tmp, "REQ-0001.yml")
+        broken = os.path.join(tmp, "REQ-0002.yml")
+        for path, text in [(ok, V1_QUALITATIVE), (broken, V1_QUALITATIVE + "colour: blue\n")]:
+            with open(path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(text)
+        code, _, err = drive([tmp], write=True)
+        case("one refused file exits 1 and leaves every file untouched",
+             code == 1 and open(ok, encoding="utf-8").read() == V1_QUALITATIVE
+             and "nothing written" in err, err)
+        code, _, err = drive([os.path.join(tmp, "absent")], write=False)
+        case("a missing path is refused with exit 1", code == 1, err)
 
     for raw, want in [("0", "0"), ("0.95", "0.95"), ("0.30", "0.3"), ("1.0", "1"), ("x", None),
                       ("1_000", None), ("200ms", None), ("-2.50", "-2.5")]:
