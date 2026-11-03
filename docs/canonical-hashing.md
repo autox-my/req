@@ -226,15 +226,25 @@ mutation — an address that changes between runs would make every Baseline unau
    independent oracle. Tier-1-scoped: equivalence uses meaning-preserving
    normalizations only (emphasis, modality synonym, case/punctuation, digit grouping,
    exact power-of-ten unit scaling); paraphrase, voice and word order are Tier-2 and
-   out of scope here. Sources:
+   out of scope here. The generator *implements* all five classes, but not every class
+   *emits*: see the measured counts below. Sources:
    - **StrictDoc** — its own L1 requirements (67 statements).
    - **Doorstop** — its own requirements (18), which is where T1.2b came from: Doorstop
      writes ``**shall**``.
    - **PROMISE NFR** (v3) — the public natural-language NFR set: 969 statements across
      47 project ids, sampled **deterministically** (every 5th) because all of them ×
      five transforms would make the corpus and its review diff unreviewable. 24% of
-     them carry numeric bounds, which is what the digit-grouping and unit-scale classes
-     exercise.
+     them carry numeric bounds, but **the unit-scale class emits no pair in any external
+     corpus**: its pattern matches only ``N ms``, ``N kN`` and ``N kHz`` (the exact-factor
+     units of T1.4), and no source statement is written that way — the unit-bearing ones
+     say ``seconds`` or ``s``, which are already base units. Measured per class, as
+     emitted/attempted, by ``external-v4``'s header (the same sources as v3): unit scale
+     (US) 0/279, digit grouping (NG) 4/279, emphasis (EM) 13/279. The unit-factor rules
+     therefore have **no external false-split evidence**; the only measurement of them is
+     the hand-written parity pairs (``E-002``, ``E-005``). The class is not removed: it
+     stays in the generator so a source that carries one is exercised, and its count is
+     visible rather than assumed. Giving it input (for example ``N seconds`` →
+     ``N000 ms``) would be a new equivalence class and a new corpus version.
 3. **Direction gold set** (`bench/corpus/direction-v1.yml`, built by
    `tools/corpus/build_direction.py`) — the same three sources, each statement carried
    through one mutation per direction class, and the `direction:` label **is** the
@@ -348,7 +358,8 @@ as `req gate` lets Fail outrank Unverifiable.
   `--verify` 21 verified / 0 candidates / 0 mismatches, four corpora PASS.
 - **Rules v3/v4** — derived fields written and enforced, then the corpus widened.
   - **external-v3** (1124 pairs; PROMISE NFR prose + StrictDoc + Doorstop; adds
-    digit-grouping and unit-scale equivalence classes) — at rules v3 it **FAILED**:
+    digit-grouping and unit-scale equivalence *transforms* — the unit-scale one emitted
+    no pair, see §6.1 above) — at rules v3 it **FAILED**:
     FMR 2/625 (0.32%), both `shall`→`may` mutations that collapsed. The cause was a
     code-vs-spec divergence: the modality table mapped ``may not`` → ``SHALL-NOT``,
     which T1.6 never sanctioned, so a weakened obligation merged with a prohibition.
