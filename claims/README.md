@@ -18,7 +18,7 @@ step 2 of [docs/design.md](../docs/design.md), executed with step 1 already on d
 | REQ-0008 | Benchmark false-merge rate = 0.0 (hard gate) | [canonical-hashing.md §6](../docs/canonical-hashing.md) |
 | REQ-0009 | Direction classification ≥ 0.95 | same |
 | REQ-0010 | False-split soft target ≤ 0.30 (SHOULD) | same |
-| REQ-0011 | Tier-2 provider stability ≤ 2% flip rate | same |
+| ~~REQ-0011~~ | *Retired 2026-11-03* — Tier-2 provider stability ≤ 2% flip rate; the instrument moved to `experiments/tier2/` | [ADR 0021](../docs/adr/0021-tier-2-leaves-the-core.md) |
 | REQ-0012 | No network needed for claim ops when air-gapped | design.md §2 (tensions 2, 5) |
 | REQ-0013 | Non-engineer edits produce Proposals in a Working set | design.md §5 (gap 4 closure) |
 | REQ-0014 | One commit per ratified logical Decision | design.md §5 |

@@ -192,6 +192,10 @@ export OCR_NO_UPDATE=1
   `req gate --test-report target/nextest/ci/junit.xml` per `.req/variants` line**: the report is a
   product of the run that decides the suite, not a file found again later, and the release gate
   reads it.
+  Between the suite and `canon` the full run also does `cargo check --locked --all-targets` and
+  `cargo test --locked` on `experiments/tier2/Cargo.toml` (ADR 0021): the research crate stays
+  compiling and its own tests green, outside the JUnit report and outside any claim's evidence;
+  `--fast` prints a `FAST` line for the pair.
   **`scripts/check.sh --fast` is the iteration mode**, measured rather than asserted: a warm
   full run is ~34s and a fast one ~20s (single runs, 2026-11-03, after M2-1 removed the review-rule steps; the full run was 60s before),
   because the steps it drops are the ones whose *runtime* dominates — `clippy`, the external
@@ -326,68 +330,24 @@ export OCR_NO_UPDATE=1
   (declared, not machine-proven), and
   the `undecided` claims with the `missing` context keys. Exit codes are identical under both
   formats.
-- Tier-2 funnel: `cargo run -q -- propose [--min-shared N] [--max-pairs N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [--pairs] [key=value ...]` — the funnel's
-  deterministic half. It skips pairs Tier-1 already resolved (equal address), **blocks** the
-  rest on shared content terms (default 2), and hands only those to a provider. Exit **0**
-  every candidate adjudicated, **3** anything unadjudicated *or deferred*, **2** usage — except
-  under `--gold`, where the gold result below is the verdict. The default provider
-  is the **offline** one and it answers `Unverifiable` — never "unrelated", because no local
-  model exists here and REQ-0012 forbids requiring a network call, so Tier-2 *metrics*
-  (flip-rate stability, precision/recall) are UNVERIFIABLE in this environment rather than
-  reported as zero. Blocking is a cost control, so its failure is asymmetric like everything
-  else: a pair sharing too few terms is **never proposed**, which is a duplicate silently
-  dropped — `blocking_misses` measures that against the corpus labels and a test pins it at
-  zero. Every proposal records the provider's id verbatim (ADR 0004: the model proposes, a
-  human disposes).
-  With `--gold <file>` it also reports the gold set: label counts, blocking **recall** over the
-  equivalents (a reachable-pair miss is FAIL), and the provider metrics — precision, recall and the
-  REQ-0011 flip rate — as UNVERIFIABLE until a provider exists to measure.
-  `--provider-cmd <cmd>` (run through `sh -c`, so a pipeline is allowed) makes it measurable: req
-  writes `ID: <pair id>`, `A: <statement>`, `B: <statement>`, `DIFF: <differing content terms>`, `CHOOSE: equivalent|related|unrelated` to the command's
-  stdin and reads the chosen label from stdout, so a model-server wrapper only has to read two lines
-  and print one word — or a JSON object carrying `choice` and a `confidence` in integer
-  percent, which is what a confidence sweep thresholds on. It then reports precision and recall over the equivalents as integer percents,
-  the true/false positives and negatives, the unverifiable and not-proposed counts, and the
-  **REQ-0011 flip rate** across `--repeats N` identical runs (default 1). A **false merge** — calling
-  a non-equivalent pair equivalent — or a flip rate above **2%** is FAIL. The provider's command is
-  recorded verbatim as its id, which is its provenance.
-  The gold-set score also **names the offending pairs** — false merges and missed equivalents —
-  because a count says how bad it is and the ids say what to fix. `tools/req-d1.sh` additionally
-  appends every answer (the pair, the choice, the confidence and the full probability
-  distribution) to a capture file (`.scratch/req-d1-capture.jsonl`, `REQ_D1_CAPTURE` to override),
-  so a threshold can be swept **offline** rather than paying an inference run per threshold; a
-  missing capture file is a measurement problem, reported as such, never mistaken for a result. Because
-  the provider now drives the claims pass too, a capturing wrapper's file holds claims-pass rows as well
-  (and both passes' rows under `--gold`); the evaluator reports `capture_rows` beside the rows it matched
-  to gold ids, so those extra rows are visible rather than silently folded into a gold pair.
-  `--min-confidence N` declines an `equivalent` below N percent: it becomes `related`, is counted as
-  declined, and its cost lands in the affordable direction — a missed duplicate rather than a silent
-  merge. It is the measured remedy for a model that splits equivalent/related 0.478 to 0.4385; at 90
-  the false merges reach zero and precision 100%, at the price of recall 33%.
-  `--pairs` prints the whole proposal list instead of the first twelve, because the list *is* the
-  funnel's output and a cost measurement needs every edge; re-deriving the blocking graph anywhere else
-  would be a second implementation of the tokenizer, free to drift from the one that decides what is
-  proposed. The list it prints is the **capped** one, since the cap decides what is proposed; a cost
-  measurement of the whole graph raises `--max-pairs` above the candidate count. The flag is plumbing
-  and carries no test of its own — recorded rather than implied.
-  **The claims pass runs the provider too.** `--provider-cmd` drives the pass over our own claims as
-  well as the gold-set score; `NoProvider` stays the default, so an offline run still refuses to
-  guess rather than calling anything unrelated. That pass today surveys every applying claim, so the
-  cap is what stands in for the change-scoping ADR 0011 calls for: it bounds a run by one sitting of
-  review, not by a diff.
-  `--max-pairs N` (default **15**, the measured upper end of one sitting of review) caps how many
-  candidates reach the provider, and **the cap binds before the call** — a cap applied afterwards
-  would spend exactly the money it was meant to save; the remainder is **deferred**, counted and
-  named separately from `unverifiable`, never summed with it, because a pair nobody asked about and
-  a pair that was asked about with no answer have different remedies (raise the cap; fix the
-  provider). Without `--gold`, a deferred pair makes the run UNVERIFIABLE (exit 3) beside any
-  unadjudicated one, and the verdict names each reason; the cap is deliberately **not** applied to
-  the gold-set score, which is a measurement and would be corrupted by truncating it.
-  **With `--gold`, the gold result is the verdict** — every equivalent reachable, no false merge, and
-  a flip rate actually **measured** (`--repeats 2` or more). Stability unmeasured is UNVERIFIABLE,
-  never a pass. The claims pass above it still runs (and is still capped); its deferral is reported
-  but does not rewrite a verdict about a different question, exactly as its `unverifiable` count
-  never did.
+- Tier-2 seam: `cargo run -q -- propose <a.yml> <b.yml> [--provider-cmd <cmd>]` (ADR 0021) — **one
+  explicit pair**, no blocking, no corpus walk, no gold set (that machinery is research, below). With
+  no provider the answer is UNVERIFIABLE (exit **3**), never "unrelated" — the offline rule stands. With
+  `--provider-cmd` (run through `sh -c`) req writes `ID:`, `A:`, `B:`, `DIFF:`, `CHOOSE:` to the
+  command's stdin and reads a label (`equivalent|related|unrelated`) or a JSON object with `choice`
+  and `confidence` from its stdout, and prints it as **`proposal (unratified): <label>`** with the
+  command recorded verbatim (ADR 0004: the model proposes, a human disposes). It never writes a file
+  and never changes an address. Exit **0** a proposal was produced, **3** no provider or a provider
+  that failed or declined, **2** usage. Its linked test (REQ-0004) fails if it ever writes or reports
+  an answer as anything but an unratified proposal.
+- `experiments/tier2/` — the corpus-wide Tier-2 funnel and everything that measured it (blocking,
+  gold-set scoring, `--max-pairs`, `--min-confidence`, the flip rate, the evaluation instruments,
+  corpora, captures and the sample protocol), moved out of the core by ADR 0021. A **standalone crate**
+  (`req-tier2`, its own `Cargo.lock`, `req` by path), **not** a member of the root workspace, so the
+  root `Cargo.toml`/`Cargo.lock` pins are untouched. Research with honest negative results: **nothing
+  in it gates a release**, and no claim links a test from it. `scripts/check.sh` keeps it compiling and
+  its tests green (full run only) without feeding the JUnit report. How to run it:
+  `experiments/tier2/README.md`.
 - Baselines: `cargo run -q -- baseline --at <RFC 3339 UTC timestamp> [key=value ...]` prints the
   **canonical manifest** (envelope v4, ADRs 0016 and 0019) — the signing time, the Decision log's
   chain head, the rules version, the selection, and every applying claim's address, audit surface
@@ -570,45 +530,12 @@ the same diff can give different findings on another run.
   requirement prose, labelled by construction, built by
   `tools/corpus/build_external.py` (sources pinned by commit SHA; v3 adds the PROMISE
   NFR set, a deterministic sample of 969 statements across 47 project ids).
-  `bench/corpus/tier2-v1.yml` — the Tier-2 **evaluation** corpus (design step 5): three labels
-  (equivalent / related / unrelated) built by `tools/corpus/build_tier2.py`, every pair recording
-  the transformation that produced it, so labels are by construction and the generator is the
-  reviewable surface. Equivalence transforms are the ones the Tier-1 rules already sanction;
-  `related` pairs are reachable hard negatives that measure a provider's precision, and `unrelated`
-  ones are foreign-domain pairs blocking should never propose.
-  `bench/results/` — one record per corpus and rules version; append, do not rewrite.
-  `tools/tier2/evaluate.py` scores a **captured** provider run without re-running the model: it
-  chooses the confidence floor on each half of the gold set (`sha256(pair id) % 2`) and reports
-  it on the other — two folds, both directions — quoting the **stable floor** that is clean in
-  both rather than the flattering direction, prints both curves, and writes a JSON record under `bench/results/` named by the **result** rather than by the clock, so two runs that agree produce the same path (the second refuses to rewrite it) and two that disagree cannot collide; the capture records the pair id, so rows pair to labels by identity. A floor picked and
-  scored on the same pairs is fitted, not measured, and the record states that both halves still come
-  from one generator and that confidence is the model's own uncalibrated report.
-  `bench/corpus/tier2-pilot-v0.yml` is the Tier-2 **human-labelled** sample in progress: thirty
-  candidate pairs drawn from pinned real prose, crossing requirement ids, stratified by lexical
-  overlap, with **empty labels** — the worksheet is the reviewable surface, and
-  `docs/tier2-sample-protocol.md` is the protocol that makes a label on it interpretable, including
-  the ceiling that must be measured (two labellers' agreement) before any model is judged against
-  one hundred percent.
-  `tools/tier2/validate.py` checks a worksheet against the schema, the outcome vocabulary and the two
-  structural rules (pairs cross requirement ids; the recorded shared count matches the terms listed),
-  tri-state as everywhere: valid, invalid, UNVERIFIABLE when it cannot be read. `undecided` is a
-  first-class outcome — the protocol asks a labeller to admit a pair they cannot decide, and a
-  vocabulary of three labels would push them to guess. `tools/tier2/agreement.py` takes two fillings
-  of one worksheet, refuses to run when both name the same labeller, keeps agreed, disagreed and
-  undecided apart, reports the **ceiling** as agreement over pairs decided by both, names the
-  disagreements, and writes a result-named record under `bench/results/`. Both carry a `--self-check`.
-  `tools/tier2/decompose-phase1.py` and `tools/tier2/decompose-phase2.py` are the two halves of a
-  decoupled pipeline for measuring a *decomposer* — an instruct model that names the structural
-  differences between two statements — separately from the judge that weighs them. One model runs at a
-  time because four cores cannot host both, and each stage is resumable because the first attempt lost
-  an hour of completed work to a judge that never answered. The experiment they ran is recorded in the
-  protocol as a negative result: at 2B and 4B the decomposer reports no difference on pairs authored to
-  contain one.
-  `tools/tier2/entropy.py` reads the same captures and reports the entropy of each returned
-  distribution grouped by what the provider chose and what the gold says, plus whether any cut on it
-  removes every false merge. It exists because the scalar is not the only functional of a
-  distribution, and on this sample the answer is that for three of four providers no functional
-  separates the classes at all — while for the fourth the scalar works and entropy does not.
+  `bench/results/` — one record per corpus and rules version; append, do not rewrite (the Tier-2
+  records among them cite the pre-move paths and stay as history, ADR 0021).
+  The Tier-2 corpora (`tier2-*`), their capture directory, `build_tier2.py`, the evaluation
+  instruments (`evaluate.py`, `agreement.py`, `entropy.py`, `validate.py`, the decomposer pair) and
+  the sample protocol live in `experiments/tier2/` (corpora in `corpus/`, scripts in `tools/`, the
+  protocol in `docs/`); their `--self-check`s are run by hand from the repository root, not by the gate.
   These corpora are **generated data**: a corpus of this size is reviewed through its
   generator (`tools/corpus/`) and its label scheme, not line by line — the generator,
   the source pins and the sampling rule are the reviewable surface, and the review
@@ -622,8 +549,7 @@ the same diff can give different findings on another run.
   `baseline.rs` (Baseline manifest, drift, trust and verification),
   `audit.rs` (the audit packet, derived from the Baseline's drift),
   `decision.rs` (the decision log and its hash chain),
-  `funnel.rs` (Tier-2 blocking, the provider seam, the command provider and the
-  gold-set scoring), `fill.rs` (derived fields), `init.rs` (the corpus bootstrap and the
+  `propose.rs` (the single-pair Tier-2 seam, ADR 0021), `fill.rs` (derived fields), `init.rs` (the corpus bootstrap and the
   templates it writes), `junit.rs` (the reader for nextest's JUnit subset: parsed, unparsable, or
   zero test cases — the last two UNVERIFIABLE, never "no failures found").
 - `baselines/` — `trust.yml` is the committed trust anchor (ADR 0010) and the **single home of
@@ -658,7 +584,7 @@ the same diff can give different findings on another run.
   CI that runs it (req itself knows nothing about the file): one `key=value ...` release per
   line, `#` comments, blank lines skipped. Two releases are declared because `corpus_set` takes
   two mutually exclusive values — no single context can apply both REQ-0008 and REQ-0010. Each line
-  must decide every scoped claim: dropping `set`, `runs`, `deployment_mode` or `field` leaves that
+  must decide every scoped claim: dropping `set`, `deployment_mode` or `field` leaves that
   claim undecided in that release, which since ADR 0015 makes `req gate` exit 3 rather than 0. Only
   `corpus_set` is dependency-guarded, so `dependencies_decided` refuses (exit 3) for the claims that
   relate to REQ-0008; for the rest the undecided count is the guard. `tests/release_gate.rs`
@@ -669,7 +595,7 @@ the same diff can give different findings on another run.
   repo-relative path per line, `#` comments, blank lines skipped — the `.req/variants` grammar —
   and `scripts/check.sh` runs `req render --check <path>` for each, fails when a listed path is
   missing or the list checked none, and prints how many it checked. `docs/spec.md` is generated by
-  `req render --out docs/spec.md` from this corpus (16 applying, 6 undecided) and is never
+  `req render --out docs/spec.md` from this corpus (16 applying, 5 undecided) and is never
   hand-edited: its header names the generator, `rules_v`, selection, applying-claim count and an
   `sha256:` identity, and a regenerated file replaces it in the same commit as the claim that
   moved it.

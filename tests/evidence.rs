@@ -723,14 +723,17 @@ fn no_command_rewrites_or_merges_claims_automatically() {
     let before = claim_files(scratch.path());
     assert_eq!(before.len(), 2, "two obligations, two files");
 
-    // `bench` writes a results record under bench/results; `propose` now has a candidate pair to
-    // consider and answers UNVERIFIABLE offline. Neither may touch a claim.
+    // `bench` writes a results record under bench/results; `propose` takes the explicit pair and
+    // answers UNVERIFIABLE offline. Neither may touch a claim.
     let parity = format!("{}/bench/corpus/parity.yml", env!("CARGO_MANIFEST_DIR"));
     assert_eq!(run_here(scratch.path(), &["bench", &parity]).0, 0);
-    let (propose_code, _, _) = run_here(scratch.path(), &["propose"]);
-    assert!(
-        matches!(propose_code, 0 | 3),
-        "propose answers without writing: {propose_code}"
+    let (propose_code, _, _) = run_here(
+        scratch.path(),
+        &["propose", "claims/REQ-0001.yml", "claims/REQ-0002.yml"],
+    );
+    assert_eq!(
+        propose_code, 3,
+        "propose answers UNVERIFIABLE offline, without writing"
     );
     assert_eq!(
         claim_files(scratch.path()),
@@ -750,6 +753,128 @@ fn no_command_rewrites_or_merges_claims_automatically() {
         claim_files(scratch.path()).len(),
         2,
         "a merge changed the claim set"
+    );
+}
+
+/// Every file under `dir` as `(relative path, bytes)`, sorted — the whole tree, not only
+/// `claims/`, so a proposal written anywhere (a claim, a sidecar, a log) shows as a difference.
+fn tree(dir: &Path) -> Vec<(String, Vec<u8>)> {
+    fn walk(base: &Path, at: &Path, out: &mut Vec<(String, Vec<u8>)>) {
+        for entry in std::fs::read_dir(at).expect("reads a directory") {
+            let path = entry.expect("reads an entry").path();
+            if path.is_dir() {
+                walk(base, &path, out);
+            } else {
+                let rel = path
+                    .strip_prefix(base)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+                out.push((rel, std::fs::read(&path).expect("reads a file")));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out);
+    out.sort();
+    out
+}
+
+/// REQ-0004 — *the req tool shall emit proposals for reviewer ratification* (ADR 0004, ADR 0021).
+///
+/// What the core guarantees is the single-pair seam: a provider's answer comes out as an
+/// **unratified proposal** and never as an edit. Observed through the CLI on two real claim files:
+/// the whole scratch tree is byte-identical after every run (no file written, no address moved);
+/// with no provider the answer is UNVERIFIABLE, never "unrelated"; with a provider the label is
+/// printed under the `proposal (unratified)` marker with the provider command recorded verbatim;
+/// a provider that fails or answers nothing readable is UNVERIFIABLE, and a bare call is usage.
+#[test]
+fn a_provider_answer_is_an_unratified_proposal_never_an_edit() {
+    let scratch = Scratch::new("req-0004-seam");
+    assert_eq!(run_here(scratch.path(), &["init"]).0, 0);
+    let starter = scratch.read("claims/REQ-0001.yml");
+    scratch.write(
+        "claims/REQ-0002.yml",
+        &starter
+            .replace("claim_id: REQ-0001", "claim_id: REQ-0002")
+            .replace(STARTER_STATEMENT, STARTER_MAY)
+            .replace("modality: SHALL", "modality: MAY"),
+    );
+    assert_eq!(run_here(scratch.path(), &["canon", "--fill"]).0, 0);
+    let before = tree(scratch.path());
+    let pair = ["claims/REQ-0001.yml", "claims/REQ-0002.yml"];
+    let propose = |extra: &[&str]| {
+        let mut args = vec!["propose"];
+        args.extend(pair);
+        args.extend(extra);
+        run_here(scratch.path(), &args)
+    };
+
+    // Offline: nothing is proposed rather than guessed.
+    let (code, stdout, stderr) = propose(&[]);
+    assert_eq!(code, 3, "no provider is UNVERIFIABLE:\n{stdout}{stderr}");
+    assert!(
+        format!("{stdout}{stderr}").contains("UNVERIFIABLE"),
+        "named as such:\n{stdout}{stderr}"
+    );
+    assert!(
+        !stdout.contains("proposal (unratified)") && !stdout.to_lowercase().contains("unrelated"),
+        "an offline run proposes nothing and does not guess:\n{stdout}"
+    );
+
+    // A provider that answers: a proposal, labelled, with its provenance. The provider also
+    // records what req wrote to its stdin, in a directory outside the scratch corpus.
+    let sink = Scratch::new("req-0004-seam-sink");
+    let seen = sink.path().join("stdin.txt");
+    let command = format!("cat > {}; echo equivalent", seen.display());
+    let (code, stdout, stderr) = propose(&["--provider-cmd", &command]);
+    assert_eq!(
+        code, 0,
+        "a provider's answer is a proposal:\n{stdout}{stderr}"
+    );
+    assert!(
+        stdout.contains("proposal (unratified): equivalent"),
+        "the label travels under the unratified marker:\n{stdout}"
+    );
+    assert!(
+        stdout.contains(&command),
+        "provider recorded verbatim:\n{stdout}"
+    );
+    let request = std::fs::read_to_string(&seen).expect("the provider was given the pair");
+    for prefix in ["ID: ", "A: ", "B: ", "DIFF: ", "CHOOSE: "] {
+        assert!(
+            request.contains(prefix),
+            "line protocol {prefix:?}:\n{request}"
+        );
+    }
+
+    // A JSON answer carries its confidence; it is still only a proposal.
+    let json = r#"cat >/dev/null; echo '{"choice":"related","confidence":87}'"#;
+    let (code, stdout, _) = propose(&["--provider-cmd", json]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("proposal (unratified): related"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("87"), "confidence is shown:\n{stdout}");
+
+    // A failing or unreadable provider is UNVERIFIABLE, never a proposal.
+    for broken in ["cat >/dev/null; exit 1", "cat >/dev/null; echo hello"] {
+        let (code, stdout, _) = propose(&["--provider-cmd", broken]);
+        assert_eq!(code, 3, "{broken}:\n{stdout}");
+        assert!(
+            !stdout.contains("proposal (unratified)"),
+            "{broken}:\n{stdout}"
+        );
+    }
+
+    // Usage: a pair is two files.
+    assert_eq!(run_here(scratch.path(), &["propose"]).0, 2);
+    assert_eq!(run_here(scratch.path(), &["propose", pair[0]]).0, 2);
+    assert_eq!(
+        tree(scratch.path()),
+        before,
+        "`req propose` wrote or changed a file; a proposal is never an edit"
     );
 }
 

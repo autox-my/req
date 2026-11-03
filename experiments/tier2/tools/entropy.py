@@ -12,8 +12,8 @@ The result it reports, in the form that matters: whether a cut on entropy exists
 false merge, and how many true positives survive it. `NONE` means the distributions overlap.
 
 Usage:
-    python3 tools/tier2/entropy.py --capture FILE --gold bench/corpus/tier2-positives-v1.yml
-    python3 tools/tier2/entropy.py --self-check
+    python3 experiments/tier2/tools/entropy.py --capture FILE --gold experiments/tier2/corpus/tier2-positives-v1.yml
+    python3 experiments/tier2/tools/entropy.py --self-check
 
 Exit: 0 measured, 1 invalid input, 2 usage, 3 nothing to measure (no answered pair).
 """

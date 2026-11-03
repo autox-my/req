@@ -5,7 +5,7 @@
 
 mod common;
 
-use req::funnel::{
+use req_tier2::funnel::{
     Adjudication, Candidate, MAX_PAIRS_PER_RUN, MIN_SHARED_TERMS, NO_CAP, NoProvider, Proposed,
     Provider, blocking_misses, candidate_pairs, content_terms, naive_pairs, propose, shared_terms,
 };
@@ -46,7 +46,7 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
 
 fn parity() -> Corpus {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    Corpus::load(root.join("bench/corpus/parity.yml").to_str().unwrap()).expect("corpus loads")
+    Corpus::load(root.join("../../bench/corpus/parity.yml").to_str().unwrap()).expect("corpus loads")
 }
 
 /// **The safety property.** A pair whose sides share too few terms is never proposed, which is
@@ -323,11 +323,11 @@ fn deferred_pairs_are_neither_adjudicated_nor_unverifiable() {
 /// never allowed to read as "everything was asked about".
 #[test]
 fn the_claims_verdict_names_deferral_separately_from_no_answer() {
-    let (code, sentence) = req::funnel::claims_verdict(0, 0, MAX_PAIRS_PER_RUN);
+    let (code, sentence) = req_tier2::funnel::claims_verdict(0, 0, MAX_PAIRS_PER_RUN);
     assert_eq!(code, 0, "{sentence}");
     assert!(sentence.starts_with("PASS"), "{sentence}");
 
-    let (code, sentence) = req::funnel::claims_verdict(0, 7, 3);
+    let (code, sentence) = req_tier2::funnel::claims_verdict(0, 7, 3);
     assert_eq!(code, 3, "{sentence}");
     assert!(
         sentence.contains("7") && sentence.contains("deferred"),
@@ -338,13 +338,13 @@ fn the_claims_verdict_names_deferral_separately_from_no_answer() {
         "a deferred pair was never put to the provider, so it is not an answer: {sentence}"
     );
 
-    let (code, sentence) = req::funnel::claims_verdict(5, 0, MAX_PAIRS_PER_RUN);
+    let (code, sentence) = req_tier2::funnel::claims_verdict(5, 0, MAX_PAIRS_PER_RUN);
     assert_eq!(code, 3, "{sentence}");
     assert!(sentence.contains("unadjudicated"), "{sentence}");
     assert!(!sentence.contains("deferred"), "{sentence}");
 
     // Both at once: both are named, because reporting one would hide the other.
-    let (_, sentence) = req::funnel::claims_verdict(5, 7, 3);
+    let (_, sentence) = req_tier2::funnel::claims_verdict(5, 7, 3);
     assert!(
         sentence.contains("deferred") && sentence.contains("unadjudicated"),
         "{sentence}"
@@ -378,10 +378,10 @@ fn trailing_punctuation_does_not_change_a_term() {
     assert!(content_terms("Respond within 0.15 seconds.").contains("0.15"));
 }
 
-fn tier2_gold() -> req::funnel::Tier2Corpus {
-    req::funnel::Tier2Corpus::load(concat!(
+fn tier2_gold() -> req_tier2::funnel::Tier2Corpus {
+    req_tier2::funnel::Tier2Corpus::load(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/bench/corpus/tier2-v1.yml"
+        "/corpus/tier2-v1.yml"
     ))
     .expect("the gold set loads")
 }
@@ -398,9 +398,9 @@ fn the_gold_set_holds_three_labels_and_no_degenerate_pairs() {
         corpus.pairs.len()
     );
     for label in [
-        req::funnel::Tier2Label::Equivalent,
-        req::funnel::Tier2Label::Related,
-        req::funnel::Tier2Label::Unrelated,
+        req_tier2::funnel::Tier2Label::Equivalent,
+        req_tier2::funnel::Tier2Label::Related,
+        req_tier2::funnel::Tier2Label::Unrelated,
     ] {
         assert!(
             corpus.pairs.iter().any(|pair| pair.label == label),
@@ -426,7 +426,7 @@ fn the_gold_set_holds_three_labels_and_no_degenerate_pairs() {
 /// reachable by blocking, or the funnel can never propose it and the provider never sees it.
 #[test]
 fn the_gold_set_is_fully_reachable_by_blocking() {
-    let misses = req::funnel::tier2_blocking_misses(&tier2_gold(), MIN_SHARED_TERMS);
+    let misses = req_tier2::funnel::tier2_blocking_misses(&tier2_gold(), MIN_SHARED_TERMS);
     assert!(misses.is_empty(), "unreachable equivalents: {misses:?}");
 }
 
@@ -435,14 +435,14 @@ fn the_gold_set_is_fully_reachable_by_blocking() {
 #[test]
 fn only_equivalents_are_ever_reported_as_misses() {
     let corpus = tier2_gold();
-    for miss in req::funnel::tier2_blocking_misses(&corpus, MIN_SHARED_TERMS) {
+    for miss in req_tier2::funnel::tier2_blocking_misses(&corpus, MIN_SHARED_TERMS) {
         let id = miss.split(':').next().unwrap_or_default();
         let pair = corpus
             .pairs
             .iter()
             .find(|pair| pair.id == id)
             .expect("a miss names a known pair");
-        assert_eq!(pair.label, req::funnel::Tier2Label::Equivalent, "{miss}");
+        assert_eq!(pair.label, req_tier2::funnel::Tier2Label::Equivalent, "{miss}");
     }
 }
 
@@ -464,10 +464,10 @@ fn a_provider_that_calls_everything_equivalent_earns_false_merges() {
     let proposed_equivalents = corpus
         .pairs
         .iter()
-        .filter(|p| p.label == req::funnel::Tier2Label::Equivalent)
+        .filter(|p| p.label == req_tier2::funnel::Tier2Label::Equivalent)
         .filter(|p| shared_terms(&p.a, &p.b) >= MIN_SHARED_TERMS)
         .count();
-    let score = req::funnel::score_gold(&corpus, &AlwaysEquivalent, MIN_SHARED_TERMS, 0);
+    let score = req_tier2::funnel::score_gold(&corpus, &AlwaysEquivalent, MIN_SHARED_TERMS, 0);
     assert_eq!(score.true_positives, proposed_equivalents);
     assert_eq!(score.false_negatives, 0, "it never says anything else");
     assert!(score.false_positives > 0, "it must be caught: {score:?}");
@@ -482,7 +482,7 @@ fn a_provider_that_calls_everything_equivalent_earns_false_merges() {
 #[test]
 fn an_abstaining_provider_is_unverifiable_not_wrong() {
     let corpus = tier2_gold();
-    let score = req::funnel::score_gold(&corpus, &NoProvider, MIN_SHARED_TERMS, 0);
+    let score = req_tier2::funnel::score_gold(&corpus, &NoProvider, MIN_SHARED_TERMS, 0);
     assert_eq!(score.true_positives, 0);
     assert_eq!(score.false_positives, 0);
     assert_eq!(score.false_negatives, 0);
@@ -522,11 +522,11 @@ fn an_unstable_provider_is_measured_as_flipping() {
         .iter()
         .filter(|p| shared_terms(&p.a, &p.b) >= MIN_SHARED_TERMS)
         .count();
-    let (flipped, measured) = req::funnel::flip_count(&corpus, &flaky, MIN_SHARED_TERMS, 2);
+    let (flipped, measured) = req_tier2::funnel::flip_count(&corpus, &flaky, MIN_SHARED_TERMS, 2);
     assert_eq!(flipped, measured, "every proposed pair flips");
     // Measured over exactly the pairs blocking proposes: a pair it never hands over cannot flip.
     assert_eq!(measured, proposed);
-    let (stable, measured) = req::funnel::flip_count(&corpus, &NoProvider, MIN_SHARED_TERMS, 3);
+    let (stable, measured) = req_tier2::funnel::flip_count(&corpus, &NoProvider, MIN_SHARED_TERMS, 3);
     assert_eq!(stable, 0);
     assert!(measured > 0);
 }
@@ -536,7 +536,7 @@ fn an_unstable_provider_is_measured_as_flipping() {
 #[test]
 fn the_command_provider_speaks_the_documented_protocol() {
     let command = "read -r a; read -r b; echo 'equivalent 87'".to_string();
-    let provider = req::funnel::CommandProvider::new(command.clone());
+    let provider = req_tier2::funnel::CommandProvider::new(command.clone());
     let verdict = provider.adjudicate(
         &Candidate {
             claim_id: "T2-E-001",
@@ -555,7 +555,7 @@ fn the_command_provider_speaks_the_documented_protocol() {
     assert_eq!(provider.id(), format!("cmd:{command}"));
     // Assert the parts, not the whole string: the contract gains fields, and a `starts_with` over
     // the entire format made this test fail on a rewording rather than on a broken contract.
-    let request = req::funnel::provider_request("T2-E-001", "a", "b", "module|system");
+    let request = req_tier2::funnel::provider_request("T2-E-001", "a", "b", "module|system");
     for part in [
         "ID: T2-E-001",
         "A: a",
@@ -575,15 +575,15 @@ fn the_command_provider_speaks_the_documented_protocol() {
 #[test]
 fn the_answer_parser_prefers_unrelated_over_its_own_substring() {
     assert_eq!(
-        req::funnel::parse_adjudication("UNRELATED"),
+        req_tier2::funnel::parse_adjudication("UNRELATED"),
         Adjudication::Unrelated { confidence: 0 }
     );
     assert_eq!(
-        req::funnel::parse_adjudication("related 40"),
+        req_tier2::funnel::parse_adjudication("related 40"),
         Adjudication::Related { confidence: 40 }
     );
     assert!(matches!(
-        req::funnel::parse_adjudication("I cannot say"),
+        req_tier2::funnel::parse_adjudication("I cannot say"),
         Adjudication::Unverifiable { .. }
     ));
 }
@@ -594,35 +594,35 @@ fn the_answer_parser_prefers_unrelated_over_its_own_substring() {
 #[test]
 fn a_provider_may_answer_with_json_and_the_confidence_survives() {
     assert_eq!(
-        req::funnel::parse_adjudication(r#"{"choice": "equivalent", "confidence": 87}"#),
+        req_tier2::funnel::parse_adjudication(r#"{"choice": "equivalent", "confidence": 87}"#),
         Adjudication::Equivalent { confidence: 87 }
     );
     assert_eq!(
-        req::funnel::parse_adjudication(r#"{"choice":"related","confidence":12}"#),
+        req_tier2::funnel::parse_adjudication(r#"{"choice":"related","confidence":12}"#),
         Adjudication::Related { confidence: 12 }
     );
     // An option we did not define is not a guess: it is unverifiable.
     assert!(matches!(
-        req::funnel::parse_adjudication(r#"{"choice":"maybe"}"#),
+        req_tier2::funnel::parse_adjudication(r#"{"choice":"maybe"}"#),
         Adjudication::Unverifiable { .. }
     ));
     // A missing confidence is "not stated" (0), which the type documents.
     assert_eq!(
-        req::funnel::parse_adjudication(r#"{"choice":"unrelated"}"#),
+        req_tier2::funnel::parse_adjudication(r#"{"choice":"unrelated"}"#),
         Adjudication::Unrelated { confidence: 0 }
     );
     // ...and the old forms are untouched.
     assert_eq!(
-        req::funnel::parse_adjudication("related 40"),
+        req_tier2::funnel::parse_adjudication("related 40"),
         Adjudication::Related { confidence: 40 }
     );
     assert_eq!(
-        req::funnel::parse_adjudication("UNRELATED"),
+        req_tier2::funnel::parse_adjudication("UNRELATED"),
         Adjudication::Unrelated { confidence: 0 }
     );
     // Malformed JSON falls back to the word scan rather than failing the pair.
     assert_eq!(
-        req::funnel::parse_adjudication(r#"{"choice": broken, unrelated"#),
+        req_tier2::funnel::parse_adjudication(r#"{"choice": broken, unrelated"#),
         Adjudication::Unrelated { confidence: 0 }
     );
 }
@@ -641,7 +641,7 @@ fn the_score_names_the_pairs_it_got_wrong() {
         }
     }
     let corpus = tier2_gold();
-    let score = req::funnel::score_gold(&corpus, &AlwaysEquivalent, MIN_SHARED_TERMS, 0);
+    let score = req_tier2::funnel::score_gold(&corpus, &AlwaysEquivalent, MIN_SHARED_TERMS, 0);
     assert_eq!(score.false_positive_ids.len(), score.false_positives);
     assert!(!score.false_positive_ids.is_empty());
     for id in &score.false_positive_ids {
@@ -652,13 +652,13 @@ fn the_score_names_the_pairs_it_got_wrong() {
             .expect("a named pair exists");
         assert_ne!(
             pair.label,
-            req::funnel::Tier2Label::Equivalent,
+            req_tier2::funnel::Tier2Label::Equivalent,
             "{id} is labelled equivalent, so it cannot be a false merge"
         );
     }
     assert!(score.false_negative_ids.is_empty());
     // An abstaining provider gets no error ids either: no answer is not a wrong answer.
-    let abstained = req::funnel::score_gold(&corpus, &NoProvider, MIN_SHARED_TERMS, 0);
+    let abstained = req_tier2::funnel::score_gold(&corpus, &NoProvider, MIN_SHARED_TERMS, 0);
     assert!(abstained.false_positive_ids.is_empty());
     assert!(abstained.false_negative_ids.is_empty());
 }
@@ -668,7 +668,7 @@ fn the_score_names_the_pairs_it_got_wrong() {
 /// `unverifiable` — blaming the model for a shell refusing to run a file.
 #[test]
 fn a_provider_that_crashes_reports_why_instead_of_going_quiet() {
-    let provider = req::funnel::CommandProvider::new(
+    let provider = req_tier2::funnel::CommandProvider::new(
         "echo 'boom: cannot reach the model' >&2; exit 3".to_string(),
     );
     let verdict = provider.adjudicate(
@@ -715,8 +715,8 @@ fn a_confidence_floor_declines_a_coin_flip_instead_of_merging_on_it() {
         }
     }
     let corpus = tier2_gold();
-    let unfloored = req::funnel::score_gold(&corpus, &Fixed(50), MIN_SHARED_TERMS, 0);
-    let floored = req::funnel::score_gold(&corpus, &Fixed(50), MIN_SHARED_TERMS, 80);
+    let unfloored = req_tier2::funnel::score_gold(&corpus, &Fixed(50), MIN_SHARED_TERMS, 0);
+    let floored = req_tier2::funnel::score_gold(&corpus, &Fixed(50), MIN_SHARED_TERMS, 80);
     assert!(unfloored.false_positives > 0);
     assert_eq!(
         floored.false_positives, 0,
@@ -732,7 +732,7 @@ fn a_confidence_floor_declines_a_coin_flip_instead_of_merging_on_it() {
         "the cost of the floor is missed duplicates, which is the affordable direction"
     );
     // A provider above the floor is untouched by it.
-    let confident = req::funnel::score_gold(&corpus, &Fixed(95), MIN_SHARED_TERMS, 80);
+    let confident = req_tier2::funnel::score_gold(&corpus, &Fixed(95), MIN_SHARED_TERMS, 80);
     assert_eq!(confident.false_positives, unfloored.false_positives);
     assert_eq!(confident.below_floor, 0);
 }
@@ -756,7 +756,7 @@ fn a_single_run_is_not_a_stability_measurement() {
     }
     let corpus = tier2_gold();
     let provider = Counting(Cell::new(0));
-    let (flipped, measured) = req::funnel::flip_count(&corpus, &provider, MIN_SHARED_TERMS, 1);
+    let (flipped, measured) = req_tier2::funnel::flip_count(&corpus, &provider, MIN_SHARED_TERMS, 1);
     assert_eq!((flipped, measured), (0, 0), "nothing was compared");
     assert_eq!(
         provider.0.get(),
@@ -769,22 +769,22 @@ fn a_single_run_is_not_a_stability_measurement() {
 /// including the one that is easy to fake: stability has to be *measured*.
 #[test]
 fn a_pass_requires_a_measured_flip_rate_and_no_false_merge() {
-    let (code, sentence) = req::funnel::gold_verdict(0, 0, 0, 68);
+    let (code, sentence) = req_tier2::funnel::gold_verdict(0, 0, 0, 68);
     assert_eq!(code, 0, "{sentence}");
     assert!(sentence.starts_with("PASS"), "{sentence}");
 
     // The same perfect score with stability unmeasured is not a pass: REQ-0011 is not satisfied by
     // a number nobody took.
-    let (code, sentence) = req::funnel::gold_verdict(0, 0, 0, 0);
+    let (code, sentence) = req_tier2::funnel::gold_verdict(0, 0, 0, 0);
     assert_eq!(code, 3, "{sentence}");
     assert!(sentence.contains("not measured"), "{sentence}");
 
     // A false merge fails even when the flip rate is unmeasured — a defect outranks an open question.
-    assert_eq!(req::funnel::gold_verdict(0, 1, 0, 0).0, 1);
+    assert_eq!(req_tier2::funnel::gold_verdict(0, 1, 0, 0).0, 1);
     // An equivalent pair blocking can never reach fails too.
-    assert_eq!(req::funnel::gold_verdict(2, 0, 0, 68).0, 1);
+    assert_eq!(req_tier2::funnel::gold_verdict(2, 0, 0, 68).0, 1);
     // And a measured flip rate above 2% fails a run that is otherwise perfect.
-    assert_eq!(req::funnel::gold_verdict(0, 0, 3, 68).0, 1);
+    assert_eq!(req_tier2::funnel::gold_verdict(0, 0, 3, 68).0, 1);
 }
 
 /// The diff is the change under test, so it must name exactly the terms that differ — sorted,
@@ -792,18 +792,18 @@ fn a_pass_requires_a_measured_flip_rate_and_no_false_merge() {
 #[test]
 fn the_diff_names_exactly_what_differs() {
     assert_eq!(
-        req::funnel::differing_terms(
+        req_tier2::funnel::differing_terms(
             "The system shall log each command.",
             "The module shall log each command."
         ),
         "module|system"
     );
     assert_eq!(
-        req::funnel::differing_terms("The vendor shall log.", "The vendor shall log."),
+        req_tier2::funnel::differing_terms("The vendor shall log.", "The vendor shall log."),
         ""
     );
     assert_eq!(
-        req::funnel::differing_terms("The system shall log.", "The module shall store."),
-        req::funnel::differing_terms("The module shall store.", "The system shall log.")
+        req_tier2::funnel::differing_terms("The system shall log.", "The module shall store."),
+        req_tier2::funnel::differing_terms("The module shall store.", "The system shall log.")
     );
 }

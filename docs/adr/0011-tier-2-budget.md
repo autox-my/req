@@ -7,6 +7,8 @@ taken, and no provider is named as default until held-out validation.
 
 Date: 2026-10-10
 
+**Amended 2026-11-03:** [ADR 0021](0021-tier-2-leaves-the-core.md) moves the funnel this budget governs to `experiments/tier2/` (the budget stands in principle; the paths named below are historical).
+
 ## Context
 
 Tier-2 hands candidate pairs to a model. Almost everything about that is measured now: five providers

@@ -2,7 +2,7 @@
 """A resident THX-01 server for req's Tier-2 provider seam.
 
 Same shape as tools/gliner-serve.py: the weights load once, the reader is our own stdlib HTTP layer,
-and req's existing wrapper (`tools/req-d1.sh`) speaks to it unchanged — because THX-01's answer for a
+and req's existing wrapper (`experiments/tier2/tools/req-d1.sh`) speaks to it unchanged — because THX-01's answer for a
 `choice` question carries `choice`, per-option `probabilities` and `confidence`, which is exactly the
 JSON our harness already parses.
 
@@ -53,7 +53,7 @@ def decide(request):
     # Pass the model's own shape through unchanged. The first version of this server unwrapped it to
     # the GLiNER wrapper's flat contract and then paired with the d1 wrapper, which parses the
     # wrapped one — 29 requests answered and 29 requests unread. THX-01's native answer already
-    # matches what tools/req-d1.sh parses, which is the reason this candidate needed no new code.
+    # matches what experiments/tier2/tools/req-d1.sh parses, which is the reason this candidate needed no new code.
     return {"answers": result["answers"]}
 
 

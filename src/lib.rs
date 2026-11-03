@@ -24,7 +24,6 @@ pub mod fill;
 // (render, trace, audit, gate). A rendering seam, not an identity seam: nothing here computes an
 // address or an identity.
 pub mod format;
-pub mod funnel;
 pub mod gate;
 pub mod impact;
 // The one command that *creates* a corpus root instead of reading one. It is answered in
@@ -33,6 +32,8 @@ pub mod impact;
 pub mod init;
 pub mod junit;
 pub mod model;
+// The single-pair Tier-2 seam (ADR 0021); the funnel it replaced lives in `experiments/tier2/`.
+pub mod propose;
 pub mod root;
 pub mod select;
 pub mod view;

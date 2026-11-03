@@ -1,7 +1,7 @@
 # The Tier-2 sample: a protocol, not a corpus
 
 Tier-2 asks a model whether two requirements mean the same thing. Every number the funnel has
-produced for that question so far came from `bench/corpus/tier2-v1.yml`, which is generated: its
+produced for that question so far came from `experiments/tier2/corpus/tier2-v1.yml`, which is generated: its
 pairs are transformations the generator applied, so the labels are by construction and the pair
 distribution is the generator's, not the world's. Two consequences were measured rather than
 assumed.
@@ -88,7 +88,7 @@ this sample is the first thing that could be measured against something not buil
 
 ## Current state
 
-`bench/corpus/tier2-pilot-v0.yml` holds the thirty drawn pairs with full provenance and **empty
+`experiments/tier2/corpus/tier2-pilot-v0.yml` holds the thirty drawn pairs with full provenance and **empty
 labels**. It is the reviewable surface: its header records the pool, the pairing rule, the
 stratification and the sampling stride, so a reader can reproduce the draw rather than trust it.
 The ADR that fixes the protocol and the ceiling comes after the pilot reports them.
@@ -151,7 +151,7 @@ provider's error and a labeller's doubt are different phenomena and should not b
    must keep admitting it.
 
 The thirty pairs and both fillings stand as the pilot's record, and **all of it is committed**: the
-worksheet (`bench/corpus/tier2-pilot-v0.yml`), the two fillings (`...-fill-alice.yml`,
+worksheet (`experiments/tier2/corpus/tier2-pilot-v0.yml`), the two fillings (`...-fill-alice.yml`,
 `...-fill-bob.yml` — pseudonymous labellers, with the confidence each stated and the note each wrote),
 and the ceiling under `bench/results/`. Committing the fillings is deliberate: a ceiling whose labels
 cannot be inspected is an assertion, and with them in the repository anyone can recompute the number
@@ -164,7 +164,7 @@ them.
 Both readings were taken from a copy that carried the answer key — `constructed_label`, identifiers
 ending `@equivalent` and `@related`, and the equivalent pair listed before its sibling on every row. The
 readers were asked to ignore it, which is an instruction where the next version of this file supplies a
-control. That control exists now (`bench/corpus/tier2-labelling-v1.yml`), and it was built after these
+control. That control exists now (`experiments/tier2/corpus/tier2-labelling-v1.yml`), and it was built after these
 readings, not before.
 
 What came back: identical labels — fifteen equivalent, fourteen related — matching the construction on
@@ -226,7 +226,7 @@ remains the only route to a provider that can be trusted without a floor — wit
 documented path, and its own generalisation table (0.725 on unseen choice against 0.960 when the task is
 in the mix) measuring exactly the move that would be required.
 
-THX-01's server is committed as `tools/tier2/thx-serve.py`, with the defect that cost three debugging
+THX-01's server is committed as `experiments/tier2/tools/thx-serve.py`, with the defect that cost three debugging
 rounds recorded in its comments: a server must speak the *wrapper's* request path and payload, and a
 result that is identical for every input is plumbing, not a model.
 

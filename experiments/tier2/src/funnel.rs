@@ -23,8 +23,8 @@
 //! defect, an over-large block is merely expensive. [`blocking_misses`] measures the first
 //! against the corpus's own equivalent pairs, and a test pins it at zero.
 
-use crate::select::Context;
-use crate::view::{Row, load_rows};
+use req::select::Context;
+use req::view::{Row, load_rows};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -116,7 +116,7 @@ pub fn naive_pairs(claims: usize) -> usize {
 
 /// Equivalent pairs in a corpus that blocking would **never propose** — the silent-duplicate
 /// direction, and the number this module exists to keep at zero.
-pub fn blocking_misses(corpus: &crate::model::Corpus, min_shared: usize) -> Vec<String> {
+pub fn blocking_misses(corpus: &req::model::Corpus, min_shared: usize) -> Vec<String> {
     let mut misses = Vec::new();
     for pair in &corpus.equivalent {
         let shared = shared_terms(&pair.a, &pair.b);
@@ -290,7 +290,7 @@ fn claims_provider(provider_cmd: Option<&str>) -> Box<dyn Provider> {
     }
 }
 
-/// `req propose [--min-shared N] [--max-pairs N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [--pairs] [key=value ...]`
+/// `req-tier2 [--min-shared N] [--max-pairs N] [--gold <file>] [--provider-cmd <cmd>] [--repeats N] [--min-confidence N] [--pairs] [key=value ...]`
 ///
 /// Exit: **0** every candidate adjudicated, **3** anything unadjudicated *or deferred* (no
 /// provider, a provider that declined, or a cap that stopped short), **2** usage. Deferred is its
@@ -394,7 +394,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         }
         if arg == "--min-shared" {
             let Some(value) = args.get(index) else {
-                eprintln!("usage: req propose [--min-shared N] [key=value ...]");
+                eprintln!("usage: req-tier2 [--min-shared N] [key=value ...]");
                 return 2;
             };
             index += 1;
@@ -412,7 +412,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                 context.insert(key.to_string(), value.to_string());
             }
             _ => {
-                eprintln!("usage: req propose [--min-shared N] [key=value ...]");
+                eprintln!("usage: req-tier2 [--min-shared N] [key=value ...]");
                 return 2;
             }
         }
@@ -427,7 +427,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     };
     let applying: Vec<Row> = rows
         .iter()
-        .filter(|r| r.applies == crate::select::Applies::Yes)
+        .filter(|r| r.applies == req::select::Applies::Yes)
         .cloned()
         .collect();
     // The claims pass is the survey ADR 0011 decides on, so it is where `--provider-cmd` belongs

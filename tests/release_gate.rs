@@ -244,8 +244,9 @@ mod cli {
     }
 
     /// The dogfood corpus, whose selector vocabulary the oracle read: `deployment_mode ==
-    /// air_gapped`, `runs >= 20`, `corpus_set == parity` / `parity_and_adversarial`, `set ==
-    /// direction_gold_structural`, `field == value`.
+    /// air_gapped`, `corpus_set == parity` / `parity_and_adversarial`, `set ==
+    /// direction_gold_structural`, `field == value`. (It carried `runs >= 20` until REQ-0011 was
+    /// retired, ADR 0021; the `Ge` rows below therefore run on a fixture.)
     /// The gate run over this repository's own corpus, with `--root` explicit rather than relying
     /// on the cwd walk-up. `pub` so the dogfood tests at the crate root — which assert the same
     /// thing about `.req/variants` — do not re-derive the binary and the invocation.
@@ -480,14 +481,14 @@ relations: []
 
     /// The declared value, on the corpus that declares it: the fix refuses typo'd values, not the
     /// vocabulary the corpus actually has. The **policy** is what this pins. The run as a whole is
-    /// UNVERIFIABLE because five scoped claims are left undecided (ADR 0015), which is why the
+    /// UNVERIFIABLE because four scoped claims are left undecided (ADR 0015), which is why the
     /// exit code is 3 while `selectors_confirmed` is PASS.
     #[test]
     fn the_value_the_corpus_declares_is_confirmed() {
         let out = dogfood(&["field=value"]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
-            out.headline().contains("17 applying claim(s), 5 undecided"),
+            out.headline().contains("17 applying claim(s), 4 undecided"),
             "{}",
             out.headline()
         );
@@ -510,7 +511,7 @@ relations: []
         let out = dogfood(&["deployment_mode=air_gapped"]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
-            out.headline().contains("17 applying claim(s), 5 undecided"),
+            out.headline().contains("17 applying claim(s), 4 undecided"),
             "{}",
             out.headline()
         );
@@ -524,7 +525,7 @@ relations: []
     // ---- the invocation rows: nothing selected, and a key nothing mentions ---------------------
 
     /// A variant in which nothing applies verified nothing, so it is UNVERIFIABLE — never PASS.
-    /// The dogfood corpus cannot reach this: 16 of its 22 claims carry no predicate and so always
+    /// The dogfood corpus cannot reach this: 16 of its 21 claims carry no predicate and so always
     /// apply, which is exactly why the guard needs a fixture.
     #[test]
     fn a_variant_that_selects_no_claim_is_unverifiable_not_a_pass() {
@@ -683,10 +684,10 @@ relations: []
     #[test]
     fn a_key_no_applicability_predicate_mentions_is_refused() {
         let out = dogfood(&["nonsense=whatever"]);
-        // The oracle: 16 applying, 6 undecided — one claim MORE undecided than the 5 a run that
+        // The oracle: 16 applying, 5 undecided — one claim MORE undecided than the 4 a run that
         // supplies the corpus's declared value leaves, because this entry decided nothing.
         assert!(
-            out.headline().contains("16 applying claim(s), 6 undecided"),
+            out.headline().contains("16 applying claim(s), 5 undecided"),
             "{}",
             out.headline()
         );
@@ -714,7 +715,7 @@ relations: []
         let out = dogfood(&["field=val"]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
-            out.headline().contains("16 applying claim(s), 5 undecided"),
+            out.headline().contains("16 applying claim(s), 4 undecided"),
             "the silently narrower selection: {}",
             out.headline()
         );
@@ -726,7 +727,7 @@ relations: []
             "the declared alternative must be named: {block}"
         );
         // Nothing else is wrong with the *policies*: this refusal is one reason for the 3, and
-        // the five undecided claims ADR 0015 counts are the other.
+        // the four undecided claims ADR 0015 counts are the other.
         for name in [
             "addresses_current",
             "relations_resolve",
@@ -748,7 +749,7 @@ relations: []
         let out = dogfood(&["deployment_mode=airgapped"]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
-            out.headline().contains("16 applying claim(s), 5 undecided"),
+            out.headline().contains("16 applying claim(s), 4 undecided"),
             "{}",
             out.headline()
         );
@@ -770,12 +771,22 @@ relations: []
     }
 
     /// The `Ge` exemption is not optional: `runs=100` matches no predicate literally, yet
-    /// `runs >= 20` decides it Yes. It already exits 3 — for the unrelated reason asserted below —
-    /// so a bare `assert_eq!(code, 3)` would pass with the exemption missing entirely.
+    /// `runs >= 20` decides it Yes. On a fixture since REQ-0011 (the dogfood corpus's only `Ge`
+    /// predicate) was retired: without the exemption the entry would be refused as an unconfirmed
+    /// value and the run would not be green, so the exit code alone pins it.
     #[test]
     fn a_ge_value_is_confirmed_by_comparison_and_never_flagged() {
-        let out = dogfood(&["runs=100"]);
-        assert_eq!(out.code, 3, "{}", out.text);
+        let fixture = Fixture::new("ge-compared");
+        fixture.claim("REQ-9001", &[]);
+        fixture.claim("REQ-9002", &["runs >= 20"]);
+        fixture.fill();
+        let out = fixture.gate(&["runs=100"]);
+        assert_eq!(out.code, 0, "{}", out.text);
+        assert!(
+            out.headline().contains("2 applying claim(s), 0 undecided"),
+            "100 decides `runs >= 20` Yes: {}",
+            out.headline()
+        );
         assert!(
             out.policy("selectors_confirmed").starts_with("[PASS]"),
             "100 is decided by comparison, not by enumeration: {}",
@@ -786,29 +797,30 @@ relations: []
             "no finding in this policy may name the `runs` key: {}",
             out.policy("selectors_confirmed")
         );
-        // One reason this run is UNVERIFIABLE, and it predates this change; since ADR 0015 the
-        // undecided count is another.
-        let decided = out.policy("dependencies_decided");
-        assert!(decided.starts_with("[UNVERIFIABLE]"), "{decided}");
-        assert!(
-            decided.contains("REQ-0011 -refines-> REQ-0008"),
-            "{decided}"
-        );
     }
 
     /// A non-decimal value for a `Ge` key is not guessed and not refused: the predicate decides
-    /// nothing, so REQ-0011 lands in the undecided count (6 here against the 5 of a decided
-    /// `runs`), while the entry itself stays confirmed — a `Ge` key enumerates no legal values to
-    /// check it against. The gate reports the undecided count rather than inventing a finding —
-    /// and since ADR 0015 that count is itself enough to keep the run UNVERIFIABLE.
+    /// nothing, so its claim lands in the undecided count, while the entry itself stays confirmed —
+    /// a `Ge` key enumerates no legal values to check it against. The gate reports the undecided
+    /// count rather than inventing a finding — and since ADR 0015 that count is itself enough to
+    /// keep the run UNVERIFIABLE. (A fixture since REQ-0011 was retired, ADR 0021.)
     #[test]
     fn a_non_numeric_ge_value_is_confirmed_and_surfaces_as_undecided() {
-        let out = dogfood(&["runs=abc"]);
+        let fixture = Fixture::new("ge-non-numeric");
+        fixture.claim("REQ-9001", &[]);
+        fixture.claim("REQ-9002", &["runs >= 20"]);
+        fixture.fill();
+        let out = fixture.gate(&["runs=abc"]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
-            out.headline().contains("16 applying claim(s), 6 undecided"),
+            out.headline().contains("1 applying claim(s), 1 undecided"),
             "{}",
             out.headline()
+        );
+        assert!(
+            out.undecided().contains("REQ-9002"),
+            "the claim the entry could not decide is named: {}",
+            out.undecided()
         );
         assert!(
             out.policy("selectors_confirmed").starts_with("[PASS]"),
@@ -1145,7 +1157,7 @@ fn an_incomplete_context_is_not_green() {
     );
 }
 
-/// ADR 0015's falsification, run: a bare `req gate` over this repository's corpus leaves the six
+/// ADR 0015's falsification, run: a bare `req gate` over this repository's corpus leaves the five
 /// variant-scoped claims undecided, so it exits 3 and **names each one**, with the remedy stated.
 /// `every_declared_release_is_gate_green` above is the other half — a declared release decides
 /// every claim and exits 0. If a bare gate can still exit 0 while the banner counts an undecided
@@ -1155,14 +1167,12 @@ fn a_bare_gate_is_unverifiable_and_names_every_undecided_claim() {
     let out = cli::dogfood(&[]);
     assert_eq!(out.code, 3, "{}", out.text);
     assert!(
-        out.headline().contains("16 applying claim(s), 6 undecided"),
+        out.headline().contains("16 applying claim(s), 5 undecided"),
         "{}",
         out.headline()
     );
     let named = out.undecided();
-    for id in [
-        "REQ-0008", "REQ-0009", "REQ-0010", "REQ-0011", "REQ-0012", "REQ-0018",
-    ] {
+    for id in ["REQ-0008", "REQ-0009", "REQ-0010", "REQ-0012", "REQ-0018"] {
         assert!(
             named.contains(id),
             "the undecided line must name {id}, which the invocation did not examine: {named}"

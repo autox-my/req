@@ -15,7 +15,7 @@ temporal: null
 quantifier: null
 unstructured: false
 tests:
-  - "req::funnel::a_provider_that_answers_is_recorded_with_its_verdict"
+  - "req::evidence::a_provider_answer_is_an_unratified_proposal_never_an_edit"
 evidence: machine
 canonical:
   rules_v: 6
@@ -29,7 +29,12 @@ rationale:
   rejected_alternatives:
     - LLM driven merge with deterministic fallback
     - no semantic layer at all (textual merge on prose)
-  assumptions: []
+  assumptions:
+    - >-
+      Scope (ADR 0021, 2026-11-03): the claim is satisfied by the core's single-pair seam, `req
+      propose <a.yml> <b.yml>`, which turns an external provider's answer into an unratified
+      proposal and never into an edit. The corpus-wide funnel is research in experiments/tier2/
+      and is not the evidence for this claim.
 relations:
   - type: refines
     to: REQ-0001

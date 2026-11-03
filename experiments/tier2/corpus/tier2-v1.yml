@@ -1,7 +1,7 @@
 # Tier-2 evaluation set v1 (design step 5).
 #
 # Three labels; every pair records the transformation that produced it, so the label is by
-# construction and this corpus is reviewed through tools/corpus/build_tier2.py and its
+# construction and this corpus is reviewed through experiments/tier2/tools/build_tier2.py and its
 # transformation table, not line by line. Equivalence transforms are exactly the ones the
 # Tier-1 rules sanction (they leave the address unchanged). Unrelated pairs are HARD NEGATIVES:
 # same shape, different meaning, enough shared terms for blocking to propose them, so they
