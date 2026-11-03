@@ -683,8 +683,8 @@ relations: []
     #[test]
     fn a_key_no_applicability_predicate_mentions_is_refused() {
         let out = dogfood(&["nonsense=whatever"]);
-        // The oracle: 16 applying, 6 undecided — one claim MORE undecided than the 5 the
-        // context-free run has, because the entry decided nothing.
+        // The oracle: 16 applying, 6 undecided — one claim MORE undecided than the 5 a run that
+        // supplies the corpus's declared value leaves, because this entry decided nothing.
         assert!(
             out.headline().contains("16 applying claim(s), 6 undecided"),
             "{}",
