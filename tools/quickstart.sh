@@ -3,7 +3,7 @@
 #
 # What this proves (all of it observed, none of it asserted from memory):
 #   * a fresh project reaches a gated, rendered corpus from a `spec.md` with the
-#     commands docs/agentic.md prints, in a scratch directory, with no network;
+#     commands docs/adopting.md ("For an agent") prints, in a scratch directory, with no network;
 #   * the extractor drafts only what the canonicalizer leaves unstructured, skips a
 #     structured `shall` with its reason, and writes nothing on a dry run;
 #   * `applicability` is authored before `canon --fill` (identity carries it since
@@ -18,7 +18,7 @@
 #
 # What it deliberately does NOT do: install req. The networked
 # `cargo install --git … --rev … --locked` is the *adopter's* step and belongs in
-# prose (docs/agentic.md §1, docs/adopting.md), not in this script. It also does not
+# prose (docs/adopting.md, "Install req"), not in this script. It also does not
 # sign a Baseline (that is a human act with a key req never sees), does not write a
 # decision log, and does not run the repository gate.
 #
