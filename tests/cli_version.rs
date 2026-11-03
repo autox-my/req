@@ -965,6 +965,8 @@ const MOVED_CONTRACTS: &[(&str, &[&str])] = &[
             "tests_hash",
             "prospective",
             "signer-asserted",
+            "`valid_from` is recorded but not enforced",
+            "fails closed on every envelope",
         ],
     ),
     ("audit", &["nothing is ratified"]),

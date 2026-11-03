@@ -366,8 +366,9 @@ differs from this build's is UNVERIFIABLE, not judged: an older one is re-signed
 is verified with a build that writes it. Trust is read from `baselines/trust.yml` (ADR 0010),
 by calendar date: a key expired at the signing time, or revoked at or before it, is FAIL; one
 revoked after it still verifies (revocation is prospective). The signing time is
-signer-asserted, so revocation bounds newly asserted times only; a newer envelope's dated
-revocation stays UNVERIFIABLE. The signature check is a process boundary to a pinned verifier.
+signer-asserted, so revocation bounds newly asserted times only, and `valid_from` is recorded
+but not enforced. A newer envelope's dated revocation stays UNVERIFIABLE, while an anchor whose
+own `revoked_at` cannot be read fails closed on every envelope. The signature check is a process boundary to a pinned verifier.
 
 exit: 0 emitted or VERIFIED, 1 FAIL (drift, a signature or authority that does not verify),
 3 UNVERIFIABLE (no verifier, an unknown key, no signature, a `rules_v` mismatch, or an absent
