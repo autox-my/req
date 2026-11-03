@@ -12,7 +12,7 @@ be built on it — a false merge silently deletes a requirement, which is the on
 this design exists to prevent (see docs/adr/0004-model-proposes-human-disposes.md).
 
 (The "address" and "identity" below mean the **meaning fingerprint**, not the claim's identity, which
-is its `claim_id`: docs/adr/0020-the-address-is-a-meaning-fingerprint.md, proposed.)
+is its `claim_id`: docs/adr/0020-the-address-is-a-meaning-fingerprint.md, accepted.)
 
 ## 2. What enters the address and what does not
 
