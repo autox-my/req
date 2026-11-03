@@ -1,0 +1,35 @@
+schema: req.claim/1
+claim_id: REQ-0022
+statement: >-
+  The req tool shall serialize each relation in exactly one claim file.
+modality: SHALL
+subject: REQ_TOOL
+attribute: null
+operator: EQ
+value: "1"
+unit: none
+conditions: []
+applicability: []
+exception: null
+temporal: null
+quantifier: null
+unstructured: false
+tests:
+  - "req::view::a_relation_is_serialized_exactly_once_on_its_origin_claim"
+evidence: machine
+canonical:
+  rules_v: 6
+  subject_registry: 1
+  form: |-
+    {"action":"serialize each relation in","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"EQ","qualifier":"claim file","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":"1"}
+address: 01e9dc781ad7e2e762d9d7d5c0358e28799bf506b1d7e5af397af55bf25bf201
+rationale:
+  source: docs/claim-format.md
+  date: 2026-11-03
+  rejected_alternatives:
+    - storing each edge on both endpoints (two places to drift)
+  assumptions:
+    - split out of REQ-0020 when rules v6's coverage invariant made the "exactly once" clause unparseable beside the outgoing-side clause; claim-format requires one obligation per claim
+relations:
+  - type: refines
+    to: REQ-0020

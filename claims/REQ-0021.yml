@@ -1,10 +1,10 @@
 schema: req.claim/1
 claim_id: REQ-0021
 statement: >-
-  The req tool's semantic layer shall never rewrite a claim or merge two claims
+  The req tool shall never rewrite a claim or merge two claims
   automatically.
 modality: SHALL-NOT
-subject: the req tool semantic layer
+subject: REQ_TOOL
 attribute: semantic_layer_write
 operator: EQ
 value: absent
@@ -22,8 +22,8 @@ canonical:
   rules_v: 6
   subject_registry: 1
   form: |-
-    {"action":"rewrite a claim or merge","applicability":[],"conditions":[],"exception":null,"modality":"SHALL-NOT","operator":"none","qualifier":"claims automatically","raw":"","subject":"the req tool semantic layer","temporal":null,"unstructured":false,"unit":null,"value":"2"}
-address: 47dafd1eaad187c4ec72704bf4559024bbe20b69a457c0fbe745be1f9eede930
+    {"action":"rewrite a claim or merge","applicability":[],"conditions":[],"exception":null,"modality":"SHALL-NOT","operator":"none","qualifier":"claims automatically","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":"2"}
+address: fc5e269b978ec10df17be91824ef807e0803a8f04ca9c216a21d9e942f166783
 rationale:
   source: docs/adr/0004-model-proposes-human-disposes.md
   date: 2026-10-07

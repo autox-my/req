@@ -1,8 +1,8 @@
-<!-- req projection: generator=req render | rules_v=6 | selection=none | claims=15 | identity=sha256:2e285067c1290f3bcf422c90c6dcdc78435fa9db8af0aac76ccc5d8480449271 -->
+<!-- req projection: generator=req render | rules_v=6 | selection=none | claims=16 | identity=sha256:51da68b947f4820a22c00b6eee69ff5c6656e4d0491f3e50261c8ee1f225c9f9 -->
 # Selection: (no context: nothing is decided by the caller)
-applies 15, undecided 6, outside the selection 0 (an undecided claim is never reported as excluded)
+applies 16, undecided 6, outside the selection 0 (an undecided claim is never reported as excluded)
 
-## Applies (15)
+## Applies (16)
 - REQ-0001  f559f5a905e4  SHALL  The req tool shall treat a single claim as the unit of requirements authorship, review, and merge.
     selector: (none — applies to every variant)
 - REQ-0002  6e6ba2ec76ee  SHALL  The req tool shall record each acceptance or rejection of a change as a signed Decision carrying role, meaning, timestamp, and any dissent.
@@ -11,7 +11,7 @@ applies 15, undecided 6, outside the selection 0 (an undecided claim is never re
 - REQ-0003  57364f54a906  SHALL  The req tool shall express permanent product variation as a selection governed by applicability predicates over one claim set.
     selector: (none — applies to every variant)
     -> derives-from REQ-0001
-- REQ-0004  f545c40177ba  SHALL  The req tool's semantic layer shall emit proposals for reviewer ratification.
+- REQ-0004  ddc6992dd05b  SHALL  The req tool shall emit proposals for reviewer ratification.
     selector: (none — applies to every variant)
     -> refines REQ-0001
 - REQ-0005  6bbc0295880a  SHALL  The req tool shall require human ratification before any two claims are merged.
@@ -42,12 +42,15 @@ applies 15, undecided 6, outside the selection 0 (an undecided claim is never re
 - REQ-0019  25713319754e  SHALL  The req tool shall emit a lint finding for any construct its normalization rules cannot decide rather than guessing a resolution.
     selector: (none — applies to every variant)
     -> refines REQ-0007
-- REQ-0020  1ffac8e3e4e2  UNSTRUCTURED  The req tool shall serialize each relation exactly once, on the outgoing side of its origin claim.
+- REQ-0020  b455b84714c2  SHALL  The req tool shall serialize each relation on the outgoing side of its origin claim.
     selector: (none — applies to every variant)
     -> derives-from REQ-0002
-- REQ-0021  47dafd1eaad1  SHALL-NOT  The req tool's semantic layer shall never rewrite a claim or merge two claims automatically.
+- REQ-0021  fc5e269b978e  SHALL-NOT  The req tool shall never rewrite a claim or merge two claims automatically.
     selector: (none — applies to every variant)
     -> derives-from REQ-0004
+- REQ-0022  01e9dc781ad7  SHALL  The req tool shall serialize each relation in exactly one claim file.
+    selector: (none — applies to every variant)
+    -> refines REQ-0020
 
 ## Undecided (6)
 - REQ-0008  29decbdac12b  SHALL  The benchmark harness shall report a false merge rate of exactly zero on the parity and adversarial mutation corpora.

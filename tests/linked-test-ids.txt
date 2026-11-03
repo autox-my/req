@@ -22,3 +22,4 @@ req::evidence::canonical_forms_serialize_quantities_as_exact_decimal_strings
 req::bench::tests::n005_lints_untestable_comparator
 req::view::incoming_relations_are_derived_from_the_outgoing_side
 req::evidence::no_command_rewrites_or_merges_claims_automatically
+req::view::a_relation_is_serialized_exactly_once_on_its_origin_claim
