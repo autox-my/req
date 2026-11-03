@@ -22,12 +22,20 @@ Claims sharing a canonical form are the same claim.
 _Avoid_: normalized text, canonical text
 
 **Address**:
-A claim's identity — the digest of its canonical form.
-_Avoid_: ID, key, hash (for the human label)
+The digest of a claim's canonical form; the stored spelling of its **Meaning fingerprint**. It is
+not the claim's identity — that is the **Claim ID**.
+_Avoid_: identity, ID, key, hash (for the human label)
+
+**Meaning fingerprint**:
+What a claim's meaning hashes to under a stated rules version. It answers "has this meaning moved
+since it was signed?" and "do these two claims look like one?"; it names nothing and refers to
+nothing. A claim whose meaning changes keeps its Claim ID and gets a new fingerprint.
+_Avoid_: identity, ID
 
 **Claim ID**:
-The stable human-facing label, deliberately separate from the address so that continuity
-survives rewording.
+The stable identity of a claim and its human-facing label, deliberately separate from the address
+so that continuity survives rewording and changed meaning. Relations, test links and Decisions
+refer to it.
 _Avoid_: address, hash
 
 **False merge**:
