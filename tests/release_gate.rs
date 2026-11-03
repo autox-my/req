@@ -487,7 +487,7 @@ relations: []
         let out = dogfood(&["field=value"]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
-            out.headline().contains("16 applying claim(s), 5 undecided"),
+            out.headline().contains("17 applying claim(s), 5 undecided"),
             "{}",
             out.headline()
         );
@@ -510,7 +510,7 @@ relations: []
         let out = dogfood(&["deployment_mode=air_gapped"]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
-            out.headline().contains("16 applying claim(s), 5 undecided"),
+            out.headline().contains("17 applying claim(s), 5 undecided"),
             "{}",
             out.headline()
         );
@@ -524,7 +524,7 @@ relations: []
     // ---- the invocation rows: nothing selected, and a key nothing mentions ---------------------
 
     /// A variant in which nothing applies verified nothing, so it is UNVERIFIABLE — never PASS.
-    /// The dogfood corpus cannot reach this: 15 of its 21 claims carry no predicate and so always
+    /// The dogfood corpus cannot reach this: 16 of its 22 claims carry no predicate and so always
     /// apply, which is exactly why the guard needs a fixture.
     #[test]
     fn a_variant_that_selects_no_claim_is_unverifiable_not_a_pass() {
@@ -683,10 +683,10 @@ relations: []
     #[test]
     fn a_key_no_applicability_predicate_mentions_is_refused() {
         let out = dogfood(&["nonsense=whatever"]);
-        // The oracle: 15 applying, 6 undecided — one claim MORE undecided than the 5 the
+        // The oracle: 16 applying, 6 undecided — one claim MORE undecided than the 5 the
         // context-free run has, because the entry decided nothing.
         assert!(
-            out.headline().contains("15 applying claim(s), 6 undecided"),
+            out.headline().contains("16 applying claim(s), 6 undecided"),
             "{}",
             out.headline()
         );
@@ -714,7 +714,7 @@ relations: []
         let out = dogfood(&["field=val"]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
-            out.headline().contains("15 applying claim(s), 5 undecided"),
+            out.headline().contains("16 applying claim(s), 5 undecided"),
             "the silently narrower selection: {}",
             out.headline()
         );
@@ -748,7 +748,7 @@ relations: []
         let out = dogfood(&["deployment_mode=airgapped"]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
-            out.headline().contains("15 applying claim(s), 5 undecided"),
+            out.headline().contains("16 applying claim(s), 5 undecided"),
             "{}",
             out.headline()
         );
@@ -806,7 +806,7 @@ relations: []
         let out = dogfood(&["runs=abc"]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
-            out.headline().contains("15 applying claim(s), 6 undecided"),
+            out.headline().contains("16 applying claim(s), 6 undecided"),
             "{}",
             out.headline()
         );
@@ -1118,7 +1118,7 @@ fn every_declared_release_is_gate_green() {
 #[test]
 fn an_incomplete_context_is_not_green() {
     // `set` alone leaves REQ-0008 undecided and REQ-0009 refines REQ-0008: measured, exit 3 with
-    // `16 applying claim(s), 5 undecided (an undecided claim is never treated as absent)`.
+    // `17 applying claim(s), 5 undecided (an undecided claim is never treated as absent)`.
     let out = cli::dogfood(&["set=direction_gold_structural"]);
     // Exactly 3, not merely non-zero: 1 is FAIL (a defect found) and 2 is a usage error, and neither is
     // the answer "I could not decide what this release contains". A regression that collapsed
@@ -1155,7 +1155,7 @@ fn a_bare_gate_is_unverifiable_and_names_every_undecided_claim() {
     let out = cli::dogfood(&[]);
     assert_eq!(out.code, 3, "{}", out.text);
     assert!(
-        out.headline().contains("15 applying claim(s), 6 undecided"),
+        out.headline().contains("16 applying claim(s), 6 undecided"),
         "{}",
         out.headline()
     );
