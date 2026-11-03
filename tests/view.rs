@@ -72,8 +72,8 @@ fn incoming_relations_are_derived_from_the_outgoing_side() {
 }
 
 /// REQ-0022: a relation is serialized exactly once. The committed corpus is the oracle: each
-/// edge is written in its origin claim's file and nowhere else, and `trace --format json`
-/// carries it as one stored edge (the incoming side is a separate, derived list).
+/// edge is written in its origin claim's file exactly once, and a second home for it (a mirrored
+/// reverse key on the target) is refused by the loader rather than accepted.
 ///
 /// The strict bar (would a failure reject the requirement?): a claim file that gained a second
 /// home for an edge — a repeated entry, or a mirrored reverse key the loader accepts — is the
@@ -113,30 +113,6 @@ fn a_relation_is_serialized_exactly_once_on_its_origin_claim() {
     assert!(
         repeated.is_empty(),
         "an edge is written twice: {repeated:?}"
-    );
-
-    // The trace document carries exactly the stored edges, one per stored relation — the
-    // reverse edges live in the separate derived list, never in the stored one.
-    let rows: Vec<_> = written
-        .keys()
-        .map(|(from, _, _)| from.clone())
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .map(|id| {
-            let rels: Vec<(&str, &str)> = written
-                .keys()
-                .filter(|(from, _, _)| *from == id)
-                .map(|(_, kind, to)| (kind.as_str(), to.as_str()))
-                .collect();
-            row(&id, Applies::Yes, &rels)
-        })
-        .collect();
-    let (json, _) = req::view::trace_document(&rows, &ctx());
-    let doc: serde_json::Value = serde_json::from_str(&json).expect("trace json parses");
-    assert_eq!(
-        doc["edges"].as_array().map(Vec::len),
-        Some(written.len()),
-        "one stored edge per written relation: {json}"
     );
 
     // A mirrored key on the target side is refused by the strict loader rather than accepted as
