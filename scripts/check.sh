@@ -569,7 +569,7 @@ else
   skip "python3 or tools/corpus/build_external.py missing: cannot self-check the corpus generator"
 fi
 
-# The five-minute path (`docs/agentic.md`), rehearsed for real against the binary this run just
+# The five-minute path (`docs/adopting.md`, "For an agent"), rehearsed for real against the binary this run just
 # built. `tools/quickstart.sh` does in a `mktemp -d` what the page tells an adopter to do — `req
 # init`, the extractor's dry run and `--write`, an authored applicability, `canon --fill` then
 # `--verify`, the declared variant's `gate`, `render --out` then `--check` — offline and with no

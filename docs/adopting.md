@@ -3,7 +3,9 @@
 req is a requirements engine where a **claim** — one obligation, one file — is the unit, and a
 claim's identity is a content address over its canonical meaning. This page is the whole
 adoption path: install it, start a corpus, learn the two traps in the authoring loop, and gate
-every variant in CI.
+every variant in CI. An agent follows the same path: read it once, then use **For an agent** (near the end)
+as the checklist — the five steps, what the agent may not do, what it can read, and the honest limit
+of a test link. A command's exit codes live on its own `req <command> --help` page, not here.
 
 The commands below were run in a scratch corpus: the install form at `2afbd68`, and `req init` with
 a build of the revision that introduced it.
@@ -31,6 +33,14 @@ Three things make it work, and each one is a failure without it:
 | `ssh://git@host/path.git`, not the scp-style `git@host:path` | cargo rejects the scp form with `relative URL without a base` |
 | `CARGO_NET_GIT_FETCH_WITH_CLI=true` | libgit2 ignores `GIT_SSH_COMMAND` and insists on `known_hosts`; with the git CLI fetcher, the ssh options above apply |
 | `--rev <PIN> --locked` | without `--rev` there is no provenance to name; `--locked` installs the committed `Cargo.lock`, which is part of the identity path |
+
+After the install, put `$HOME/.local/bin` on `PATH` (a fresh shell does not have it, and without it the next
+step's `req init` is `command not found`) and run `req --version` (exit 0). Two of its lines decide what
+the binary is: **`rules_v`** makes a stored address current — an address is derived under a rules
+version, so a verdict is not reproducible, and a Baseline not comparable, under another one — and
+**`built from`**, the commit the binary came from: a bare SHA means *clean*, `-dirty` means tracked files
+were modified, so the binary is not the commit it names. This is the **only networked step**; everything
+below runs offline against the corpus (REQ-0012).
 
 **Air-gapped:** clone req once at the rev you want and install from the clone —
 `cargo install --path . --locked`. req's core has no network dependency and providers are a local
@@ -197,7 +207,10 @@ including the tri-state — and `req <command> --help` works before a corpus exi
    `form stored but no address` (its remedy is `--fill`, not a retype) — 3 a re-canonicalization
    candidate (a claim with no `form` field at all, or one filled under other rules) — re-fill it, do
    not retype it.
-4. **An empty `claims/` is UNVERIFIABLE (exit 3)** — for both `canon --verify` and `gate`. Zero
+4. **A claim's `applicability:` list is part of its identity** (since rules v5): author it *before*
+   `--fill`, and re-fill when you change it — the loop in one sentence: authoring moves the statement,
+   `--fill` moves `canonical.form` and the address, `--verify` is what you gate on.
+5. **An empty `claims/` is UNVERIFIABLE (exit 3)** — for both `canon --verify` and `gate`. Zero
    claims cannot be told from every claim having vanished, so never "clean up" a corpus down to
    nothing; delete a requirement by deleting its claim, deliberately.
 
@@ -672,33 +685,14 @@ a line that is empty after stripping the comment is skipped. Two rules matter:
   readability; `[ -r ]` alone also passes for a readable *directory*, whose redirection still
   fails. While you declare no variants, the file is valid with comments only.
 
-Two parts of the snippet are not verified on a runner: whether the job summary renders above the
-log, and the artifact upload — the JSON documents and their redirect are plain shell over
-commands run locally against this exact text, but `actions/upload-artifact` and `if: always()`
-are the runner's behaviour, not req's.
-The JSON step was run locally too, against every shape it has to survive: a fresh `req init`
-corpus with **no** `.req/variants` (the three views — `req.render/1`, `req.trace/1`, `req.audit/1`
-— no gate document, because that is the gate step's red, and `audit` exiting **3** recorded on the
-log, the step exiting **0**); a comment-only file (`gate.json`, the default variant); one declared
-release (`gate-1.json` carrying `"verdict": "pass"` and the release's `selection`); an unreadable
-variants file and a file whose only line is option-shaped (`--help`; views kept, no gate document,
-named on the log); and a corpus that cannot be read,
-where every command exits **3** with `[UNVERIFIABLE]`, the step writes **no documents at all** —
-and that makes it **red**: the step knows how many documents it expects, and `if-no-files-found`
-would only notice a completely empty directory, so one lost variant document would ship silently.
-The gate decides the *verdict*; the document set decides whether the artifact is complete.
-`tests/init.rs` executes this exact step against a stub `req`, so these behaviours are checked
-rather than described.
-The shell logic was run locally against this exact text — an absent, unreadable, or non-regular
-`.req/variants` → exit 1 (`missing, unreadable, or not a regular file .req/variants`); a comment-only file → one row, the bare default variant, and exit 0 **on a
-corpus with no selector** (a fresh `req init` corpus; on a corpus with a selector the bare run is
-UNVERIFIABLE, which is the right answer and not a mistake in the step); one declared variant → one
-row and exit 0, with **no** bare row beside it; a release appended without a trailing newline → still
-one row per release; a whitespace-only line → skipped, never a bare run; a variant the corpus does
-not describe → a row reading `3 | UNVERIFIABLE` and exit 3; no summary variable → no output and
-exit 0.
-Confirm the table renders on your first pull request — if it does not, the step is still correct, it
-just loses the summary.
+Two parts of the snippet are not verified on a runner: whether the job summary renders above the log, and
+the artifact upload — `actions/upload-artifact` and `if: always()` are the runner's behaviour, not req's.
+Everything else is plain shell, and `tests/init.rs` **executes this exact step** against a stub `req` over
+every shape it has to survive (no, comment-only, one-release, unreadable and option-shaped `.req/variants`;
+a release appended without a trailing newline; an unreadable corpus, where every command exits **3** and the
+step writes no documents and goes **red** because it knows how many it expects) — so those behaviours are
+checked rather than described. Confirm the table renders on your first pull request; if it does not, the step
+is still correct, it just loses the summary.
 
 ## The coverage rule
 
@@ -725,6 +719,80 @@ first (nextest, one profile, one report) and pass `--test-report` on every line,
 UNVERIFIABLE for lack of evidence. Do not
 oversell it: a local hook is a reminder, not a record, and nothing outside your machine can see
 whether it ran.
+
+## For an agent
+
+The same path for an agent and the human with it; the unit is the **claim** — one obligation, one file.
+`tools/quickstart.sh` rehearses it offline in a scratch directory: it prints `QUICKSTART <n>s` (1s on the
+last measured run, 0-2s across runs) and fails at n >= 300, so "under five minutes" is an instrument, not
+prose. The script does not install req — the install is the adopter's step and is not in the measured
+window. Each step names its deciding line; the explanation is in the section it points at.
+
+1. **Install at a pinned rev** (*Install req*). Exit **0**, `req --version` printing `rules_v` and
+   `built from`; `<PIN>` is read with `git rev-parse --short origin/main`, never copied out of a document.
+2. **Start the corpus** (*Start a corpus*): `req init`, exit **0**, first line `Wrote a working, verified
+   corpus in the current directory:`, exactly three files. Confirm with `req canon --verify` → exit **0**,
+   `rules_v 6; verified 1, candidates 0, mismatches 0`. Its refusals are on `req init --help`.
+3. **Bring your own spec** (*Adopting from documents you already have*): copy `tools/adopt.py` out of the
+   req checkout at the rev you installed and run it from the corpus root. A **dry run** is the default and
+   prints, exit **0**:
+
+   ```text
+   draft  REQ-0002  claims/REQ-0002.yml  docs/capabilities.md#L<n>
+   skip   docs/capabilities.md#L<m>  parses as a structured claim — only its author can supply the slots (author it, or re-word it as prose)
+   dry run: nothing written — pass --write to write them
+   ```
+
+   `--write` writes the drafts and names them (`wrote: <n> claim(s) — claims/REQ-0002.yml, …`).
+4. **Ratify: author, fill, verify** (*The authoring loop and its traps*): `req canon` reports and never
+   gates — its last line is `claims: <n>; discrepancy flags: <n>`; `req canon --fill` prints
+   `rules_v 6; filled <n>, already current <n>, refused <n> (a refusal is UNVERIFIABLE, never a pass)` and
+   refuses a contradicted claim (`REFUSED`, exit **3**, nothing written); `req canon --verify` is the check
+   that gates.
+5. **Gate it** (*Link each claim to its proving test*, *CI*, *The coverage rule*): declare each release in
+   `.req/variants`, run the suite for the report, then one `req gate --test-report
+   target/nextest/ci/junit.xml <key=value ...>` per line. With every applying claim linked to a passing
+   test the first line is `# Release gate: <n> applying claim(s), 0 undecided (an undecided claim is never
+   treated as absent)` and the last is `verdict: PASS — every policy settled in the affirmative, and every
+   claim was decided`. A bare `req gate` on a corpus carrying a selector exits **3** and ends `verdict:
+   UNVERIFIABLE — nothing is wrong, but something cannot be confirmed`; that is correct since ADR 0015, not
+   a bug. Commit the document as a projection (*The document your project can commit*): `req render
+   --out docs/spec.md`, and `req render --check docs/spec.md` is the alarm.
+
+### What the agent may not do
+
+Paste the block in `examples/agents-snippet.md` into your project's own `AGENTS.md` — it is this list, cut
+for an adopter's agent. The four prohibitions, and why each one matters:
+
+- **Never hand-write `address` or `canonical.form`.** Both are derived: `req canon --fill` writes them into an existing claim, and `req init` derives the starter claim through that same path. A hand-written digest is a critical finding, and `req canon --verify` is what detects it.
+- **Never edit a committed projection.** Regenerate it with `req render --out`; `req render --check` is what proves it current. An edit moves bytes the corpus did not produce, and `--check` reports it.
+- **Never treat `req canon`'s exit 0 as a pass.** It reports divergences and always exits 0; the check that gates is `req canon --verify`.
+- **Never auto-merge.** A change direction is classified for a human to ratify, two addresses that differ are different requirements, and ratification is the human's act (ADR 0004).
+
+### What it can read
+
+`--format json` on `render`, `trace`, `gate` and `audit` prints the same answer as a document on stdout —
+`req.render/1`, `req.trace/1`, `req.gate/1`, `req.audit/1` — with the exit code identical to the text form.
+It renders the verdict, it does not add one. The CI Action writes them to `req-views/` (see *CI*), with
+**one gate document per declared release**; a `req.gate/1` document carries **six** `policies` and a
+top-level `process_evidenced` array, so a consumer that reads only the machine count would overstate what
+was proven. Read the artifact, not the log; the gate step remains what decides the build.
+
+The exit contract is on `req --help` and each command's `exit:` line: an agent consumes the exit code and
+the named line, not the prose. `req render --check <path>` is the drift alarm — 0 current, 1 stale or
+hand-edited, 3 cannot judge; treat 3 as not current, and never as a pass.
+
+### The honest limit
+
+`req gate --test-report` says **which claims have no passing test** — named per claim, exit 3, never folded
+into a pass. It does not say that a linked test *proves* the claim: a link is a claim about evidence,
+attested in the signed Baseline, and reviewed like a rationale. A `process` declaration is evidence of a
+different kind: the gate can check that it is consistent and attested, never that the process check was
+run — so it is reported as declared, not as proven. A wrong link is worse than no link, because it
+manufactures confidence; `req audit`'s coverage is not test coverage either. And the report is an input,
+not a verdict — an absent, unparsable or empty one is UNVERIFIABLE, never "no failures found". One gap is
+named rather than hidden: nextest does not run doctests, so a future `#[doc]` example needs its own gate
+step.
 
 ## Reporting a bug in req
 
