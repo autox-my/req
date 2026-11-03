@@ -841,3 +841,160 @@ fn every_verb_named_in_usage_has_a_page() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// M2-3: the help pages are the command reference
+// ---------------------------------------------------------------------------
+//
+// `AGENTS.md` used to hold a second copy of every command's contract, and each page's footer
+// pointed into it. The contract now lives on the page, where the code and these tests are, and
+// the footer points at the one document that is true after the cut. A page that loses a
+// contract below has lost its only home for it, so each phrase is a pin on a rule, not on
+// wording for its own sake.
+
+/// A page with its line wrapping removed, so a pinned phrase may straddle the page's own line
+/// breaks without the test depending on where they fall.
+fn squashed(page: &str) -> String {
+    page.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[test]
+fn every_page_ends_by_pointing_at_the_adopting_page_and_none_points_into_agents_md() {
+    // The old footer sent a reader into `AGENTS.md` §Commands, the copy that drifts. The new one
+    // names the loop's home only; the command reference is the page the reader is already on.
+    let fx = NoCorpus::new("req-page-footer");
+    for command in ALL_COMMANDS {
+        let page = help_page(fx.path(), command);
+        assert_eq!(
+            page.trim_end().lines().last(),
+            Some("`docs/adopting.md` for the loop."),
+            "`req {command} --help` must end with the adopting-page pointer:\n{page}"
+        );
+        assert!(
+            !page.contains("AGENTS.md"),
+            "`req {command} --help` must not point into AGENTS.md — the page is the reference:\n{page}"
+        );
+    }
+    let usage = run_at(fx.path(), &["--help"]);
+    assert!(
+        !usage.stdout.contains("AGENTS.md"),
+        "`req --help` must not point into AGENTS.md either:\n{}",
+        usage.stdout
+    );
+}
+
+#[test]
+fn the_top_level_help_carries_the_root_help_and_exit_contract_it_used_to_borrow() {
+    let fx = NoCorpus::new("req-usage-contract");
+    let usage = squashed(&run_at(fx.path(), &["--help"]).stdout);
+    for phrase in [
+        // The root: how it is chosen is already there; that it is announced once on stderr, and
+        // that no corpus is UNVERIFIABLE rather than an empty answer, was only in AGENTS.md.
+        "printed once to stderr",
+        "[UNVERIFIABLE] and exit 3",
+        // The help contract: wherever it appears, before the root, and what stays a usage error.
+        "A help flag wins wherever it appears",
+        "answered before any root is resolved",
+        "an unknown subcommand and an unknown flag are exit 2",
+        // The exit contract common to every command.
+        "tri-state",
+        "3 UNVERIFIABLE",
+    ] {
+        assert!(
+            usage.contains(phrase),
+            "`req --help` must carry {phrase:?}:\n{usage}"
+        );
+    }
+}
+
+/// Each command's page, and the contract phrases that moved onto it from `AGENTS.md`.
+const MOVED_CONTRACTS: &[(&str, &[&str])] = &[
+    (
+        "bench",
+        &[
+            "append-only",
+            "dangerous confusions = 0",
+            "0.95",
+            "misspelled `direction:` label fails the gate",
+        ],
+    ),
+    (
+        "canon",
+        &[
+            "The annotation is only the qualitative triple",
+            "still a contradiction and a flag",
+            "unverified by design",
+            "form stored but no address",
+            "NOT JUDGED",
+            "migration candidate",
+        ],
+    ),
+    ("select", &["`key == value` and `key >= number`"]),
+    (
+        "render",
+        &[
+            "complete even when the plain command's verdict is open",
+            "first differing line",
+            "second question",
+        ],
+    ),
+    (
+        "trace",
+        &[
+            "complete even when the plain command's verdict is open",
+            "first differing line",
+            "second question",
+        ],
+    ),
+    (
+        "gate",
+        &[
+            "`selectors_confirmed`",
+            "refused on purpose",
+            "a skipped test is not a pass",
+            "linked test not in the report",
+            "evidence: process",
+            "`process_evidenced`",
+        ],
+    ),
+    (
+        "baseline",
+        &[
+            "usage error (exit 2)",
+            "chain head",
+            "tests_hash",
+            "prospective",
+            "signer-asserted",
+        ],
+    ),
+    ("audit", &["nothing is ratified"]),
+    ("decision", &["a log is history", "writes nothing"]),
+    ("init", &["prints the next steps"]),
+];
+
+#[test]
+fn each_contract_that_left_agents_md_is_on_the_page_of_the_command_it_governs() {
+    let fx = NoCorpus::new("req-moved-contracts");
+    for (command, phrases) in MOVED_CONTRACTS {
+        let page = squashed(&help_page(fx.path(), command));
+        for phrase in *phrases {
+            assert!(
+                page.contains(phrase),
+                "`req {command} --help` must carry {phrase:?} — it is that rule's only home:\n{page}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_moved_contract_table_names_only_commands_that_have_a_page() {
+    // A typo in the table would turn a pin into a vacuous loop over nothing: every name must be
+    // one the tool advertises.
+    for (command, phrases) in MOVED_CONTRACTS {
+        assert!(
+            ALL_COMMANDS.contains(command),
+            "MOVED_CONTRACTS names {command:?}, which is not a command"
+        );
+        assert!(!phrases.is_empty(), "{command} pins nothing");
+    }
+}
