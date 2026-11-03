@@ -1,4 +1,4 @@
-<!-- req projection: generator=req render | rules_v=6 | selection=none | claims=16 | identity=sha256:51da68b947f4820a22c00b6eee69ff5c6656e4d0491f3e50261c8ee1f225c9f9 -->
+<!-- req projection: generator=req render | rules_v=6 | selection=none | claims=16 | identity=sha256:0fa4dca9d893703430f7b3d0c02d855172264fce7a25c71b3b1d344638427f92 -->
 # Selection: (no context: nothing is decided by the caller)
 applies 16, undecided 5, outside the selection 0 (an undecided claim is never reported as excluded)
 
@@ -36,7 +36,7 @@ applies 16, undecided 5, outside the selection 0 (an undecided claim is never re
 - REQ-0016  04836a98d468  SHALL  The req tool shall resolve the applicability of an undecided feature as UNKNOWN rather than silently excluding it.
     selector: (none — applies to every variant)
     -> refines REQ-0003
-- REQ-0017  eeaaeb19f068  SHALL  The req tool shall store each claim file's canonical form bytes such that recomputing the versioned-tag digest over them reproduces the stored address at all times.
+- REQ-0017  f0c1c332f895  SHALL  The req tool shall derive each claim's address at load as the versioned-tag digest of its canonical form bytes, so that recomputing the digest over those bytes reproduces the address the signed Baseline attests.
     selector: (none — applies to every variant)
     -> refines REQ-0007
 - REQ-0019  25713319754e  SHALL  The req tool shall emit a lint finding for any construct its normalization rules cannot decide rather than guessing a resolution.

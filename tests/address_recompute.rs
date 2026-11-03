@@ -1,18 +1,11 @@
-//! What survives of `req canon --fill` after `req.claim/2` (ADR 0022): nothing writes a derived
-//! field any more, because none is stored. The file keeps its name for one reason, stated so it
-//! is not mistaken for an oversight:
-//!
-//! **REQ-0017 links `req::fill::fill_writes_derived_fields_and_the_address_recomputes`, and that
-//! link is attested in the signed Baseline** (`tests_hash`, ADR 0019). Renaming the test moves
-//! REQ-0017's `tests_hash`, which drifts `baselines/air-gapped.json` and needs a human to re-sign
-//! it — an owner act this unit may not perform. So the id stays, and the test under it pins what
-//! REQ-0017's property became: the address recomputes from the canonical bytes, and the address
-//! the signed manifest stores is the one the claim derives at load. REQ-0017's *statement* still
-//! names the removed mechanism; re-wording it moves its address, which is the same re-sign — a
-//! follow-up Decision, not this change.
-//!
-//! The other tests here are the rules of the old file that outlived the writer: a test link is
+//! What outlived `req canon --fill` after `req.claim/2` (ADR 0022): nothing writes a derived
+//! field any more, because none is stored. These tests keep REQ-0017's property — the address is
+//! derived at load as the versioned-tag digest of the canonical bytes, and the one the signed
+//! Baseline attests — and two rules of the old file that outlived the writer: a test link is
 //! outside identity, and the evidence digest matches an independent oracle.
+//!
+//! The file was `tests/fill.rs` until REQ-0017 was re-worded to what v2 guarantees (the CI review
+//! of M3 found its old statement false); its link and the Baseline moved with it.
 
 use req::canon::{derive, load_claims, parse_claim};
 use req::model::{Evidence, Registry, tests_digest};
@@ -31,9 +24,10 @@ fn oracle_address(canonical: &str) -> String {
         .collect()
 }
 
-/// REQ-0017's evidence, under the id the signed Baseline attests (see the module doc).
+/// REQ-0017's evidence: the address recomputes from the canonical bytes, and the signed manifest
+/// stores the address the claim derives at load.
 #[test]
-fn fill_writes_derived_fields_and_the_address_recomputes() {
+fn the_address_recomputes_from_the_canonical_bytes_and_matches_the_signed_manifest() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let claims = load_claims(&root).expect("the committed corpus loads");
     let manifest: serde_json::Value = serde_json::from_str(

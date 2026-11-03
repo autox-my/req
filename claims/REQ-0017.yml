@@ -1,21 +1,24 @@
 schema: req.claim/2
 claim_id: REQ-0017
 statement: >-
-  The req tool shall store each claim file's canonical form bytes such that
-  recomputing the versioned-tag digest over them reproduces the stored address at
-  all times.
+  The req tool shall derive each claim's address at load as the versioned-tag
+  digest of its canonical form bytes, so that recomputing the digest over those
+  bytes reproduces the address the signed Baseline attests.
 applicability: []
 tests:
-  - "req::fill::fill_writes_derived_fields_and_the_address_recomputes"
+  - "req::address_recompute::the_address_recomputes_from_the_canonical_bytes_and_matches_the_signed_manifest"
 evidence: machine
 rationale:
-  source: docs/canonical-hashing.md
-  date: 2026-10-07
+  source: docs/adr/0022-claims-are-authored-fingerprints-are-derived.md
+  date: 2026-11-04
   rejected_alternatives:
-    - recomputing canonical form from the statement on every read
+    - storing the canonical form and the address in the claim file (req.claim/1), which
+      needed --fill and --verify and a rewrite of every claim on a rules bump
   assumptions:
-    - a cached pure function is verifiable by recomputation, history is never
-      rewritten when rules change
+    - the derivation is a pure function of the statement, the applicability, the subject
+      registry and rules_v
+    - history is never rewritten when rules change; an older manifest is UNVERIFIABLE until
+      re-signed, never silently rehashed
 relations:
   - type: refines
     to: REQ-0007

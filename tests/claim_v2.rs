@@ -15,8 +15,18 @@ mod common;
 
 use std::path::{Path, PathBuf};
 
+/// The claims re-worded after the migration, and the address each now derives. The migration
+/// itself moved none; REQ-0017 was then re-worded on purpose, because its old statement (each
+/// claim file stores its canonical form and address) became false under `req.claim/2` — the CI
+/// review of M3 found it. The new value is the one the re-emitted Baseline carries.
+const RE_WORDED_AFTER_MIGRATION: &[(&str, &str)] = &[(
+    "REQ-0017",
+    "f0c1c332f895c8bf94534b133f65fa6866c8a145e83690dd8b252a79a67e784d",
+)];
+
 /// The 21 claims' `claim_id → address`, recorded at 3935d0b (rules v6) before anything was
-/// edited. A pure format change moves none of them: this list is the proof (ADR 0022).
+/// edited. A pure format change moves none of them: this list is the proof (ADR 0022), except
+/// for the ids in `RE_WORDED_AFTER_MIGRATION`.
 const PRE_MIGRATION_ADDRESSES: &[(&str, &str)] = &[
     (
         "REQ-0001",
@@ -253,11 +263,31 @@ fn the_dogfood_addresses_are_the_pre_migration_list_and_none_is_stored() {
     let rendered = rendered_addresses(&out.stdout);
     let expected: Vec<(String, String)> = PRE_MIGRATION_ADDRESSES
         .iter()
-        .map(|(id, a)| (id.to_string(), a.to_string()))
+        .map(|(id, a)| {
+            let address = RE_WORDED_AFTER_MIGRATION
+                .iter()
+                .find(|(reworded, _)| reworded == id)
+                .map_or(*a, |(_, moved)| *moved);
+            (id.to_string(), address.to_string())
+        })
         .collect();
     assert_eq!(
         rendered, expected,
-        "a format change moves no address: the derived list must equal the recorded one"
+        "a format change moves no address: the derived list must equal the recorded one, \
+         save the claims re-worded on purpose"
+    );
+    let moved: Vec<_> = PRE_MIGRATION_ADDRESSES
+        .iter()
+        .filter(|(id, a)| rendered.iter().any(|(rid, ra)| rid == id && ra != a))
+        .map(|(id, _)| *id)
+        .collect();
+    assert_eq!(
+        moved,
+        RE_WORDED_AFTER_MIGRATION
+            .iter()
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>(),
+        "exactly the re-worded claims moved, and no other"
     );
 }
 
