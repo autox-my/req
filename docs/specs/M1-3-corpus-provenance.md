@@ -56,6 +56,25 @@ Neither can move a claim address. Fixing (1) changes the bytes of `bench/corpus/
    record (FMR, FSR, pair counts, structurally unverifiable ids) is identical to the previous record
    (`git diff` it). The old record stays in git history. Do not touch any other file under
    `bench/results/`.
+
+   **This overwrite is a one-time, stated exception, not a precedent.** `review/rule.json` tells the
+   CI reviewer that `bench/results/*.json` are append-only ("never rewrite or delete an existing
+   record — a changed number arrives as a new file"), and the owner chose, knowingly, to break that
+   letter here (decision of 2026-11-03): the header gains provenance, no measured number changes,
+   and the filename `<stem>-rules-v<N>.json` cannot carry a corpus-bytes change at the same rules
+   version. Consequences the unit must honour:
+   - The commit message and the PR description each carry a section headed **"Append-only
+     exception"** that names the file, the old and the new `corpus_sha256`, the reason, and that
+     every other field is identical. A reader of the PR must not have to discover the overwrite.
+   - Do **not** work around the rule: no renamed or duplicated record to dodge the reviewer, no edit
+     to `review/rule.json` or `src/bench.rs`, and no weakening of the reviewer's wording. Both are
+     forbidden paths.
+   - Expect the OCR reviewer to flag the overwrite. If it reports it as critical/high, say so in the
+     envelope `summary` and leave it: the owner merges as an admin over a stated, understood finding,
+     the same remedy `AGENTS.md` names for a known review false positive.
+   - The exception covers `external-v4-rules-v6.json` only. Any later change to a corpus's bytes
+     at an unchanged rules version needs its own decision (or the `src/bench.rs` filename change,
+     which is a separate unit).
 6. **Docs.** `docs/canonical-hashing.md` line 299 (the `external-v4` bullet) is the only prose that
    describes the corpus; add one sentence saying the header records the registry digest and the
    per-class denominators. If you cannot find a sentence that needs to change, say so rather than
