@@ -104,6 +104,9 @@ impl Haystack {
         for w in toks.windows(NGRAM) {
             self.grams.insert(w.to_vec());
         }
+        // Each run is fenced by single spaces (" a b c | "), so a whole-token needle can only
+        // match whole tokens: "report" never hits inside "reports", "the" never inside "lathe".
+        self.runs.push(' ');
         self.runs.push_str(&toks.join(" "));
         self.runs.push_str(" | ");
         self.text_lower.push_str(&content.to_lowercase());
@@ -121,7 +124,7 @@ impl Haystack {
         if toks.len() < NGRAM {
             // Too short to window: the whole token run must appear as a run in some file.
             let needle = toks.join(" ");
-            return !needle.is_empty() && self.runs.contains(&needle);
+            return !needle.is_empty() && self.runs.contains(&format!(" {needle} "));
         }
         toks.windows(NGRAM).any(|w| self.grams.contains(w))
     }
@@ -146,14 +149,27 @@ pub const TUNING_ROOTS: &[&str] = &[
 
 const TEXT_EXT: &[&str] = &["md", "rs", "yml", "yaml", "json", "py", "toml", "sh", "txt"];
 
-fn collect(path: &Path, out: &mut Vec<PathBuf>) {
+/// Every file under `path`. A directory that cannot be listed is **named in `failed`**, never
+/// skipped: a scan that quietly missed a directory would read as a clean "not found quoted".
+fn collect(path: &Path, out: &mut Vec<PathBuf>, failed: &mut Vec<String>) {
     if path.is_file() {
         out.push(path.to_path_buf());
-    } else if let Ok(rd) = std::fs::read_dir(path) {
-        let mut entries: Vec<_> = rd.filter_map(Result::ok).map(|e| e.path()).collect();
-        entries.sort();
-        for e in entries {
-            collect(&e, out);
+    } else {
+        match std::fs::read_dir(path) {
+            Ok(rd) => {
+                let mut entries = Vec::new();
+                for e in rd {
+                    match e {
+                        Ok(e) => entries.push(e.path()),
+                        Err(err) => failed.push(format!("{}: {err}", path.display())),
+                    }
+                }
+                entries.sort();
+                for e in entries {
+                    collect(&e, out, failed);
+                }
+            }
+            Err(err) => failed.push(format!("{}: {err}", path.display())),
         }
     }
 }
@@ -183,6 +199,7 @@ impl Tuning {
 pub fn build_tuning(repo_root: &Path) -> Result<Tuning, String> {
     let mut roots = Vec::new();
     let mut missing = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
     for root in TUNING_ROOTS {
         let mut hay = Haystack::default();
         let p = repo_root.join(root);
@@ -191,17 +208,28 @@ pub fn build_tuning(repo_root: &Path) -> Result<Tuning, String> {
             continue;
         }
         let mut files = Vec::new();
-        collect(&p, &mut files);
+        collect(&p, &mut files, &mut failed);
         for f in files {
             let ext = f.extension().and_then(|e| e.to_str()).unwrap_or("");
             if !TEXT_EXT.contains(&ext) {
                 continue;
             }
-            if let Ok(content) = std::fs::read_to_string(&f) {
-                hay.add(&content);
+            // Bytes, then lossy UTF-8: a stray non-UTF-8 byte is not a reason to skip a file,
+            // an I/O error is.
+            match std::fs::read(&f) {
+                Ok(bytes) => hay.add(&String::from_utf8_lossy(&bytes)),
+                Err(err) => failed.push(format!("{}: {err}", f.display())),
             }
         }
         roots.push(((*root).to_string(), hay));
+    }
+    if !failed.is_empty() {
+        return Err(format!(
+            "the tuning-root scan could not read {} path(s), so \"not found quoted\" cannot be \
+             claimed: {}",
+            failed.len(),
+            failed.join("; ")
+        ));
     }
     let t = Tuning { roots, missing };
     if t.files() == 0 {

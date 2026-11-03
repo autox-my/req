@@ -251,6 +251,13 @@ pub fn validate_generator(
         .collect();
     let mut seen = BTreeSet::new();
     let mut texts_seen = BTreeSet::new();
+    // loose(statement) -> its id, for the whole sample: a generated text that reproduces a
+    // *different* statement would canonicalize differently from its own and score as a false split.
+    let statement_by_text: BTreeMap<String, &str> = statements
+        .statements
+        .iter()
+        .map(|s| (loose(&s.text), s.id.as_str()))
+        .collect();
     for item in &g.items {
         let Some(st) = by_id.get(item.statement_id.as_str()) else {
             errs.push(format!(
@@ -302,6 +309,13 @@ pub fn validate_generator(
             } else if loose(text) == loose(&st.text) {
                 errs.push(format!(
                     "{id}: is a copy of the statement (modulo case/spacing/final period)"
+                ));
+            } else if let Some(other) = statement_by_text
+                .get(&loose(text))
+                .filter(|other| **other != st.id.as_str())
+            {
+                errs.push(format!(
+                    "{id}: is a copy of another statement of the sample ({other})"
                 ));
             } else if !texts_seen.insert(loose(text)) {
                 errs.push(format!("{id}: duplicates another generated text"));

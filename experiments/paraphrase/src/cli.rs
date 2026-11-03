@@ -121,6 +121,13 @@ fn sample(rest: &[String]) -> i32 {
             .unwrap_or_else(|| crate_dir().join("statements.json"));
         match sampler::build(&corpus, &root, count) {
             Ok(s) => {
+                if s.sampling.drawn < s.sampling.requested {
+                    eprintln!(
+                        "UNVERIFIABLE: the corpus yields {} statement(s), {} requested; nothing was written (a short sample must not be mistaken for a complete one)",
+                        s.sampling.drawn, s.sampling.requested
+                    );
+                    return Ok(3);
+                }
                 let mut text = serde_json::to_string_pretty(&s).map_err(|e| e.to_string())?;
                 text.push('\n');
                 if let Err(e) = std::fs::write(&out, text) {
@@ -317,6 +324,13 @@ fn validate(rest: &[String]) -> i32 {
         a.only(&["--dir"])?;
         let dir = data_dir(&a)?;
         match load_all(&dir) {
+            Ok(l) if l.generators.is_empty() => {
+                eprintln!(
+                    "UNVERIFIABLE: no generator file under {}/restatements: nothing was examined, which is not a pass",
+                    dir.display()
+                );
+                Ok(3)
+            }
             Ok(l) => {
                 println!(
                     "valid: {} statements, {} generator file(s), {} judge file(s)",

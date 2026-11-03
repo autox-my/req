@@ -270,7 +270,20 @@ fn sampler_quoted_detection() -> Result<(), String> {
     by_id.add("see pair e-x-1 for the failing case");
     let mut other = Haystack::default();
     other.add("an unrelated sentence about exporting reports as PDF files");
+    // A text shorter than the 8-word window is matched as a whole-token run, so "report" must
+    // never hit inside "reports" (the substring bug the CI review found).
+    let short = cand("E-X-2", "The tool shall export a report.");
+    let mut whole_run = Haystack::default();
+    whole_run.add("note: the tool shall export a report, always");
+    let mut longer_token = Haystack::default();
+    longer_token.add("note: the tool shall export a reports file");
     let rows = [
+        ("short text, whole-token run", whole_run.hit(&short), true),
+        (
+            "short text must not match inside a longer token",
+            longer_token.hit(&short),
+            false,
+        ),
         (
             "8 consecutive words (case/punctuation blind)",
             quoted8.hit(&c),
@@ -412,6 +425,16 @@ fn validators_reject() -> Result<(), String> {
         &l.statements_sha,
         "the protocol asks for 3",
     )?;
+    if st.statements.len() > 1 {
+        let mut g = base.clone();
+        g.items[0].restatements[0].text = st.statements[1].text.clone();
+        check(
+            "a copy of another statement",
+            &g,
+            &l.statements_sha,
+            "is a copy of another statement of the sample",
+        )?;
+    }
     let mut g = base.clone();
     g.items[0].restatements[0].text = st.statements[0].text.to_uppercase();
     check(

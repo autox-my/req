@@ -324,9 +324,11 @@ pub fn score(inp: &Inputs) -> Record {
             CLASSES.iter().map(|c| (*c, (0, 0))).collect();
         let mut merges = Vec::new();
         let mut alt_total = 0u32;
+        let mut unknown_items: Vec<String> = Vec::new();
 
         for item in &g.items {
             let Some(&stext) = by_id.get(item.statement_id.as_str()) else {
+                unknown_items.push(item.statement_id.clone());
                 continue;
             };
             coverage.statements_covered += 1;
@@ -413,7 +415,13 @@ pub fn score(inp: &Inputs) -> Record {
         splits.sort_by(|a, b| a.item_id.cmp(&b.item_id));
         let n = coverage.admitted as u32;
         let k = splits.len() as u32;
-        let unverifiable = if panel.is_empty() {
+        let unverifiable = if !unknown_items.is_empty() {
+            Some(format!(
+                "{} item(s) name a statement that is not in the sample ({}): the file was not validated against this sample, so its counts cannot be trusted",
+                unknown_items.len(),
+                unknown_items.join(", ")
+            ))
+        } else if panel.is_empty() {
             Some("no judge from a different model family than the generator: nothing can be admitted to the headline".to_string())
         } else if n == 0 {
             Some(
