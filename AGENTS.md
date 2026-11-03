@@ -1,7 +1,8 @@
 # AGENTS.md — req
 
 req: the semantic, git-native requirements engine. A **claim** is the unit of work;
-one claim per file in git; identity is a content address over *canonical meaning*;
+one claim per file in git; identity is the `claim_id`, and the address is a content-addressed
+*meaning fingerprint* over canonical meaning (ADR 0020);
 specs, traceability matrices and audit packets are compiled views over a signed
 baseline.
 
@@ -35,10 +36,10 @@ false merges** on the parity + adversarial-trap corpora. It is *measured*
   ratification is a human act.
 - **Pins are provenance, not stragglers.** `rust-toolchain.toml`, `Cargo.lock`, and
   `tools/ocr/package-lock.json` are the pins. Verify a version at *pin time*; do not
-  bump opportunistically. `rust-toolchain.toml` and `Cargo.lock` are identity-path pins:
+  bump opportunistically. `rust-toolchain.toml` and `Cargo.lock` are fingerprint-path pins:
   any bump is a Tier-1 rules bump — bump `RULES_V`, regenerate goldens deliberately, and
   record re-canonicalization candidates (hashing spec §5). The review CLI pin
-  (`tools/ocr/package-lock.json`) is provenance for the review process, not the identity
+  (`tools/ocr/package-lock.json`) is provenance for the review process, not the fingerprint
   path: bump it deliberately, verify `ocr --version` at pin time, and state it in the
   commit — no `RULES_V` bump.
 - **Never change the git identity** and never pass `-c user.name=` / `user.email=`
@@ -146,7 +147,7 @@ export OCR_NO_UPDATE=1
   `attribute`/`value` triple (`unit: none`, non-numeric `value`, and `operator: EQ` or no
   operator at all: `none` and an absent operator are the same no-operator marker) — is an
   **annotation**, printed as `ann` in its own cell and counted by the summary line, never a
-  flag and never part of identity. The annotation is **only the qualitative triple**: a
+  flag and never part of the fingerprint. The annotation is **only the qualitative triple**: a
   quantity-shaped claim (a numeric authored value, a comparator other than `EQ`, or an authored
   unit) that authors a slot the parse did not derive is still a **contradiction and a flag**,
   because a bound the parse missed would silently leave the address (a false merge).
@@ -163,7 +164,7 @@ export OCR_NO_UPDATE=1
 - Derived fields: `cargo run -q -- canon --fill` writes `canonical.form` + `address`,
   and **refuses any claim carrying a discrepancy flag — a contradiction or an omission**
   (exit 3) — an address over a contradicted parse would enshrine the contradiction. An
-  annotation is not a refusal: it is the author's qualitative predicate, which identity does
+  annotation is not a refusal: it is the author's qualitative predicate, which the fingerprint does
   not carry and the fill must not delete.
   `cargo run -q -- canon --verify` checks the stored fields against a fresh parse:
   exit **1** mismatch (a hand-edited digest; and, measured, a draft still carrying the empty
@@ -794,15 +795,17 @@ matter:
 ## Project discipline (do not renegotiate silently)
 
 - The **six tensions** (`docs/design.md` §2) and **ADRs 0001–0009** are settled.
-  Changing one requires a superseding ADR, not an edit in passing.
+  Changing one requires a superseding ADR, not an edit in passing. ADR 0020 (accepted) is the
+  precedent: it replaces only ADR 0001's identity wording — `claim_id` is the identity, the address a
+  meaning fingerprint — and 0001's decision (the unit is a claim) stands.
 - Unit is a **claim**, not a document (0001). Git is transport/serialization, not
   identity or merge (0002). Variants are **selectors**, not branches (0003). The
-  model **proposes**; a human disposes (0004). Identity collapses only on
+  model **proposes**; a human disposes (0004). Fingerprints collapse only on
   meaning-preserving rules (0007). Authority is a signed **Decision**, not a commit
   hash (0005). Friction at the decision boundary, none in authoring (0006). Core is
   Rust; porcelain is TypeScript, later (0009).
 - **Git-native storage is table stakes, not the moat** — never sell it as one. The
-  differentiators are semantic content-addressing and variability selectors.
+  differentiators are semantic fingerprinting and variability selectors.
 - Never claim the bet is validated on seed evidence; the external corpora run is the
   headline measurement.
 

@@ -1,9 +1,8 @@
 # 0020. The address is a meaning fingerprint; `claim_id` is the identity
 
-**Status: proposed** — drafted by the agent for the owner; ratification is the owner's act and has not
-happened. It supersedes only the *identity wording* of
-[ADR 0001](0001-the-unit-is-a-claim.md); the decision that the unit is a claim stands. Date proposed:
-2026-11-02.
+**Status: accepted** — drafted by the agent on 2026-11-02 and ratified by the owner on 2026-11-03.
+It supersedes only the *identity wording* of [ADR 0001](0001-the-unit-is-a-claim.md); the decision
+that the unit is a claim stands. Date proposed: 2026-11-02. Date accepted: 2026-11-03.
 
 ## Context
 

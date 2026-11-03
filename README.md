@@ -3,11 +3,12 @@
 A semantic, git-native requirements engine.
 
 **Requirements are decisions, not documents.** In req the unit of work is a *claim*: one
-claim per file in git, written in a small, reviewable format. A claim's identity is not its
-path and not its history, but a content address over its *canonical meaning* — a
-deterministic pipeline parses the statement, normalises it against a subject registry, and
-hashes the result. Two claims with the same address are the same requirement, however
-differently they are worded. Two claims that differ in a bound, an actor, or a modality are
+claim per file in git, written in a small, reviewable format. A claim's identity is its
+`claim_id` — not its path and not its history, and not its wording. Its *meaning fingerprint* is
+a content address over its *canonical meaning*: a deterministic pipeline parses the statement,
+normalises it against a subject registry, and hashes the result. Two claims with the same
+fingerprint are candidates for one requirement, however differently they are worded — req never
+merges them; a human ratifies. Two claims that differ in a bound, an actor, or a modality are
 different requirements, however similar their prose.
 
 The spec, the traceability matrix, and the audit packet are compiled views over a signed
@@ -31,7 +32,7 @@ rate there is expected and is not evidence that independent paraphrase does not 
 differently; their *not-equivalent* pairs are a handful of mutation classes. Measuring
 independent, human-written paraphrase is still open, and until it is done the bet is neither
 validated nor refuted. The address that carries it is a *meaning fingerprint*, not the claim's
-identity ([ADR 0020](docs/adr/0020-the-address-is-a-meaning-fingerprint.md), proposed).
+identity ([ADR 0020](docs/adr/0020-the-address-is-a-meaning-fingerprint.md), accepted).
 
 ## What it does
 
@@ -39,7 +40,7 @@ identity ([ADR 0020](docs/adr/0020-the-address-is-a-meaning-fingerprint.md), pro
 | --- | --- |
 | `req init` | start a corpus here — a starter claim already filled and verified, its registry, and the authoring README |
 | `req canon` | what each claim parses to, and whether the parse still agrees with the author's slots |
-| `req bench` | does identity hold — zero false merges over the corpora; exit non-zero and the build is red |
+| `req bench` | does the fingerprint hold — zero false merges over the corpora; exit non-zero and the build is red |
 | `req select` | which claims apply in a variant — selectors, not branches — with UNKNOWN as a first-class answer |
 | `req render`, `req trace` | the compiled spec view, and the traceability matrix with every edge named |
 | `req impact`, `req gate` | what a change touches, nearest first, and the release policies |
@@ -59,8 +60,8 @@ root in the current directory, so it resolves none and takes no `--root`.
 
 ## The two differentiators
 
-1. **Semantic content-addressing.** Identity over canonical *meaning*: a rewording keeps its
-   address, and an edit that changes an obligation gets a new one — with the direction of the
+1. **Semantic fingerprinting.** A content address over canonical *meaning*: a rewording keeps its
+   address, and an edit that changes an obligation gets a new one (the claim keeps its `claim_id`) — with the direction of the
    change classified, so a weakening is never reported as no change.
 2. **Variability as selectors.** A variant is a query over one model of claims, not a branch
    or a fork: variants compose, applicability is computed per context, and a claim a context
