@@ -71,6 +71,16 @@ fn unique_dir(name: &str) -> PathBuf {
 
 /// A fixture corpus created by the real bootstrap (`req init`): authored `req.claim/2` claims,
 /// whose parse and address the loader derives — nothing derived is written (ADR 0022).
+/// `text.replace(old, new)` that fails, naming `old`, when the starter claim no longer contains
+/// it: a template edit must not turn a fixture's substitution into a silent no-op.
+fn replaced(text: String, old: &str, new: &str) -> String {
+    assert!(
+        text.contains(old),
+        "the starter claim no longer contains {old:?}: the fixture's substitution is a no-op"
+    );
+    text.replace(old, new)
+}
+
 struct Corpus(PathBuf);
 
 impl Corpus {
@@ -88,7 +98,8 @@ impl Corpus {
         let claim = fs::read_to_string(dir.join("claims/REQ-0001.yml")).expect("the starter claim");
         fs::write(
             dir.join("claims/REQ-0001.yml"),
-            claim.replace(
+            replaced(
+                claim,
                 "relations: []\n",
                 "relations: []\ntests:\n  - \"fixture::REQ-0001\"\n",
             ),
@@ -148,13 +159,6 @@ impl Corpus {
         };
         // Every substitution must land: a template edit that moves one of these literals fails
         // here, naming it, instead of leaving a copy that quietly kept the starter's statement.
-        let replaced = |text: String, old: &str, new: &str| -> String {
-            assert!(
-                text.contains(old),
-                "the starter claim no longer contains {old:?}: the fixture's substitution is a no-op"
-            );
-            text.replace(old, new)
-        };
         let text = replaced(first, "claim_id: REQ-0001", &format!("claim_id: {id}"));
         let text = replaced(text, "fixture::REQ-0001", &format!("fixture::{id}"));
         let text = replaced(
@@ -742,6 +746,12 @@ fn gate_json_has_the_pinned_shape() {
         "the policies keep the order the text report and the docs name"
     );
     for policy in policies {
+        // `checked` (the number of pins judged) is on `pins_hold` alone.
+        if policy["policy"] == "pins_hold" {
+            assert_keys(policy, &["checked", "details", "outcome", "policy"]);
+            assert!(policy["checked"].is_u64(), "{policy}");
+            continue;
+        }
         assert_keys(policy, &["details", "outcome", "policy"]);
         assert_eq!(policy["outcome"], "pass");
         assert_eq!(policy["details"], serde_json::json!([]));

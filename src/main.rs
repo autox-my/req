@@ -301,7 +301,8 @@ needed.
 
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 answers as a `req.gate/2` document on stdout: schema, generator, `rules_v`, the selection, the
-folded verdict, the six policies and the undecided claims with what each is missing. The
+folded verdict, the six policies (`pins_hold` also carries `checked`, the number of pins it judged,
+so a pass over zero pins is told from one that held some) and the undecided claims with what each is missing. The
 verdict is the same fold the exit code applies, so the document and the process cannot disagree.
 
 exit: 0 every policy passed and every claim decided, 1 a defect (a flagged pin among them), 3

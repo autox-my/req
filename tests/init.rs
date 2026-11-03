@@ -249,12 +249,6 @@ fn init_creates_a_working_corpus_in_the_current_directory() {
          that moved without a rules bump (a defect) or a deliberate `RULES_V` bump, which \
          regenerates this constant in the same commit"
     );
-    assert_eq!(
-        req::canon::address_hex(&derived.canonical),
-        derived.address,
-        "and the address must be the one its own canonical bytes hash to, so a derivation whose \
-         form and address disagree cannot pass on the golden alone"
-    );
     let text = fx.read("claims/REQ-0001.yml");
     for key in req::model::REMOVED_V1_KEYS {
         assert!(

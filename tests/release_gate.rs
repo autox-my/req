@@ -80,9 +80,12 @@ fn claims_outside_the_selection_do_not_fail_the_gate() {
 /// `addresses_current` sat, first in the list.
 #[test]
 fn a_flagged_pin_fails_whether_contradicted_or_not_carried() {
-    for verdict in [
-        PinVerdict::Contradiction("LE".to_string()),
-        PinVerdict::NotCarried,
+    for (verdict, clause) in [
+        (
+            PinVerdict::Contradiction("LE".to_string()),
+            "contradicts the parse (LE)",
+        ),
+        (PinVerdict::NotCarried, "is not carried by the parse"),
     ] {
         let rows = vec![pinned(
             row("REQ-A", Applies::Yes, &[]),
@@ -95,6 +98,11 @@ fn a_flagged_pin_fails_whether_contradicted_or_not_carried() {
         assert_eq!(results[0].name, "pins_hold");
         assert_eq!(results[0].outcome, Outcome::Fail);
         assert!(results[0].offenders[0].contains("REQ-A: pin operator LT"));
+        assert!(
+            results[0].offenders[0].contains(clause),
+            "{verdict:?} is reported as `{clause}`, not as the other class: {:?}",
+            results[0].offenders
+        );
     }
     let agreeing = vec![pinned(
         row("REQ-A", Applies::Yes, &[]),
@@ -108,6 +116,7 @@ fn a_flagged_pin_fails_whether_contradicted_or_not_carried() {
         results[0].detail.contains("1 pin(s), 1 held"),
         "{results:?}"
     );
+    assert_eq!(results[0].checked, Some(1), "{results:?}");
 }
 
 #[test]

@@ -71,6 +71,15 @@ refusal, the four-case table and the annotation count are gone with their code (
 `CanonicalCache`, `evaluate_claim`'s slot logic, `SlotCheck::Annotation`, `is_qualitative_convention`).
 The audit-surface digests (`relations_hash`, `rationale_hash`, `tests_hash`) are untouched.
 
+**Named loss: the pin set is not attested.** A pin never enters the canonical form, so it moves no
+address, and the Baseline records no digest of it. Removing `pins:` from a claim and re-emitting the
+manifest leaves every attested value byte-identical and `req baseline --verify` green; the only
+witnesses are `pins_hold` (it now judges one pin fewer; `req.gate/2` reports the count as `checked`)
+and the git history of the claim file. That is deliberate for this change, which is a pure format
+change and may not move the manifest, but it is a hole an auditor should know: a `pins_hash` beside
+`tests_hash` (envelope v5) would close it, and is the follow-up if pins become load-bearing for a
+release.
+
 **Proven pure, not asserted.** The Baseline manifest carries no claim schema, so a pure format change
 leaves it valid. This repository's 21 dogfood claims migrated in the same change with every address
 unchanged against the list recorded before the edit (rules v6), and `baselines/air-gapped.json` (17 of

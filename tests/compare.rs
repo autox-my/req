@@ -353,6 +353,36 @@ fn a_side_declaring_a_format_this_build_cannot_establish_is_not_judged() {
     );
 }
 
+/// A flagged pin never changes the classification, but `compare` reports it: the one visible
+/// consequence of a pin in this command. The claim pins `value: "0.2"` against a 500 ms statement
+/// (0.5 s derived), so the pin is a contradiction; the pair is still classified (exit 0).
+#[test]
+fn a_flagged_pin_is_reported_and_never_changes_the_classification() {
+    let pinned = format!(
+        "{}pins:\n  value: \"0.2\"\n",
+        claim_text("REQ-0001", &claim_schema())
+            .replace(
+                "The req tool shall treat a single claim as the unit of requirements authorship,\n  review, and merge.",
+                "The API shall respond within 500 ms.",
+            )
+    );
+    assert!(
+        pinned.contains("within 500 ms"),
+        "the statement edit landed:\n{pinned}"
+    );
+    let f = Fixture::new("pin-flag-note")
+        .claim("REQ-0001.yml", &pinned)
+        .claim("REQ-0002.yml", &pinned.replace("REQ-0001", "REQ-0002"));
+
+    let (code, out) = f.compare("REQ-0001.yml", "REQ-0002.yml");
+    assert_eq!(code, 0, "the pair is still classified:\n{out}");
+    assert!(out.contains("identical"), "{out}");
+    assert!(
+        out.contains("a pin disagrees with its claim's parse (1 / 1 flagged)"),
+        "the flag is reported with the count for each side:\n{out}"
+    );
+}
+
 /// The control: a file declaring the schema this build writes must classify exactly as it does
 /// today. A guard that also refuses valid files is not the fix.
 #[test]

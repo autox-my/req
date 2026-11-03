@@ -580,6 +580,10 @@ fn derived_claims_are_accepted_without_constraint() {
         ("REQ-0003", "REQ-0002", STARTER_SHOULD, "value: \"0.2\""),
         ("REQ-0004", "REQ-0003", STARTER_500, "value: \"0.5\""),
     ] {
+        assert!(
+            starter.contains("value: \"0.2\""),
+            "the starter template pins `value: \"0.2\"`: the pin edit below would be a no-op"
+        );
         let derived = starter
             .replace("claim_id: REQ-0001", &format!("claim_id: {id}"))
             .replace(STARTER_STATEMENT, statement)
@@ -588,6 +592,10 @@ fn derived_claims_are_accepted_without_constraint() {
                 "relations: []",
                 &format!("relations:\n  - type: derives-from\n    to: {parent}"),
             );
+        assert!(
+            derived.contains(pinned_value),
+            "the pin edit did not land ({pinned_value}):\n{derived}"
+        );
         assert!(
             derived.contains(&format!("to: {parent}")),
             "the fixture's relation edit is a no-op: the starter template changed its `relations:` line"

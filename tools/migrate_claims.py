@@ -234,7 +234,10 @@ def migrate_text(text):
     for key, lines in blocks:
         if key is None or key in KEPT:
             if key == "schema":
-                lines = [re.sub(r"req\.claim/1", V2, lines[0], count=1)] + lines[1:]
+                # A comment above `schema:` rides in this block (split_blocks): rewrite the key's
+                # own line, not whatever comes first.
+                at = next(i for i, l in enumerate(lines) if TOP_KEY.match(l.rstrip("\r\n")))
+                lines = lines[:at] + [re.sub(r"req\.claim/1", V2, lines[at], count=1)] + lines[at + 1:]
             out.extend(lines)
             continue
         shown = describe_drop(key, lines, pinned={k for k, _ in pins})
@@ -320,9 +323,10 @@ def run(paths, write):
                 with open(path, "w", encoding="utf-8", newline="") as handle:
                     handle.write(migrated)
             except OSError as why:
+                left = [p for p, _ in planned[done:]]
                 print(f"{path}: cannot write ({why}); {done} of {len(planned)} file(s) were "
-                      "migrated before it, the rest are untouched — re-run after fixing it "
-                      "(already-migrated files are refused as req.claim/2, so it is safe)",
+                      "migrated before it. A directory re-run would refuse those as already "
+                      f"req.claim/2, so name the remaining file(s) explicitly: {' '.join(left)}",
                       file=sys.stderr)
                 return 1
             done += 1
@@ -475,6 +479,12 @@ def self_check():
         got = migrate_text(text)[0]
         case(f"a unit {unit!r} is written as {written} and nothing else",
              got.endswith(f"  unit: {written}\n"), got)
+    commented_schema = V1_QUALITATIVE.replace(
+        "schema: req.claim/1", "# the format\nschema: req.claim/1")
+    case("a comment above `schema:` does not stop the schema being rewritten",
+         "schema: req.claim/2\n" in migrate_text(commented_schema)[0]
+         and "schema: req.claim/1" not in migrate_text(commented_schema)[0],
+         migrate_text(commented_schema)[0])
     case("a quoted scalar containing ` #` keeps its text",
          scalar(['unit: "lb # force"  # why\n']) == "lb # force")
     case("an unquoted scalar loses a trailing comment", scalar(["unit: s  # why\n"]) == "s")
@@ -529,14 +539,17 @@ def self_check():
     with tempfile.TemporaryDirectory() as tmp:
         good = os.path.join(tmp, "REQ-0001.yml")
         also = os.path.join(tmp, "REQ-0002.yml")
-        bad = os.path.join(tmp, "REQ-0003.yml")
         ignored = os.path.join(tmp, "NOTES.yml")
         for path, text in [(good, V1_QUALITATIVE), (also, V1_QUANTITY), (ignored, "x: 1\n")]:
             with open(path, "w", encoding="utf-8", newline="") as handle:
                 handle.write(text)
 
+        def read(path):
+            with open(path, encoding="utf-8", newline="") as handle:
+                return handle.read()
+
         def disk():
-            return {p: open(p, encoding="utf-8", newline="").read() for p in (good, also, ignored)}
+            return {p: read(p) for p in (good, also, ignored)}
 
         before = disk()
         code, _, _ = drive([tmp], write=False)
@@ -559,7 +572,7 @@ def self_check():
                 handle.write(text)
         code, _, err = drive([tmp], write=True)
         case("one refused file exits 1 and leaves every file untouched",
-             code == 1 and open(ok, encoding="utf-8").read() == V1_QUALITATIVE
+             code == 1 and read(ok) == V1_QUALITATIVE
              and "nothing written" in err, err)
         code, _, err = drive([os.path.join(tmp, "absent")], write=False)
         case("a missing path is refused with exit 1", code == 1, err)

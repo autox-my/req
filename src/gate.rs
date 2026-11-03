@@ -86,6 +86,10 @@ pub struct PolicyResult {
     /// **named and counted**, because a count that hides its subjects is how "declared" starts to
     /// read as "proven". Empty for every policy but `tests_linked`.
     pub process: Vec<String>,
+    /// How many pins the policy judged, for `pins_hold` only (`None` for every other policy).
+    /// It is in the JSON document too, so a pass over zero pins is distinguishable from a pass
+    /// that held some for a consumer that never reads the text form.
+    pub checked: Option<usize>,
 }
 
 impl PolicyResult {
@@ -110,6 +114,7 @@ impl PolicyResult {
             outcome,
             offenders,
             process: Vec::new(),
+            checked: None,
         }
     }
 
@@ -409,7 +414,9 @@ pub fn evaluate_claims(rows: &[Row], context: &Context) -> Vec<PolicyResult> {
             held + failed.len()
         )
     };
-    let pins = PolicyResult::new("pins_hold", detail, failed, Vec::new());
+    let checked = held + failed.len();
+    let mut pins = PolicyResult::new("pins_hold", detail, failed, Vec::new());
+    pins.checked = Some(checked);
 
     // 2. Every relation of an applying claim resolves inside the corpus. An edge to a
     //    claim that does not exist cannot be checked, so it is unverifiable — never
@@ -493,6 +500,9 @@ struct PolicyDocument<'a> {
     policy: &'a str,
     outcome: &'a str,
     details: &'a [String],
+    /// `pins_hold` only: the number of pins judged. Absent for every other policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    checked: Option<usize>,
 }
 
 /// One claim the invocation left undecided, and what a caller would have to supply to decide it.
@@ -667,6 +677,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                     policy: result.name,
                     outcome: result.outcome.as_json(),
                     details: &result.offenders,
+                    checked: result.checked,
                 })
                 .collect(),
             // A process declaration is an answer, so it is not an offender; it is still a fact a

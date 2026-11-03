@@ -98,7 +98,11 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
     }
 }
 
-/// The row with one pin and its verdict, as `canon::evaluate_pins` would have judged it.
+/// The row with one pin and a **hand-authored verdict**. These rows are inputs to the gate's
+/// policy seam (`evaluate_claims`), not loadable claims: the verdict is whatever the test says,
+/// so a fixture can name a state (`Agrees` for a slot the row's statement does not carry) that
+/// `canon::evaluate_pins` would not produce. The derivation itself is judged through the CLI in
+/// `tests/claim_v2.rs` and `tests/pins.rs`.
 pub fn pinned(mut row: Row, key: &'static str, pinned: &str, verdict: PinVerdict) -> Row {
     row.pins.push(PinCheck {
         key,

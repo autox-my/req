@@ -453,6 +453,7 @@ fn a_second_write_over_the_same_document_refuses_and_overwrites_nothing() {
 /// the draft, so the tool fails loud (UNVERIFIABLE, exit 3) naming both schemas, instead of
 /// writing an unloadable corpus and exiting 0. A fake `req` first on `PATH` is the seam: the tool
 /// asks `req --version` and nothing else before drafting.
+#[cfg(unix)]
 #[test]
 fn a_req_reporting_another_claim_schema_is_unverifiable_and_writes_nothing() {
     use std::os::unix::fs::PermissionsExt;

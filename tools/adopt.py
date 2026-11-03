@@ -41,9 +41,10 @@ Exit codes, the same three-state discipline as req:
   3  UNVERIFIABLE — the document, the corpus, the subject registry, or `req` itself cannot be
      read, so nothing can be drafted honestly
 
-Nothing derived is ever written, and no pin is guessed. The `schema` a draft declares is read
-from `req --version` — never hardcoded, so a format bump cannot leave this template behind —
-and the report names the build's `rules_v` and the registry version the parse is derived under.
+Nothing derived is ever written, and no pin is guessed. This tool drafts `req.claim/2` claims
+only (`DRAFT_SCHEMA`): it asks `req --version` which schema the binary judges and refuses
+(UNVERIFIABLE, exit 3) any other, so a format bump fails loud instead of leaving this template
+behind; the report names the build's `rules_v` it ran against.
 """
 import argparse
 import datetime
@@ -363,8 +364,9 @@ def next_claim_number(used):
 def parse_version(text):
     """`(rules_v, claim_schema)` from `req --version`, or None.
 
-    Pure so the self-check can table-drive the shapes without a binary: the two values are what
-    a draft is judged by, and a hardcoded copy of either is exactly the drift this avoids.
+    Pure so the self-check can table-drive the shapes without a binary. `rules_v` is reported,
+    never hardcoded; the claim schema is compared with `DRAFT_SCHEMA` by `read_axes`, which is the
+    one place that refuses a binary this template cannot be loaded by.
     """
     rules = VERSION_RULES_RE.search(text)
     schema = VERSION_SCHEMA_RE.search(text)

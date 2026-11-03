@@ -551,8 +551,8 @@ else
 fi
 
 # The claim migrator's table (tools/migrate_claims.py, ADR 0022): what a req.claim/1 file keeps,
-# which authored slots become pins, what it drops and what it refuses. Pure, no filesystem and no
-# `req`, so `--fast` keeps it. A missing python3 or script prints SKIP, never PASS.
+# which authored slots become pins, what it drops and what it refuses. No `req` and no repository
+# writes (its `run()` cases work in a cleaned-up temp dir), so `--fast` keeps it. A missing python3 or script prints SKIP, never PASS.
 if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/migrate_claims.py" ] && command -v python3 >/dev/null 2>&1; }; then
   run python3 "$PWD/tools/migrate_claims.py" --self-check
 else
