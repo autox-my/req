@@ -537,6 +537,33 @@ duration and findings and is **never a verdict**: it takes the rule file from `o
 boundary), makes one attempt (riding out a bad window would average two different things), and runs no
 gate.
 
+**Reading a failed CI review.** The Forgejo job-log API answers 404 for these runs, so the
+findings of a failed `OCR Review / ocr-review` cannot be read from the PR or the API. They are on
+the runner: CI runs in CT 114 (`lxc-ci`) on the Proxmox host `pve`, as the `forgejo-runner` user,
+and OCR keeps every review as one session file under
+`/home/forgejo-runner/.opencodereview/sessions/*/<uuid>.jsonl`. This needs the maintainer's ssh
+access to `pve` (`pct exec 114 -- …`); ask before assuming it, and **read only** — touch nothing on
+the runner, and never open `~forgejo-runner/.npmrc` or the runner's config (they hold tokens).
+The first line of each session names the commit it reviewed (`"diffTo":"<sha>"`), so match the
+failing check's head sha, then print the findings from the `review_item_done` records:
+
+```bash
+ssh root@<pve> 'pct exec 114 -- python3 -c "
+import json,sys
+for l in open(sys.argv[1]):
+    r=json.loads(l)
+    for c in r.get(\"comments\") or []:
+        print(c[\"severity\"].upper(), c[\"path\"], c[\"start_line\"], c[\"content\"][:700])
+" /home/forgejo-runner/.opencodereview/sessions/<dir>/<uuid>.jsonl'
+```
+
+Find the session with `head -n1 <file> | grep diffTo` over files newer than the push. A record
+with `type: session_end` carries `llm_failures` and `run_manifest.terminal_state`: a review that
+did not complete is a failure (see the gate above), and that is where it says so. The model that
+reviewed is in the first line too; with `--no-filter` its findings are unverified, so confirm a
+finding against the code before acting on it — the PR #80 review was right on both highs, but
+the same diff can give different findings on another run.
+
 `ocr` is installed **locally and pinned** (a global install would land in
 `/usr`, which is root-owned and read-only here, and would not be lockfile-pinned):
 
