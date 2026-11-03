@@ -180,43 +180,138 @@ pub fn validate_tests(tests: &[String], evidence: Evidence) -> Result<(), String
     Ok(())
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// The keys `req.claim/1` carried and `req.claim/2` removed (ADR 0022): the fifteen authored
+/// slots that re-stated the parse, and the two stored derived fields. A `req.claim/2` file that
+/// still carries one is a **parse error naming the key** — never silently ignored, because the
+/// author who wrote `value: "0.3"` beside the statement meant something, and the place to say it
+/// now is `pins:`.
+pub const REMOVED_V1_KEYS: &[&str] = &[
+    "modality",
+    "subject",
+    "attribute",
+    "operator",
+    "value",
+    "unit",
+    "conditions",
+    "exception",
+    "temporal",
+    "quantifier",
+    "unstructured",
+    "canonical",
+    "address",
+];
+
+/// What an author states a claim **must parse to**, where the parse is load-bearing (ADR 0022).
+///
+/// Optional, and every key in it is optional. A pin is judged against the parse derived at load
+/// ([`crate::canon::evaluate_pins`]): it agrees, or it is a flag. There is no third,
+/// non-flagging category — the qualitative annotation `req.claim/1` had is exactly what hid
+/// REQ-0020's defect. A pin never enters the canonical form, so a flagged pin moves no address:
+/// it reports, and `req gate`'s `pins_hold` fails on it.
+///
+/// Strict: any other key is a parse error. The values are validated at load
+/// ([`validate_pins`]) — `value` is a canonical exact decimal string, as everywhere in a claim.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CanonicalCache {
-    /// Normalization-rules version. `None` while unfilled (the v0 seed state).
-    pub rules_v: Option<u32>,
-    /// `aliases/subjects.yml` version the canonical form was computed against.
-    pub subject_registry: u32,
-    /// The stored canonical form bytes (`None` until `req canon` fills them).
-    pub form: Option<String>,
+pub struct Pins {
+    /// `SHALL`, `SHALL-NOT`, `SHOULD` or `MAY`.
+    #[serde(default)]
+    pub modality: Option<String>,
+    /// The registered subject id the statement's subject must resolve to.
+    #[serde(default)]
+    pub subject: Option<String>,
+    /// `LT`, `LE`, `EQ`, `GE`, `GT` or `NE`.
+    #[serde(default)]
+    pub operator: Option<String>,
+    /// The bound, as a canonical exact decimal string in the parse's canonical unit (`"0.2"`
+    /// for `200 ms`; never `"0.20"`, never a float).
+    #[serde(default)]
+    pub value: Option<String>,
+    /// The canonical unit symbol the parse derives (`s` for `200 ms`), or `none`.
+    #[serde(default)]
+    pub unit: Option<String>,
 }
 
-/// A claim file, strictly: an unrecognized key is a parse error (F2), and
-/// `applicability` / `relations` are required rather than defaulted to empty — a
-/// dropped `relations:` key leaves the address untouched while the edges vanish from
-/// `trace` and `impact`, and a misspelled `applicability:` silently makes a
-/// variant-scoped claim unconditional (identity *is* the address, so that is a
-/// conflation of two requirements, not a wrong variant membership).
+impl Pins {
+    /// The pinned keys in a fixed order, with their values: the order every report uses.
+    pub fn entries(&self) -> Vec<(&'static str, &str)> {
+        [
+            ("modality", &self.modality),
+            ("subject", &self.subject),
+            ("operator", &self.operator),
+            ("value", &self.value),
+            ("unit", &self.unit),
+        ]
+        .into_iter()
+        .filter_map(|(key, value)| value.as_deref().map(|v| (key, v)))
+        .collect()
+    }
+}
+
+/// The modality words a pin may state — the canonicalizer's own spellings.
+pub const PIN_MODALITIES: &[&str] = &["SHALL", "SHALL-NOT", "SHOULD", "MAY"];
+/// The comparators a pin may state — the canonicalizer's own spellings (T1.5).
+pub const PIN_OPERATORS: &[&str] = &["LT", "LE", "EQ", "GE", "GT", "NE"];
+
+/// The file contract for `pins:` values. A pin that cannot be compared — a misspelled modality,
+/// an operator outside T1.5, a non-canonical decimal — is refused where the file can be named,
+/// rather than becoming a contradiction flag whose cause is a typo.
+pub fn validate_pins(pins: &Pins) -> Result<(), String> {
+    if let Some(m) = &pins.modality
+        && !PIN_MODALITIES.contains(&m.as_str())
+    {
+        return Err(format!(
+            "pins a modality {m:?}, which is not one of {}",
+            PIN_MODALITIES.join(", ")
+        ));
+    }
+    if let Some(o) = &pins.operator
+        && !PIN_OPERATORS.contains(&o.as_str())
+    {
+        return Err(format!(
+            "pins an operator {o:?}, which is not one of {}",
+            PIN_OPERATORS.join(", ")
+        ));
+    }
+    if let Some(v) = &pins.value
+        && !crate::canon::is_canonical_decimal(v)
+    {
+        return Err(format!(
+            "pins a value {v:?}, which is not a canonical exact decimal string (`\"0.3\"`, \
+             never `\"0.30\"` or `\".3\"`)"
+        ));
+    }
+    for (key, value) in [("subject", &pins.subject), ("unit", &pins.unit)] {
+        if value
+            .as_deref()
+            .is_some_and(|v| v.trim().is_empty() || v.trim() != v)
+        {
+            return Err(format!(
+                "pins an empty or space-padded {key}: a pin is compared exactly"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A claim file, strictly (`req.claim/2`, ADR 0022): what a human **authors**, and nothing
+/// derived. The parse, the canonical form and the address are computed at load
+/// ([`crate::canon::load_claims`]) and stored nowhere.
+///
+/// An unrecognized key is a parse error (F2) — a removed `req.claim/1` key names itself
+/// ([`REMOVED_V1_KEYS`]) — and `applicability` / `relations` are required rather than defaulted
+/// to empty: a dropped `relations:` key leaves the address untouched while the edges vanish from
+/// `trace` and `impact`, and a misspelled `applicability:` silently makes a variant-scoped claim
+/// unconditional (applicability is an input to the canonical form, so that is a conflation of two
+/// requirements, not a wrong variant membership).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClaimFile {
     pub schema: String,
     pub claim_id: String,
     pub statement: String,
-    pub modality: String,
-    pub subject: String,
-    /// `None` for unstructured claims (claim-format field reference).
-    pub attribute: Option<String>,
-    pub operator: Option<String>,
-    pub value: Option<String>,
-    pub unit: Option<String>,
-    #[serde(default)]
-    pub conditions: Vec<String>,
     pub applicability: Vec<String>,
-    pub exception: Option<String>,
-    pub temporal: Option<String>,
-    pub quantifier: Option<String>,
-    pub unstructured: bool,
+    pub relations: Vec<Relation>,
     /// The tests that prove this claim, authored by a human: `[classname::name]` ids as the
     /// JUnit report carries them. **Optional** (absent = no link, which the gate reports as a
     /// finding), **order-free** (hashed sorted), **attested** in the Baseline (`tests_hash`,
@@ -231,10 +326,10 @@ pub struct ClaimFile {
     /// attested together with the links (`tests_hash`, ADR 0019).
     #[serde(default)]
     pub evidence: Evidence,
-    pub canonical: CanonicalCache,
-    pub address: Option<String>,
     pub rationale: Rationale,
-    pub relations: Vec<Relation>,
+    /// What the claim must parse to, where the parse is load-bearing (optional; ADR 0022).
+    #[serde(default)]
+    pub pins: Option<Pins>,
 }
 
 // ---------------------------------------------------------------------------

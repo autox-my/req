@@ -114,9 +114,8 @@ fn a_no_is_decisive_and_an_unknown_is_not() {
 #[test]
 fn a_claims_applicability_is_its_selector() {
     let claim: ClaimFile = yaml_serde::from_str(
-        "schema: req.claim/1\nclaim_id: REQ-X\nstatement: The system shall log each command.\n\
-         modality: SHALL\nsubject: SYSTEM\nunstructured: false\ncanonical:\n  rules_v: null\n  \
-         subject_registry: 1\n  form: null\naddress: null\nrationale:\n  source: x\n  \
+        "schema: req.claim/2\nclaim_id: REQ-X\nstatement: The system shall log each command.\n\
+         rationale:\n  source: x\n  \
          date: 2026-10-07\n  rejected_alternatives: []\n  assumptions: []\napplicability:\n  - deployment_mode == air_gapped\nrelations: []\n",
     )
     .expect("claim parses");

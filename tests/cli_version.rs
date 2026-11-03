@@ -921,12 +921,16 @@ const MOVED_CONTRACTS: &[(&str, &[&str])] = &[
     (
         "canon",
         &[
-            "The annotation is only the qualitative triple",
-            "still a contradiction and a flag",
-            "unverified by design",
-            "form stored but no address",
+            "Nothing derived is stored in a claim file",
+            "`--fill` and `--verify` are removed",
+            "a *contradiction*",
+            "*not carried*",
+            "There is no third, non-flagging category",
+            "A flagged pin moves no address",
             "NOT JUDGED",
             "migration candidate",
+            "`tools/migrate_claims.py`",
+            "a parse error that names the key",
         ],
     ),
     ("select", &["`key == value` and `key >= number`"]),
@@ -949,6 +953,8 @@ const MOVED_CONTRACTS: &[(&str, &[&str])] = &[
     (
         "gate",
         &[
+            "`pins_hold`",
+            "it ran over zero pins, it was not skipped",
             "`selectors_confirmed`",
             "refused on purpose",
             "a skipped test is not a pass",

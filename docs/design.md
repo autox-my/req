@@ -143,7 +143,8 @@ A perfect tool is defined by the tensions it resolves, not the features it lists
    than declared, and REQ-0004 was split into REQ-0004 + REQ-0021 because v2 flags
    multi-obligation statements (claim-format requires one obligation per claim).*
    *Rules v3/v4, 2026-10-07: the derived fields are written (`req canon --fill`, 21
-   claims address-addressed) and enforced (`req canon --verify` in the gate). Reading
+   claims address-addressed) and enforced (`req canon --verify` in the gate; both
+   removed by ADR 0022 — since `req.claim/2` the fields are derived at load and stored nowhere). Reading
    the bytes it wrote exposed an invalid-JSON canonical form and a schema field
    (`quantifier`) that was never in identity. Then the external source set was widened —
    the **PROMISE NFR** set (deterministic sample, 969 statements, 47 project ids) plus
@@ -284,7 +285,8 @@ The measurement's own discipline is what makes the table a result rather than a 
 21-claim row is the real corpus copied verbatim, while each larger corpus replicated
 `claims/REQ-0001.yml` — which carries no applicability predicate and `relations: []`, so every copy
 applies and every edge resolves — with distinct `claim_id`s **keeping its `canonical:` block** (the
-strict loader rejects a claim without one, and the copied bytes keep the stored address current).
+strict loader rejects a claim without one, and the copied bytes keep the stored address current —
+a `req.claim/1` measurement; under `req.claim/2` a claim carries no such block, ADR 0022).
 Each corpus root also needs `aliases/subjects.yml`, without which `gate` exits 3 on a registry load
 failure. The gate's own head was asserted to report the expected load at every size — the real
 corpus as 15 applying + 6 undecided = its 21 files, and exactly n applying / 0 undecided at 210,

@@ -5,7 +5,7 @@
 //! asymmetric in our favour: a false hit costs a split (noise), a miss costs nothing
 //! worse than before.
 
-use req::canon::{canonicalize_statement, evaluate_claim};
+use req::canon::canonicalize_statement;
 use req::model::Registry;
 
 fn unstructured(text: &str) -> bool {
@@ -68,17 +68,6 @@ fn the_lint_names_the_word_it_rejected() {
         "detail should name the word: {}",
         qualifier.detail
     );
-    // And a claim whose authored slots disagree with that classification is refused a
-    // fill, not silently filled.
-    let v = evaluate_claim(
-        &yaml_serde::from_str(
-            "schema: req.claim/1\nclaim_id: REQ-Q\nstatement: The system shall be easy-to-use.\nmodality: SHALL\nsubject: SYSTEM\napplicability: []\nunstructured: false\ncanonical:\n  rules_v: null\n  subject_registry: 1\n  form: null\naddress: null\nrationale:\n  source: x\n  date: 2026-10-07\n  rejected_alternatives: []\n  assumptions: []\nrelations: []\n",
-        )
-        .expect("claim parses"),
-        &Registry::empty(),
-    );
-    assert!(
-        v.flags() >= 1,
-        "authored `unstructured: false` disagrees with the rules"
-    );
+    // `unstructured` is derived in req.claim/2 (ADR 0022): there is no authored tag left to
+    // disagree with this classification, and authoring one is a parse error (tests/claim_v2.rs).
 }

@@ -152,8 +152,10 @@ fn the_ci_snippet_has_one_text_in_three_places() {
     for (fragment, occurrences, why) in [
         (
             "req canon --verify",
-            1,
-            "the variant-independent address check: without it a hand-edited digest is not caught",
+            0,
+            "removed in req.claim/2 (ADR 0022): nothing derived is stored, so there is nothing to \
+             verify — a step still running it exits 2 and reds every adopter's CI; the pins it \
+             gave way to are `req gate`'s `pins_hold`",
         ),
         (
             "[ -r .req/variants ]",

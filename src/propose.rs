@@ -6,8 +6,7 @@ use std::{collections::BTreeSet, io::Write, process::Stdio};
 
 fn load(path: &str) -> Result<ClaimFile, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("read {path}: {e}"))?;
-    let claim: ClaimFile = yaml_serde::from_str(&text).map_err(|e| format!("parse {path}: {e}"))?;
-    crate::canon::claim_schema_reason(&claim).map_or(Ok(claim), |why| Err(format!("{path}: {why}")))
+    crate::canon::parse_claim(&text).map_err(|e| format!("{path}: {e}"))
 }
 
 fn words(text: &str) -> BTreeSet<String> {

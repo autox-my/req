@@ -1,30 +1,13 @@
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-0010
 statement: >-
   The benchmark harness should show a false split rate of at most 0.30 on the
   parity corpus at v0.
-modality: SHOULD
-subject: BENCH
-attribute: false_split_rate
-operator: LE
-value: "0.3"
-unit: none
-conditions: []
 applicability:
   - corpus_set == parity
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
 tests:
   - "req::evidence::the_parity_corpus_meets_its_false_split_target"
 evidence: machine
-canonical:
-  rules_v: 6
-  subject_registry: 1
-  form: |-
-    {"action":"show a false split rate of","applicability":["corpus_set == parity"],"conditions":[],"exception":null,"modality":"SHOULD","operator":"LE","qualifier":"on the parity corpus at v0","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":null,"value":"0.3"}
-address: e4f9b487832690c76b49562f9b865571e1f22bd2e0b0b4413ba4f0dc86ddaaf2
 rationale:
   source: docs/canonical-hashing.md
   date: 2026-10-07
@@ -34,3 +17,6 @@ rationale:
 relations:
   - type: refines
     to: REQ-0008
+pins:
+  value: "0.3"
+  operator: LE

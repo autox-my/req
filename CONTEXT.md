@@ -16,21 +16,35 @@ _Avoid_: requirement (when the unit is meant), statement, item, record
 A claim whose modality imposes obligation — the SHALL subset of the graph.
 _Avoid_: user story, ticket, issue, epic
 
+**Derived parse**:
+What a claim's statement parses to under the current rules — structure, modality, subject,
+comparator, value, unit, conditions, lints — computed when the claim is loaded and stored nowhere
+(ADR 0022). The author writes the statement; the parse is the tool's.
+_Avoid_: slots, authored parse (the `req.claim/1` notion), cache
+
 **Canonical form**:
-The normalized representation of a claim's meaning, from which its address is derived.
-Claims sharing a canonical form are the same claim.
+The normalized representation of a claim's meaning — its derived parse plus its applicability —
+from which its address is derived. Claims sharing a canonical form are the same claim.
 _Avoid_: normalized text, canonical text
 
 **Address**:
-The digest of a claim's canonical form; the stored spelling of its **Meaning fingerprint**. It is
-not the claim's identity — that is the **Claim ID**.
+The digest of a claim's canonical form; the spelling of its **Meaning fingerprint**. Derived at load,
+never stored in a claim file; a signed Baseline stores it per claim. It is not the claim's identity —
+that is the **Claim ID**.
 _Avoid_: identity, ID, key, hash (for the human label)
 
 **Meaning fingerprint**:
 What a claim's meaning hashes to under a stated rules version. It answers "has this meaning moved
 since it was signed?" and "do these two claims look like one?"; it names nothing and refers to
-nothing. A claim whose meaning changes keeps its Claim ID and gets a new fingerprint.
+nothing. A claim whose meaning changes keeps its Claim ID and gets a new fingerprint. Computed when
+the claim is loaded, and compared against a signed manifest — never against a copy in the claim.
 _Avoid_: identity, ID
+
+**Pin**:
+An author's statement of what a claim's derived parse must hold for one key (`modality`, `subject`,
+`operator`, `value`, `unit`), where the parse is load-bearing. It agrees, or it is a flag — a
+contradiction, or a value the parse does not carry; never an annotation. It moves no address.
+_Avoid_: slot, annotation, assertion
 
 **Claim ID**:
 The stable identity of a claim and its human-facing label, deliberately separate from the address

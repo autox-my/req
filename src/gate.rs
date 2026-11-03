@@ -6,11 +6,11 @@
 //!
 //! Three outcomes, and the middle one is why this module is not a boolean:
 //!
-//! * **Fail** — a defect in a claim the variant includes: an address that does not
-//!   recompute, a digest that disagrees with the stored form, no provenance.
+//! * **Fail** — a defect in a claim the variant includes: a pin the derived parse does not
+//!   hold (ADR 0022), no provenance, a linked test that did not pass.
 //! * **Unverifiable** — nothing is known to be wrong, but nothing can be confirmed either:
-//!   an unfilled claim, a relation that does not resolve, a dependency left undecided, a
-//!   context the corpus cannot confirm.
+//!   a relation that does not resolve, a dependency left undecided, a context the corpus
+//!   cannot confirm, a test report that cannot be read.
 //! * **Pass** — every policy settled in the affirmative **and** every claim in the corpus was
 //!   decided; a selection that leaves a claim undecided is Unverifiable, never Pass.
 //!
@@ -33,8 +33,8 @@
 //! rewritten. An excluded claim is not the variant's problem, which is the one way a corpus
 //! carrying such a predicate can go green without touching the grammar.
 
+use crate::canon::PinVerdict;
 use crate::canon::RULES_V;
-use crate::fill::StoredState;
 use crate::format::{self, Format, SCHEMA_GATE};
 use crate::junit::TestOutcome;
 use crate::model::Evidence;
@@ -76,7 +76,9 @@ impl Outcome {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PolicyResult {
     pub name: &'static str,
-    pub detail: &'static str,
+    /// The policy's prose description, printed under its name. Owned, because one policy
+    /// (`pins_hold`) states how many pins it held — a pass over zero pins says so.
+    pub detail: String,
     pub outcome: Outcome,
     pub offenders: Vec<String>,
     /// Claims whose evidence is an explicit **process declaration** rather than a machine link.
@@ -89,7 +91,7 @@ pub struct PolicyResult {
 impl PolicyResult {
     fn new(
         name: &'static str,
-        detail: &'static str,
+        detail: impl Into<String>,
         failed: Vec<String>,
         unverifiable: Vec<String>,
     ) -> Self {
@@ -104,7 +106,7 @@ impl PolicyResult {
         };
         Self {
             name,
-            detail,
+            detail: detail.into(),
             outcome,
             offenders,
             process: Vec::new(),
@@ -374,22 +376,40 @@ pub fn evaluate_claims(rows: &[Row], context: &Context) -> Vec<PolicyResult> {
     let state_of = |id: &str| rows.iter().find(|r| r.claim_id == id).map(|r| r.applies);
     let applying: Vec<&Row> = rows.iter().filter(|r| r.applies == Applies::Yes).collect();
 
-    // 1. Every applying claim has an address for the *current* rules. A hand-edited digest
-    //    is a defect; an unfilled or stale one is an open question, not a pass.
-    let (mut failed, mut unverifiable) = (Vec::new(), Vec::new());
+    // 1. Every pin of every applying claim agrees with the parse derived at load (ADR 0022).
+    //    A flagged pin — a contradiction, or a slot the parse does not carry — is a defect: the
+    //    author said what the statement must parse to, and it does not. With no pin to hold the
+    //    policy passes *and says so*: it ran over zero pins, it was not skipped.
+    let mut failed = Vec::new();
+    let mut held = 0usize;
     for row in &applying {
-        match &row.stored {
-            StoredState::Verified => {}
-            StoredState::Mismatch(why) => failed.push(format!("{}: {why}", row.claim_id)),
-            StoredState::Candidate(why) => unverifiable.push(format!("{}: {why}", row.claim_id)),
+        for check in &row.pins {
+            match &check.verdict {
+                PinVerdict::Agrees => held += 1,
+                PinVerdict::Contradiction(derived) => failed.push(format!(
+                    "{}: pin {} {} contradicts the parse ({derived})",
+                    row.claim_id, check.key, check.pinned
+                )),
+                PinVerdict::NotCarried => failed.push(format!(
+                    "{}: pin {} {} is not carried by the parse (it holds no {})",
+                    row.claim_id, check.key, check.pinned, check.key
+                )),
+            }
         }
     }
-    let addresses = PolicyResult::new(
-        "addresses_current",
-        "every applying claim stores an address that recomputes under the current rules",
-        failed,
-        unverifiable,
-    );
+    let detail = if held + failed.len() == 0 {
+        "every pin of every applying claim agrees with the derived parse — zero pins in this \
+         selection: nothing to hold, so nothing failed (the policy ran over zero pins; it was \
+         not skipped)"
+            .to_string()
+    } else {
+        format!(
+            "every pin of every applying claim agrees with the derived parse ({} pin(s), {held} \
+             held)",
+            held + failed.len()
+        )
+    };
+    let pins = PolicyResult::new("pins_hold", detail, failed, Vec::new());
 
     // 2. Every relation of an applying claim resolves inside the corpus. An edge to a
     //    claim that does not exist cannot be checked, so it is unverifiable — never
@@ -445,7 +465,7 @@ pub fn evaluate_claims(rows: &[Row], context: &Context) -> Vec<PolicyResult> {
     //    and `Fail` still outranks `Unverifiable` across the whole list.
     let selectors = selectors_confirmed(rows, context);
 
-    vec![addresses, relations, decided, rationale, selectors]
+    vec![pins, relations, decided, rationale, selectors]
 }
 
 /// The overall verdict of a set of policy results **and the selection they were made over**, as

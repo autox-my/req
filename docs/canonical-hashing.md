@@ -121,9 +121,9 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
     selector syntax yet (ADR 0003 defers it), so the form takes the sorted authored list.
     Rules v5 — before that the form had **no applicability field at all**, which meant two
     claims differing only in their selector hashed to the same address.
-  - **A slot the rules cannot carry is refused, never ignored.** Authoring `quantifier`,
-    `exception` or `temporal` (no derivation *and* no field) is reported by `req canon`
-    and makes `req canon --fill` refuse that claim: the honest answer to "the rules cannot
+  - **A slot the rules cannot carry is refused, never ignored.** `quantifier`, `exception`
+    and `temporal` have no derivation, and since `req.claim/2` (ADR 0022) no claim key either:
+    authoring one is a parse error that names it — the honest answer to "the rules cannot
     represent this" is to say so, not to hash a form that drops what the author wrote. If
     a derivation ever lands, the field must arrive in the same change — a rules bump.
   - The bytes are **parsed by consumers** (porcelain, audit tooling, any
@@ -166,22 +166,20 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
 ``respond``, operator LE, value 0.2 s, qualifier empty → same address. The inverse
 trap: LE vs LT — ``within`` vs ``in fewer than`` — never collapse.
 
-### 5.1 Writing and verifying the stored fields
+### 5.1 Deriving at load, and checking what is load-bearing
 
-`req canon --fill` is the only writer of `canonical.form`/`address` into an existing claim —
-a new corpus's starter claim is derived by `req init` through this same path, never typed —
-and it **refuses** a claim whose parse disagrees with its authored slots: an address over a
-parse that contradicts the claim would enshrine the contradiction in the audit artifact. A
-refusal is reported and exits 3 — never folded into success.
+Nothing derived is stored in a claim file (`req.claim/2`, ADR 0022): `canon::load_claims`
+derives each claim's form, canonical bytes and address from its `statement` and authored
+`applicability` every time the corpus is read, so no command writes a `canonical.form` or an
+`address` and none can be stale or hand-written. What an author wants held is stated as a
+**pin** (`pins:` — modality, subject, operator, value, unit), judged against the derived form:
+it agrees, or it is a flag (a contradiction, or a value the parse does not carry). `req canon`
+reports each verdict and exits 0; the release gate's `pins_hold` fails on a flagged pin.
 
-`req canon --verify` is in the gate, and it checks three things per claim: the stored
-form equals what the current parse produces, the stored address recomputes from the
-**stored bytes**, and the rules version matches. Exit codes are the three states:
-**0** verified, **1** mismatch (a hand-edited digest, or a stale form), **3**
-candidate (unfilled, or filled under other rules). A candidate is what a rules bump
-produces by design — re-canonicalization candidates requiring re-ratification, never a
-silent rehash — so a rules bump without a re-fill stops at the gate rather than
-shipping a corpus whose addresses no longer mean what the rules say.
+A rules bump therefore moves derived addresses at the next load rather than leaving stored ones
+stale. The check that catches it is **drift against the signed manifest**: `req baseline
+--verify` re-derives every attested claim's address and fails on any that moved, which is the
+re-canonicalization candidate of §5 made visible per claim — never a silent rehash.
 
 **Example that must NOT collapse** — ``The system shall not exceed 2.5 A of
 standby current`` vs ``… of surge current``: the qualifier differs → different
@@ -202,12 +200,14 @@ merge requires.
 
 ## 5. Freeze and upgrade policy
 
-The canonical-form bytes are **stored on the claim object**, so every address is
-recomputable from stored bytes: `sha256(stored canonical form) == stored address`.
-Rules carry a version; rule upgrades do **not** rewrite ratified history. A claim
-ratified in a signed Baseline keeps its (canonical form, address) pair; re-normalization
-under new rules yields a *candidate* that requires re-ratification, never a silent
-mutation — an address that changes between runs would make every Baseline unauditable.
+The canonical-form bytes are **derived from the claim** at load (ADR 0022), so every address
+is recomputable from the claim alone: `sha256("req.claim.v1\0" ‖ canonical bytes) == address`,
+and the address a signed Baseline **stores** per claim is what a later derivation is compared
+against. Rules carry a version; rule upgrades do **not** rewrite ratified history. A claim
+ratified in a signed Baseline keeps its attested address; re-normalization under new rules
+yields a *candidate* — drift against that manifest — that requires re-ratification, never a
+silent mutation: an address that changed unnoticed between runs would make every Baseline
+unauditable.
 
 ## 6. Benchmark — the gate that turns the thesis into a number
 

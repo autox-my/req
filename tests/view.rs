@@ -150,6 +150,14 @@ fn a_relation_is_serialized_exactly_once_on_its_origin_claim() {
         std::thread::current().id()
     )));
     std::fs::create_dir_all(scratch.0.join("claims")).expect("scratch corpus");
+    // The loader derives every claim's parse against the registry, so the scratch corpus carries
+    // the repository's: the refusal below must be about the key, not a missing registry.
+    std::fs::create_dir_all(scratch.0.join("aliases")).expect("scratch aliases");
+    std::fs::copy(
+        root.join("aliases/subjects.yml"),
+        scratch.0.join("aliases/subjects.yml"),
+    )
+    .expect("scratch registry");
     std::fs::write(scratch.0.join("claims/REQ-0022.yml"), mirrored).expect("scratch claim");
     let err = req::canon::load_claims(&scratch.0).expect_err("a reverse-edge key must not load");
     assert!(err.contains("referenced_by"), "{err}");

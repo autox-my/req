@@ -217,7 +217,7 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
         tests: Vec::new(),
         evidence: req::model::Evidence::Machine,
         tests_hash: EMPTY_TESTS_DIGEST.to_string(),
-        stored: req::fill::StoredState::Verified,
+        pins: Vec::new(),
         rationale_source: provenance.source,
         rationale_date: provenance.date,
     }

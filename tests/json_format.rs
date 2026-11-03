@@ -69,8 +69,8 @@ fn unique_dir(name: &str) -> PathBuf {
     dir
 }
 
-/// A fixture corpus created by the real bootstrap (`req init`), so every claim carries derived
-/// fields the derivation wrote — never a hand-written address.
+/// A fixture corpus created by the real bootstrap (`req init`): authored `req.claim/2` claims,
+/// whose parse and address the loader derives — nothing derived is written (ADR 0022).
 struct Corpus(PathBuf);
 
 impl Corpus {
@@ -89,8 +89,8 @@ impl Corpus {
         fs::write(
             dir.join("claims/REQ-0001.yml"),
             claim.replace(
-                "unstructured: false\n",
-                "unstructured: false\ntests:\n  - \"fixture::REQ-0001\"\n",
+                "relations: []\n",
+                "relations: []\ntests:\n  - \"fixture::REQ-0001\"\n",
             ),
         )
         .expect("links the starter claim");
@@ -99,7 +99,7 @@ impl Corpus {
 
     /// The starter corpus plus a second claim with the same authored slots (so the statement's
     /// action may differ without touching the parity invariant), the given applicability and
-    /// outgoing relations. Derived fields are filled by `req canon --fill`, as a human would.
+    /// outgoing relations. Nothing derived is written: the loader derives it (ADR 0022).
     fn with_second_claim(
         name: &str,
         statement: &str,
@@ -155,9 +155,6 @@ impl Corpus {
             .replace("applicability: []", &applicability_block)
             .replace("relations: []", &relations_block);
         fs::write(self.claim_path(id), text).expect("writes the second claim");
-        // The derived fields are the derivation's to write: the claim moved, so its address
-        // must be re-derived exactly as a human would do it.
-        self.refill();
     }
 
     /// Write the JUnit report the gate reads, from the links the fixture claims carry, and return
@@ -176,19 +173,10 @@ impl Corpus {
         run_at(self.path(), &args)
     }
 
-    fn refill(&self) {
-        let out = run_at(self.path(), &["canon", "--fill"]);
-        assert_eq!(
-            out.code, 0,
-            "the fixture corpus must be filled and green:\n{}\n{}",
-            out.stdout, out.stderr
-        );
-    }
-
-    /// Rewrite a claim's statement **without** re-filling: the stored address and form now
-    /// disagree with a fresh parse. That is the definite defect `gate` reports as FAIL — no
-    /// hand-written digest, just an edit nobody re-derived.
-    fn rewrite_statement_without_refill(&self, id: &str, statement: &str) {
+    /// Rewrite a claim's statement. Nothing is stored to re-derive (ADR 0022): the next load
+    /// derives the new parse and address. A statement whose bound no longer matches the starter
+    /// claim's `pins:` is the definite defect `gate` reports as FAIL (`pins_hold`).
+    fn rewrite_statement(&self, id: &str, statement: &str) {
         let path = self.claim_path(id);
         let text = fs::read_to_string(&path).expect("the claim file");
         let mut replaced = false;
@@ -512,11 +500,10 @@ fn identity_moves_when_a_claim_address_moves() {
     assert_eq!(before.code, 0, "{}", before.stderr);
     let before = parse(&before.stdout);
 
-    corpus.rewrite_statement_without_refill(
+    corpus.rewrite_statement(
         "REQ-0002",
         "The API shall answer a readiness check within 200 ms.",
     );
-    corpus.refill();
     let after = run_at(corpus.path(), &["render", "--format", "json"]);
     assert_eq!(after.code, 0, "{}", after.stderr);
     let after = parse(&after.stdout);
@@ -678,7 +665,7 @@ fn gate_json_has_the_pinned_shape() {
             "verdict",
         ],
     );
-    assert_eq!(document["schema"], "req.gate/1");
+    assert_eq!(document["schema"], "req.gate/2");
     assert_eq!(document["generator"], "gate");
     assert_eq!(document["rules_v"], req::canon::RULES_V);
     assert_eq!(document["verdict"], "pass");
@@ -694,7 +681,7 @@ fn gate_json_has_the_pinned_shape() {
     assert_eq!(
         names,
         [
-            "addresses_current",
+            "pins_hold",
             "relations_resolve",
             "dependencies_decided",
             "rationale_present",
@@ -714,7 +701,7 @@ fn gate_json_has_the_pinned_shape() {
 /// and the text and JSON runs must agree on the code every time.
 #[test]
 fn gate_json_verdict_and_exit_code_agree_for_all_three_classes() {
-    // PASS: no selector, provenance present, addresses current.
+    // PASS: no selector, provenance present, every pin holds.
     let pass = Corpus::with_second_claim(
         "gate-pass",
         "The API shall respond to a readiness check within 200 ms.",
@@ -728,16 +715,17 @@ fn gate_json_verdict_and_exit_code_agree_for_all_three_classes() {
         &["deployment_mode == air_gapped"],
         &[],
     );
-    // FAIL: a definite defect — a claim edited after it was filled, its stored address stale.
+    // FAIL: a definite defect — a claim whose statement no longer holds the bound it pins
+    // (`value: "0.2"` pinned, `500 ms` = 0.5 s derived): `pins_hold` fails.
     let defect = Corpus::with_second_claim(
         "gate-defect",
         "The API shall respond to a readiness check within 200 ms.",
         &[],
         &[],
     );
-    defect.rewrite_statement_without_refill(
+    defect.rewrite_statement(
         "REQ-0001",
-        "The API shall answer a readiness check within 200 ms.",
+        "The API shall answer a readiness check within 500 ms.",
     );
 
     for (corpus, expected_code, expected_verdict) in [
@@ -781,9 +769,9 @@ fn gate_json_verdict_and_exit_code_agree_for_all_three_classes() {
         &["deployment_mode == air_gapped"],
         &[],
     );
-    both.rewrite_statement_without_refill(
+    both.rewrite_statement(
         "REQ-0001",
-        "The API shall answer a readiness check within 200 ms.",
+        "The API shall answer a readiness check within 500 ms.",
     );
     let json = both.run_gate(&["--format", "json"]);
     assert_eq!(
@@ -1039,7 +1027,7 @@ fn each_help_page_carries_the_format_contract() {
         ("render", "req.render/1"),
         ("trace", "req.trace/1"),
         ("audit", "req.audit/1"),
-        ("gate", "req.gate/1"),
+        ("gate", "req.gate/2"),
     ] {
         let out = run_at(&dir, &[command, "--help"]);
         assert_eq!(out.code, 0, "`{command} --help`:\n{}", out.stderr);

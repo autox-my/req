@@ -1,29 +1,12 @@
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-0001
 statement: >-
   The req tool shall treat a single claim as the unit of requirements authorship,
   review, and merge.
-modality: SHALL
-subject: REQ_TOOL
-attribute: unit_of_work
-operator: EQ
-value: claim
-unit: none
-conditions: []
 applicability: []
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
 tests:
   - "req::evidence::a_claim_is_the_unit_of_authorship_review_and_merge"
 evidence: machine
-canonical:
-  rules_v: 6
-  subject_registry: 1
-  form: |-
-    {"action":"treat a single claim as the unit of requirements authorship, review, and merge","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: f559f5a905e4b8d595d064ec960aa695450c84176f9e1577cf2a060904e89e28
 rationale:
   source: docs/adr/0001-the-unit-is-a-claim.md
   date: 2026-10-07

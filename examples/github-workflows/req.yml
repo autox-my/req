@@ -45,8 +45,6 @@ jobs:
           # `$GITHUB_PATH` applies to *later* steps only; this step's own PATH is unchanged.
           export PATH="$HOME/.local/bin:$PATH"
           req --version
-      - name: every stored address still recomputes (variant-independent)
-        run: req canon --verify
       # The tests that prove the claims (ADR 0019). This template is Rust and uses nextest because
       # it writes the JUnit/XUnit document `req gate --test-report` reads; on another stack, run
       # your own test command and point `--test-report` at the report it writes. A claim with no
@@ -165,7 +163,7 @@ jobs:
           fi
           exit $rc
       # The agent-facing half (pack C): the verdicts as JSON documents, kept off the log.
-      # An agent reviewing this pull request reads `req.gate/1`, never a scraped text line.
+      # An agent reviewing this pull request reads `req.gate/2`, never a scraped text line.
       - name: the JSON views, as build artifacts (an agent reads these, not the log)
         if: always()
         run: |

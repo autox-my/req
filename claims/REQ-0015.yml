@@ -1,29 +1,12 @@
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-0015
 statement: >-
   The req tool shall not operate a continuous two-way synchronization bridge
   between a web database and the requirement files.
-modality: SHALL-NOT
-subject: REQ_TOOL
-attribute: continuous_bidirectional_file_sync
-operator: EQ
-value: absent
-unit: none
-conditions: []
 applicability: []
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
 tests:
   - "req::evidence::no_command_starts_a_sync_or_polling_loop"
 evidence: machine
-canonical:
-  rules_v: 6
-  subject_registry: 1
-  form: |-
-    {"action":"operate a continuous two-way synchronization bridge between a web database and the requirement files","applicability":[],"conditions":[],"exception":null,"modality":"SHALL-NOT","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: 4a15b28c8eba8717efbc27310119ca1968a43c3bd04e1363795838fc8363a319
 rationale:
   source: docs/design.md
   date: 2026-10-07

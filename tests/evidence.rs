@@ -521,11 +521,10 @@ fn a_claim_is_the_unit_of_authorship_review_and_merge() {
     );
     let second = starter
         .replace("claim_id: REQ-0001", "claim_id: REQ-0002")
-        .replace(STARTER_STATEMENT, STARTER_MAY)
-        .replace("modality: SHALL", "modality: MAY");
+        .replace(STARTER_STATEMENT, STARTER_MAY);
     scratch.write("claims/REQ-0002.yml", &second);
-    assert_eq!(run_here(scratch.path(), &["canon", "--fill"]).0, 0);
-    assert_eq!(run_here(scratch.path(), &["canon", "--verify"]).0, 0);
+    // Nothing to fill (ADR 0022): the loader derives both claims' parses and addresses.
+    assert_eq!(run_here(scratch.path(), &["canon"]).0, 0);
 
     let (_, stdout, _) = run_here(scratch.path(), &["render", "--format", "json"]);
     let rows = render_rows(&stdout);
@@ -537,12 +536,9 @@ fn a_claim_is_the_unit_of_authorship_review_and_merge() {
         "two different obligations must not share an address"
     );
 
-    // A slot edit moves that claim's address — and only that one.
-    let edited = second
-        .replace(STARTER_MAY, STARTER_SHOULD)
-        .replace("modality: MAY", "modality: SHOULD");
+    // A meaning edit moves that claim's address — and only that one.
+    let edited = second.replace(STARTER_MAY, STARTER_SHOULD);
     scratch.write("claims/REQ-0002.yml", &edited);
-    assert_eq!(run_here(scratch.path(), &["canon", "--fill"]).0, 0);
     let (_, stdout, _) = run_here(scratch.path(), &["render", "--format", "json"]);
     let rows = render_rows(&stdout);
     assert_eq!(rows.len(), 2, "editing a claim merges and splits nothing");
@@ -573,27 +569,21 @@ fn derived_claims_are_accepted_without_constraint() {
     let starter = scratch.read("claims/REQ-0001.yml");
 
     // Each derived claim must carry a *distinct obligation*: two statements that parse to the same
-    // slots share an address — the parity invariant, not a bug. Modality and the bound are slots.
+    // form share an address — identity is over meaning, not a bug. Modality and the bound are both
+    // in the form; the starter's `value` pin follows the bound so every pin still holds.
     assert!(
         starter.contains(STARTER_STATEMENT),
         "the fixture edits the template's own statement"
     );
-    for (id, parent, statement, slots) in [
-        ("REQ-0002", "REQ-0001", STARTER_MAY, "modality: MAY"),
-        ("REQ-0003", "REQ-0002", STARTER_SHOULD, "modality: SHOULD"),
+    for (id, parent, statement, pinned_value) in [
+        ("REQ-0002", "REQ-0001", STARTER_MAY, "value: \"0.2\""),
+        ("REQ-0003", "REQ-0002", STARTER_SHOULD, "value: \"0.2\""),
         ("REQ-0004", "REQ-0003", STARTER_500, "value: \"0.5\""),
     ] {
         let derived = starter
             .replace("claim_id: REQ-0001", &format!("claim_id: {id}"))
             .replace(STARTER_STATEMENT, statement)
-            .replace(
-                if slots.starts_with("modality") {
-                    "modality: SHALL"
-                } else {
-                    "value: \"0.2\""
-                },
-                slots,
-            )
+            .replace("value: \"0.2\"", pinned_value)
             .replace(
                 "relations: []",
                 &format!("relations:\n  - type: derives-from\n    to: {parent}"),
@@ -605,12 +595,15 @@ fn derived_claims_are_accepted_without_constraint() {
         scratch.write(&format!("claims/{id}.yml"), &derived);
     }
 
-    let (fill_code, fill_out, fill_err) = run_here(scratch.path(), &["canon", "--fill"]);
+    let (canon_code, canon_out, canon_err) = run_here(scratch.path(), &["canon"]);
     assert_eq!(
-        fill_code, 0,
-        "fill accepts the derived claims: {fill_out}{fill_err}"
+        canon_code, 0,
+        "the loader accepts the derived claims: {canon_out}{canon_err}"
     );
-    assert_eq!(run_here(scratch.path(), &["canon", "--verify"]).0, 0);
+    assert!(
+        canon_out.contains("pins: 12 on 4 claim(s), 0 flagged"),
+        "every derived claim's pins hold: {canon_out}"
+    );
 
     let (code, stdout, stderr) = run_here(scratch.path(), &["trace"]);
     assert_eq!(
@@ -652,7 +645,7 @@ fn authoring_is_frictionless_and_the_decision_boundary_is_not() {
     let scratch = Scratch::new("req-0007-boundary");
     // Half one: one command, and the corpus is green (no authoring ceremony).
     assert_eq!(run_here(scratch.path(), &["init"]).0, 0);
-    assert_eq!(run_here(scratch.path(), &["canon", "--verify"]).0, 0);
+    assert_eq!(run_here(scratch.path(), &["canon"]).0, 0);
 
     // Half two: an applicability the invocation does not decide is never treated as absent.
     let claim = scratch.read("claims/REQ-0001.yml");
@@ -670,11 +663,10 @@ fn authoring_is_frictionless_and_the_decision_boundary_is_not() {
         &claim
             .replace("applicability: []", "applicability: [\"runs >= 100\"]")
             .replace(
-                "canonical:",
-                &format!("tests:\n  - \"{link}\"\nevidence: machine\ncanonical:"),
+                "relations: []\n",
+                &format!("relations: []\ntests:\n  - \"{link}\"\nevidence: machine\n"),
             ),
     );
-    assert_eq!(run_here(scratch.path(), &["canon", "--fill"]).0, 0);
 
     let linked = "req::evidence::authoring_is_frictionless_and_the_decision_boundary_is_not";
     let report = write_report(scratch.path(), &[linked]);
@@ -701,7 +693,8 @@ fn authoring_is_frictionless_and_the_decision_boundary_is_not() {
 /// Two claims, because a merge path needs a pair: with one claim it could never fire, and the test
 /// would be green for the wrong reason (the review caught exactly that). Every observation is on
 /// the **whole bytes** of every claim, not one line: a read-only command must leave the corpus
-/// byte-identical, and `--fill` on an already-current corpus must write nothing at all.
+/// byte-identical, and there is no writer of derived fields left to run (`canon --fill` is a
+/// usage error since `req.claim/2`, ADR 0022) — it must write nothing at all either.
 #[test]
 fn no_command_rewrites_or_merges_claims_automatically() {
     let scratch = Scratch::new("req-0021-readonly");
@@ -715,11 +708,9 @@ fn no_command_rewrites_or_merges_claims_automatically() {
         "claims/REQ-0002.yml",
         &starter
             .replace("claim_id: REQ-0001", "claim_id: REQ-0002")
-            .replace(STARTER_STATEMENT, STARTER_MAY)
-            .replace("modality: SHALL", "modality: MAY"),
+            .replace(STARTER_STATEMENT, STARTER_MAY),
     );
-    assert_eq!(run_here(scratch.path(), &["canon", "--fill"]).0, 0);
-    assert_eq!(run_here(scratch.path(), &["canon", "--verify"]).0, 0);
+    assert_eq!(run_here(scratch.path(), &["canon"]).0, 0);
     let before = claim_files(scratch.path());
     assert_eq!(before.len(), 2, "two obligations, two files");
 
@@ -741,13 +732,16 @@ fn no_command_rewrites_or_merges_claims_automatically() {
         "a read-only command rewrote or merged a claim"
     );
 
-    // `--fill` on an already-current corpus writes nothing: every byte stays where it was, and no
-    // file disappears (a merge would remove one).
-    assert_eq!(run_here(scratch.path(), &["canon", "--fill"]).0, 0);
+    // The removed writer writes nothing: `canon --fill` and `--verify` are usage errors, every
+    // byte stays where it was, and no file disappears (a merge would remove one).
+    for removed in ["--fill", "--verify"] {
+        assert_eq!(run_here(scratch.path(), &["canon", removed]).0, 2);
+    }
+    assert_eq!(run_here(scratch.path(), &["canon"]).0, 0);
     assert_eq!(
         claim_files(scratch.path()),
         before,
-        "fill changed a claim that was already current"
+        "a command changed a claim"
     );
     assert_eq!(
         claim_files(scratch.path()).len(),
@@ -797,10 +791,8 @@ fn a_provider_answer_is_an_unratified_proposal_never_an_edit() {
         "claims/REQ-0002.yml",
         &starter
             .replace("claim_id: REQ-0001", "claim_id: REQ-0002")
-            .replace(STARTER_STATEMENT, STARTER_MAY)
-            .replace("modality: SHALL", "modality: MAY"),
+            .replace(STARTER_STATEMENT, STARTER_MAY),
     );
-    assert_eq!(run_here(scratch.path(), &["canon", "--fill"]).0, 0);
     let before = tree(scratch.path());
     let pair = ["claims/REQ-0001.yml", "claims/REQ-0002.yml"];
     let propose = |extra: &[&str]| {

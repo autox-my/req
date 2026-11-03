@@ -1,29 +1,12 @@
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-0019
 statement: >-
   The req tool shall emit a lint finding for any construct its normalization rules
   cannot decide rather than guessing a resolution.
-modality: SHALL
-subject: REQ_TOOL
-attribute: undecidable_parse_policy
-operator: EQ
-value: lint_not_guess
-unit: none
-conditions: []
 applicability: []
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
 tests:
   - "req::bench::tests::n005_lints_untestable_comparator"
 evidence: machine
-canonical:
-  rules_v: 6
-  subject_registry: 1
-  form: |-
-    {"action":"emit a lint finding for any construct its normalization rules cannot decide rather than guessing a resolution","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: 25713319754e957b274d2826061e6239004555867b0273d5af6241dac1cbf1ec
 rationale:
   source: docs/canonical-hashing.md
   date: 2026-10-07

@@ -2,9 +2,7 @@
 //!
 //! Subcommands:
 //!   req [--root <dir>] bench [corpus.yml] — run the FMR gate (default: bench/corpus/parity.yml)
-//!   req [--root <dir>] canon               — parse diagnostics over <root>/claims/REQ-*.yml
-//!   req [--root <dir>] canon --fill        — write the derived `canonical.form` + `address`
-//!   req [--root <dir>] canon --verify      — check the stored derived fields against the parse
+//!   req [--root <dir>] canon               — the derived parse and each pin's verdict, per claim
 //!   req [--root <dir>] compare A.yml B.yml — what kind of change is this between two claims?
 //!   req [--root <dir>] select k=v [...]    — which claims apply in this variant? (tri-state)
 //!   req [--root <dir>] render [--format text|json] k=v [...]
@@ -41,8 +39,8 @@
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
 use req::{
-    audit, baseline, bench, canon, compare, decision, fill, gate, impact, init, propose, root,
-    select, view,
+    audit, baseline, bench, canon, compare, decision, gate, impact, init, propose, root, select,
+    view,
 };
 use std::path::Path;
 use std::process::exit;
@@ -54,7 +52,7 @@ const USAGE: &str = "\
 usage: req [--root <dir>] <command> [args]
 
   bench [corpus.yml]              the FMR gate (default: bench/corpus/parity.yml)
-  canon [--fill | --verify]       parse diagnostics, or write/check the derived address
+  canon                           the derived parse and each pin's verdict (diagnostics)
   compare <a.yml> <b.yml>         what kind of change is this between two claims?
   select | render | trace | gate k=v [...]
                                   the variant projections and the release gate
@@ -89,8 +87,7 @@ and is never folded into a pass — and 2 usage. A command's page carries its ow
 /// Every value is read from the constant that carries it (`env!("CARGO_PKG_VERSION")`,
 /// [`canon::RULES_V`], [`baseline::BASELINE_VERSION`], [`decision::DECISION_VERSION`],
 /// [`canon::claim_schema()`]), never re-typed here: a literal `5` in this file would be a second
-/// copy of `RULES_V`, free to drift from the value that decides whether a stored address is
-/// current.
+/// copy of `RULES_V`, free to drift from the value that decides every derived address.
 ///
 /// `rules_v` comes first because it is that axis and the first thing to check when a verdict
 /// surprises the reader. The build line is printed even when the identity cannot be established
@@ -165,33 +162,26 @@ denominator). A run that found a defect is 1 even when it was degraded.
 `docs/adopting.md` for the loop.";
 
 const CANON_HELP: &str = "\
-usage: req canon [--fill | --verify]
+usage: req canon
 
-Reports the parity invariant per claim: whether the authored slots agree with a fresh parse
-of `statement`. A contradiction or an omission is a flag; a qualitative attribute/value
-triple is an annotation, which identity does not carry. `--fill` writes the derived
-`canonical.form` and `address`; `--verify` checks the stored derived fields.
+Prints, per claim, the parse its `statement` derives — structured or unstructured, modality,
+subject, operator, value, unit, and the lints the canonicalizer raised — and each pin's
+verdict. Nothing derived is stored in a claim file (`req.claim/2`, ADR 0022): the parse, the
+canonical form and the address are computed when the claim is loaded, so there is nothing to
+fill and nothing to verify; `--fill` and `--verify` are removed and answer a usage error.
 
-`value`, `unit` and `operator` are judged against the parse (ADR 0014): a derived slot the
-author contradicts is a flag, one the author omits is a flag, and a slot the author wrote that
-the canonical form does not derive is an annotation, printed as `ann`. The annotation is only
-the qualitative triple (`unit: none`, a non-numeric `value`, and `EQ` or no operator): a
-quantity-shaped claim — a numeric value, a comparator other than `EQ`, or an authored unit —
-that authors a slot the parse did not derive is still a contradiction and a flag, because a
-bound the parse missed would silently leave the address, a false merge. `attribute` is
-unverified by design. `--fill` refuses a flag, never an annotation: the author's qualitative
-predicate is not the fill's to delete. A file whose declared `schema:` is not the one this
-build writes (`req --version` reports it as `claim_schema`) is NOT JUDGED: an older one is a
-migration candidate, a newer one is a question for a build that writes it, and a value of no
-`req.claim/<n>` shape is a broken file.
+A pin (`pins:` — modality, subject, operator, value, unit) states what the statement must parse
+to. It agrees, or it is a flag: a *contradiction* (the parse says something else, named) or
+*not carried* (the parse holds no such value). There is no third, non-flagging category. A
+flagged pin moves no address — it reports here, and `req gate` fails on it (`pins_hold`). A
+file whose declared `schema:` is not the one this build writes (`req --version` reports it as
+`claim_schema`) is NOT JUDGED: an older one is a migration candidate
+(`tools/migrate_claims.py`), a newer one is a question for a build that writes it, and a value
+of no `req.claim/<n>` shape is a broken file. A `req.claim/2` file carrying a removed
+`req.claim/1` key is a parse error that names the key.
 
-exit: 0 diagnostics reported — not a pass: it reports, and it never gates; `--verify` is what
-gates: 0 verified, 1 a stored digest that does not recompute (a draft still carrying the empty
-`form` anchor with `address: null` is reported `form stored but no address` — its remedy is
-`--fill`), 3 a re-canonicalization candidate (unfilled, or filled under other rules) or a
-claim file this build does not write. `--fill`:
-0 filled, 3 refused (a contradiction or an omission). 3 for a registry or claim file that
-cannot be read, and 2 usage.
+exit: 0 diagnostics reported — not a pass: it reports, and it never gates; 3 a registry or
+claim file that cannot be read (or is NOT JUDGED); 2 usage, including `--fill` and `--verify`.
 
 `docs/adopting.md` for the loop.";
 
@@ -282,11 +272,15 @@ an unreproducible selection, or another command's projection (--check); 2 usage.
 const GATE_HELP: &str = "\
 usage: req gate [--format text|json] [--test-report <file>] [key=value ...]
 
-Runs the release policies over the claims a variant leaves applying — addresses current,
-relations resolve, dependencies decided, rationale present, and (with `--test-report <file>`)
-tests linked — and confirms the invocation itself. A claim the invocation leaves undecided was
+Runs the release policies over the claims a variant leaves applying — pins hold, relations
+resolve, dependencies decided, rationale present, and (with `--test-report <file>`) tests
+linked — and confirms the invocation itself. A claim the invocation leaves undecided was
 not examined, and that is not a pass: a bare gate on a corpus carrying a selector is
 UNVERIFIABLE.
+
+`pins_hold` fails on any pin of an applying claim that the parse derived at load does not hold
+— a contradiction, or a value the parse does not carry (ADR 0022). With no pin in the selection
+it passes and says so: it ran over zero pins, it was not skipped.
 
 `selectors_confirmed` judges the invocation: a `key=value` entry no applicability predicate in
 the corpus mentions decided nothing, and an `==` entry whose value the corpus never declares is
@@ -306,13 +300,13 @@ an empty `tests:` never implies it, and when every applying claim declares it no
 needed.
 
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
-answers as a `req.gate/1` document on stdout: schema, generator, `rules_v`, the selection, the
+answers as a `req.gate/2` document on stdout: schema, generator, `rules_v`, the selection, the
 folded verdict, the six policies and the undecided claims with what each is missing. The
 verdict is the same fold the exit code applies, so the document and the process cannot disagree.
 
-exit: 0 every policy passed and every claim decided, 1 a defect, 3 something that cannot be
-confirmed (an unfilled claim, a relation that does not resolve, a dependency left undecided,
-an entry the corpus cannot confirm, an empty selection) or any claim left undecided — named
+exit: 0 every policy passed and every claim decided, 1 a defect (a flagged pin among them), 3
+something that cannot be confirmed (a relation that does not resolve, a dependency left
+undecided, an entry the corpus cannot confirm, an empty selection) or any claim left undecided — named
 with the remedy; 2 usage. Fail outranks Unverifiable, and an undecided claim outranks a pass.
 
 `docs/adopting.md` for the loop.";
@@ -419,14 +413,15 @@ empty log, or a log that does not begin at the genesis anchor), 2 usage.
 const INIT_HELP: &str = "\
 usage: req init
 
-Creates a corpus in the current directory: a starter claim filled and verified through the
-same derivation `req canon --fill` uses, the claims README, and the subject registry. It
+Creates a corpus in the current directory: a `req.claim/2` starter claim (authored fields and
+pins, nothing derived) read back through the loader every command uses with its pins held, the
+claims README, and the subject registry. It
 refuses rather than overwrite an existing corpus, and it reads no root — it creates one, so it
 announces none. It prints the next steps to stdout: the CI snippet, the
 per-variant rule, and where a req bug is reported.
 
 exit: 0 created, 1 refused (`claims/` or `aliases/subjects.yml` already exists, or `aliases`
-is a symlink), 3 UNVERIFIABLE (the starter claim could not be verified, or the target cannot
+is a symlink), 3 UNVERIFIABLE (the starter claim's pins do not hold, or the target cannot
 be written — whatever it wrote is removed), 2 usage (an argument, or `--root`: run `init`
 where the corpus should live).
 
@@ -505,14 +500,16 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "canon",
         run: |args, corpus| match args.first().map(String::as_str) {
-            // Only the derived fields are ever written, and only for claims whose parse agrees
-            // with their authored slots.
-            Some("--fill") => fill::run_fill(corpus),
-            // The check that makes "never hand-write an address" enforceable.
-            Some("--verify") => fill::run_verify(corpus),
             None => canon::run_claim_diagnostics_at(corpus),
+            // Removed in `req.claim/2` (ADR 0022): there is nothing stored to write or check.
+            // A usage error that says why, rather than "unrecognized flag", because a script or
+            // a habit written against `req.claim/1` is the likeliest caller.
+            Some("--fill" | "--verify") => {
+                eprintln!("{}\nusage: req canon", canon::FILL_VERIFY_REMOVED);
+                2
+            }
             Some(other) => {
-                eprintln!("unrecognized flag: {other}\nusage: req canon [--fill|--verify]");
+                eprintln!("unrecognized flag: {other}\nusage: req canon");
                 2
             }
         },

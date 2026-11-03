@@ -31,7 +31,7 @@
 //! answer the same 0/3 classes as before, because a view printed for a human and a document
 //! committed for a repository are different things.
 
-use crate::canon::{RULES_V, address_hex, canonical_json, evaluate_claim};
+use crate::canon::RULES_V;
 use crate::digest::sha256_hex;
 use crate::format::{self, Format, SCHEMA_RENDER, SCHEMA_TRACE};
 use crate::model::Evidence;
@@ -62,16 +62,16 @@ pub struct Row {
     /// They are **not** in `impl Serialize for Row`: the document's row shape is the view a
     /// consumer reads (`claim_id`, `statement`, `modality`, `address`, `applies`, `selectors`,
     /// `relations`, `rationale`), and the evidence declaration is audit-surface data like
-    /// `stored`/`relations_hash`/`rationale_hash` — it rides the Baseline, not the projection.
+    /// `pins`/`relations_hash`/`rationale_hash` — it rides the Baseline, not the projection.
     /// Adding them would be a document-shape change, not a rendering detail.
     pub tests: Vec<String>,
     /// The declared evidence mode (machine by default, process when a human said so), and the
     /// digest over the whole evidence declaration — both outside identity (ADR 0019).
     pub evidence: Evidence,
     pub tests_hash: String,
-    /// What the *stored* derived fields say, checked against a fresh parse: a release gate
-    /// has to know whether the address on disk is the one the current rules produce.
-    pub stored: crate::fill::StoredState,
+    /// Each authored pin's verdict against the parse derived at load (ADR 0022): the release
+    /// gate's `pins_hold` reads it. Empty when the claim pins nothing.
+    pub pins: Vec<crate::canon::PinCheck>,
     /// Provenance, for the audit policy and the view.
     pub rationale_source: String,
     pub rationale_date: String,
@@ -109,12 +109,11 @@ pub fn render(rows: &[Row], context: &Context) -> String {
         out.push_str(&format!("\n## {title} ({})\n", matching.len()));
         for row in matching {
             out.push_str(&format!(
-                "- {}  {}  {}  {}{}\n",
+                "- {}  {}  {}  {}\n",
                 row.claim_id,
                 short(&row.address),
                 row.modality,
                 row.statement,
-                stored_marker(&row.stored)
             ));
             if row.selectors.is_empty() {
                 out.push_str("    selector: (none — applies to every variant)\n");
@@ -246,22 +245,12 @@ fn short(address: &str) -> String {
     address.chars().take(12).collect()
 }
 
-/// A view that showed a stale or tampered address as if it were current would be worse than
-/// no view: the stored state is part of what the reader needs to see.
-fn stored_marker(stored: &crate::fill::StoredState) -> String {
-    match stored {
-        crate::fill::StoredState::Verified => String::new(),
-        crate::fill::StoredState::Candidate(why) => format!("  [candidate: {why}]"),
-        crate::fill::StoredState::Mismatch(why) => format!("  [MISMATCH: {why}]"),
-    }
-}
-
 // ---------------------------------------------------------------------------
 // JSON documents (pack C)
 // ---------------------------------------------------------------------------
 //
 // One row shape for both views, built from the real [`Row`] — not a second struct a field
-// could be added to without the other rendering noticing. `stored`, `relations_hash` and
+// could be added to without the other rendering noticing. `pins`, `relations_hash` and
 // `rationale_hash` are what the gate and the audit surface *judge*, not what a consumer reads,
 // so they stay out of the document; the rendering's contract is exactly the fields below.
 
@@ -993,15 +982,13 @@ fn run_check(
 /// The shared row set every view is a projection of. The root is explicit: the corpus a
 /// command reads is resolved once at the CLI boundary (ADR 0012), never from a build path.
 pub fn load_rows(context: &Context, root: &std::path::Path) -> Result<Vec<Row>, String> {
-    let registry = crate::canon::load_registry(root)?;
     let claims = crate::canon::load_claims(root)?;
     let mut rows = Vec::new();
     for loaded in claims.iter() {
-        let text = &loaded.text;
         let claim = &loaded.claim;
-        let verdict = evaluate_claim(claim, &registry);
-        let form_json = canonical_json(&verdict.form);
-        let address = address_hex(&form_json);
+        // The address is the one derived at load (ADR 0022): every view, the gate and the
+        // Baseline read the same bytes, and none is stored to disagree with.
+        let derived = &loaded.derived;
         let predicates: Vec<_> = claim
             .applicability
             .iter()
@@ -1010,8 +997,8 @@ pub fn load_rows(context: &Context, root: &std::path::Path) -> Result<Vec<Row>, 
         rows.push(Row {
             claim_id: claim.claim_id.clone(),
             statement: claim.statement.replace('\n', " "),
-            modality: claim.modality.clone(),
-            address,
+            modality: derived.modality_label().to_string(),
+            address: derived.address.clone(),
             applies: applies(&predicates, context),
             selectors: claim.applicability.clone(),
             relations: claim
@@ -1024,9 +1011,7 @@ pub fn load_rows(context: &Context, root: &std::path::Path) -> Result<Vec<Row>, 
             tests: claim.tests.clone(),
             evidence: claim.evidence,
             tests_hash: crate::model::tests_digest(&claim.tests, claim.evidence),
-            // The same check `req canon --verify` runs, so the view and the gate cannot
-            // disagree about whether a stored address is current.
-            stored: crate::fill::verify_text(text, &form_json, crate::canon::RULES_V),
+            pins: derived.pins.clone(),
             rationale_source: claim.rationale.source.clone(),
             rationale_date: claim.rationale.date.clone(),
         });

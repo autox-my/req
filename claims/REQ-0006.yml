@@ -1,29 +1,12 @@
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-0006
 statement: >-
   The req tool shall permit splitting a claim into derived claims without
   constraint.
-modality: SHALL
-subject: REQ_TOOL
-attribute: claim_split
-operator: EQ
-value: unconstrained
-unit: none
-conditions: []
 applicability: []
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
 tests:
   - "req::evidence::derived_claims_are_accepted_without_constraint"
 evidence: machine
-canonical:
-  rules_v: 6
-  subject_registry: 1
-  form: |-
-    {"action":"permit splitting a claim into derived claims without constraint","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: 94d043e0d3c600fe82f03ceaf4dffdd2cf89bb03f55fc32ecffba38f598d7f5a
 rationale:
   source: docs/adr/0004-model-proposes-human-disposes.md
   date: 2026-10-07

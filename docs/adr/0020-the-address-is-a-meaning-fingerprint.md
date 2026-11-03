@@ -70,6 +70,10 @@ That change is **not** made here. It needs its own ADR, a claim-schema bump (`re
 decision about `req canon --verify`; until then claim files keep storing both fields and
 `req canon --fill` remains their only author.
 
+*Amended 2026-11-03:* "enabled, not performed" → **performed by [ADR
+0022](0022-claims-are-authored-fingerprints-are-derived.md)** (`req.claim/2`): fingerprints are computed
+at load and stored only in Baseline manifests; `req canon --fill`/`--verify` are removed.
+
 **The loss that move names.** Today "a hand-edited digest is a critical finding" (`AGENTS.md`;
 `req canon --verify` exits 1 on mismatch) precisely because a digest is *stored* beside the statement it
 claims to summarise. Without a stored digest there is nothing to hand-edit, and that finding disappears

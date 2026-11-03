@@ -1,29 +1,12 @@
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-0020
 statement: >-
   The req tool shall serialize each relation on the outgoing side of its origin
   claim.
-modality: SHALL
-subject: REQ_TOOL
-attribute: null
-operator: null
-value: null
-unit: none
-conditions: []
 applicability: []
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
 tests:
   - "req::view::incoming_relations_are_derived_from_the_outgoing_side"
 evidence: machine
-canonical:
-  rules_v: 6
-  subject_registry: 1
-  form: |-
-    {"action":"serialize each relation on the outgoing side of its origin claim","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: b455b84714c2f2fe8c9ca64dc925467112c24317a739b47262b74a8b32d2696a
 rationale:
   source: docs/claim-format.md
   date: 2026-10-07

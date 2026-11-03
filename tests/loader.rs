@@ -17,9 +17,9 @@ use req::canon::{
     run_claim_diagnostics_at,
 };
 
-/// Run the compiled binary against a fixture root. The *class* is a CLI contract — `canon
-/// --verify` exits 0 verified, 1 mismatch, 3 not judgeable — so the exit codes are read here
-/// rather than inferred from a library return value.
+/// Run the compiled binary against a fixture root. The *class* is a CLI contract — `canon`
+/// exits 0 reported, 3 not judgeable — so the exit codes are read here rather than inferred
+/// from a library return value.
 fn req(root: &Path, args: &[&str]) -> (i32, String) {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_req"))
         .arg("--root")
@@ -54,28 +54,12 @@ subjects:
 fn claim_text(claim_id: &str) -> String {
     format!(
         "\
-schema: req.claim/1
+schema: req.claim/2
 claim_id: {claim_id}
 statement: >-
   The req tool shall treat a single claim as the unit of requirements authorship,
   review, and merge.
-modality: SHALL
-subject: REQ_TOOL
-attribute: unit_of_work
-operator: EQ
-value: claim
-unit: none
-conditions: []
 applicability: []
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
-canonical:
-  rules_v: 5
-  subject_registry: 1
-  form: null
-address: null
 rationale:
   source: docs/adr/0001-the-unit-is-a-claim.md
   date: 2026-10-07
@@ -224,7 +208,7 @@ fn duplicate_claim_ids_error_and_the_content_is_compared() {
         .claim("REQ-0007.yml", &text)
         .claim(
             "REQ-0007.yaml",
-            &text.replace("value: claim", "value: tool"),
+            &text.replace("review, and merge.", "review, and release."),
         );
     let err = load_claims(divergent.path()).expect_err("a duplicate id must not load");
     assert!(
@@ -372,17 +356,15 @@ fn a_mismatched_schema_is_never_reported_verified() {
     let f = Fixture::new("schema-mismatch").claim("REQ-0001.yml", &claim_text("REQ-0001"));
     let path = f.path().join("claims/REQ-0001.yml");
 
-    // Fill first: an unfilled claim is a candidate (exit 3) for an unrelated reason, so the
-    // fixture has to be verifiable *today* for the failure to be about the schema.
-    let (fill_code, fill_text) = req(f.path(), &["canon", "--fill"]);
-    assert_eq!(fill_code, 0, "{fill_text}");
-    let (clean_code, clean_text) = req(f.path(), &["canon", "--verify"]);
+    // Precondition: the fixture is judged under its own schema, so the failure below is about
+    // the declaration and nothing else.
+    let (clean_code, clean_text) = req(f.path(), &["canon"]);
     assert_eq!(
         clean_code, 0,
-        "precondition: the filled fixture verifies under its own schema\n{clean_text}"
+        "precondition: the fixture loads under its own schema\n{clean_text}"
     );
-    assert!(clean_text.contains("mismatches 0"), "{clean_text}");
-    let current = std::fs::read_to_string(&path).expect("the filled fixture");
+    assert!(clean_text.contains("REQ-0001  structured"), "{clean_text}");
+    let current = std::fs::read_to_string(&path).expect("the fixture");
 
     for declared in [
         format!(
@@ -402,23 +384,26 @@ fn a_mismatched_schema_is_never_reported_verified() {
         );
         std::fs::write(&path, &rewritten).expect("rewrites the declared schema");
 
-        let (code, text) = req(f.path(), &["canon", "--verify"]);
-        assert_eq!(
-            code, 3,
-            "schema {declared:?} is UNVERIFIABLE, never a pass:\n{text}"
-        );
-        assert!(
-            text.contains("NOT JUDGED"),
-            "the file's parse must be reported as NOT JUDGED, not silently skipped:\n{text}"
-        );
-        assert!(
-            !text.contains("verified"),
-            "a claim whose schema this build cannot judge must never print `verified`:\n{text}"
-        );
+        for command in ["canon", "render", "gate"] {
+            let (code, text) = req(f.path(), &[command]);
+            assert_eq!(
+                code, 3,
+                "`{command}`: schema {declared:?} is UNVERIFIABLE, never a pass:\n{text}"
+            );
+            assert!(
+                text.contains("NOT JUDGED"),
+                "`{command}`: the file's parse must be reported as NOT JUDGED, not silently \
+                 skipped:\n{text}"
+            );
+            assert!(
+                !text.contains("REQ-0001  structured"),
+                "a claim whose schema this build cannot judge is never reported parsed:\n{text}"
+            );
+        }
         assert_eq!(
             run_claim_diagnostics_at(f.path()),
             3,
-            "the diagnostics command judges it too, not only `--verify`"
+            "the diagnostics seam judges it too, not only the CLI"
         );
     }
 }
@@ -444,7 +429,7 @@ fn a_newer_schema_names_the_reader_as_old_and_keeps_the_file() {
     assert!(
         err.contains("newer"),
         "the direction decides the remedy: a file from a newer format is read with a build that \
-         writes it, never re-filled with this one: {err}"
+         writes it, never migrated backwards by this one: {err}"
     );
     assert_eq!(
         classify_claim_schema(&declared),
@@ -510,50 +495,56 @@ fn a_malformed_schema_is_a_broken_file_not_a_version_question() {
 
 #[test]
 fn the_older_direction_is_a_migration_candidate_at_the_loader() {
-    // `CLAIM_SCHEMA_V` is 1 now, so an older file exists for real rather than in the future
-    // tense: a `req.claim/0` claim is **NOT JUDGED** — a migration candidate, not a broken file
-    // and never a silent load. A format bump moves no address, so the remedy is to migrate the
-    // declaration and re-fill, not to reword the claim.
-    let older = format!("{}{}", req::canon::CLAIM_SCHEMA_PREFIX, 0);
-    assert_eq!(
-        classify_claim_schema(&older),
-        ClaimSchema::Older(0),
-        "a file from the previous format is a migration candidate, not a broken file"
-    );
-    assert_eq!(
-        classify_claim_schema_at(&older, 0),
-        ClaimSchema::Current,
-        "the same value against the build that wrote it is Current"
-    );
-    assert_eq!(classify_claim_schema(&claim_schema()), ClaimSchema::Current);
+    // `CLAIM_SCHEMA_V` is 2 now (ADR 0022), so two older formats exist for real: a
+    // `req.claim/1` or `req.claim/0` claim is **NOT JUDGED** — a migration candidate, not a
+    // broken file and never a silent load. A format bump moves no address, so the remedy is to
+    // migrate the file (`tools/migrate_claims.py`), not to reword the claim.
+    for older_v in [0, req::canon::CLAIM_SCHEMA_V - 1] {
+        let older = format!("{}{}", req::canon::CLAIM_SCHEMA_PREFIX, older_v);
+        assert_eq!(
+            classify_claim_schema(&older),
+            ClaimSchema::Older(older_v),
+            "a file from a previous format is a migration candidate, not a broken file"
+        );
+        assert_eq!(
+            classify_claim_schema_at(&older, older_v),
+            ClaimSchema::Current,
+            "the same value against the build that wrote it is Current"
+        );
+        assert_eq!(classify_claim_schema(&claim_schema()), ClaimSchema::Current);
 
-    let f = Fixture::new("schema-older").claim(
-        "REQ-0001.yml",
-        &claim_text("REQ-0001").replace(
-            &format!("schema: {}", claim_schema()),
-            &format!("schema: {older}"),
-        ),
-    );
-    let err = load_claims(f.path()).expect_err("an older format must not load silently");
-    assert!(err.contains(&older), "names the declared value: {err}");
-    assert!(err.contains("NOT JUDGED"), "{err}");
-    assert!(
-        err.contains("migration candidate"),
-        "an older format is a migration: {err}"
-    );
-    assert!(
-        err.contains("format bump moves no address"),
-        "the remedy must not suggest the address moved: {err}"
-    );
-    assert!(
-        err.contains(&claim_schema()),
-        "the remedy names the value to migrate to: {err}"
-    );
-    assert_eq!(
-        run_claim_diagnostics_at(f.path()),
-        3,
-        "a migration candidate is UNVERIFIABLE, never a pass"
-    );
+        let f = Fixture::new("schema-older").claim(
+            "REQ-0001.yml",
+            &claim_text("REQ-0001").replace(
+                &format!("schema: {}", claim_schema()),
+                &format!("schema: {older}"),
+            ),
+        );
+        let err = load_claims(f.path()).expect_err("an older format must not load silently");
+        assert!(err.contains(&older), "names the declared value: {err}");
+        assert!(err.contains("NOT JUDGED"), "{err}");
+        assert!(
+            err.contains("migration candidate"),
+            "an older format is a migration: {err}"
+        );
+        assert!(
+            err.contains("format bump moves no address"),
+            "the remedy must not suggest the address moved: {err}"
+        );
+        assert!(
+            err.contains(&claim_schema()),
+            "the remedy names the value to migrate to: {err}"
+        );
+        assert!(
+            err.contains("tools/migrate_claims.py"),
+            "the remedy names the tool that migrates: {err}"
+        );
+        assert_eq!(
+            run_claim_diagnostics_at(f.path()),
+            3,
+            "a migration candidate is UNVERIFIABLE, never a pass"
+        );
+    }
 }
 
 /// Every `req.claim/<n>` literal one line carries. Scanning the line means a reformatting cannot
@@ -800,8 +791,8 @@ fn the_committed_corpus_loads_under_the_strict_loader() {
 /// under test.
 fn with_tests(block: &str) -> String {
     let text = claim_text("REQ-0001").replace(
-        "unstructured: false\n",
-        &format!("unstructured: false\n{block}"),
+        "applicability: []\n",
+        &format!("applicability: []\n{block}"),
     );
     assert!(
         text.contains(block),

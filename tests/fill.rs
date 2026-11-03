@@ -1,183 +1,110 @@
-//! `req canon --fill` — writing the *derived* fields back into claim files.
+//! What survives of `req canon --fill` after `req.claim/2` (ADR 0022): nothing writes a derived
+//! field any more, because none is stored. The file keeps its name for one reason, stated so it
+//! is not mistaken for an oversight:
 //!
-//! Two properties matter more than the mechanics:
-//!   1. the stored address recomputes from the stored canonical form (hashing §5);
-//!   2. nothing authored is touched — the file is edited surgically, not re-emitted.
+//! **REQ-0017 links `req::fill::fill_writes_derived_fields_and_the_address_recomputes`, and that
+//! link is attested in the signed Baseline** (`tests_hash`, ADR 0019). Renaming the test moves
+//! REQ-0017's `tests_hash`, which drifts `baselines/air-gapped.json` and needs a human to re-sign
+//! it — an owner act this unit may not perform. So the id stays, and the test under it pins what
+//! REQ-0017's property became: the address recomputes from the canonical bytes, and the address
+//! the signed manifest stores is the one the claim derives at load. REQ-0017's *statement* still
+//! names the removed mechanism; re-wording it moves its address, which is the same re-sign — a
+//! follow-up Decision, not this change.
+//!
+//! The other tests here are the rules of the old file that outlived the writer: a test link is
+//! outside identity, and the evidence digest matches an independent oracle.
 
-use req::canon::{address_hex, canonical_json, canonicalize_statement, evaluate_claim};
-use req::fill::{StoredState, fill_text, verify_text};
-use req::model::{ClaimFile, Evidence, Registry, tests_digest};
+use req::canon::{canonical_json, derive, load_claims, parse_claim};
+use req::model::{Evidence, Registry, tests_digest};
+use sha2::{Digest, Sha256};
+
+/// `sha256("req.claim.v1\0" ‖ bytes)`, computed here with `sha2` directly — not through
+/// `canon::address_hex` — so the recomputation is an independent oracle for the derivation.
+fn oracle_address(canonical: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"req.claim.v1\0");
+    hasher.update(canonical.as_bytes());
+    hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// REQ-0017's evidence, under the id the signed Baseline attests (see the module doc).
+#[test]
+fn fill_writes_derived_fields_and_the_address_recomputes() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let claims = load_claims(&root).expect("the committed corpus loads");
+    let manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("baselines/air-gapped.json"))
+            .expect("the signed Baseline is committed"),
+    )
+    .expect("the manifest is JSON");
+    let attested: std::collections::BTreeMap<&str, &str> = manifest["claims"]
+        .as_array()
+        .expect("the manifest lists claims")
+        .iter()
+        .map(|c| {
+            (
+                c["claim_id"].as_str().expect("claim_id"),
+                c["address"].as_str().expect("address"),
+            )
+        })
+        .collect();
+    assert!(!attested.is_empty(), "the manifest attests claims");
+
+    for loaded in &claims {
+        let derived = &loaded.derived;
+        // The bytes hashed are the canonical form's serialization, and nothing else.
+        assert_eq!(derived.canonical, canonical_json(&derived.form));
+        // hashing §5: the address recomputes from the canonical bytes alone.
+        assert_eq!(
+            oracle_address(&derived.canonical),
+            derived.address,
+            "{}: the address does not recompute from its canonical bytes",
+            loaded.claim.claim_id
+        );
+        // Nothing derived is stored in the file (ADR 0022)…
+        for line in loaded.text.lines() {
+            assert!(
+                !line.starts_with("address:") && !line.starts_with("canonical:"),
+                "{}: a req.claim/2 file stores no fingerprint: {line}",
+                loaded.claim.claim_id
+            );
+        }
+        // …and the address the signed manifest *does* store is the one the claim derives.
+        if let Some(signed) = attested.get(loaded.claim.claim_id.as_str()) {
+            assert_eq!(
+                *signed, derived.address,
+                "{}: the signed manifest's address is not the one derived at load",
+                loaded.claim.claim_id
+            );
+        }
+    }
+    assert_eq!(
+        claims
+            .iter()
+            .filter(|c| attested.contains_key(c.claim.claim_id.as_str()))
+            .count(),
+        attested.len(),
+        "every attested claim is in the corpus"
+    );
+}
 
 const SAMPLE: &str = "\
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-9999
 statement: >-
   The system shall respond within 200 ms.
-modality: SHALL
-subject: SYSTEM
-attribute: response_latency
-operator: LE
-value: \"0.2\"
-unit: s
-conditions: []
 applicability: []
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
-canonical:
-  rules_v: null
-  subject_registry: 1
-  form: null
-address: null
+relations: []
 rationale:
   source: docs/adr/0007-tier1-collapses-only-on-meaning-preserving-rules.md
   date: 2026-10-07
   rejected_alternatives: []
   assumptions: []
-relations: []
 ";
-
-fn derived() -> (String, String) {
-    let (form, _) = canonicalize_statement(
-        "The system shall respond within 200 ms.",
-        &Registry::empty(),
-    );
-    let json = canonical_json(&form);
-    let address = address_hex(&json);
-    (json, address)
-}
-
-#[test]
-fn fill_writes_derived_fields_and_the_address_recomputes() {
-    let (json, address) = derived();
-    let filled = fill_text(SAMPLE, &json, &address, 2, 1).expect("anchors are present");
-
-    // The claim still parses, and the stored fields are the derived ones.
-    let claim: ClaimFile = yaml_serde::from_str(&filled).expect("still a claim file");
-    let stored = claim.canonical.form.clone().expect("form written");
-    assert_eq!(stored, json);
-    assert_eq!(claim.canonical.rules_v, Some(2));
-    assert_eq!(claim.canonical.subject_registry, 1);
-    assert_eq!(claim.address.as_deref(), Some(address.as_str()));
-
-    // hashing §5: the address is recomputable from the *stored bytes* alone.
-    assert_eq!(address_hex(&stored), claim.address.unwrap());
-}
-
-#[test]
-fn fill_touches_only_the_derived_fields() {
-    let (json, address) = derived();
-    let filled = fill_text(SAMPLE, &json, &address, 2, 1).expect("anchors are present");
-    assert!(filled.contains("statement: >-\n  The system shall respond within 200 ms."));
-    assert!(filled.contains("rationale:\n  source: docs/adr/"));
-    assert!(filled.contains("relations: []"));
-    assert!(!filled.contains("form: null"));
-    assert!(!filled.contains("address: null"));
-    assert_eq!(
-        filled.lines().count(),
-        SAMPLE.lines().count() + json.lines().count()
-    );
-}
-
-#[test]
-fn fill_is_idempotent() {
-    let (json, address) = derived();
-    let once = fill_text(SAMPLE, &json, &address, 2, 1).expect("anchors are present");
-    let twice = fill_text(&once, &json, &address, 2, 1).expect("anchors are present");
-    assert_eq!(once, twice, "a second fill must not duplicate the block");
-
-    // A multi-line body must be replaced, not appended to: the drop rule keys on
-    // indentation, and the canonical JSON being single-line today is not a guarantee.
-    let pretty = "{\n  \"action\": \"respond\",\n  \"unstructured\": false\n}";
-    let once = fill_text(SAMPLE, pretty, &address, 2, 1).expect("anchors are present");
-    let twice = fill_text(&once, pretty, &address, 2, 1).expect("anchors are present");
-    assert_eq!(once, twice, "a multi-line block body must not accumulate");
-    assert_eq!(once.matches("\"action\"").count(), 1);
-}
-
-#[test]
-fn fill_refuses_text_without_the_anchors() {
-    // Never write a file that lost its structure: no anchors, no write.
-    assert!(fill_text("claim_id: REQ-1\n", "{}", "00", 2, 1).is_err());
-    let no_address = SAMPLE.replace("address: null", "address_line: null");
-    assert!(fill_text(&no_address, "{}", "00", 2, 1).is_err());
-}
-
-/// The check that makes "never hand-write an address" enforceable rather than
-/// aspirational: the stored form must be the one the current parse produces, and the
-/// stored address must recompute from the stored bytes (REQ-0017).
-#[test]
-fn verify_accepts_a_filled_file_and_catches_tampering() {
-    let (json, address) = derived();
-    let filled = fill_text(SAMPLE, &json, &address, 3, 1).expect("anchors");
-
-    assert!(matches!(
-        verify_text(&filled, &json, 3),
-        StoredState::Verified
-    ));
-
-    // Unfilled is a *candidate*, never a pass.
-    assert!(matches!(
-        verify_text(SAMPLE, &json, 3),
-        StoredState::Candidate(_)
-    ));
-    // A rules drift is a candidate too, not a failure.
-    assert!(matches!(
-        verify_text(&filled, &json, 4),
-        StoredState::Candidate(_)
-    ));
-
-    // A hand-edited digest: address no longer recomputes from the stored bytes.
-    let zeroed = "0".repeat(64);
-    let tampered = filled.replace(&address, &zeroed);
-    assert!(matches!(
-        verify_text(&tampered, &json, 3),
-        StoredState::Mismatch(_)
-    ));
-
-    // Internally consistent but *wrong*: a form and an address that match each other
-    // yet are not what the parse produces. This is the case a recompute-only check
-    // would miss, and the reason the expected form is passed in.
-    let poisoned_form = json.replace("\"action\":\"respond\"", "\"action\":\"delete\"");
-    assert_ne!(poisoned_form, json);
-    let poisoned =
-        fill_text(SAMPLE, &poisoned_form, &address_hex(&poisoned_form), 3, 1).expect("anchors");
-    assert!(matches!(
-        verify_text(&poisoned, &json, 3),
-        StoredState::Mismatch(_)
-    ));
-}
-
-/// A file declaring a format this build does not write is **NOT JUDGED** by this reader too:
-/// nothing inside it was compared to anything, so the answer is the exit-3 class — never
-/// `Mismatch`, because exit 1 is a *definite* finding (a hand-edited digest) and "this build
-/// cannot establish the format" is not one.
-///
-/// The guard is defensive on the CLI path (`view::load_rows` loads through `load_claims` first),
-/// which is exactly why it is pinned here rather than left to a caller that may never exercise
-/// it: a public reader that parses a file itself must not be free to skip the declaration.
-#[test]
-fn verify_text_refuses_a_format_this_build_does_not_write() {
-    let (json, _) = derived();
-    let foreign = SAMPLE.replace("schema: req.claim/1", "schema: req.claim/2");
-    assert_ne!(foreign, SAMPLE, "the fixture's declaration moved");
-
-    match verify_text(&foreign, &json, 3) {
-        StoredState::Candidate(why) => {
-            assert!(why.contains("NOT JUDGED"), "{why}");
-            assert!(
-                why.contains("req.claim/2"),
-                "the declared value is named: {why}"
-            );
-        }
-        other => panic!("a format this build cannot establish is not {other:?}"),
-    }
-}
-
-// ---------------------------------------------------------------------------------------------
-// ADR 0019: the authored evidence declaration is outside identity and attested beside it.
-// ---------------------------------------------------------------------------------------------
 
 /// **The human's ruling, pinned**: adding or removing a `tests:` entry (or flipping the evidence
 /// mode) leaves the claim's **address** untouched. Identity is the canonical form over meaning;
@@ -185,16 +112,12 @@ fn verify_text_refuses_a_format_this_build_does_not_write() {
 #[test]
 fn adding_or_removing_a_test_link_moves_no_address() {
     let address_of = |text: &str| {
-        let claim: ClaimFile = yaml_serde::from_str(text).expect("the fixture is a claim file");
-        let verdict = evaluate_claim(&claim, &Registry::empty());
-        address_hex(&canonical_json(&verdict.form))
+        let claim = parse_claim(text).expect("the fixture is a claim file");
+        derive(&claim, &Registry::empty()).address
     };
     let base = address_of(SAMPLE);
     let with = |block: &str| {
-        let text = SAMPLE.replace(
-            "unstructured: false\n",
-            &format!("unstructured: false\n{block}"),
-        );
+        let text = SAMPLE.replace("relations: []\n", &format!("relations: []\n{block}"));
         assert_ne!(text, SAMPLE, "the fixture carries the anchor");
         address_of(&text)
     };
@@ -219,6 +142,12 @@ fn adding_or_removing_a_test_link_moves_no_address() {
         with("tests:\n  - \"renamed::away\"\n"),
         base,
         "a rename inside `tests:` moved the address"
+    );
+    // A pin is outside identity too: it reports, it never moves an address (ADR 0022).
+    assert_eq!(
+        with("pins:\n  operator: GT\n"),
+        base,
+        "a pin moved the address"
     );
 }
 

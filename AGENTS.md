@@ -14,11 +14,12 @@ its `req <cmd> --help` page, the adopter's loop is `docs/adopting.md`; this file
 - You are an autonomous workflow assistant: execute the SDLC below step by step, keep state across stages, count
   error handling and edge cases as "done", keep existing architecture styles; if unsure, ask one targeted question.
 - **Vocabulary comes from `CONTEXT.md`** (Claim, Requirement, View, Variant, Decision, Baseline); add a missing term there in the same commit.
-- **Never hand-write an `address` or a `canonical.form`.** Both are *derived*: `req canon --fill` writes them into
-  an existing claim, `req init` derives a new corpus's starter claim the same way. A hand-written digest is a critical finding.
+- **Nothing derived lives in a claim file** (`req.claim/2`, ADR 0022): the parse, canonical form and address are
+  computed at load. Never add an `address`, a `canonical` block or a parse slot to a claim — the loader refuses it,
+  naming the key; state a load-bearing slot as a **pin** (`pins:`), and never edit a pin to fit a parse.
 - **Never weaken the asymmetric cost.** A false merge silently deletes a requirement — always a failure; a
   false split is noise. Never auto-merge; ratification is a human act.
-- **Pins are provenance, not stragglers**: `rust-toolchain.toml`, `Cargo.lock`, `tools/ocr/package-lock.json`.
+- **Version pins are provenance, not stragglers** (not to be confused with a claim's `pins:`): `rust-toolchain.toml`, `Cargo.lock`, `tools/ocr/package-lock.json`.
   Verify a version at *pin time*; never bump opportunistically. The first two are fingerprint-path pins: any
   bump is a Tier-1 rules bump (bump `RULES_V`, regenerate goldens deliberately, record re-canonicalization
   candidates, hashing spec §5). The OCR pin is review-process provenance: bump deliberately, verify
@@ -36,8 +37,8 @@ its `req <cmd> --help` page, the adopter's loop is `docs/adopting.md`; this file
   keys or `BTreeMap`), no locale-dependent formatting, no model I/O.
 - **Three-state outcomes**: PASS / FAIL / UNVERIFIABLE. An unreadable corpus, a degraded registry or a
   skipped check is reported as such, never folded into PASS; `degraded` entries are part of the record.
-- **The parity invariant**: a claim's slots are an *authored parse* of `statement`. Never "fix" a claim by
-  editing the parse — re-word the statement or leave the flag.
+- **The statement is the source of truth**: its parse is *derived*, never authored. Never "fix" a flagged pin by
+  editing the pin to the parse — re-word the statement or leave the flag; `pins_hold` fails the gate on it.
 - **Claims are data**: `value` is a canonical exact decimal string (`"0.3"`, never `"0.30"`, never a float);
   a rationale is an object (source, date, rejected alternatives, assumptions).
 - **Docs are claims too**: when `docs/` asserts a rule the code contradicts, fix one of them in the commit
@@ -64,7 +65,7 @@ surprises you. Run as `cargo run -q -- <command>`.
 | command | the question it answers |
 | --- | --- |
 | `init` | start a corpus in the working directory |
-| `canon [--fill\|--verify]` | does each claim's authored parse agree with its statement; write / check the derived fields |
+| `canon` | what each claim's statement derives, and whether each pin holds (diagnostics; `--fill`/`--verify` removed) |
 | `bench [corpus.yml]` | the FMR = 0 gate (seed parity by default); also scores the direction gold set |
 | `compare <a> <b>` | the direction of a change between two claims — for a human to ratify |
 | `select` | which claims apply in a variant (tri-state: UNKNOWN is an answer) |

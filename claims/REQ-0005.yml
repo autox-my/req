@@ -1,29 +1,12 @@
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-0005
 statement: >-
   The req tool shall require human ratification before any two claims are merged.
-modality: SHALL
-subject: REQ_TOOL
-attribute: claim_merge
-operator: EQ
-value: human_ratification_required
-unit: none
-conditions: []
 applicability: []
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
 tests:
   - "req::baseline::a_verified_baseline_is_the_only_verified_outcome"
   - "req::evidence::no_command_rewrites_or_merges_claims_automatically"
 evidence: machine
-canonical:
-  rules_v: 6
-  subject_registry: 1
-  form: |-
-    {"action":"require human ratification before any","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"claims are merged","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":"2"}
-address: 6bbc0295880a0f773542804c0cfc5c702f368f8fbf2b7670327fda247f2a75dd
 rationale:
   source: docs/adr/0004-model-proposes-human-disposes.md
   date: 2026-10-07

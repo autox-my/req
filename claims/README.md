@@ -32,12 +32,18 @@ step 2 of [docs/design.md](../docs/design.md), executed with step 1 already on d
 
 ## Reading a file
 
-`schema` is the file-format version. The structured slots are an authored parse of
-`statement` (parity invariant — [docs/claim-format.md](../docs/claim-format.md)):
-`req canon` will demand `parse(statement) == slots` and error on divergence. Until
-then `canonical` and `address` are `null` on purpose — no hash is written before the
-rules that define it exist (claiming `address:` more than filling is exactly the
-"evidence by assertion" failure mode the tool exists to prevent).
+`schema` is the file-format version, `req.claim/2` ([ADR 0022](../docs/adr/0022-claims-are-authored-fingerprints-are-derived.md)).
+A claim carries what its author wrote — `statement`, `applicability`, `relations`,
+`rationale`, and optionally `tests`, `evidence` and `pins` — and nothing derived: the parse,
+the canonical form and the address are computed from `statement` when the corpus is loaded
+([docs/claim-format.md](../docs/claim-format.md)). `req canon` prints the derived parse per
+claim and each pin's verdict; `pins:` states what the parse must be where it is load-bearing.
+
+These files were migrated from `req.claim/1` on 2026-11-04 by `tools/migrate_claims.py` (M3).
+Every address is the one the v1 file stored (rules v6), and the migration's pins — REQ-0008
+`value`, REQ-0009 `value`/`operator`, REQ-0010 `value`/`operator`, REQ-0022 `value` — all agree
+with the parse. The history below describes the v1 format, when the slots were authored beside
+the statement and `--fill`/`--verify` wrote and checked the stored fields.
 
 ## The `req canon` runs (2026-10-07) — 21/21 fully verified after Tier-1 v2
 
@@ -81,15 +87,19 @@ fully verified; 2 flags remained, both in REQ-0007.
 
 ## Notes you can see in the corpus
 
-- **REQ-0007 is intentionally `unstructured: true`** — "friction-free" and
-  "deliberately high-friction" are qualitative by nature; the rules now *derive* that
-  classification and emit `untestable_qualifier`, which is correct, not a bug.
+- **REQ-0007 is derived unstructured** — "friction-free" and "deliberately
+  high-friction" are qualitative by nature; the rules derive that classification and emit
+  `untestable_qualifier`, which is correct, not a bug.
 - **REQ-0004 / REQ-0021 are one decision in two claims** — v2 flags a statement with
   a second obligation, so the prohibition lives in its own claim (SHALL-NOT), as
   claim-format requires.
-- **REQ-0010 uses `modality: SHOULD`** — soft targets are expressed with a modality,
+- **REQ-0010 says `should`** — soft targets are expressed with a modality (`SHOULD`, derived),
   not with prose.
-- **REQ-0015 negates via `SHALL-NOT` + slots**, not with a double negative in prose.
+- **REQ-0015 negates via `shall not`** (`SHALL-NOT`, derived), not with a double negative in prose.
+- **REQ-0017 still describes the v1 mechanism** (stored canonical bytes reproducing a stored
+  address). Re-wording it moves its address and drifts the signed Baseline, so it waits for a
+  Decision and a re-signature; its linked test keeps its attested id and now checks the v2 form
+  of the property (the address recomputes from derived bytes and equals the signed manifest's).
 - **REQ-0012 carries an `applicability` predicate** (`deployment_mode == air_gapped`)
   — our own corpus exercises a selector end to end.
 - ADRs keep the narrative; each claim points to its ADR in `rationale.source`. The
