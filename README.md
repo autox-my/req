@@ -52,11 +52,9 @@ Tri-state is a discipline here, not a garnish: PASS, FAIL and UNVERIFIABLE are k
 because "we could not tell" is a different answer from both "it passed" and "it is broken".
 
 The **corpus root** is resolved at *runtime* (ADR 0012), so req manages any repository's
-claims: `--root <dir>`, then `REQ_ROOT`, then the nearest ancestor of the working directory
-holding a `claims/` directory. Whichever root was chosen is printed to stderr — never stdout,
-which carries the exact bytes a human signs — and a root that yields no corpus is
-UNVERIFIABLE (exit 3), never an empty answer. `req init` is the one exception: it *creates* a
-root in the current directory, so it resolves none and takes no `--root`.
+claims; how it is chosen, and every command's exit contract, are on `req --help` and
+`req <command> --help` — the one home of those rules, readable with no corpus. `req init` is
+the one command that resolves no root: it *creates* one.
 
 ## The two differentiators
 
@@ -94,16 +92,16 @@ cargo run -q -- bench     # the gate: zero false merges, or the build is red
 ./scripts/check.sh        # fmt, clippy, nextest + its report, canon + Baseline verification, every corpus
 ```
 
-The test run is `cargo nextest run --profile ci` under a reviewed `.config/nextest.toml`; it replaces
-`cargo test` (one run, one truth) and its report is what `req gate --test-report` reads to answer
-which claims have no passing test.
+The test run is `cargo nextest run --profile ci`; it replaces `cargo test` (one run, one truth) and
+its report is what `req gate --test-report` reads. The gate's detail is in `AGENTS.md`.
 
 Changes go through a feature branch and a pull request. CI runs the same gate that runs
 locally, and an AI review reads the diff and blocks on critical or high findings. The
 agent-facing instructions are in `AGENTS.md`, the glossary in `CONTEXT.md`, the design of
 record in `docs/design.md`, and the decisions in `docs/adr/`.
 
-Adopting req in a project — as a human or as an agent — starts at `docs/agentic.md`: the
-five-minute path, the CI snippet in `examples/github-workflows/req.yml`, and a block to paste
-into a project's own `AGENTS.md`. `tools/quickstart.sh` rehearses that path offline and prints
-`QUICKSTART <n>s`; the page is rehearsed by the script, not asserted by it.
+Adopting req in a project — as a human or as an agent — starts at `docs/adopting.md` (its
+"For an agent" section is the five-minute path): the CI snippet is `examples/github-workflows/req.yml`,
+and `examples/agents-snippet.md` is a block to paste into a project's own `AGENTS.md`.
+`tools/quickstart.sh` rehearses the path offline and prints `QUICKSTART <n>s`; the page is
+rehearsed by the script, not asserted by it.

@@ -69,7 +69,18 @@ usage: req [--root <dir>] <command> [args]
   --help | -h                     this text, or <command> --help for one command's page
 
 The corpus root is resolved at runtime: --root, else REQ_ROOT, else the nearest ancestor of
-the working directory holding claims/ (ADR 0012).";
+the working directory holding claims/ (ADR 0012). The chosen root is printed once to stderr;
+with no corpus the answer is [UNVERIFIABLE] and exit 3 — never an empty result.
+
+A help flag wins wherever it appears among a command's arguments, and --version, --help and
+<command> --help are answered before any root is resolved: exit 0, no root line, in any
+directory. Bare `req`, an unknown subcommand and an unknown flag are exit 2.
+
+Exit codes are tri-state everywhere, plus usage: 0 settled affirmatively, 1 a definite finding
+(a defect, a mismatch, a stale projection), 3 UNVERIFIABLE — it cannot be told, which blocks
+and is never folded into a pass — and 2 usage. A command's page carries its own `exit:` line.
+
+`docs/adopting.md` for the loop.";
 
 /// What `--version` prints: the crate's version on the first line — single-line and greppable,
 /// so `req --version | head -1` behaves like any other tool's — then every version axis this
@@ -129,23 +140,29 @@ struct Command {
     help: &'static str,
 }
 
-// The pages. Each is a map, not the territory: the exit contract is the payload a usage line
-// cannot carry, and the long semantics stay in `AGENTS.md` §Commands (the anchor closes every
-// page). The pages and that reference are both claims: if one cannot agree with the other, the
-// wrong one is fixed in the same commit.
+// The pages. Each is the command's reference and the one home of its contract: the exit codes
+// and the rules that decide them are the payload a usage line cannot carry. There is no second
+// copy to agree with (M2-3 retired `AGENTS.md` §Commands), so a rule changed here is changed
+// everywhere; `tests/cli_version.rs` pins the footer and each contract that moved onto a page.
 
 const BENCH_HELP: &str = "\
 usage: req bench [corpus.yml]
 
 Runs the benchmark gate over a corpus — the seed parity corpus by default — and records the
-result under bench/results/. Each labelled pair is the oracle: a false merge is the failure
-the gate exists to catch, so the record is written even when the run fails.
+result under bench/results/<corpus-stem>-rules-v<N>.json. Each labelled pair is the oracle: a
+false merge is the failure the gate exists to catch, so the record is written even when the run
+fails, and results are append-only — one record per corpus and rules version.
+
+`req bench bench/corpus/direction-v1.yml` scores the direction gold set (`req compare`): its
+hard gate is dangerous confusions = 0 (a loosening reported as no change, or as the opposite
+direction — the direction analogue of a false merge), accuracy is reported against a 0.95 soft
+target, and a misspelled `direction:` label fails the gate rather than switching the check off.
 
 exit: 0 the gate passed (no false merge), 1 a false merge or a direction confusion, 3
 UNVERIFIABLE (an unreadable corpus, a degraded run that found nothing, or a vacuous
 denominator). A run that found a defect is 1 even when it was degraded.
 
-`AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
+`docs/adopting.md` for the loop.";
 
 const CANON_HELP: &str = "\
 usage: req canon [--fill | --verify]
@@ -155,13 +172,28 @@ of `statement`. A contradiction or an omission is a flag; a qualitative attribut
 triple is an annotation, which identity does not carry. `--fill` writes the derived
 `canonical.form` and `address`; `--verify` checks the stored derived fields.
 
+`value`, `unit` and `operator` are judged against the parse (ADR 0014): a derived slot the
+author contradicts is a flag, one the author omits is a flag, and a slot the author wrote that
+the canonical form does not derive is an annotation, printed as `ann`. The annotation is only
+the qualitative triple (`unit: none`, a non-numeric `value`, and `EQ` or no operator): a
+quantity-shaped claim — a numeric value, a comparator other than `EQ`, or an authored unit —
+that authors a slot the parse did not derive is still a contradiction and a flag, because a
+bound the parse missed would silently leave the address, a false merge. `attribute` is
+unverified by design. `--fill` refuses a flag, never an annotation: the author's qualitative
+predicate is not the fill's to delete. A file whose declared `schema:` is not the one this
+build writes (`req --version` reports it as `claim_schema`) is NOT JUDGED: an older one is a
+migration candidate, a newer one is a question for a build that writes it, and a value of no
+`req.claim/<n>` shape is a broken file.
+
 exit: 0 diagnostics reported — not a pass: it reports, and it never gates; `--verify` is what
-gates: 0 verified, 1 a stored digest that does not recompute, 3 a re-canonicalization candidate
-(unfilled, or filled under other rules) or a claim file this build does not write. `--fill`:
+gates: 0 verified, 1 a stored digest that does not recompute (a draft still carrying the empty
+`form` anchor with `address: null` is reported `form stored but no address` — its remedy is
+`--fill`), 3 a re-canonicalization candidate (unfilled, or filled under other rules) or a
+claim file this build does not write. `--fill`:
 0 filled, 3 refused (a contradiction or an omission). 3 for a registry or claim file that
 cannot be read, and 2 usage.
 
-`AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
+`docs/adopting.md` for the loop.";
 
 const COMPARE_HELP: &str = "\
 usage: req compare <a.yml> <b.yml>
@@ -174,7 +206,7 @@ exit: 0 classified, 3 UNVERIFIABLE (a side that will not load, or that declares 
 format this build does not write, so its parse is NOT JUDGED; a pair with no structured form
 to compare), 2 usage.
 
-`AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
+`docs/adopting.md` for the loop.";
 
 const SELECT_HELP: &str = "\
 usage: req select key=value [key=value ...]
@@ -182,11 +214,12 @@ usage: req select key=value [key=value ...]
 Reports which claims apply in a variant, tri-state: a claim whose applicability predicate
 the context does not decide is UNKNOWN, never excluded — that would drop a safety claim out
 of a variant silently. Selection changes no address: a variant is a projection over one
-model.
+model. The predicate grammar is deliberately tiny — `key == value` and `key >= number`;
+anything else is UNKNOWN, with its text shown.
 
 exit: 0 every claim decided, 3 at least one claim left undecided, 2 usage.
 
-`AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
+`docs/adopting.md` for the loop.";
 
 const RENDER_HELP: &str = "\
 usage: req render [--out <path>] [--check <path>] [--format text|json] [key=value ...]
@@ -199,7 +232,10 @@ outside-the-selection ones named. It is a projection: it reads claims, never wri
 the generator, rules_v, selection, applying-claim count and an identity digest over the sorted
 addresses. `--check <path>` regenerates the projection and compares bytes — it answers a
 question and writes nothing; a committed projection is checked, never hand-edited. The two are
-one question each: give one of them, once.
+one question each: give one of them, once. The file is complete even when the plain command's
+verdict is open: the exit class of `--out` belongs to the write, not to the verdict. A stale
+`--check` names the first differing line (regenerate with `--out`, never edit), and an explicit
+context beside it must name the selection the header records or it is a second question (3).
 
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same view
 as a `req.render/1` document on stdout: schema, generator, `rules_v`, the selection, the three
@@ -211,7 +247,7 @@ stale or was hand-edited (--check); 3 anything an undecided claim leaves open (p
 projection that cannot be written (--out), or one this build cannot judge — no header, another
 build's rules_v, an unreproducible selection, or another command's projection (--check); 2 usage.
 
-`AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
+`docs/adopting.md` for the loop.";
 
 const TRACE_HELP: &str = "\
 usage: req trace [--out <path>] [--check <path>] [--format text|json] [key=value ...]
@@ -225,7 +261,10 @@ It is a projection: it reads claims, never writes one.
 `--out <path>` commits the projection with the same header `render --out` writes, naming this
 generator (`req trace`). `--check <path>` regenerates and compares bytes, and writes nothing; a
 committed projection is checked, never hand-edited. A projection made by the other command is
-UNVERIFIABLE here rather than stale: two commands are two artefacts.
+UNVERIFIABLE here rather than stale: two commands are two artefacts. The file is complete even
+when the plain command's verdict is open: the exit class of `--out` belongs to the write, not
+to the verdict. A stale `--check` names the first differing line, and an explicit context beside
+it must name the selection the header records or it is a second question (3).
 
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 matrix as a `req.trace/1` document on stdout: schema, generator, `rules_v`, the selection, the
@@ -238,16 +277,33 @@ hold or into one the variant leaves undecided leaves the matrix open (plain), a 
 cannot be written (--out), or one this build cannot judge — no header, another build's rules_v,
 an unreproducible selection, or another command's projection (--check); 2 usage.
 
-`AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
+`docs/adopting.md` for the loop.";
 
 const GATE_HELP: &str = "\
 usage: req gate [--format text|json] [--test-report <file>] [key=value ...]
 
 Runs the release policies over the claims a variant leaves applying — addresses current,
 relations resolve, dependencies decided, rationale present, and (with `--test-report <file>`)
-tests linked — and confirms the invocation itself. Without a report the linked-test policy cannot
-be exercised and answers UNVERIFIABLE; a machine claim with no link is a finding, never a pass. A claim the invocation leaves undecided was not examined, and that is not a pass: a
-bare gate on a corpus carrying a selector is UNVERIFIABLE.
+tests linked — and confirms the invocation itself. A claim the invocation leaves undecided was
+not examined, and that is not a pass: a bare gate on a corpus carrying a selector is
+UNVERIFIABLE.
+
+`selectors_confirmed` judges the invocation: a `key=value` entry no applicability predicate in
+the corpus mentions decided nothing, and an `==` entry whose value the corpus never declares is
+refused, naming the values it does; a `>=` key is confirmed by comparison. A real variant the
+corpus does not describe is refused on purpose — the gate clears only what the model describes,
+and the friction belongs at the decision boundary (ADR 0006).
+
+`tests_linked` answers four ways over machine-evidenced claims, and there is no fifth: PASS (a
+linked test passed), FAIL (every linked test is in the report and none passed — a skipped test
+is not a pass, and a failed one outranks a passing one on the same claim), UNVERIFIABLE *no
+linked test*, and UNVERIFIABLE *linked test not in the report* (a renamed or deleted test is
+never a pass). An absent, unparsable or zero-testcase report is UNVERIFIABLE once, not per
+claim. Without `--test-report` the policy cannot be exercised and the gate is UNVERIFIABLE. A
+claim declaring `evidence: process` carries no `tests:` and is answered PASS as declared,
+listed under `process_evidenced` — a reported fact, not machine proof and not a fifth outcome;
+an empty `tests:` never implies it, and when every applying claim declares it no report is
+needed.
 
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 answers as a `req.gate/1` document on stdout: schema, generator, `rules_v`, the selection, the
@@ -259,7 +315,7 @@ confirmed (an unfilled claim, a relation that does not resolve, a dependency lef
 an entry the corpus cannot confirm, an empty selection) or any claim left undecided — named
 with the remedy; 2 usage. Fail outranks Unverifiable, and an undecided claim outranks a pass.
 
-`AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
+`docs/adopting.md` for the loop.";
 
 const IMPACT_HELP: &str = "\
 usage: req impact <claim-id> [key=value ...]
@@ -271,7 +327,7 @@ exit: 0 complete and settled, 3 UNVERIFIABLE (a missing target, an undecided tar
 dependent, or a relation that does not resolve — an answer a broken relation could have
 shortened says so instead of reading as complete), 2 usage.
 
-`AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
+`docs/adopting.md` for the loop.";
 
 const PROPOSE_HELP: &str = "\
 usage: req propose <a.yml> <b.yml> [--provider-cmd <cmd>]
@@ -287,7 +343,7 @@ corpus-wide funnel (blocking, gold set, flip rate) is research in `experiments/t
 exit: 0 a proposal was produced, 3 UNVERIFIABLE (no provider, or one that failed, declined or
 answered with no readable label, or a claim that will not load), 2 usage.
 
-`AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
+`docs/adopting.md` for the loop.";
 
 const BASELINE_HELP: &str = "\
 usage: req baseline --at <RFC 3339 UTC timestamp> [key=value ...]
@@ -298,12 +354,28 @@ authority, trust and signature, with the key judged at the manifest's `signed_at
 envelope (today for v2, and `--now` sets the judgement time explicitly). The signing time is
 authored, never invented, and req never signs.
 
+Emission refuses (3) when the decision log is absent, unparsable or empty, and exits 1 when it
+is tampered: a chain head that attests nothing must not be signed. Verification re-derives
+every address under the selection the manifest records, so a claim edited after signing is
+FAIL; an explicit context that contradicts the recorded selection is a usage error (exit 2),
+never drift. A v3-or-later manifest also attests the decision log's chain head at a position:
+a rewritten prefix or a truncated log is FAIL, decisions appended after it are not. A v4
+manifest attests each claim's `tests_hash` (its evidence declaration and links); a v3 one says
+once that it predates v4, so its tests are not attested — not a FAIL. A manifest whose `rules_v`
+differs from this build's is UNVERIFIABLE, not judged: an older one is re-signed, a newer one
+is verified with a build that writes it. Trust is read from `baselines/trust.yml` (ADR 0010),
+by calendar date: a key expired at the signing time, or revoked at or before it, is FAIL; one
+revoked after it still verifies (revocation is prospective). The signing time is
+signer-asserted, so revocation bounds newly asserted times only, and `valid_from` is recorded
+but not enforced. A newer envelope's dated revocation stays UNVERIFIABLE, while an anchor whose
+own `revoked_at` cannot be read fails closed on every envelope. The signature check is a process boundary to a pinned verifier.
+
 exit: 0 emitted or VERIFIED, 1 FAIL (drift, a signature or authority that does not verify),
 3 UNVERIFIABLE (no verifier, an unknown key, no signature, a `rules_v` mismatch, or an absent
 decision log), 2 usage (emitting without `--at`, an unreadable timestamp, `--at` on the
 verification path).
 
-`AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
+`docs/adopting.md` for the loop.";
 
 const AUDIT_HELP: &str = "\
 usage: req audit [--baseline <file>] [--format text|json] [key=value ...]
@@ -311,7 +383,10 @@ usage: req audit [--baseline <file>] [--format text|json] [key=value ...]
 Prints the audit packet for a Baseline: every applying claim's address, coverage state,
 provenance and outgoing relations, then the undecided claims in their own section, then the
 findings. Coverage is derived from the Baseline's drift; whether a signature is valid belongs
-to `req baseline --verify`, and this packet never asserts authority it did not check.
+to `req baseline --verify`, and this packet never asserts authority it did not check. The
+selection comes from the Baseline being audited. With no `--baseline` it still prints, and says
+plainly that nothing is ratified — an audit that passed on an unsigned model would be worse
+than none.
 
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 packet as a `req.audit/1` document on stdout: schema, generator, `rules_v`, the selection,
@@ -322,35 +397,40 @@ exit: 0 every applying claim covered and still matching, 1 a defect (drift, or n
 provenance), 3 nothing ratified, something uncovered, or coverage NOT JUDGED because the
 manifest's `rules_v` disagrees with this build's, 2 usage.
 
-`AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
+`docs/adopting.md` for the loop.";
 
 const DECISION_HELP: &str = "\
 usage: req decision [--fill | --verify]
 
 Walks the decision log's hash chain — one record per file, each committing to its
 predecessor — or with `--fill` writes the derived `prev_hash`/`hash` into the records,
-preserving comments and the note a human wrote. It never overwrites a record, and it refuses
-to recompute over a stored field that disagrees with the content.
+preserving comments and the note a human wrote. It never overwrites a record: a stored field
+that disagrees with the content makes it refuse: it writes nothing at all, because recomputing
+would launder the edit `--verify` reports as TAMPERED. A decision records the address it
+ratified; an edit that moves the address is reported by `req audit` and `baseline --verify`,
+not by this log, because a log is history and superseding an address later is not tampering.
 
 exit: 0 VALID, 1 TAMPERED (a stored hash that does not recompute, or a `prev_hash` that
 disagrees with the entry before it), 3 UNVERIFIABLE (an unfilled hash, an unparsable file, an
 empty log, or a log that does not begin at the genesis anchor), 2 usage.
 
-`AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
+`docs/adopting.md` for the loop.";
 
 const INIT_HELP: &str = "\
 usage: req init
 
 Creates a corpus in the current directory: a starter claim filled and verified through the
 same derivation `req canon --fill` uses, the claims README, and the subject registry. It
-refuses rather than overwrite an existing corpus, and it reads no root — it creates one.
+refuses rather than overwrite an existing corpus, and it reads no root — it creates one, so it
+announces none. It prints the next steps to stdout: the CI snippet, the
+per-variant rule, and where a req bug is reported.
 
 exit: 0 created, 1 refused (`claims/` or `aliases/subjects.yml` already exists, or `aliases`
 is a symlink), 3 UNVERIFIABLE (the starter claim could not be verified, or the target cannot
 be written — whatever it wrote is removed), 2 usage (an argument, or `--root`: run `init`
 where the corpus should live).
 
-`AGENTS.md` §Commands for the reference, `docs/adopting.md` for the loop.";
+`docs/adopting.md` for the loop.";
 
 /// Every subcommand that reads a corpus, with the handler that runs it and the page it prints —
 /// **one** table.
