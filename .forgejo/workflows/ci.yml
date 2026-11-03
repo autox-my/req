@@ -94,21 +94,6 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           echo "RUSTUP_HOME=$HOME/.rustup" >> "$GITHUB_ENV"
 
-      - name: the review CLI, installed from the committed lockfile
-        run: |
-          set -eu
-          npm --prefix tools/ocr ci --no-fund --no-audit --cache "$GITHUB_WORKSPACE/.npm-cache"
-          export PATH="$GITHUB_WORKSPACE/tools/ocr/node_modules/.bin:$PATH"
-          # The binary comes from a platform optionalDependency and the package's postinstall is
-          # skipped by policy, so a successful npm ci is not proof the CLI exists. Verify the
-          # effect: npm ci has already fixed the version to the locked one.
-          if ! command -v ocr >/dev/null 2>&1; then
-            echo "::error::ocr did not install, so the rule-glob check would skip"
-            exit 1
-          fi
-          ocr --version
-          python3 --version
-
       - name: the trust anchor, taken from origin/main rather than from this pull request
         run: |
           set -eu

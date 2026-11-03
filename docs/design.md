@@ -303,10 +303,11 @@ ADR 0013 hashes `relations` and `rationale` *beside* the address. An index over 
 2. record **`rules_v` and a corpus digest**, or staleness is undetectable (a `RULES_V` bump moves
    every address — the same coupling the Baseline `rules_v` guard already enforces);
 3. **fail loudly** when missing, corrupt, or built under other rules, and never fall back quietly
-   to a fresh derivation. The precedent is `tools/review/check_rules.py`: the review CLI silently
-   falls back to its built-in rubric for a glob matching nothing while every exit code stays
-   zero, so that script checks the *effect* rather than the status. An index must be verified
-   **used**, not merely loaded;
+   to a fresh derivation. The precedent is the review CLI, which silently falls back to its
+   built-in rubric for a glob matching nothing while every exit code stays zero (a script that
+   checked the *effect* rather than the status existed until 2026-11-03, when the owner retired
+   it and accepted the risk — see ADR 0018's note). An index must be verified **used**, not
+   merely loaded;
 4. and, if it ever becomes **an input to a decision** or an auditor relies on it, carry its own
    attested hash with a NUL-delimited domain tag and an ADR — the ADR 0013 pattern, which exists
    for exactly this: derived, relied upon, therefore attested separately from identity.

@@ -193,9 +193,9 @@ export OCR_NO_UPDATE=1
   product of the run that decides the suite, not a file found again later, and the release gate
   reads it.
   **`scripts/check.sh --fast` is the iteration mode**, measured rather than asserted: a warm
-  full run is 59s and a fast one 25s on the maintainer's machine (~34s saved per iteration),
+  full run is ~34s and a fast one ~20s (single runs, 2026-11-03, after M2-1 removed the review-rule steps; the full run was 60s before),
   because the steps it drops are the ones whose *runtime* dominates — `clippy`, the external
-  corpora (v1-v3) and the direction gold set, and the review-rule/review-scope checks. It keeps
+  corpora (v1-v3) and the direction gold set. It keeps
   `fmt`, `test` (nextest, and the report it writes), `canon`, the seed parity bench, the Baseline
   and decision steps, the release gate, the projection check, the extractor's self-check and the **quickstart rehearsal**
   (`tools/quickstart.sh`, measured at 0-2s, so it is kept in both modes — it prints the
@@ -206,17 +206,6 @@ export OCR_NO_UPDATE=1
   required before a commit**, and CI always runs the full one. `--fast` composes with `plan`;
   beside `baseline` or `decision` it is a usage error (exit 2), because one check is not the gate
   and neither is fast.
-- Review-rule coverage: `python3 tools/review/check_rules.py` (part of `check.sh` when
-  `ocr` is present) — checks both directions between `review/rule.json` and the tracked tree,
-  plus the checklist text itself: every entry must still match a tracked file, every tracked
-  file must resolve to `source: custom` or be allow-listed with its reason, and each entry's
-  text must reach the reviewer verbatim. The CLI **silently** falls back to the built-in
-  rubric for a glob that matches nothing, so a renamed directory would drop a checklist while
-  every exit code stayed zero; and it answers `source: custom` with whatever text it was
-  handed, so a blank `rule` is an inert checklist that passes both directions — the effect is
-  checked (`source: custom`, and the text), never the exit status. Its `--self-check`
-  table-drives the pure half (the `git ls-files -z` listing, the allow-list membership rule,
-  the entry reader, and the preview's JSON shape) and needs no `ocr`.
 - Direction: `cargo run -q -- compare <a.yml> <b.yml>` — classifies the change
   (`modality_weakening`, `numeric_tightening`, `polarity_flip`, `scope_divergence`, …),
   exit **3** when a side has no structured form to compare, and when a side declares a
@@ -497,45 +486,18 @@ export OCR_NO_UPDATE=1
   not tampering.
 - Docs-only changes: the same gate, with its skips stated in the commit message.
 
-### Review — delegation mode locally, LLM mode on pull requests
+### Review
 
-Two mechanisms, one CLI, answering different questions. **Locally** the agent runs delegation
-mode: OCR selects the files and resolves the rules, and the agent is the reviewer — no LLM, no
-API key, nothing leaving the machine. **On a pull request**, `.forgejo/workflows/review.yml` runs
-`ocr review` against the configured provider and blocks the merge on any critical or high
-finding. Its verdict comes from `tools/review/ocr_gate.py`, which the workflow takes from
-`origin/main` and never from the pull request under review, so a change cannot supply the gate
-that judges it — which is why the adoption pull request fails that check by design, and a human
-merges it. The gate carries a `--self-check`, and it treats a review that did not complete as a
-failure rather than a clean run. The review is judged by `--rule review/rule.json`, and that file
-is taken from `origin/main` as well — the same trust boundary — so this repository's invariants
-apply to the review that blocks merges, and a change cannot supply the rules that judge it either.
-
-CI review does send the diff to the configured provider. REQ-0012 governs the product's runtime,
-not the review of this repository's own changes: req itself still requires no network.
-
-The review runs with **`--no-filter`**: after the review agent, the CLI would otherwise run a second set of
-LLM passes over the *comments* — which candidates survive, merging near-duplicates, pinning each comment's
-line range. Those passes cost ~22% of the review's work time (measured before the provider moved to opencode,
-so the model has changed and the figure is a lead, not a current number: mean 677s → 526s, three runs each on
-one 13-file diff) and buy precision. Without them every comment the agent produced is kept, **unverified and
-un-relocated**, so the gate is faster and noisier: it still blocks only critical/high, and a sharper but
-false blocking finding is the price. Two consequences worth holding: a green review means *the reviewer
-reported nothing*, **not** that nothing was there — the same diff yields different findings per run; and if a
-clean diff ever produces a critical/high, suspect this line before distrusting the code.
-
-A **measurement** run of the review is a separate, dispatch-only workflow:
-`.forgejo/workflows/review-measure.yml` reviews a chosen `to_sha` through a chosen `from_ref`, once, with
-the provider settings as inputs (`max_tools`, `no_filter`, `exclude`), and prints a single `MEASURE …`
-line (elapsed, rounds, tokens, findings by severity) followed by every finding **verbatim** — the record
-and the evidence a duration comparison is built from. A count alone cannot tell a real defect found by a
-narrower configuration from a false positive it induced, which is exactly the question a setting change
-has to answer.
-It deliberately has **its own job name**, so the required check's context (`OCR Review / ocr-review`)
-keeps meaning exactly one thing: the verdict on a pull request. A dispatched run is evidence about
-duration and findings and is **never a verdict**: it takes the rule file from `origin/main` (same trust
-boundary), makes one attempt (riding out a bad window would average two different things), and runs no
-gate.
+**CI reviews; local self-review is retired** (owner ruling 2026-11-03). `review.yml` runs `ocr review` and
+blocks the merge on any critical or high finding; the verdict script (`tools/review/ocr_gate.py`), the
+rule file (`review/rule.json`) and the trust anchor come from `origin/main`, never from the PR. It runs
+with **`--no-filter`**: comments are **unverified**, so green means *the reviewer reported nothing*, not
+that nothing was there — confirm each finding against the code. Rule-file facts that still bite:
+- **Unknown keys are silently ignored.** A custom rule **replaces** the built-in rubric for its paths.
+- **A glob matching nothing silently falls back, and nothing checks it any more** (checker removed,
+  M2-1; risk accepted): rename a path and its rule together.
+- **Markdown and `*.minisig` are outside the reviewer's view**: read docs by hand; a signed change
+  always carries its re-signature, which the gate's Baseline step verifies.
 
 **Reading a failed CI review.** The Forgejo job-log API answers 404 for these runs, so the
 findings of a failed `OCR Review / ocr-review` cannot be read from the PR or the API. They are on
@@ -564,70 +526,8 @@ reviewed is in the first line too; with `--no-filter` its findings are unverifie
 finding against the code before acting on it — the PR #80 review was right on both highs, but
 the same diff can give different findings on another run.
 
-`ocr` is installed **locally and pinned** (a global install would land in
-`/usr`, which is root-owned and read-only here, and would not be lockfile-pinned):
+`tools/ocr` is the CI pin of the review CLI: bump it deliberately and state it in the commit.
 
-```bash
-# from the repo root, to (re)install the pinned CLI
-npm --prefix tools/ocr install --no-fund --no-audit --cache "$PWD/.npm-cache"
-ocr --version        # must print open-code-review v1.13.3
-```
-
-Delegation mode uses **no LLM**: OCR performs deterministic file selection and rule
-resolution; the agent performs the review. Pin the rules to a file we own and pass
-it on every invocation:
-
-```bash
-ocr delegate preview --format json [--from main --to feature/<name>] [--rule review/rule.json]
-ocr delegate rule --format json --rule review/rule.json <paths from the preview>
-ocr --version        # --format needs >= 1.9.0; we pin 1.13.3
-```
-
-If `--format` fails with `unknown flag: --format`, use text output for the rest of
-that run; never parse text as JSON and never invent schema fields.
-This npm skips the package's `postinstall` under its `allowScripts` policy; the CLI
-binary comes from the platform optionalDependency — always verify `ocr --version`
-after installing.
-
-**The rule-file shape we own** (`review/rule.json`), established by probing 1.13.0 and
-re-measured at the 1.13.3 pin (`tools/review/check_rules.py` and `check_review_scope.py`
-probe the effect, not the exit status) — the vendor ships no schema, and two behaviours
-matter:
-
-```json
-{"rules": [{"path": "<gitignore-style glob>", "rule": "<the checklist text>"}]}
-```
-
-- A matched file's group becomes `source: "custom"` with exactly our text, and an
-  unmatched file falls back to `source: "system"`. Custom rules **replace** the
-  built-in rubric for matched paths — they do not merge — so **every entry whose files are
-  not markdown ends by naming the built-in rubric it replaces, and a real path to read it
-  with**. Markdown is the one exception, and it is checked rather than assumed: the CLI
-  excludes it from review selection as `unsupported_ext`, so a clause there could never take
-  effect. Without the clause the built-in checklist is dropped with no error at all — the
-  failure `tools/review/check_rules.py` exists to catch, in the one field it does not inspect:
-  the text.
-- **Unknown keys are silently ignored** (Go drops them). A misspelled key is
-  therefore a no-op that still "loads", so a rule file must be *verified to take
-  effect* — check `source`/`rule` in the output, never just the exit code. The two
-  fields are `path` and `rule`; anything else is decoration.
-- The built-in `source: "system"` rule is **language-specific** (for Rust: typos,
-  ownership/lifetimes, error handling and panics, unsafe boundaries, concurrency,
-  async/cancellation, collections/perf, type and API design, macros, security) — not
-  a generic rubric. To read it: `ocr delegate rule --format json <path>` without
-  `--rule`.
-- **A signed artefact's review is its signature, and the reviewer cannot see one.** `ocr`
-  excludes `*.minisig` by path/extension rules, so a pull request that re-signs a Baseline looks,
-  to the reviewer, like one that changed the signed bytes and forgot the signature — a blocking
-  finding on every future signing. The blind spot is therefore **declared rather than hidden**:
-  `review/rule.json` excludes `baselines/*.minisig` explicitly (verified: the selection reports
-  `exclude_reason: user_exclude`), and the `baselines/*.json` checklist tells the reviewer that the
-  signature is outside its view, that a signed change always carries its re-signature, and that
-  the gate's Baseline step (no SKIP) is what verifies it. `tools/review/check_rules.py` pins both
-  — the exclusion and the declaration's text — because a declaration that can vanish silently is
-  worth nothing. If a future review still reports a missing signature, say so with the verify
-  evidence and merge as an admin instead of re-signing: re-signing hides a false positive, and the
-  signature is verified by the gate regardless of the model's opinion.
 
 ## Where things live / how data flows
 
@@ -753,8 +653,7 @@ matter:
   the gate; the corpus end-to-end is `tests/adopt.rs`. It is a starting point adopters **copy
   and adjust**, not a subcommand — the mapping from a document to claims is per-project.
 - `review/rule.json` — the review rules we own: one checklist per path class, passed
-  to every `ocr` invocation. Its shape and the two CLI behaviours worth knowing are
-  documented under **Review** above.
+  by the CI review. The rule-file facts worth knowing are under **Review**.
 - `.req/variants` — this repository's own release list, read by `scripts/check.sh` and by any
   CI that runs it (req itself knows nothing about the file): one `key=value ...` release per
   line, `#` comments, blank lines skipped. Two releases are declared because `corpus_set` takes
@@ -906,47 +805,6 @@ optional, e.g. `feat(canon):`). Gate green before every commit; state skips and
 `UNVERIFIABLE` outcomes in the message. Pre-convention history (`req v0`,
 `req tier-1 v1`) stands; do not rewrite it.
 
-### Self-review before merge (a loop, not a pass)
-
-Default mechanism: OCR **delegation mode** — it selects the reviewable files and
-resolves the rules; **you** are the reviewer. Stay read-only while reviewing.
-
-1. `ocr delegate preview --format json` → `mode`, `repository`, `total_files`,
-   `reviewable_count`, `excluded_count`, `reviewable_files[]`
-   (`path`, `status`, `insertions`, `deletions`), `excluded_files[]` (same fields
-   plus `exclude_reason`). Every `reviewable_files` entry becomes a checklist item
-   keyed by `(path, status)`.
-   **Exclusion is not coverage.** Observed `exclude_reason` values: `unsupported_ext`
-   — markdown, i.e. **all of `docs/`, `CONTEXT.md`, `AGENTS.md`, `claims/README.md`**
-   — and `default_path` — lockfiles. Those files are reviewed by hand, always: here
-   the docs are claims, so an unreviewed doc change is itself the finding.
-2. `ocr delegate rule --format json --rule review/rule.json <paths>` →
-   `{schema_version, groups[]}`, each group
-   `{group_id, source, pattern, files[], rule}`. Our own rules live in
-   `review/rule.json` (per-path checklists carrying req's invariants: FMR gate
-   untouched; no floats or unordered-map iteration in the address path; no
-   hand-written `address`/`canonical.form`; docs contradicted by code; canonical
-   decimal values; no auto-merge). The file is reviewed like any other artifact, and
-   its shape is documented above.
-3. Diffs come from git using the preview's mode/ref metadata: range →
-   `git diff <merge_base>..<to> -- <path>`; commit → `git show <commit> -- <path>`;
-   workspace → `git diff HEAD -- <path>`, and read untracked files directly.
-4. Review each file against its rule group and **Correctness rules** above, in
-   bounded batches for large changes. Do not stop at the first high-severity find.
-5. **Coverage is mandatory**: every previewed file ends `reviewed` or `skipped` with
-   a concrete reason; report `total_files`, `reviewed_files`, `skipped_files`,
-   `coverage_rate`. An empty preview (or an unavailable `ocr`) means review the whole
-   diff by hand — **never** a pass.
-6. Findings use the OCR schema: `path`, `content`, `start_line`, `end_line`,
-   `category`, `severity` (critical/high/medium/low). Fix every critical/high in the
-   worktree, commit, and re-run from step 1 until the blocking count is 0. A false
-   positive is stated in the merge commit with reasoning; `medium`/`low` left
-   unfixed are listed there too.
-
-Review rules we own live in-repo and are passed with `--rule <path>`; the file is
-reviewed like any other artifact — and its *effect* is verified in the output, not
-assumed from a zero exit code.
-
 ### Merge locally (no PR)
 
 **No longer how changes reach the remote.** `main` is protected on Forgejo and this
@@ -973,7 +831,7 @@ deliberately left unfixed.
 ## Phases
 
 **Phase 1 (the local habit).** Local gate (`scripts/check.sh`), worktree per feature,
-OCR delegation mode as the self-review mechanism.
+the PR's CI review (see **Review**) is the review that blocks merges.
 
 **Phase 2 (partly landed, 2026-10-13).** The Forgejo remote is
 `https://git.xantu-barb.ts.net/fdx/req.git`, and `.forgejo/workflows/ci.yml` invokes

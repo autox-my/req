@@ -3,6 +3,12 @@
 **Status: proposed** — drafted by the agent on 2026-10-21. Acceptance is the maintainer's act. Date proposed:
 2026-10-21.
 
+**Amended 2026-11-03** — §4 cites `tools/review/check_rules.py` as the precedent for a pinned allow-list.
+That script was removed on 2026-11-03 (owner ruling M2-1: the review that blocks merges is CI's, and the
+two scripts that policed the review tool's configuration cost more to keep than the risk they covered).
+The decision text stands unchanged: the checked set is still a pinned list where adding a path is a
+decision, and `.req/projections` is now its only instance in this repository.
+
 ## Context
 
 ADR 0001 made the **claim** the unit of work, not the document. The views followed: `render` (the spec view),
