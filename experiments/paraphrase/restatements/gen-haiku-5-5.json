@@ -1,0 +1,1332 @@
+{
+  "schema": "req.paraphrase.restatements/1",
+  "generator": {
+    "id": "gen-haiku-5-5",
+    "family": "claude",
+    "model": "claude-haiku-5-5"
+  },
+  "statements_sha256": "c30e295b3f38ef5547c25b380bd0c1cb92b07f0848dca3a1602a5549f3db0081",
+  "prompt": "Restate this requirement as a different engineer would write it, preserving exactly the same obligation (who, modality, action, bound, condition); do not copy phrasing; give 3 restatements; then give 1 alteration that changes exactly one element (modality, quantity, actor, action or condition) and name which element.\n\nAnswer with one JSON object and nothing else: {\"restatements\": [\"...\", \"...\", \"...\"], \"alteration\": {\"text\": \"...\", \"element\": \"modality|quantity|actor|action|condition\"}}",
+  "items": [
+    {
+      "statement_id": "E-ST-SDOC-SSS-56-CP",
+      "restatements": [
+        {
+          "id": "E-ST-SDOC-SSS-56-CP/R1",
+          "text": "The Requirements Tool is obligated to supply a high-altitude, big-picture graphical view of requirements, in the style of a \"1000-feet view.\""
+        },
+        {
+          "id": "E-ST-SDOC-SSS-56-CP/R2",
+          "text": "It is mandatory that the Requirements Tool offer a summary-level visual rendering of requirements that gives a \"1000-feet view.\""
+        },
+        {
+          "id": "E-ST-SDOC-SSS-56-CP/R3",
+          "text": "The Requirements Tool must include a bird's-eye visualization of requirements, the kind known as a \"1000-feet view.\""
+        }
+      ],
+      "alteration": {
+        "id": "E-ST-SDOC-SSS-56-CP/ALT",
+        "text": "The Requirements Tool may provide a \"1000-feet view\" kind of requirements visualization.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P36:r775-PS",
+      "restatements": [
+        {
+          "id": "N-PR-P36:r775-PS/R1",
+          "text": "Every file that contains program code and every document produced for development must be kept under version control management."
+        },
+        {
+          "id": "N-PR-P36:r775-PS/R2",
+          "text": "Each source file and each development-related document is required to be managed in a version control system, with no exceptions."
+        },
+        {
+          "id": "N-PR-P36:r775-PS/R3",
+          "text": "Source code and development documents must all be held in a version control system without exception."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P36:r775-PS/ALT",
+        "text": "Only the primary source code shall be controlled under a version control system.",
+        "element": "quantity"
+      }
+    },
+    {
+      "statement_id": "N-PR-P14:r610-PS",
+      "restatements": [
+        {
+          "id": "N-PR-P14:r610-PS/R1",
+          "text": "Each NFL season must open with the release of new versions of the New System."
+        },
+        {
+          "id": "N-PR-P14:r610-PS/R2",
+          "text": "Right at the start of every NFL season, the New System has to put out its version releases."
+        },
+        {
+          "id": "N-PR-P14:r610-PS/R3",
+          "text": "New System version releases are required to go out at the beginning of each NFL season."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P14:r610-PS/ALT",
+        "text": "New System version releases may be released at the beginning of each NFL season.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-PR-P46:r905-MS",
+      "restatements": [
+        {
+          "id": "E-PR-P46:r905-MS/R1",
+          "text": "The application must present a full, line-itemized bill for the order in progress as soon as that order has been finalized."
+        },
+        {
+          "id": "E-PR-P46:r905-MS/R2",
+          "text": "Once the active purchase reaches confirmed status, the platform is obligated to render its complete invoice on screen, listing every charge for that same order."
+        },
+        {
+          "id": "E-PR-P46:r905-MS/R3",
+          "text": "Whenever the current order gets confirmed, the software needs to show the expanded billing statement belonging to that order."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P46:r905-MS/ALT",
+        "text": "The system may display detailed invoice for current order once it is confirmed.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-PR-P7:r370-MS",
+      "restatements": [
+        {
+          "id": "E-PR-P7:r370-MS/R1",
+          "text": "The software must produce an Inventory Quantity Adjustment document using each product's daily sales records together with its recipe or formula data."
+        },
+        {
+          "id": "E-PR-P7:r370-MS/R2",
+          "text": "Given daily sales figures and the formulas for each product, the system is required to create an Inventory Quantity Adjustment document."
+        },
+        {
+          "id": "E-PR-P7:r370-MS/R3",
+          "text": "The system has to build an Inventory Quantity Adjustment document from the product-level daily sales data and the associated product formulas."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P7:r370-MS/ALT",
+        "text": "The System may generate Inventory Quantity Adjustment document based on product daily sales data and product formulas.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-ST-SDOC-SSS-39-MW",
+      "restatements": [
+        {
+          "id": "N-ST-SDOC-SSS-39-MW/R1",
+          "text": "It is mandatory that the source code of the Requirement Tool be built upon open source software components."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-39-MW/R2",
+          "text": "The Requirement Tool's source code has to be grounded in open source software components."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-39-MW/R3",
+          "text": "Open source software components are a required basis for the source code of the Requirement Tool."
+        }
+      ],
+      "alteration": {
+        "id": "N-ST-SDOC-SSS-39-MW/ALT",
+        "text": "The Requirement Tool's source code may be based on open source software components.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-ST-SDOC-SSS-48-MS",
+      "restatements": [
+        {
+          "id": "E-ST-SDOC-SSS-48-MS/R1",
+          "text": "The Requirements Tool must be capable of producing a Compliance Matrix document."
+        },
+        {
+          "id": "E-ST-SDOC-SSS-48-MS/R2",
+          "text": "Users of the Requirements Tool need to be able to create a Compliance Matrix document through it."
+        },
+        {
+          "id": "E-ST-SDOC-SSS-48-MS/R3",
+          "text": "It is mandatory that the Requirements Tool supports generation of a Compliance Matrix document."
+        }
+      ],
+      "alteration": {
+        "id": "E-ST-SDOC-SSS-48-MS/ALT",
+        "text": "The Requirements Tool shall allow generating a Compliance Matrix document only when the user has administrator privileges.",
+        "element": "condition"
+      }
+    },
+    {
+      "statement_id": "N-PR-P5:r270-PF",
+      "restatements": [
+        {
+          "id": "N-PR-P5:r270-PF/R1",
+          "text": "The user is required to input updated ratings informed by the findings in the audit report."
+        },
+        {
+          "id": "N-PR-P5:r270-PF/R2",
+          "text": "Based on what the audit report says, the user must submit fresh rating entries."
+        },
+        {
+          "id": "N-PR-P5:r270-PF/R3",
+          "text": "Using the audit report as the basis, the user has to record new ratings."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P5:r270-PF/ALT",
+        "text": "The user may enter new ratings based on the audit report.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P45:r850-PF",
+      "restatements": [
+        {
+          "id": "N-PR-P45:r850-PF/R1",
+          "text": "The system must inform the user whenever any change is made to a schedule."
+        },
+        {
+          "id": "N-PR-P45:r850-PF/R2",
+          "text": "Every time a schedule is altered, the system is required to send the user a notification."
+        },
+        {
+          "id": "N-PR-P45:r850-PF/R3",
+          "text": "Any modification to a schedule obligates the system to alert the user about it."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P45:r850-PF/ALT",
+        "text": "The system shall notify the user of any schedule changes within 24 hours.",
+        "element": "condition"
+      }
+    },
+    {
+      "statement_id": "E-DO-REQ007-MS",
+      "restatements": [
+        {
+          "id": "E-DO-REQ007-MS/R1",
+          "text": "Doorstop must offer a means of presenting requirements in document form."
+        },
+        {
+          "id": "E-DO-REQ007-MS/R2",
+          "text": "The tool is required to supply a method for rendering requirements as a document view."
+        },
+        {
+          "id": "E-DO-REQ007-MS/R3",
+          "text": "Doorstop needs to include some capability that lets a reader see requirements laid out as a document."
+        }
+      ],
+      "alteration": {
+        "id": "E-DO-REQ007-MS/ALT",
+        "text": "Doorstop may provide a way to view requirements as a document.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-ST-SDOC-SSS-76-MW",
+      "restatements": [
+        {
+          "id": "N-ST-SDOC-SSS-76-MW/R1",
+          "text": "The Requirements Tool's development workflow must incorporate requirements engineering applied to the Requirements Tool itself."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-76-MW/R2",
+          "text": "Development of the Requirements Tool has to cover the engineering of its own requirements."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-76-MW/R3",
+          "text": "The process used to build the Requirements Tool is obligated to contain requirements engineering work targeting the Requirements Tool."
+        }
+      ],
+      "alteration": {
+        "id": "N-ST-SDOC-SSS-76-MW/ALT",
+        "text": "The Requirements Tool's development process may include the Requirements Tool's own requirements engineering.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P5:r245-PS",
+      "restatements": [
+        {
+          "id": "N-PR-P5:r245-PS/R1",
+          "text": "The claims adjuster is required to record the preferred repair shop on the estimate assignment."
+        },
+        {
+          "id": "N-PR-P5:r245-PS/R2",
+          "text": "Each adjuster must put the chosen preferred body shop into the estimate assignment."
+        },
+        {
+          "id": "N-PR-P5:r245-PS/R3",
+          "text": "The assigned adjuster has an obligation to input the preferred repair facility in the estimate assignment."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P5:r245-PS/ALT",
+        "text": "The adjuster may enter the preferred repair facility on the estimate assignment.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-PR-P16:r630-MS",
+      "restatements": [
+        {
+          "id": "E-PR-P16:r630-MS/R1",
+          "text": "The product must include assistance features that, when a user requests them, supply guidance and descriptions for every page and every control on those pages."
+        },
+        {
+          "id": "E-PR-P16:r630-MS/R2",
+          "text": "On request, the application is required to present hints and clarifications for all views and for each element within each view."
+        },
+        {
+          "id": "E-PR-P16:r630-MS/R3",
+          "text": "Whenever a user asks for it, the software needs to provide advice and explanatory information covering each screen and every individual item displayed on it."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P16:r630-MS/ALT",
+        "text": "The system may have a help system that offers tips and explanation for each screen and each item on the screens upon demand.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-ST-SDOC-SSS-96-CP",
+      "restatements": [
+        {
+          "id": "E-ST-SDOC-SSS-96-CP/R1",
+          "text": "The Requirements Tool must be able to produce PDF output from documentation, whether for a single document or for an entire documentation hierarchy."
+        },
+        {
+          "id": "E-ST-SDOC-SSS-96-CP/R2",
+          "text": "Offering PDF export of documentation, one document at a time or a full documentation tree, is a required capability of the Requirements Tool."
+        },
+        {
+          "id": "E-ST-SDOC-SSS-96-CP/R3",
+          "text": "The Requirements Tool must provide a way to render documentation as PDF, covering standalone documents as well as complete documentation trees."
+        }
+      ],
+      "alteration": {
+        "id": "E-ST-SDOC-SSS-96-CP/ALT",
+        "text": "The Requirements Tool may support exporting documentation content to PDF, both individual documents and complete documentation trees.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-DO-REQ015-CP",
+      "restatements": [
+        {
+          "id": "E-DO-REQ015-CP/R1",
+          "text": "Doorstop is required to offer an installation option that keeps its footprint small."
+        },
+        {
+          "id": "E-DO-REQ015-CP/R2",
+          "text": "The Doorstop project must make available a minimal-weight way to install the tool."
+        },
+        {
+          "id": "E-DO-REQ015-CP/R3",
+          "text": "Doorstop has to supply an installation route that is slim and easy to set up."
+        }
+      ],
+      "alteration": {
+        "id": "E-DO-REQ015-CP/ALT",
+        "text": "Doorstop may provide a lightweight installation method.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P38:r790-PS",
+      "restatements": [
+        {
+          "id": "N-PR-P38:r790-PS/R1",
+          "text": "Every customer is required to present a valid login ID before gaining access to the site."
+        },
+        {
+          "id": "N-PR-P38:r790-PS/R2",
+          "text": "A customer can get into the site only if that customer holds a valid login identifier."
+        },
+        {
+          "id": "N-PR-P38:r790-PS/R3",
+          "text": "Customers are obligated to possess a valid login ID in order to step into the site."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P38:r790-PS/ALT",
+        "text": "Customers should have a valid login id to enter into the site.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-DO-REQ013-PF",
+      "restatements": [
+        {
+          "id": "N-DO-REQ013-PF/R1",
+          "text": "Doorstop is required to tie changes made to requirements to a developer identity that is already registered."
+        },
+        {
+          "id": "N-DO-REQ013-PF/R2",
+          "text": "Doorstop must link modifications to requirements with developer identification that already exists."
+        },
+        {
+          "id": "N-DO-REQ013-PF/R3",
+          "text": "It is mandatory that Doorstop record a link between requirement changes and a pre-existing developer identity."
+        }
+      ],
+      "alteration": {
+        "id": "N-DO-REQ013-PF/ALT",
+        "text": "Doorstop may associate requirements changes to existing developer identification.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-PR-P3:r135-MS",
+      "restatements": [
+        {
+          "id": "E-PR-P3:r135-MS/R1",
+          "text": "The system must hold an e-mail address and a phone number for every person it considers relevant, including staff, students, lecture instructors, clinical lab instructors, and clinical site administrators, though those groups are examples rather than a complete list."
+        },
+        {
+          "id": "E-PR-P3:r135-MS/R2",
+          "text": "Each individual relevant to the system, such as staff, students, lecturers, clinical lab instructors, clinical site administrators, and others beyond those listed, is required to have their e-mail and phone number stored in the system."
+        },
+        {
+          "id": "E-PR-P3:r135-MS/R3",
+          "text": "The system is obligated to store the e-mail address and telephone number of each person relevant to it; the listed roles (staff, students, lecture instructors, clinical lab instructors, clinical site administrators) illustrate the scope and do not limit it."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P3:r135-MS/ALT",
+        "text": "The system may contain contact information (e-mail and phone number) for all people relevant to the system including (but not limited to) staff members students lecture instructors clinical lab instructors and clinical site administrators.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P6:r345-MW",
+      "restatements": [
+        {
+          "id": "N-PR-P6:r345-MW/R1",
+          "text": "The system must be capable of dispatching meeting alerts over several distinct channel types, with each end user choosing which channels apply."
+        },
+        {
+          "id": "N-PR-P6:r345-MW/R2",
+          "text": "Software is required to deliver gathering reminders through more than one category of transport, where the individual end user determines the categories."
+        },
+        {
+          "id": "N-PR-P6:r345-MW/R3",
+          "text": "The product must support transmitting meeting notices by multiple kinds of delivery mechanism, selected by the person receiving them."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P6:r345-MW/ALT",
+        "text": "The product shall be able to send meeting notifications via a single end-user specified method.",
+        "element": "quantity"
+      }
+    },
+    {
+      "statement_id": "N-ST-SDOC-SSS-6-PF",
+      "restatements": [
+        {
+          "id": "N-ST-SDOC-SSS-6-PF/R1",
+          "text": "The Requirements Tool must offer settings that let it create requirement UIDs on its own."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-6-PF/R2",
+          "text": "Users of the Requirements Tool need to be able to switch on automatic creation of unique requirement identifiers."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-6-PF/R3",
+          "text": "The Requirements Tool is obliged to include functions that enable requirement UIDs to be generated without manual entry."
+        }
+      ],
+      "alteration": {
+        "id": "N-ST-SDOC-SSS-6-PF/ALT",
+        "text": "The Requirements Tool may provide controls for automatic generation of requirements UIDs.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P46:r930-PF",
+      "restatements": [
+        {
+          "id": "N-PR-P46:r930-PF/R1",
+          "text": "The system must give the user the ability to finalize a buy."
+        },
+        {
+          "id": "N-PR-P46:r930-PF/R2",
+          "text": "Users need to be able to approve a purchase so it goes through."
+        },
+        {
+          "id": "N-PR-P46:r930-PF/R3",
+          "text": "It is required that the system provide users a way to validate and complete a transaction they intend to make."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P46:r930-PF/ALT",
+        "text": "The system shall allow user to decline the purchase.",
+        "element": "action"
+      }
+    },
+    {
+      "statement_id": "N-PR-P4:r150-PF",
+      "restatements": [
+        {
+          "id": "N-PR-P4:r150-PF/R1",
+          "text": "Every single cardmember and merchant services representative must make routine use of the Disputes application once they have completed a two-day training course."
+        },
+        {
+          "id": "N-PR-P4:r150-PF/R2",
+          "text": "Once a two-day training course is finished, all cardmember and merchant services representatives are obligated to regularly operate the Disputes application."
+        },
+        {
+          "id": "N-PR-P4:r150-PF/R3",
+          "text": "All cardmember and merchant services representatives are mandated to use the Disputes application on a regular basis after finishing a two-day training course."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P4:r150-PF/ALT",
+        "text": "100% of the cardmember and merchant services representatives should use the Disputes application regularly after a 2-day training course.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-PR-P7:r350-MS",
+      "restatements": [
+        {
+          "id": "E-PR-P7:r350-MS/R1",
+          "text": "The platform is required to support at least six people actively using it simultaneously."
+        },
+        {
+          "id": "E-PR-P7:r350-MS/R2",
+          "text": "The software must be able to accommodate no fewer than six users operating in parallel at the same moment."
+        },
+        {
+          "id": "E-PR-P7:r350-MS/R3",
+          "text": "Concurrent access by six or more users at once is mandatory for the system."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P7:r350-MS/ALT",
+        "text": "The System shall allow for a minimum of 3 users to work at the same time.",
+        "element": "quantity"
+      }
+    },
+    {
+      "statement_id": "E-DO-REQ014-MS",
+      "restatements": [
+        {
+          "id": "E-DO-REQ014-MS/R1",
+          "text": "Doorstop must be able to grow to handle thousands of requirements without losing its ability to function."
+        },
+        {
+          "id": "E-DO-REQ014-MS/R2",
+          "text": "The Doorstop tool is mandated to be capable of managing a load of several thousand requirements."
+        },
+        {
+          "id": "E-DO-REQ014-MS/R3",
+          "text": "It is necessary that Doorstop can operate at a scale of thousands of requirements."
+        }
+      ],
+      "alteration": {
+        "id": "E-DO-REQ014-MS/ALT",
+        "text": "Doorstop may be scalable to support thousands of requirements.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-ST-SDOC-SSS-57-CP",
+      "restatements": [
+        {
+          "id": "E-ST-SDOC-SSS-57-CP/R1",
+          "text": "The requirements tool must include functionality that checks whether requirements conform to the EARS notation."
+        },
+        {
+          "id": "E-ST-SDOC-SSS-57-CP/R2",
+          "text": "Requirements Tool is obligated to offer features that verify requirement statements against the EARS grammar."
+        },
+        {
+          "id": "E-ST-SDOC-SSS-57-CP/R3",
+          "text": "It is mandatory that the Requirements Tool supply mechanisms for assessing requirement wording for EARS compliance."
+        }
+      ],
+      "alteration": {
+        "id": "E-ST-SDOC-SSS-57-CP/ALT",
+        "text": "The Requirements Tool should provide capabilities for validating requirements according to the EARS syntax.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-PR-P10:r510-MS",
+      "restatements": [
+        {
+          "id": "E-PR-P10:r510-MS/R1",
+          "text": "When a match has been started, the system must show every participant their own defensive grid."
+        },
+        {
+          "id": "E-PR-P10:r510-MS/R2",
+          "text": "After a game session begins, the application is required to render a protective board for each player."
+        },
+        {
+          "id": "E-PR-P10:r510-MS/R3",
+          "text": "Upon launch of a play session, the software has to present each competitor with a grid used for defense."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P10:r510-MS/ALT",
+        "text": "Once a game is initiated the product may display a defensive grid to each player.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-ST-SDOC-SSS-51-MW",
+      "restatements": [
+        {
+          "id": "N-ST-SDOC-SSS-51-MW/R1",
+          "text": "The Requirements Tool must support managing documents that contain sections and chapters arranged in a hierarchy of nested levels."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-51-MW/R2",
+          "text": "Management of documents organized as hierarchical, nested sections and chapters is a capability the Requirements Tool is obligated to provide."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-51-MW/R3",
+          "text": "The Requirements Tool is required to let users administer documents whose content is structured as sections and chapters that can nest within one another."
+        }
+      ],
+      "alteration": {
+        "id": "N-ST-SDOC-SSS-51-MW/ALT",
+        "text": "The Requirements Tool shall allow management of documents with flat sections/chapters structure.",
+        "element": "condition"
+      }
+    },
+    {
+      "statement_id": "E-PR-P3:r125-CP",
+      "restatements": [
+        {
+          "id": "E-PR-P3:r125-CP/R1",
+          "text": "Program Administrators and Nursing staff must be able to take a student off a clinical lab section."
+        },
+        {
+          "id": "E-PR-P3:r125-CP/R2",
+          "text": "The platform needs to let either a Program Administrator or a member of Nursing staff unassign a student from a clinical lab section."
+        },
+        {
+          "id": "E-PR-P3:r125-CP/R3",
+          "text": "A Program Administrator or Nursing staff member is permitted to take a student out of a clinical lab section."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P3:r125-CP/ALT",
+        "text": "The system shall not allow a Program Administrator or Nursing staff member to remove a student from a clinical lab section.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P46:r885-PS",
+      "restatements": [
+        {
+          "id": "N-PR-P46:r885-PS/R1",
+          "text": "Every product that matches a performed search must be shown by the platform."
+        },
+        {
+          "id": "N-PR-P46:r885-PS/R2",
+          "text": "The application is obligated to render the complete set of products that satisfy the search criteria."
+        },
+        {
+          "id": "N-PR-P46:r885-PS/R3",
+          "text": "Whenever a search is run, the software must present each product that corresponds to it."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P46:r885-PS/ALT",
+        "text": "The system may display all the matching products based on the search.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-PR-P45:r860-MS",
+      "restatements": [
+        {
+          "id": "E-PR-P45:r860-MS/R1",
+          "text": "Unless the user chooses a different arrangement, the software must list the user's meetings from earliest to latest."
+        },
+        {
+          "id": "E-PR-P45:r860-MS/R2",
+          "text": "When no other sort order is selected, the application is required to present the user's meetings chronologically, earliest first."
+        },
+        {
+          "id": "E-PR-P45:r860-MS/R3",
+          "text": "As the standard arrangement, the platform must display meetings to the person in increasing temporal sequence."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P45:r860-MS/ALT",
+        "text": "The system may show the meetings to the user in ascending time order by default.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-DO-REQ009-MW",
+      "restatements": [
+        {
+          "id": "N-DO-REQ009-MW/R1",
+          "text": "Doorstop is obligated to offer a means of snapshotting requirement versions into baselines."
+        },
+        {
+          "id": "N-DO-REQ009-MW/R2",
+          "text": "It is mandatory that the Doorstop tool supports creating baselines of requirement revisions."
+        },
+        {
+          "id": "N-DO-REQ009-MW/R3",
+          "text": "Doorstop must include functionality that freezes the versions of requirements into a baseline."
+        }
+      ],
+      "alteration": {
+        "id": "N-DO-REQ009-MW/ALT",
+        "text": "Doorstop may provide the capability to baseline versions of requirements.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-ST-SDOC-SSS-71-MS",
+      "restatements": [
+        {
+          "id": "E-ST-SDOC-SSS-71-MS/R1",
+          "text": "The Requirements Tool is required to provide functionality for the Reverse Parent relationship."
+        },
+        {
+          "id": "E-ST-SDOC-SSS-71-MS/R2",
+          "text": "Support for the Reverse Parent relationship is a mandatory capability of the Requirements Tool."
+        },
+        {
+          "id": "E-ST-SDOC-SSS-71-MS/R3",
+          "text": "The Requirements Tool must be able to handle the Reverse Parent relationship."
+        }
+      ],
+      "alteration": {
+        "id": "E-ST-SDOC-SSS-71-MS/ALT",
+        "text": "The Requirements Tool may support the Reverse Parent relationship.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P32:r725-PS",
+      "restatements": [
+        {
+          "id": "N-PR-P32:r725-PS/R1",
+          "text": "The system must allow a user to fetch the newest medical record on file."
+        },
+        {
+          "id": "N-PR-P32:r725-PS/R2",
+          "text": "Users need to be able to retrieve the latest medical record."
+        },
+        {
+          "id": "N-PR-P32:r725-PS/R3",
+          "text": "A user has to be enabled to save a local copy of their most recent medical record."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P32:r725-PS/ALT",
+        "text": "It must be able to download the most recent medical record, if the user has been authenticated.",
+        "element": "condition"
+      }
+    },
+    {
+      "statement_id": "N-ST-SDOC-SSS-85-MW",
+      "restatements": [
+        {
+          "id": "N-ST-SDOC-SSS-85-MW/R1",
+          "text": "It is mandatory that the Requirements Tool expose a Web API interface."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-85-MW/R2",
+          "text": "The Requirements Tool must offer a web-accessible API interface to its users."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-85-MW/R3",
+          "text": "Delivering a Web API interface is a required capability of the Requirements Tool."
+        }
+      ],
+      "alteration": {
+        "id": "N-ST-SDOC-SSS-85-MW/ALT",
+        "text": "The Requirements Tool may provide a Web API interface.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-DO-REQ008-MW",
+      "restatements": [
+        {
+          "id": "N-DO-REQ008-MW/R1",
+          "text": "Doorstop must offer at least one mechanism that lets users browse document items in an interactive manner."
+        },
+        {
+          "id": "N-DO-REQ008-MW/R2",
+          "text": "It is mandatory for Doorstop to supply an interactive means by which document items can be displayed to the user."
+        },
+        {
+          "id": "N-DO-REQ008-MW/R3",
+          "text": "Doorstop is required to make available at least one dynamic capability for viewing document items."
+        }
+      ],
+      "alteration": {
+        "id": "N-DO-REQ008-MW/ALT",
+        "text": "Doorstop may provide a way to view document items interactively.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-PR-P7:r365-CP",
+      "restatements": [
+        {
+          "id": "E-PR-P7:r365-CP/R1",
+          "text": "The product must give users the ability to input, persist, and revise the product menus that POS terminals depend on."
+        },
+        {
+          "id": "E-PR-P7:r365-CP/R2",
+          "text": "The product is required to support creating, saving, and changing the menus used by point-of-sale terminals."
+        },
+        {
+          "id": "E-PR-P7:r365-CP/R3",
+          "text": "It is mandatory that the product enable entry, retention, and alteration of product menus for POS terminal use."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P7:r365-CP/ALT",
+        "text": "Product may allow entering, storing, and modifying product menus used by POS terminals.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P46:r900-MW",
+      "restatements": [
+        {
+          "id": "N-PR-P46:r900-MW/R1",
+          "text": "The software must give the user a way to type in the phone number of the support staff who should be called."
+        },
+        {
+          "id": "N-PR-P46:r900-MW/R2",
+          "text": "Users are required to be able to input a telephone contact for the support team member to be reached."
+        },
+        {
+          "id": "N-PR-P46:r900-MW/R3",
+          "text": "The application needs a field where a user can record the call-back number belonging to support personnel."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P46:r900-MW/ALT",
+        "text": "The system shall allow user to enter the contact number for support personnel to call, and shall reject entries that are not valid phone numbers.",
+        "element": "condition"
+      }
+    },
+    {
+      "statement_id": "N-ST-SDOC-SSS-91-PS",
+      "restatements": [
+        {
+          "id": "N-ST-SDOC-SSS-91-PS/R1",
+          "text": "Browsing of the documentation tree must be made available by the Requirements Tool."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-91-PS/R2",
+          "text": "It is mandatory that the Requirements Tool enables navigation through the documentation hierarchy."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-91-PS/R3",
+          "text": "The Requirements Tool is obligated to supply users with the ability to explore the documentation tree."
+        }
+      ],
+      "alteration": {
+        "id": "N-ST-SDOC-SSS-91-PS/ALT",
+        "text": "The Requirements Tool may provide browsing of the documentation tree.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P6:r285-PF",
+      "restatements": [
+        {
+          "id": "N-PR-P6:r285-PF/R1",
+          "text": "The application must give users the ability to pick one language associated with a country in the target markets."
+        },
+        {
+          "id": "N-PR-P6:r285-PF/R2",
+          "text": "Users need to be able to choose, from among the languages of the target market countries, the single language they want."
+        },
+        {
+          "id": "N-PR-P6:r285-PF/R3",
+          "text": "It is mandatory that the software lets a person select one language tied to any one of the countries in the target market."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P6:r285-PF/ALT",
+        "text": "The product may allow the user to select a chosen language from one of the target market countries.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-ST-SDOC-SSS-13-PS",
+      "restatements": [
+        {
+          "id": "N-ST-SDOC-SSS-13-PS/R1",
+          "text": "The Requirements Tool must be able to handle requirement trees containing a minimum of 10,000 individual requirements."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-13-PS/R2",
+          "text": "The Requirements Tool is obligated to support hierarchical requirement trees holding no fewer than 10000 requirements."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-13-PS/R3",
+          "text": "Requirement trees managed by the Requirements Tool must scale to at least ten thousand requirements."
+        }
+      ],
+      "alteration": {
+        "id": "N-ST-SDOC-SSS-13-PS/ALT",
+        "text": "The Requirements Tool shall support requirement trees with at least 1000 requirements.",
+        "element": "quantity"
+      }
+    },
+    {
+      "statement_id": "N-PR-P5:r205-MW",
+      "restatements": [
+        {
+          "id": "N-PR-P5:r205-MW/R1",
+          "text": "Wherever the product is deployed, it must be able to operate on the hardware that is already installed."
+        },
+        {
+          "id": "N-PR-P5:r205-MW/R2",
+          "text": "In every environment, the product is required to execute using only the hardware currently in place."
+        },
+        {
+          "id": "N-PR-P5:r205-MW/R3",
+          "text": "Each deployment environment obliges the product to function on the pre-existing hardware."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P5:r205-MW/ALT",
+        "text": "The product shall run on the existing hardware for production environments only.",
+        "element": "condition"
+      }
+    },
+    {
+      "statement_id": "E-PR-P46:r940-MS",
+      "restatements": [
+        {
+          "id": "E-PR-P46:r940-MS/R1",
+          "text": "The application's first-launch startup duration must vary with the strength of the user's internet connection, and that connection strength is itself influenced by the storage medium the application is started from."
+        },
+        {
+          "id": "E-PR-P46:r940-MS/R2",
+          "text": "Initial loading time of the product is expected to be governed by network connection quality, which in turn varies according to the medium from which the product is launched."
+        },
+        {
+          "id": "E-PR-P46:r940-MS/R3",
+          "text": "The product's startup latency on first load has to track how strong its internet connection is, and that connection strength is in turn shaped by the media used to run the product."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P46:r940-MS/ALT",
+        "text": "The product shall not take initial load time depending on internet connection strength which also depends on the media from which the product is run.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-PR-P5:r240-MS",
+      "restatements": [
+        {
+          "id": "E-PR-P5:r240-MS/R1",
+          "text": "Every vehicle record must contain the year, make, and model of the vehicle."
+        },
+        {
+          "id": "E-PR-P5:r240-MS/R2",
+          "text": "The vehicle dataset is required to include each vehicle's model year, manufacturer, and model name."
+        },
+        {
+          "id": "E-PR-P5:r240-MS/R3",
+          "text": "Vehicle data must provide, at minimum, the year, make, and model for each vehicle."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P5:r240-MS/ALT",
+        "text": "The vehicle data shall include vehicle year make and model when the vehicle is registered.",
+        "element": "condition"
+      }
+    },
+    {
+      "statement_id": "E-PR-P3:r145-CP",
+      "restatements": [
+        {
+          "id": "E-PR-P3:r145-CP/R1",
+          "text": "Nursing staff and program administrators must be permitted to edit a clinical lab section's records, covering the affiliated site's name, the lab's department or section, the instructor assigned to teach it, its weekday and time slot, and its contact details."
+        },
+        {
+          "id": "E-PR-P3:r145-CP/R2",
+          "text": "Users holding the program administrator or nursing staff role are entitled to update the stored details of a clinical lab section, including site name, department or unit, class instructor, scheduled day and hour, and contact information."
+        },
+        {
+          "id": "E-PR-P3:r145-CP/R3",
+          "text": "Administrators and nursing personnel of the program are authorized to change the recorded particulars of any clinical lab section: site title, department or section, teaching instructor, lab day and time, and contact info."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P3:r145-CP/ALT",
+        "text": "Program Administrators/Nursing Staff Members shall not have the ability to modify information relating to a Clinical Lab Section including the clinical site name, the department/section for the lab, the class instructor, day and time of lab, and contact information.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-ST-SDOC-SSS-97-PS",
+      "restatements": [
+        {
+          "id": "N-ST-SDOC-SSS-97-PS/R1",
+          "text": "The Requirements Tool is obligated to supply identifying details, including its title, its release version, and links to its project website."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-97-PS/R2",
+          "text": "Identifying information, including the title, release version, and project website links, must be supplied by the Requirements Tool."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-97-PS/R3",
+          "text": "It falls to the Requirements Tool to surface identifying information, among it the title, the release version, and the project website links."
+        }
+      ],
+      "alteration": {
+        "id": "N-ST-SDOC-SSS-97-PS/ALT",
+        "text": "The Requirements Tool may provide identifying information, including title, release version, and project website links.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-DO-REQ016-CP",
+      "restatements": [
+        {
+          "id": "E-DO-REQ016-CP/R1",
+          "text": "Doorstop is required to be capable of bringing in content that originates from other requirements management systems."
+        },
+        {
+          "id": "E-DO-REQ016-CP/R2",
+          "text": "The Doorstop tool must support ingesting material held in requirements management tools other than itself."
+        },
+        {
+          "id": "E-DO-REQ016-CP/R3",
+          "text": "It is mandatory that Doorstop can pull content into its own store from external requirements management tools."
+        }
+      ],
+      "alteration": {
+        "id": "E-DO-REQ016-CP/ALT",
+        "text": "Doorstop should be able to import content from other requirements management tools.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P10:r505-MW",
+      "restatements": [
+        {
+          "id": "N-PR-P10:r505-MW/R1",
+          "text": "When a game has started, the application must block every player taking part in it from being chosen in the player list."
+        },
+        {
+          "id": "N-PR-P10:r505-MW/R2",
+          "text": "Upon a game's initiation, the software is required to render each player allotted to that game non-selectable within the roster."
+        },
+        {
+          "id": "N-PR-P10:r505-MW/R3",
+          "text": "As soon as a match begins, the system has to mark all players registered to it as ineligible to be picked from the player list."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P10:r505-MW/ALT",
+        "text": "Once a game has been initiated the product may make the players assigned to the game unavailable for selection from the list of players.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P20:r660-MW",
+      "restatements": [
+        {
+          "id": "N-PR-P20:r660-MW/R1",
+          "text": "Query results must appear on the display within 7 seconds of the user hitting submit."
+        },
+        {
+          "id": "N-PR-P20:r660-MW/R2",
+          "text": "Once a user sends a query, the system is obliged to render its response on screen in no more than seven seconds."
+        },
+        {
+          "id": "N-PR-P20:r660-MW/R3",
+          "text": "A query's answer may not take more than 7 seconds to become visible to the user from the moment they submit it."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P20:r660-MW/ALT",
+        "text": "Responses to queries shall take no longer than 3 seconds to load onto the screen after the user submits the query.",
+        "element": "quantity"
+      }
+    },
+    {
+      "statement_id": "E-PR-P20:r665-MS",
+      "restatements": [
+        {
+          "id": "E-PR-P20:r665-MS/R1",
+          "text": "Menu creation and modification functionality must be available solely to food-service workers whose names appear on the approved Menu Manager roster."
+        },
+        {
+          "id": "E-PR-P20:r665-MS/R2",
+          "text": "The platform must restrict menu authoring and editing rights exclusively to cafeteria employees registered on the authorized Menu Manager list."
+        },
+        {
+          "id": "E-PR-P20:r665-MS/R3",
+          "text": "Only cafeteria personnel who are listed as approved Menu Managers may be granted the ability to create or modify menus in the system."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P20:r665-MS/ALT",
+        "text": "The system shall permit only kitchen administrators who are on the list of authorized Menu Managers to create or edit menus.",
+        "element": "actor"
+      }
+    },
+    {
+      "statement_id": "N-ST-SDOC-SSS-82-MW",
+      "restatements": [
+        {
+          "id": "N-ST-SDOC-SSS-82-MW/R1",
+          "text": "The Requirements Tool must be able to run on ordinary personal computers and must not depend on a dedicated cloud deployment."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-82-MW/R2",
+          "text": "Standard consumer PCs must be a supported platform for the Requirements Tool, with no need for a specialized cloud-hosted setup."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-82-MW/R3",
+          "text": "The Requirements Tool has to function on typical personal computers and cannot be contingent on a special cloud deployment."
+        }
+      ],
+      "alteration": {
+        "id": "N-ST-SDOC-SSS-82-MW/ALT",
+        "text": "The Requirements Tool may be usable on normal personal computers, e.g., do not require a special cloud deployment.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-ST-SDOC-SSS-64-PF",
+      "restatements": [
+        {
+          "id": "N-ST-SDOC-SSS-64-PF/R1",
+          "text": "The Requirements Tool is obligated to provide the capability to organize requirements within documents."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-64-PF/R2",
+          "text": "It is mandatory that the Requirements Tool offers functionality for arranging requirements inside document artifacts."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-64-PF/R3",
+          "text": "The Requirements Tool must be able to organize requirements contained in documents."
+        }
+      ],
+      "alteration": {
+        "id": "N-ST-SDOC-SSS-64-PF/ALT",
+        "text": "The Requirements Tool may support structuring requirements in documents.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P5:r250-PS",
+      "restatements": [
+        {
+          "id": "N-PR-P5:r250-PS/R1",
+          "text": "The estimator must check which reclaimed components are in stock by querying the vendors on its designated list of preferred parts suppliers."
+        },
+        {
+          "id": "N-PR-P5:r250-PS/R2",
+          "text": "Whenever recycled parts are needed, the estimator is required to investigate their availability, limiting the search to the favored suppliers on its approved roster."
+        },
+        {
+          "id": "N-PR-P5:r250-PS/R3",
+          "text": "The estimator has an obligation to look up accessible recycled components, drawing exclusively on the list of preferred parts vendors it maintains."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P5:r250-PS/ALT",
+        "text": "The estimator may search for available recycled parts using a list of preferred parts suppliers.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "E-PR-P16:r625-CP",
+      "restatements": [
+        {
+          "id": "E-PR-P16:r625-CP/R1",
+          "text": "Email-delivery functionality in the system must be carried out using the Simple Mail Transfer Protocol."
+        },
+        {
+          "id": "E-PR-P16:r625-CP/R2",
+          "text": "Whenever the system transmits mail, it is required to route that transmission through SMTP."
+        },
+        {
+          "id": "E-PR-P16:r625-CP/R3",
+          "text": "The mail transport layer of the system has to be implemented on top of SMTP."
+        }
+      ],
+      "alteration": {
+        "id": "E-PR-P16:r625-CP/ALT",
+        "text": "The system may use the SMTP mail protocol.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P3:r95-PS",
+      "restatements": [
+        {
+          "id": "N-PR-P3:r95-PS/R1",
+          "text": "Access to the segment of the system that connects with CampusConnect must be limited to people who have been approved to use it."
+        },
+        {
+          "id": "N-PR-P3:r95-PS/R2",
+          "text": "Any person without authorization is forbidden from gaining access to the part of the system that communicates with CampusConnect."
+        },
+        {
+          "id": "N-PR-P3:r95-PS/R3",
+          "text": "The portion of the system that interfaces with CampusConnect has to be reachable solely by users who hold proper authorization."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P3:r95-PS/ALT",
+        "text": "Only authorized users may have access to the portion of the system that interfaces with CampusConnect, unless an administrator approves otherwise.",
+        "element": "condition"
+      }
+    },
+    {
+      "statement_id": "N-PR-P46:r875-PF",
+      "restatements": [
+        {
+          "id": "N-PR-P46:r875-PF/R1",
+          "text": "The application must give the user the ability to choose which product they want to set up."
+        },
+        {
+          "id": "N-PR-P46:r875-PF/R2",
+          "text": "The software is required to provide a way for the user to pick the product that will be configured."
+        },
+        {
+          "id": "N-PR-P46:r875-PF/R3",
+          "text": "The platform has to enable an end user to designate the product they intend to customize."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P46:r875-PF/ALT",
+        "text": "The system may allow user to select the product to configure.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-ST-SDOC-SSS-81-PF",
+      "restatements": [
+        {
+          "id": "N-ST-SDOC-SSS-81-PF/R1",
+          "text": "The Requirements Tool is required to be able to handle a large volume of users."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-81-PF/R2",
+          "text": "It is mandatory that the Requirements Tool can serve a large user population."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-81-PF/R3",
+          "text": "The Requirements Tool must have the ability to accommodate a large number of concurrent or registered users."
+        }
+      ],
+      "alteration": {
+        "id": "N-ST-SDOC-SSS-81-PF/ALT",
+        "text": "The Requirements Tool may be capable of supporting a large number of users.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-ST-SDOC-SSS-87-PF",
+      "restatements": [
+        {
+          "id": "N-ST-SDOC-SSS-87-PF/R1",
+          "text": "The Requirements Tool is required to make requirements data reachable by software through machine-driven interfaces."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-87-PF/R2",
+          "text": "It is mandatory that the Requirements Tool let programs retrieve and work with requirements data via code."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-87-PF/R3",
+          "text": "The Requirements Tool must expose requirements data to automated clients through code-level access."
+        }
+      ],
+      "alteration": {
+        "id": "N-ST-SDOC-SSS-87-PF/ALT",
+        "text": "The Requirements Tool may provide programmatic access to requirements data.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-ST-SDOC-SSS-60-PS",
+      "restatements": [
+        {
+          "id": "N-ST-SDOC-SSS-60-PS/R1",
+          "text": "The Requirements Tool must be able to export requirements content to Excel and import requirements content from Excel."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-60-PS/R2",
+          "text": "The Requirements Tool is required to provide two-way transfer of requirements content, sending it to Excel files and reading it back in from them."
+        },
+        {
+          "id": "N-ST-SDOC-SSS-60-PS/R3",
+          "text": "It is mandatory that the Requirements Tool offer a capability for moving requirements content out to Excel and in from Excel."
+        }
+      ],
+      "alteration": {
+        "id": "N-ST-SDOC-SSS-60-PS/ALT",
+        "text": "The Requirements Tool may support exporting/importing requirements content from/to Excel.",
+        "element": "modality"
+      }
+    },
+    {
+      "statement_id": "N-PR-P1:r20-PF",
+      "restatements": [
+        {
+          "id": "N-PR-P1:r20-PF/R1",
+          "text": "Engineers must make it possible for users to change how the screen or output appears."
+        },
+        {
+          "id": "N-PR-P1:r20-PF/R2",
+          "text": "The product needs to provide a way for people to alter the visual presentation."
+        },
+        {
+          "id": "N-PR-P1:r20-PF/R3",
+          "text": "Users are to be given the capability to edit what the display shows."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P1:r20-PF/ALT",
+        "text": "The system shall allow modification of the display's audio output.",
+        "element": "action"
+      }
+    },
+    {
+      "statement_id": "N-PR-P46:r925-PS",
+      "restatements": [
+        {
+          "id": "N-PR-P46:r925-PS/R1",
+          "text": "The platform must give the user the ability to choose the financing option."
+        },
+        {
+          "id": "N-PR-P46:r925-PS/R2",
+          "text": "Our software is required to let users pick which financing option they want."
+        },
+        {
+          "id": "N-PR-P46:r925-PS/R3",
+          "text": "It is mandatory that the application enable a user to select the financing option."
+        }
+      ],
+      "alteration": {
+        "id": "N-PR-P46:r925-PS/ALT",
+        "text": "The system may allow user to select the financing option.",
+        "element": "modality"
+      }
+    }
+  ]
+}
