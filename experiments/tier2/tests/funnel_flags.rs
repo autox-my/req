@@ -12,8 +12,8 @@
 use std::process::Command;
 
 fn req(args: &[&str]) -> (i32, String) {
-    let bin = std::env::var_os("CARGO_BIN_EXE_req")
-        .expect("integration tests run with CARGO_BIN_EXE_req set");
+    let bin = std::env::var_os("CARGO_BIN_EXE_req-tier2")
+        .expect("integration tests run with CARGO_BIN_EXE_req-tier2 set");
     let output = Command::new(bin)
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .args(args)
@@ -43,8 +43,8 @@ fn applying(stdout: &str) -> usize {
 /// sits.
 #[test]
 fn pairs_in_first_position_does_not_swallow_the_selector() {
-    let (without_code, without) = req(&["propose", "corpus_set=parity_and_adversarial"]);
-    let (with_code, with) = req(&["propose", "--pairs", "corpus_set=parity_and_adversarial"]);
+    let (without_code, without) = req(&["corpus_set=parity_and_adversarial"]);
+    let (with_code, with) = req(&["--pairs", "corpus_set=parity_and_adversarial"]);
     assert_ne!(without_code, 2, "the baseline invocation is valid");
     assert_ne!(
         with_code, 2,
@@ -64,7 +64,7 @@ fn pairs_in_first_position_does_not_swallow_the_selector() {
 /// the path as a stray positional and exiting 2.
 #[test]
 fn pairs_before_another_flag_is_not_a_usage_error() {
-    let (code, stdout) = req(&["propose", "--pairs", "--gold", "bench/corpus/tier2-v1.yml"]);
+    let (code, stdout) = req(&["--pairs", "--gold", "corpus/tier2-v1.yml"]);
     assert_ne!(
         code, 2,
         "--pairs followed by --gold is a valid invocation:\n{stdout}"
@@ -79,7 +79,7 @@ fn pairs_before_another_flag_is_not_a_usage_error() {
 /// the one arrangement that used to be usable.
 #[test]
 fn pairs_as_the_last_argument_still_works() {
-    let (code, stdout) = req(&["propose", "--gold", "bench/corpus/tier2-v1.yml", "--pairs"]);
+    let (code, stdout) = req(&["--gold", "corpus/tier2-v1.yml", "--pairs"]);
     assert_ne!(
         code, 2,
         "--pairs as the last argument is a valid invocation:\n{stdout}"

@@ -1,0 +1,27 @@
+[package]
+name = "req-tier2"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Research: the Tier-2 funnel (blocking, provider adjudication, gold-set scoring). Not part of the req core; nothing here gates a release (ADR 0021)."
+publish = false
+
+# A standalone crate, deliberately NOT a member of the root workspace: the root Cargo.toml and
+# Cargo.lock are identity-path pins (any change is a Tier-1 rules bump), and this research must not
+# be able to move them. The empty table below makes cargo treat this directory as its own workspace
+# root, so the nested layout cannot be misread as membership.
+[workspace]
+
+[lib]
+name = "req_tier2"
+path = "src/lib.rs"
+
+[[bin]]
+name = "req-tier2"
+path = "src/main.rs"
+
+[dependencies]
+req = { path = "../.." }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+yaml_serde = "0.10"

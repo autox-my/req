@@ -152,7 +152,9 @@ A perfect tool is defined by the tensions it resolves, not the features it lists
    T1.6 never sanctioned, so a `shall`→`may` mutation collapsed. Fixed at rules v4
    (ambiguous negation scope is linted, never guessed): **FMR 0.0 over 625 mutations,
    FSR 0.0, four corpora PASS**.*
-5. **Semantic proposals** — pluggable provider behind a stable interface; Tier-2 only.
+5. **Semantic proposals** — pluggable provider behind a stable interface; Tier-2 only. *(Since
+   ADR 0021 the core keeps the single-pair `req propose` seam; the corpus-wide funnel is research in
+   `experiments/tier2/`.)*
 6. **Structural merge + conflict classification** (needs direction, hence the canonical
    layer).
 7. **Selectors + tri-state scope** (ADR 0003) — the commercial differentiator.

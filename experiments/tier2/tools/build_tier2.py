@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the Tier-2 evaluation corpus: bench/corpus/tier2-v1.yml.
+"""Build the Tier-2 evaluation corpus: experiments/tier2/corpus/tier2-v1.yml.
 
 The gold set for the Tier-2 provider funnel (design step 5). Three labels:
 
@@ -187,7 +187,7 @@ prefix = {"equivalent": "T2-E", "related": "T2-R", "unrelated": "T2-U"}
 out = ["# Tier-2 evaluation set v1 (design step 5).",
        "#",
        "# Three labels; every pair records the transformation that produced it, so the label is by",
-       "# construction and this corpus is reviewed through tools/corpus/build_tier2.py and its",
+       "# construction and this corpus is reviewed through experiments/tier2/tools/build_tier2.py and its",
        "# transformation table, not line by line. Equivalence transforms are exactly the ones the",
        "# Tier-1 rules sanction (they leave the address unchanged). Unrelated pairs are HARD NEGATIVES:",
        "# same shape, different meaning, enough shared terms for blocking to propose them, so they",
@@ -220,7 +220,7 @@ for label, a, b, transform in pairs:
 for label in ("equivalent", "related", "unrelated"):
     assert sum(1 for p in pairs if p[0] == label) > 0, f"no {label} pairs"
 
-path = "bench/corpus/tier2-v1.yml"
+path = "experiments/tier2/corpus/tier2-v1.yml"
 open(path, "w").write("\n".join(out) + "\n")
 print(f"wrote {path}: {len(pairs)} pairs — {counts['equivalent']} equivalent, "
       f"{counts['related']} related, {counts['unrelated']} unrelated "

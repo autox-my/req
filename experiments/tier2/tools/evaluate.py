@@ -21,7 +21,7 @@ the probabilities are not calibrated for our data. Both caveats travel with the 
 record, because a number without its caveat is the thing this project exists to prevent.
 
 Usage:
-    python3 tools/tier2/evaluate.py --capture FILE --gold bench/corpus/tier2-v1.yml \
+    python3 experiments/tier2/tools/evaluate.py --capture FILE --gold experiments/tier2/corpus/tier2-v1.yml \
         --provider "d1-3b@bb1e436/llama.cpp@master" [--no-record]
 """
 
@@ -152,7 +152,7 @@ def curve(rows):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--capture", required=True)
-    parser.add_argument("--gold", default="bench/corpus/tier2-v1.yml")
+    parser.add_argument("--gold", default="experiments/tier2/corpus/tier2-v1.yml")
     parser.add_argument("--provider", required=True, help="the provenance string to record verbatim")
     parser.add_argument("--no-record", action="store_true")
     args = parser.parse_args()

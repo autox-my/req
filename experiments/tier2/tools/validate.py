@@ -15,9 +15,9 @@ Outcomes are tri-state, as everywhere in this project:
 Exit 3 is not a pass. A worksheet nobody could load is a measurement problem.
 
 Usage:
-    python3 tools/tier2/validate.py --worksheet bench/corpus/tier2-pilot-v0.yml
-    python3 tools/tier2/validate.py --worksheet filled-by-alice.yml --filled
-    python3 tools/tier2/validate.py --self-check
+    python3 experiments/tier2/tools/validate.py --worksheet experiments/tier2/corpus/tier2-pilot-v0.yml
+    python3 experiments/tier2/tools/validate.py --worksheet filled-by-alice.yml --filled
+    python3 experiments/tier2/tools/validate.py --self-check
 """
 
 import argparse

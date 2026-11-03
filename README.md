@@ -46,7 +46,7 @@ identity ([ADR 0020](docs/adr/0020-the-address-is-a-meaning-fingerprint.md), acc
 | `req impact`, `req gate` | what a change touches, nearest first, and the release policies |
 | `req baseline`, `req audit` | the canonical manifest a human signs, drift verification, and the audit packet |
 | `req decision` | the decision log and its hash chain — TAMPERED is a finding, a truncated history is unanswerable |
-| `req propose` | the Tier-2 funnel: deterministic blocking, then a model proposes and a human disposes |
+| `req propose <a> <b>` | one pair put to an external provider: its answer is an unratified proposal, never an edit — UNVERIFIABLE with no provider |
 
 Tri-state is a discipline here, not a garnish: PASS, FAIL and UNVERIFIABLE are kept apart,
 because "we could not tell" is a different answer from both "it passed" and "it is broken".
@@ -77,8 +77,10 @@ Git-native storage is table stakes, not the moat.
 - **Tier-2 is measured and deliberately conservative.** Five providers evaluated against a
   human-labelled sample; one has a usable confidence ordering at a measured floor; the honest
   default is `NoProvider` until a provider survives held-out validation on a grown,
-  blind-labelled corpus. Instruments in `tools/tier2/`, protocol in
-  `docs/tier2-sample-protocol.md`.
+  blind-labelled corpus. The funnel and its instruments are research, kept out of the core in
+  `experiments/tier2/` ([ADR 0021](docs/adr/0021-tier-2-leaves-the-core.md)); the protocol is
+  `experiments/tier2/docs/tier2-sample-protocol.md`. The core keeps only the single-pair
+  `req propose` seam.
 - **Paraphrase probe (instrument built, not yet run).** `experiments/paraphrase/` measures how often
   independently worded text for one obligation fails to share a Tier-1 address — model-authored,
   blind to Tier-1, judge-filtered, not human; a lower bound, not validation. Read its README first.

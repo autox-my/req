@@ -333,6 +333,18 @@ else
   # A skipped check is never a pass. CI installs the pin, so this SKIP makes the job red there.
   skip "cargo-nextest not installed (cargo install cargo-nextest --version $NEXTEST_PIN --locked)"
 fi
+# The Tier-2 research crate (`experiments/tier2/`, ADR 0021) is kept COMPILING and its own tests
+# green, never made a gate: it is a standalone crate with its own Cargo.lock (`--locked`: a stale
+# lock is a failure here, not a quiet rewrite), it is not in the root workspace, and neither of
+# these commands feeds the JUnit report the release gate reads — plain `cargo test`, not nextest,
+# precisely so the evidence of the core suite stays the core suite's. Full run only: `--fast` prints
+# a `FAST` line, because a fast green is an iteration verdict and the crate's build is the cost.
+if [ "$fast" -eq 1 ]; then
+  fastskip "experiments/tier2: cargo check --all-targets and the crate's tests"
+else
+  run cargo check --locked --manifest-path experiments/tier2/Cargo.toml --all-targets
+  run cargo test --locked --manifest-path experiments/tier2/Cargo.toml
+fi
 run cargo run -q -- canon   # exit 3 = UNVERIFIABLE (never a pass)
 # The stored addresses must match the current rules and recompute from the stored
 # bytes: a rules bump without a re-fill exits 3 (candidates), a hand-edited digest
@@ -413,7 +425,7 @@ run cargo run -q -- bench   # seed parity corpus: 0 PASS / 1 FAIL / 3 UNVERIFIAB
 # because req knows nothing about the file.
 #
 # Each line is a **complete** release context, and since ADR 0015 a green line means exactly that:
-# an undecided claim exits 3, so a dropped `set`, `runs`, `deployment_mode` or `field` reddens this
+# an undecided claim exits 3, so a dropped `set`, `deployment_mode` or `field` reddens this
 # step instead of passing silently — and the gate names the claim it cost. What no single line can
 # see is the property *across* lines — a claim that applies in no declared release is examined by
 # none of them — and that is what `tests/release_gate.rs` adds with
