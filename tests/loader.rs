@@ -52,9 +52,10 @@ subjects:
 /// A real claim shape (claims/REQ-0001.yml), parameterized by `claim_id` so a fixture
 /// can misname a file or duplicate an id without also being malformed.
 fn claim_text(claim_id: &str) -> String {
+    let schema = req::canon::claim_schema();
     format!(
         "\
-schema: req.claim/2
+schema: {schema}
 claim_id: {claim_id}
 statement: >-
   The req tool shall treat a single claim as the unit of requirements authorship,

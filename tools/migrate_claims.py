@@ -183,10 +183,15 @@ def canonical_decimal(text):
     """The canonical exact decimal string req writes (`"0.3"`, never `"0.30"`), or None."""
     if not DECIMAL.match(text):
         return None
-    value = decimal.Decimal(text)
-    if value == value.to_integral_value():
-        return str(value.quantize(decimal.Decimal(1)))
-    return format(value.normalize(), "f")
+    # A context wide enough for the input: the default 28 digits would round a longer bound
+    # silently, and a pin that is not the authored bound is a guess.
+    digits = len(text.replace(".", "").lstrip("+-").lstrip("0")) + 2
+    with decimal.localcontext() as context:
+        context.prec = max(28, digits)
+        value = decimal.Decimal(text)
+        if value == value.to_integral_value():
+            return str(value.quantize(decimal.Decimal(1)))
+        return format(value.normalize(), "f")
 
 
 def migrate_text(text):
@@ -269,7 +274,8 @@ def describe_drop(key, lines, pinned):
     try:
         value = scalar(lines)
     except Refused:
-        body = [l.strip().removeprefix("- ") for l in lines[1:] if l.strip()]
+        at = next(i for i, l in enumerate(lines) if TOP_KEY.match(l.rstrip("\r\n")))
+        body = [l.strip().removeprefix("- ") for l in lines[at + 1:] if l.strip()]
         value = "[" + ", ".join(body) + "]"
     if key in pinned:
         return f"{key} {value} (now a pin)"
@@ -326,9 +332,17 @@ def run(paths, write):
         done = 0
         for path, migrated in planned:
             try:
-                with open(path, "w", encoding="utf-8", newline="") as handle:
+                # Sibling temp file, then an atomic replace: a failure mid-write leaves the
+                # original claim intact, never a truncated one.
+                temp = f"{path}.migrating"
+                with open(temp, "w", encoding="utf-8", newline="") as handle:
                     handle.write(migrated)
+                os.replace(temp, path)
             except OSError as why:
+                try:
+                    os.remove(f"{path}.migrating")
+                except OSError:
+                    pass
                 left = [p for p, _ in planned[done:]]
                 print(f"{path}: cannot write ({why}); {done} of {len(planned)} file(s) were "
                       "migrated before it. A directory re-run would refuse those as already "
@@ -595,6 +609,9 @@ def self_check():
         code, _, err = drive([os.path.join(tmp, "absent")], write=False)
         case("a missing path is refused with exit 1", code == 1, err)
 
+    long = "0." + "1" * 40
+    case("a bound longer than 28 digits is pinned exactly, not rounded",
+         canonical_decimal(long) == long, repr(canonical_decimal(long)))
     for raw, want in [("0", "0"), ("0.95", "0.95"), ("0.30", "0.3"), ("1.0", "1"), ("x", None),
                       ("1_000", None), ("200ms", None), ("-2.50", "-2.5")]:
         case(f"canonical_decimal({raw!r})", canonical_decimal(raw) == want, repr(canonical_decimal(raw)))

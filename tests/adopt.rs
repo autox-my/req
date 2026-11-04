@@ -544,19 +544,76 @@ fn an_unreadable_document_is_unverifiable() {
 /// `--subject` is gone with `req.claim/2`'s subject slot (ADR 0022): the subject is derived from
 /// the statement. An adopter's script still passing it is told so — a usage error naming the
 /// flag — rather than having it silently ignored.
-/// A corpus that still holds `req.claim/1` files is a migration candidate to the loader. Drafting
-/// into it would exit 0 and leave the corpus red, so the tool refuses up front and names the
-/// migration tool.
+/// A corpus the loader does not accept is not drafted into: the tool runs the corpus plus the
+/// drafts through `req canon` before writing anything, so every shape the loader rejects — an
+/// older schema (also with a comment or a block scalar on the line), a missing schema, a removed
+/// v1 key, an invalid pin — turns the run away (exit 3) and writes nothing. The older-schema
+/// message names the migration tool. A control: a valid file with a quoted schema is no obstacle.
 #[test]
-fn a_corpus_of_older_claim_files_is_unverifiable_and_names_the_migrator() {
-    let fx = Fixture::new("req-adopt-older-corpus");
+fn a_corpus_the_loader_rejects_is_unverifiable_and_nothing_is_drafted() {
+    let valid = |schema_line: &str, extra: &str| {
+        format!(
+            "{schema_line}\nclaim_id: REQ-0009\nstatement: An existing claim.\napplicability: []\n\
+             relations: []\nrationale:\n  source: x\n  date: 2026-10-07\n  \
+             rejected_alternatives: []\n  assumptions: []\n{extra}"
+        )
+    };
+    let current = req::canon::claim_schema();
+    let older = format!("{}1", req::canon::CLAIM_SCHEMA_PREFIX);
+    for (name, text, migrator) in [
+        ("older", valid(&format!("schema: {older}"), ""), true),
+        (
+            "older-comment",
+            valid(&format!("schema: {older}  # old"), ""),
+            true,
+        ),
+        ("older-block", valid("schema: >-\n  req.claim/1", ""), true),
+        ("no-schema", valid("# no schema here", ""), false),
+        (
+            "removed-key",
+            valid(&format!("schema: {current}"), "modality: SHALL\n"),
+            false,
+        ),
+        (
+            "bad-pin",
+            valid(&format!("schema: {current}"), "pins:\n  value: \"0.30\"\n"),
+            false,
+        ),
+    ] {
+        let fx = Fixture::new(&format!("req-adopt-reject-{name}"));
+        fx.write("docs/capabilities.md", CAPABILITIES);
+        req(fx.path(), &["init"]).assert_code(0, "req init");
+        fx.write("claims/REQ-0009.yml", &text);
+        let out = adopt(
+            fx.path(),
+            &[
+                "--from",
+                "docs/capabilities.md",
+                "--date",
+                "2026-10-21",
+                "--write",
+            ],
+        );
+        out.assert_code(3, &format!("{name}: a corpus the loader rejects"));
+        assert!(
+            !migrator || out.stderr.contains("tools/migrate_claims.py"),
+            "{name}: the message names the migration tool:\n{}",
+            out.stderr
+        );
+        assert!(
+            !fx.exists("claims/REQ-0010.yml"),
+            "{name}: nothing is drafted into it"
+        );
+    }
+
+    let fx = Fixture::new("req-adopt-reject-control");
     fx.write("docs/capabilities.md", CAPABILITIES);
     req(fx.path(), &["init"]).assert_code(0, "req init");
     fx.write(
         "claims/REQ-0009.yml",
-        "schema: req.claim/1\nclaim_id: REQ-0009\nstatement: An old claim.\n",
+        &valid(&format!("schema: \"{current}\""), ""),
     );
-    let out = adopt(
+    adopt(
         fx.path(),
         &[
             "--from",
@@ -565,14 +622,8 @@ fn a_corpus_of_older_claim_files_is_unverifiable_and_names_the_migrator() {
             "2026-10-21",
             "--write",
         ],
-    );
-    out.assert_code(3, "an older corpus");
-    assert!(
-        out.stderr.contains("req.claim/1") && out.stderr.contains("tools/migrate_claims.py"),
-        "the message names the older schema and the migration tool:\n{}",
-        out.stderr
-    );
-    assert!(!fx.exists("claims/REQ-0010.yml"), "nothing is drafted");
+    )
+    .assert_code(0, "a quoted current schema is a valid corpus");
 }
 
 #[test]

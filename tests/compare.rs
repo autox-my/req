@@ -370,15 +370,20 @@ fn a_flagged_pin_is_reported_and_never_changes_the_classification() {
         pinned.contains("within 500 ms"),
         "the statement edit landed:\n{pinned}"
     );
+    // The pair differs in exactly the pin: the second side states the same claim without one.
+    let unpinned = pinned
+        .replace("pins:\n  value: \"0.2\"\n", "")
+        .replace("REQ-0001", "REQ-0002");
+    assert!(!unpinned.contains("pins:"), "{unpinned}");
     let f = Fixture::new("pin-flag-note")
         .claim("REQ-0001.yml", &pinned)
-        .claim("REQ-0002.yml", &pinned.replace("REQ-0001", "REQ-0002"));
+        .claim("REQ-0002.yml", &unpinned);
 
     let (code, out) = f.compare("REQ-0001.yml", "REQ-0002.yml");
     assert_eq!(code, 0, "the pair is still classified:\n{out}");
     assert!(out.contains("identical"), "{out}");
     assert!(
-        out.contains("a pin disagrees with its claim's parse (1 / 1 flagged)"),
+        out.contains("a pin disagrees with its claim's parse (1 / 0 flagged)"),
         "the flag is reported with the count for each side:\n{out}"
     );
 }

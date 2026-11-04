@@ -364,7 +364,33 @@ done
 [ "$(claim_count)" -eq $((CLAIMS_BEFORE + 2)) ] \
   || fail "$STEP_NAME: expected $((CLAIMS_BEFORE + 2)) claims, found $(claim_count)"
 
+derived_address() { # <claim id> — the address `req render` derives for it, now
+  # The whole document is read before the script answers: exiting at the first match would close
+  # the pipe on `req render` and fail the pipeline under `pipefail` (as `require_out` notes).
+  # `req render` exits 3 when a claim is undecided (the case after the edit): the document is
+  # still complete, so 0 and 3 are both fine here.
+  { req render --format json 2>/dev/null || [ $? -eq 3 ]; } | python3 -c '
+import json, sys
+want = sys.argv[1]
+found = []
+def walk(node):
+    if isinstance(node, dict):
+        if node.get("claim_id") == want and "address" in node:
+            found.append(node["address"])
+        for value in node.values():
+            walk(value)
+    elif isinstance(node, list):
+        for value in node:
+            walk(value)
+walk(json.load(sys.stdin))
+if len(found) != 1:
+    raise SystemExit(1)
+print(found[0])
+' "$1"
+}
+
 step_start "author ONE applicability predicate into a draft (the address carries it)"
+ADDRESS_BEFORE="$(derived_address REQ-0002)" || fail "$STEP_NAME: no derived address for REQ-0002 before the edit"
 AUTHOR_OUT="$(python3 - "$WORK_DIR/claims/REQ-0002.yml" <<'PY' 2>&1
 import pathlib
 import sys
@@ -386,6 +412,10 @@ if [ "$RC" -ne 0 ]; then
 fi
 require_grep '^  - deployment_mode == air_gapped$' claims/REQ-0002.yml \
   "the authored applicability predicate is not in the draft"
+# The claim in the step's title: the applicability is part of the derived address, so it moved.
+ADDRESS_AFTER="$(derived_address REQ-0002)" || fail "$STEP_NAME: no derived address for REQ-0002 after the edit"
+[ "$ADDRESS_BEFORE" != "$ADDRESS_AFTER" ] \
+  || fail "$STEP_NAME: authoring an applicability predicate did not move REQ-0002's address ($ADDRESS_BEFORE)"
 step_ok
 
 run_step "req canon shows the derived parse (exit 0 by contract; no pin flagged)" 0 \

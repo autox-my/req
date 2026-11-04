@@ -24,7 +24,7 @@ step 2 of [docs/design.md](../docs/design.md), executed with step 1 already on d
 | REQ-0014 | One commit per ratified logical Decision | design.md §5 |
 | REQ-0015 | No continuous bi-directional file sync (SHALL-NOT) | design.md §5 (gap 3 closure) |
 | REQ-0016 | Undecided scope resolves UNKNOWN, never FALSE | [ADR 0003](../docs/adr/0003-variants-are-selectors.md) |
-| REQ-0017 | Canonical bytes stored; address recomputable | [canonical-hashing.md §5](../docs/canonical-hashing.md) |
+| REQ-0017 | Address derived at load; recomputable from the canonical bytes | [canonical-hashing.md §5](../docs/canonical-hashing.md) |
 | REQ-0018 | Numeric values are exact decimal strings | [canonical-hashing.md T1.3-4](../docs/canonical-hashing.md) |
 | REQ-0019 | Undecidable parses lint, never guess | [canonical-hashing.md](../docs/canonical-hashing.md) |
 | REQ-0020 | Relations stored once, on the outgoing side | [claim-format.md](../docs/claim-format.md) |
@@ -96,10 +96,11 @@ fully verified; 2 flags remained, both in REQ-0007.
 - **REQ-0010 says `should`** — soft targets are expressed with a modality (`SHOULD`, derived),
   not with prose.
 - **REQ-0015 negates via `shall not`** (`SHALL-NOT`, derived), not with a double negative in prose.
-- **REQ-0017 still describes the v1 mechanism** (stored canonical bytes reproducing a stored
-  address). Re-wording it moves its address and drifts the signed Baseline, so it waits for a
-  Decision and a re-signature; its linked test keeps its attested id and now checks the v2 form
-  of the property (the address recomputes from derived bytes and equals the signed manifest's).
+- **REQ-0017 was re-worded for `req.claim/2`**: its v1 statement (stored canonical bytes reproducing
+  a stored address) became false when nothing derived was stored. It now says the address is derived
+  at load and is the one the signed Baseline attests; its address moved (the one claim whose did),
+  the Baseline was re-emitted and re-signed, and its linked test is
+  `req::address_recompute::the_address_recomputes_from_the_canonical_bytes_and_matches_the_signed_manifest`.
 - **REQ-0012 carries an `applicability` predicate** (`deployment_mode == air_gapped`)
   — our own corpus exercises a selector end to end.
 - ADRs keep the narrative; each claim points to its ADR in `rationale.source`. The

@@ -54,6 +54,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 # --- conventions (the whole mapping) ---------------------------------------
 
@@ -81,7 +82,6 @@ VERSION_SCHEMA_RE = re.compile(r"^[ \t]*claim_schema[ \t]+(?P<value>\S+)[ \t]*$"
 CLAIM_SCHEMA_RE = re.compile(r"^req\.claim/\d+$")
 # The one schema `CLAIM_TEMPLATE` writes; a binary reporting another cannot load the draft.
 DRAFT_SCHEMA = "req.claim/2"
-SCHEMA_LINE_RE = re.compile(r"^schema:\s*(?P<value>\S+)\s*$", re.MULTILINE)
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 CLAIMS_DIR = "claims"
@@ -521,13 +521,6 @@ def read_corpus(root):
                 f"{entry}: no `claim_id:` line — this corpus cannot be read as a corpus; "
                 "`req canon` names the defect"
             )
-        declared = SCHEMA_LINE_RE.search(text)
-        if declared is not None and declared.group("value") != DRAFT_SCHEMA:
-            raise Unverifiable(
-                f"{entry} declares `schema: {declared.group('value')}`, but this tool drafts "
-                f"{DRAFT_SCHEMA} claims: a corpus the loader reads as a migration candidate would "
-                "stay red after a draft is added — run tools/migrate_claims.py on the corpus first"
-            )
         claim_id = match.group("value").strip()
         # Both numbers are reserved: the declared id is what the claim is, and the file name is
         # where the next draft would land — a claim whose id and file name disagree must not let
@@ -576,6 +569,40 @@ def req_binary():
             "draft's claim schema comes from the binary that will judge it"
         )
     return binary
+
+
+def loader_check(binary, root, targets, texts):
+    """Run the corpus plus the drafts through the real loader (`req canon`) before anything is
+    written, in a scratch copy of the corpus, and raise Unverifiable if it does not load.
+
+    The loader is the only judge of a claim file: a raw look at a `schema:` line misses a comment,
+    a block scalar, a missing schema, a removed v1 key, a duplicate id and an invalid pin, and a
+    template that drifted from the format would be written and reported as `drafted:` all the
+    same. The same run is what turns an older-schema corpus away (its message names
+    tools/migrate_claims.py).
+    """
+    with tempfile.TemporaryDirectory(prefix="req-adopt-") as scratch:
+        copy = pathlib.Path(scratch)
+        for name in (CLAIMS_DIR, "aliases"):
+            if (root / name).is_dir():
+                shutil.copytree(root / name, copy / name)
+        (copy / CLAIMS_DIR).mkdir(exist_ok=True)
+        for (_claim_id, target), text in zip(targets, texts):
+            (copy / CLAIMS_DIR / target.name).write_text(text, encoding="utf-8")
+        try:
+            completed = subprocess.run(
+                [binary, "--root", str(copy), "canon"],
+                capture_output=True, text=True, check=False,
+            )
+        except OSError as error:
+            raise Unverifiable(f"cannot run `{binary} canon`: {error}") from error
+    if completed.returncode != 0:
+        detail = (completed.stderr.strip() or completed.stdout.strip() or "no output")
+        raise Unverifiable(
+            f"the corpus plus these drafts does not load (`req canon` exited "
+            f"{completed.returncode}), so nothing was written. An older-schema corpus is "
+            f"migrated with tools/migrate_claims.py first.\n{detail}"
+        )
 
 
 def read_axes():
@@ -877,6 +904,8 @@ def run(args):
                 schema=schema,
             )
         )
+
+    loader_check(req_binary(), corpus.root, targets, texts)
 
     if args.write:
         for _claim_id, target in targets:

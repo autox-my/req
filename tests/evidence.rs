@@ -608,12 +608,24 @@ fn derived_claims_are_accepted_without_constraint() {
         canon_code, 0,
         "the loader accepts the derived claims: {canon_out}{canon_err}"
     );
-    // The property, not the template's pin count: at least one pin verdict was rendered, and
-    // none of them is a flag.
-    assert!(
-        canon_out.contains(", 0 flagged") && !canon_out.contains("pins: 0 on"),
-        "every derived claim's pins hold, and there are pins to hold: {canon_out}"
-    );
+    // The property per claim, from the structural lines (`  pin <key> <value>: …`, one under each
+    // claim's row): every one of the four claims has at least one pin verdict and none is a flag.
+    for id in ["REQ-0001", "REQ-0002", "REQ-0003", "REQ-0004"] {
+        let mut lines = canon_out.lines();
+        assert!(
+            lines.any(|l| l.starts_with(id)),
+            "canon prints a row for {id}:\n{canon_out}"
+        );
+        let verdicts: Vec<&str> = lines
+            .take_while(|l| l.starts_with("  "))
+            .filter(|l| l.trim_start().starts_with("pin "))
+            .collect();
+        assert!(!verdicts.is_empty(), "{id} has pins to hold:\n{canon_out}");
+        assert!(
+            verdicts.iter().all(|l| !l.contains("FLAG")),
+            "{id}: every pin holds: {verdicts:?}"
+        );
+    }
 
     let (code, stdout, stderr) = run_here(scratch.path(), &["trace"]);
     assert_eq!(
