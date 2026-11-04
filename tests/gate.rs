@@ -376,7 +376,6 @@ mod test_evidence {
     use std::path::PathBuf;
     use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{Duration, Instant};
 
     fn req_bin() -> PathBuf {
         std::env::var_os("CARGO_BIN_EXE_req")
