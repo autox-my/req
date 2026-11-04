@@ -53,7 +53,7 @@
 //!    script reads local files and local git state only; it fetches nothing.
 //! 5. **It must never reach an identity.** The SHA is *printed*, never hashed: it is not in
 //!    `canonical_bytes`, not in an address, not in any digest. Nothing here touches the model,
-//!    and `req canon --verify` staying green on the committed corpus is the proof.
+//!    and the signed Baseline staying `[VERIFIED]` against the committed corpus is the proof.
 
 use std::process::Command;
 
