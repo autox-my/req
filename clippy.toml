@@ -1,0 +1,5 @@
+# `unwrap()` in a test is an assertion, not a silent loss on a production path: the
+# fixture failing loudly is the point. `expect()` is the replacement the source uses,
+# and a test may use it for the same reason (AGENTS.md, Correctness rules).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

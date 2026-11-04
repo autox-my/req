@@ -716,10 +716,12 @@ and its provenance and nothing derived; add `pins:` where the parse is load-bear
 /// Today's date in UTC as `YYYY-MM-DD`, from `SystemTime` and the civil-from-days
 /// conversion below — std only, no new dependency, no locale-dependent formatting.
 fn today_utc() -> Result<String, String> {
-    std::time::SystemTime::now()
+    let since_epoch = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|since_epoch| date_from_unix_secs(since_epoch.as_secs() as i64))
-        .map_err(|e| format!("the system clock is before the Unix epoch: {e}"))
+        .map_err(|e| format!("the system clock is before the Unix epoch: {e}"))?;
+    let secs = i64::try_from(since_epoch.as_secs())
+        .map_err(|_| "the system clock is past the last representable date".to_string())?;
+    Ok(date_from_unix_secs(secs))
 }
 
 /// `YYYY-MM-DD` for a Unix timestamp. `div_euclid` so a pre-epoch instant still lands on
@@ -744,18 +746,21 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     } else {
         shifted - 146_096
     } / 146_097;
-    let day_of_era = (shifted - era * 146_097) as u64; // [0, 146096]
+    let day_of_era =
+        u64::try_from(shifted - era * 146_097).expect("the day of the era is in [0, 146096]");
     let year_of_era =
         (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
-    let year = year_of_era as i64 + era * 400;
+    let year = i64::try_from(year_of_era).expect("the year of the era is in [0, 399]") + era * 400;
     let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let month_index = (5 * day_of_year + 2) / 153; // [0, 11], March = 0
-    let day = (day_of_year - (153 * month_index + 2) / 5 + 1) as u32;
-    let month = if month_index < 10 {
+    let day = u32::try_from(day_of_year - (153 * month_index + 2) / 5 + 1)
+        .expect("a day of the month is in [1, 31]");
+    let month = u32::try_from(if month_index < 10 {
         month_index + 3
     } else {
         month_index - 9
-    } as u32;
+    })
+    .expect("a month number is in [1, 12]");
     (if month <= 2 { year + 1 } else { year }, month, day)
 }
 

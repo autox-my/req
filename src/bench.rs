@@ -303,7 +303,10 @@ pub fn run(corpus_path: Option<&str>, root: &std::path::Path) -> i32 {
     } else {
         root.join(rel)
     };
-    let corpus = match Corpus::load(path.to_str().unwrap()) {
+    let corpus = match Corpus::load(
+        path.to_str()
+            .expect("a corpus path under the repository root is valid UTF-8"),
+    ) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] corpus load failed: {e}");
@@ -314,7 +317,11 @@ pub fn run(corpus_path: Option<&str>, root: &std::path::Path) -> i32 {
     // A registry failure is a *recorded degradation*, not a folded pass: the
     // pairs' subjects never depend on it, so the gate stays honest — but the
     // report carries the gap so it cannot be silently skipped.
-    let (registry, degraded) = match Registry::load(root.join(REGISTRY_REL).to_str().unwrap()) {
+    let (registry, degraded) = match Registry::load(
+        root.join(REGISTRY_REL)
+            .to_str()
+            .expect("a registry path under the repository root is valid UTF-8"),
+    ) {
         Ok(r) => (r, Vec::<String>::new()),
         Err(e) => (
             Registry::empty(),
@@ -323,16 +330,33 @@ pub fn run(corpus_path: Option<&str>, root: &std::path::Path) -> i32 {
     };
 
     let ev = evaluate(&corpus, &registry);
+    // The three rates below are printed in the report and recorded for a human: they are
+    // never part of an address, so a float here is a display concern, not Tier-1 math.
+    #[expect(
+        clippy::as_conversions,
+        clippy::float_arithmetic,
+        reason = "a printed rate over corpus counts, never part of an address"
+    )]
     let fmr_rate = if ev.not_equivalent_total == 0 {
         0.0
     } else {
         ev.fmr_hits.len() as f64 / ev.not_equivalent_total as f64
     };
+    #[expect(
+        clippy::as_conversions,
+        clippy::float_arithmetic,
+        reason = "a printed rate over corpus counts, never part of an address"
+    )]
     let fsr_rate = if ev.structured_equivalent == 0 {
         0.0
     } else {
         ev.fsr_hits.len() as f64 / ev.structured_equivalent as f64
     };
+    #[expect(
+        clippy::as_conversions,
+        clippy::float_arithmetic,
+        reason = "a printed rate over corpus counts, never part of an address"
+    )]
     let direction_accuracy = if ev.direction_checked == 0 {
         0.0
     } else {
