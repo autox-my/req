@@ -285,6 +285,15 @@ bump moves no address: the derivation, the canonical bytes and `RULES_V` are unc
 repository's own migration proved by keeping all 21 dogfood addresses and its signed Baseline
 `[VERIFIED]` under the unchanged signature (M3, rules v6).
 
+The tool also proves its own output before it writes anything, in a dry run as in `--write`: it puts the
+migrated files in a scratch copy of the corpus (`aliases/` only, from `--root`, default the parent of
+`claims/`) and runs the `req` on `PATH` over it. `req canon` must exit 0 (the loader accepted every file)
+and the gate's `pins_hold` must pass over every pin the tool created; otherwise it prints the loader's or
+the gate's own words, writes nothing and exits 1, so a pin the parse contradicts is refused, never
+written. With no `req` on `PATH` it exits 3 (UNVERIFIABLE: it cannot prove the output loads);
+`--no-verify` migrates anyway and says "NOT VERIFIED" on stdout and in its last line — then run `req canon`
+and `req gate` yourself.
+
 ## State of the seed corpus
 
 `claims/REQ-0001 … claims/REQ-0022` (less REQ-0011, retired by ADR 0021 and not renumbered) were
