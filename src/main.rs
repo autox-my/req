@@ -14,7 +14,7 @@
 //!                                          — may this selection ship? (policies over applying claims)
 //!   req [--root <dir>] propose <a.yml> <b.yml> [--provider-cmd <cmd>]
 //!                                          — one pair put to a provider: an unratified proposal
-//!   req [--root <dir>] baseline --at <ts>   — emit the canonical manifest a human signs (ADR 0016)
+//!   req [--root <dir>] baseline --at <ts> [--out F] — emit the canonical manifest a human signs (ADR 0016)
 //!   req [--root <dir>] baseline --verify F — verify a signed Baseline: drift, authority, trust,
 //!                                             signature, with the key judged at its signed_at
 //!   req [--root <dir>] audit [--baseline F] [--format text|json]
@@ -341,13 +341,17 @@ answered with no readable label, or a claim that will not load), 2 usage.
 `docs/adopting.md` for the loop.";
 
 const BASELINE_HELP: &str = "\
-usage: req baseline --at <RFC 3339 UTC timestamp> [key=value ...]
+usage: req baseline --at <RFC 3339 UTC timestamp> [--out <file>] [key=value ...]
        req baseline --verify <file> [--signature <file>] [--key <id>] [--now <date>]
 
 Emits the canonical manifest — the exact byte string a human signs — or verifies one: drift,
 authority, trust and signature, with the key judged at the manifest's `signed_at` for a v3
 envelope (today for v2, and `--now` sets the judgement time explicitly). The signing time is
 authored, never invented, and req never signs.
+
+`--out <file>` writes the manifest to a file instead of stdout, only after it is complete (a temp file,
+then a rename): a refusal leaves any existing file untouched. Prefer it to a shell redirect, which
+truncates the target before req runs, so a refusal leaves an empty file that `minisign -Sm` will sign.
 
 Emission refuses (3) when the decision log is absent, unparsable or empty, and exits 1 when it
 is tampered: a chain head that attests nothing must not be signed. Verification re-derives

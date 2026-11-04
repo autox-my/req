@@ -1396,6 +1396,35 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
     }
 }
 
+/// Write `bytes` to `target` only once they are complete: a temp file beside it, then a rename.
+/// A shell redirect (`> file`) truncates the target before `req` has produced anything, so a
+/// refusal leaves a 0-byte manifest that `minisign -Sm` will sign; this never does. The temp name is
+/// created exclusively and removed on failure.
+fn write_manifest_atomically(target: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let directory = match target.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => std::path::Path::new("."),
+    };
+    let name = target
+        .file_name()
+        .ok_or_else(|| std::io::Error::other("the path names no file"))?
+        .to_string_lossy()
+        .into_owned();
+    let staged = directory.join(format!(".{name}.req-staging-{}", std::process::id()));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&staged)?;
+    let written = file.write_all(bytes).and_then(|()| file.sync_all());
+    drop(file);
+    let finished = written.and_then(|()| std::fs::rename(&staged, target));
+    if finished.is_err() {
+        let _ = std::fs::remove_file(&staged);
+    }
+    finished
+}
+
 /// `req baseline --at <ts> [--verify <file>] [--signature <file>] [--key <id>] [--now <date>] [k=v ...]`
 ///
 /// With no `--verify`, prints the canonical manifest to stdout — the bytes a human signs. The
@@ -1410,6 +1439,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let mut now = today_utc();
     let mut explicit_now = false;
     let mut at_value: Option<String> = None;
+    let mut out_path: Option<String> = None;
     let mut index = 0;
     while index < args.len() {
         let arg = args[index].clone();
@@ -1441,14 +1471,25 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                 Some(value) => at_value = Some(value),
                 None => return 2,
             },
+            "--out" => match take("--out") {
+                Some(value) if !value.is_empty() && !value.starts_with('-') => {
+                    out_path = Some(value);
+                }
+                Some(value) => {
+                    eprintln!("--out needs a file path, not {value:?}");
+                    return 2;
+                }
+                None => return 2,
+            },
             other => match other.split_once('=') {
                 Some((key, value)) if !key.is_empty() => {
                     context.insert(key.to_string(), value.to_string());
                 }
                 _ => {
                     eprintln!(
-                        "usage: req baseline --at <RFC 3339 UTC timestamp> [--verify <file>] \
-                         [--signature <file>] [--key <id>] [--now <date>] [key=value ...]"
+                        "usage: req baseline --at <RFC 3339 UTC timestamp> [--out <file>] \
+                         [--verify <file>] [--signature <file>] [--key <id>] [--now <date>] \
+                         [key=value ...]"
                     );
                     return 2;
                 }
@@ -1538,9 +1579,33 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             eprintln!("[UNVERIFIABLE] {e}");
             return 3;
         }
-        print!("{}", canonical_bytes(&manifest));
-        return 0;
+        let bytes = canonical_bytes(&manifest);
+        let Some(out) = out_path else {
+            print!("{bytes}");
+            return 0;
+        };
+        return match write_manifest_atomically(std::path::Path::new(&out), bytes.as_bytes()) {
+            Ok(()) => {
+                eprintln!(
+                    "wrote {out} ({} bytes): unsigned, sign it with `minisign -Sm {out}`",
+                    bytes.len()
+                );
+                0
+            }
+            Err(e) => {
+                eprintln!("[UNVERIFIABLE] cannot write {out}: {e}; nothing was written");
+                3
+            }
+        };
     };
+
+    if out_path.is_some() {
+        eprintln!(
+            "--out is an emission flag: it writes the manifest a human signs, and a verification \
+             writes nothing"
+        );
+        return 2;
+    }
 
     if at_value.is_some() {
         eprintln!(
