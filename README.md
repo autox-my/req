@@ -105,6 +105,9 @@ locally, and an AI review reads the diff and blocks on critical or high findings
 agent-facing instructions are in `AGENTS.md`, the glossary in `CONTEXT.md`, the design of
 record in `docs/design.md`, and the decisions in `docs/adr/`.
 
+How it works: `docs/how-it-works.md` (diagrams, for engineers) and `docs/overview.html` (one page for
+non-developers, generated from the real tool by `tools/overview/build.py`, never hand-edited).
+
 Adopting req in a project — as a human or as an agent — starts at `docs/adopting.md` (its
 "For an agent" section is the five-minute path): the CI snippet is `examples/github-workflows/req.yml`,
 and `examples/agents-snippet.md` is a block to paste into a project's own `AGENTS.md`.
