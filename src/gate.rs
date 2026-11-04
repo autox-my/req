@@ -583,20 +583,21 @@ fn undecided_document(rows: &[Row], context: &Context) -> Vec<UndecidedDocument>
         .collect()
 }
 
-/// `req gate [--test-report <junit.xml>] [--format text|json] [key=value ...]`
+/// `req gate [--test-report <junit.xml>]... [--format text|json] [key=value ...]`
 ///
 /// Exit: **0** every policy passed **and** every claim in the corpus was decided, **1** a policy
 /// failed, **3** a policy could not be settled *or* the selection left a claim undecided (the
 /// claims are named, with the remedy), **2** usage. Fail outranks unverifiable, and an undecided
 /// claim outranks a pass.
 pub fn run(args: &[String], root: &std::path::Path) -> i32 {
-    let usage = "usage: req gate [--test-report <junit.xml>] [--format text|json] [key=value ...]";
+    let usage =
+        "usage: req gate [--test-report <junit.xml>]... [--format text|json] [key=value ...]";
     let (format, args) = match format::take_format(args, usage) {
         Ok(parsed) => parsed,
         Err(code) => return code,
     };
     let mut context = Context::new();
-    let mut test_report: Option<String> = None;
+    let mut test_reports: Vec<String> = Vec::new();
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
@@ -604,7 +605,9 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             index += 1;
             match args.get(index) {
                 Some(path) => {
-                    test_report = Some(path.clone());
+                    if let Err(code) = take_report_path(path, usage, &mut test_reports) {
+                        return code;
+                    }
                 }
                 None => {
                     eprintln!("--test-report needs a value: {usage}");
@@ -615,11 +618,9 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             // The `--flag=value` spelling most CI snippets and GNU habits produce. Without this arm it
             // fell through to the selector parser and became a *context entry* — a silent answer to a
             // question nobody asked, which is the one failure mode the gate must not have.
-            if path.is_empty() {
-                eprintln!("--test-report needs a value: {usage}");
-                return 2;
+            if let Err(code) = take_report_path(path, usage, &mut test_reports) {
+                return code;
             }
-            test_report = Some(path.to_string());
         } else {
             match arg.split_once('=') {
                 Some((key, value)) if !key.is_empty() => {
@@ -635,9 +636,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     }
     // Read the report before the corpus: a usage error or an unreadable file is answered the same
     // way whether or not the corpus loads, and the reason is the reader's own.
-    let loaded_report = test_report
-        .as_deref()
-        .map(|path| crate::junit::Report::load(std::path::Path::new(path)));
+    let loaded_report = load_reports(&test_reports);
     let evidence = report_evidence(&loaded_report);
     let evaluation = match evaluate_selection(context, root, evidence) {
         Ok(evaluation) => evaluation,
@@ -652,6 +651,29 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     }
     print_text(&evaluation);
     evaluation.code
+}
+
+/// One `--test-report` value, appended to the list: a file, never empty and never option-shaped (a
+/// flag swallowed as the value would turn a typo into an unreadable-report answer). `Err(2)` is the
+/// usage exit; `--test-report` may be given more than once (ADR 0024 §2).
+pub fn take_report_path(value: &str, usage: &str, into: &mut Vec<String>) -> Result<(), i32> {
+    if value.is_empty() || value.starts_with('-') {
+        eprintln!("--test-report needs a file, not {value:?}: {usage}");
+        return Err(2);
+    }
+    into.push(value.to_string());
+    Ok(())
+}
+
+/// Load the named reports once, as their union: `None` when no `--test-report` was given, else the
+/// reader's own answer (`Err` names the file, or both files of a conflict). Shared by `req gate`
+/// and `req check`, so the two cannot read a list differently.
+pub fn load_reports(paths: &[String]) -> Option<Result<crate::junit::Report, String>> {
+    if paths.is_empty() {
+        return None;
+    }
+    let paths: Vec<&std::path::Path> = paths.iter().map(std::path::Path::new).collect();
+    Some(crate::junit::Report::load_many(&paths))
 }
 
 /// The evidence a loaded (or never requested) test report supplies to `tests_linked`: one mapping,

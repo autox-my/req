@@ -31,7 +31,7 @@ use std::path::Path;
 /// command's (`format.rs`).
 pub const SCHEMA_CHECK: &str = "req.check/1";
 
-const USAGE: &str = "usage: req check [--test-report <file>] [--format text|json]";
+const USAGE: &str = "usage: req check [--test-report <file>]... [--format text|json]";
 
 const VARIANTS: &str = ".req/variants";
 const PROJECTIONS: &str = ".req/projections";
@@ -254,13 +254,14 @@ fn parse_projections(text: &str) -> Result<Vec<String>, Vec<String>> {
 
 /// What the argv asked for.
 struct Invocation {
-    test_report: Option<String>,
+    /// Every `--test-report`, in order; the union is what each gate step judges (ADR 0024 §2).
+    test_reports: Vec<String>,
     format: Format,
 }
 
 fn parse_args(args: &[String]) -> Result<Invocation, i32> {
     let (format, args) = format::take_format(args, USAGE)?;
-    let mut test_report: Option<String> = None;
+    let mut test_reports: Vec<String> = Vec::new();
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
@@ -284,15 +285,11 @@ fn parse_args(args: &[String]) -> Result<Invocation, i32> {
             );
             return Err(2);
         };
-        if value.is_empty() || value.starts_with('-') {
-            eprintln!("--test-report needs a file, not {value:?}: {USAGE}");
-            return Err(2);
-        }
-        test_report = Some(value.to_string());
+        gate::take_report_path(value, USAGE, &mut test_reports)?;
         index += 1;
     }
     Ok(Invocation {
-        test_report,
+        test_reports,
         format,
     })
 }
@@ -506,7 +503,7 @@ fn print_text(steps: &[Step], code: i32, projections_pinned: bool) {
 const NO_FILE: &str = "(no .req/variants: the default variant)";
 const NO_RELEASE: &str = "(.req/variants declares no release: the default variant)";
 
-/// `req check [--test-report <file>] [--format text|json]`
+/// `req check [--test-report <file>]... [--format text|json]`
 ///
 /// Exit: **1** if any step is a defect, else **3** if any step cannot be confirmed, else **0**;
 /// **2** for a usage error or a malformed list, decided before any step runs.
@@ -565,11 +562,8 @@ pub fn run(args: &[String], root: &Path) -> i32 {
 
     let mut steps: Vec<Step> = Vec::new();
 
-    // The report is loaded once and shared by every gate step.
-    let loaded_report = invocation
-        .test_report
-        .as_deref()
-        .map(|path| crate::junit::Report::load(Path::new(path)));
+    // The reports are loaded once, as their union, and shared by every gate step.
+    let loaded_report = gate::load_reports(&invocation.test_reports);
     let evidence = || gate::report_evidence(&loaded_report);
 
     let lines: Vec<VariantLine> = match variants {
