@@ -125,23 +125,12 @@ impl Report {
         Ok(report)
     }
 
-    /// Read and parse a report. An I/O failure names the path it could not read, and a path that is
-    /// not a regular file (a directory, a FIFO, a device) is refused before it is opened: opening a
-    /// FIFO would block the whole command on a file nobody writes.
+    /// Read and parse a report. An I/O failure names the path it could not read. The path is the
+    /// operator's own argument, so it is read as given: a report may arrive on a pipe
+    /// (`--test-report /dev/stdin`, `<(…)`), which a regular-file guard would refuse.
     pub fn load(path: &Path) -> Result<Report, String> {
-        let unreadable = |what: &dyn std::fmt::Display| {
-            format!("cannot read test report `{}`: {what}", path.display())
-        };
-        match std::fs::metadata(path) {
-            Ok(metadata) if !metadata.is_file() => {
-                return Err(unreadable(
-                    &"not a regular file (a directory, FIFO or device)",
-                ));
-            }
-            Ok(_) => {}
-            Err(error) => return Err(unreadable(&error)),
-        }
-        let text = std::fs::read_to_string(path).map_err(|error| unreadable(&error))?;
+        let text = std::fs::read_to_string(path)
+            .map_err(|error| format!("cannot read test report `{}`: {error}", path.display()))?;
         Report::parse(&text)
             .map_err(|reason| format!("cannot parse test report `{}`: {reason}", path.display()))
     }

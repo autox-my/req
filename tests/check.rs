@@ -1144,6 +1144,34 @@ fn two_stacks(name: &str) -> Scratch {
     s
 }
 
+/// (e) The default-variant step (no `.req/variants`) is a gate step too: it must get the whole
+/// report list, not the first report.
+#[test]
+fn the_default_variant_step_gets_every_report() {
+    let s = Scratch::new("e-default-step");
+    s.claim("REQ-0001", None, MS_200, None, Some("probe::passes"));
+    s.claim("REQ-0002", None, MS_300, None, Some("other::passes"));
+    let first = s.report("first.xml", Outcome::Passed);
+    s.write(
+        "second.xml",
+        b"<testsuites><testsuite name=\"o\"><testcase name=\"passes\" classname=\"other\"/></testsuite></testsuites>",
+    );
+    let out = s.req(&[
+        "check",
+        "--test-report",
+        &first,
+        "--test-report",
+        "second.xml",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(out.all().contains("the default variant"), "{}", out.all());
+    let first_only = s.req(&["check", "--test-report", &first]);
+    assert_eq!(
+        first_only.code, 3,
+        "setup: REQ-0002's test is only in the second report"
+    );
+}
+
 /// (e) `req check --test-report a --test-report b` gives **each** gate step the union: both variant
 /// lines pass, where either report alone leaves a step unable to confirm; and the exit equals the
 /// standalone `req gate` with the same two flags for every line.

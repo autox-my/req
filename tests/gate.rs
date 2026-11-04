@@ -762,49 +762,30 @@ mod test_evidence {
         assert_eq!(twice.code, 0, "{}", twice.all());
     }
 
-    /// (d) A report that is a FIFO is never opened (it would block the gate for ever): it is named as
-    /// not a regular file. A directory is named too.
+    /// A report path is the operator's own argument and is read as given, so a report may arrive on a
+    /// pipe — `cat report.xml | req gate --test-report /dev/stdin` — as it did before several reports
+    /// were allowed; a directory is still a named unreadable report (exit 3).
     #[cfg(unix)]
     #[test]
-    fn a_report_that_is_not_a_regular_file_is_refused_and_never_opened() {
-        let s = Scratch::linking("d-fifo", &[("REQ-0001", "tests.test_probe::test_passes")]);
-        let fifo = s.0.join("report.fifo");
-        let made = Command::new("mkfifo").arg(&fifo).status();
-        if !matches!(made, Ok(status) if status.success()) {
-            eprintln!("SKIP: mkfifo is not available, so the FIFO case was not exercised");
-            return;
-        }
-        let fifo = fifo.display().to_string();
+    fn a_report_may_arrive_on_a_pipe_and_a_directory_is_named_unreadable() {
+        let s = Scratch::linking("d-pipe", &[("REQ-0001", "tests.test_probe::test_passes")]);
+        let report = std::fs::read(fixture(MIXED)).expect("reads the pytest fixture");
         let mut child = Command::new(req_bin())
-            .args([
-                "gate",
-                "--test-report",
-                &fifo,
-                "--test-report",
-                &fixture(MIXED),
-            ])
+            .args(["gate", "--test-report", "/dev/stdin"])
             .current_dir(&s.0)
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .expect("spawns req");
-        let deadline = Instant::now() + Duration::from_secs(20);
-        let finished = loop {
-            match child.try_wait().expect("polls req") {
-                Some(status) => break Some(status),
-                None if Instant::now() >= deadline => break None,
-                None => std::thread::sleep(Duration::from_millis(20)),
-            }
-        };
-        let Some(status) = finished else {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("req blocked opening a FIFO report: a report path must be a regular file");
-        };
+        {
+            use std::io::Write;
+            let mut stdin = child.stdin.take().expect("has stdin");
+            stdin.write_all(&report).expect("writes the report");
+        }
         let out = child.wait_with_output().expect("collects the output");
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
-        assert_eq!(status.code(), Some(3), "{text}");
-        assert!(text.contains(&fifo), "the FIFO is named: {text}");
+        assert_eq!(out.status.code(), Some(0), "{text}");
 
         let dir = s.0.display().to_string();
         let out = s.gate(&["--test-report", &dir]);
