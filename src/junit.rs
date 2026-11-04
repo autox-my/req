@@ -10,6 +10,13 @@
 //! whitespace. A single `<testsuite>` root is accepted too; a root of any other name is
 //! refused rather than read as an empty report.
 //!
+//! pytest's `--junitxml` output is read by the same code (issue #64, ADR 0024): the same
+//! `<testsuites>` root and `classname`/`name` ids, and the real output is committed under
+//! `tests/fixtures/junit/`. The one shape it refuses is pytest's **collection error**, an
+//! empty `classname` that also means the run was interrupted. Several reports are read as their
+//! **union** ([`Report::load_many`]): the rule that refuses a conflicting duplicate id inside one
+//! report is extended across files, and a member that cannot be read refuses the whole set.
+//!
 //! # The tri-state
 //!
 //! A report is in exactly one of three states, and the reader keeps them apart because
@@ -118,12 +125,98 @@ impl Report {
         Ok(report)
     }
 
-    /// Read and parse a report. An I/O failure names the path it could not read.
+    /// Read and parse a report. An I/O failure names the path it could not read. The path is the
+    /// operator's own argument, so it is read as given: a report may arrive on a pipe
+    /// (`--test-report /dev/stdin`, `<(…)`), which a regular-file guard would refuse.
     pub fn load(path: &Path) -> Result<Report, String> {
         let text = std::fs::read_to_string(path)
             .map_err(|error| format!("cannot read test report `{}`: {error}", path.display()))?;
         Report::parse(&text)
             .map_err(|reason| format!("cannot parse test report `{}`: {reason}", path.display()))
+    }
+
+    /// Read every named report and return their **union** (ADR 0024 §2).
+    ///
+    /// All-or-nothing, because a test absent from the union might be in the member that failed:
+    /// one report that cannot be read or parsed is `Err` naming that file (every such file, if
+    /// several), and the readable ones are not used. A test id in two reports with the same outcome
+    /// dedupes; with different outcomes the evidence is unusable and the `Err` names the id and
+    /// **both files**. The same path twice is the same rows twice, which dedupe. No path at all is
+    /// an empty report, the state the gate already reports as "carries no test cases".
+    pub fn load_many(paths: &[&Path]) -> Result<Report, String> {
+        let mut loaded: Vec<(&Path, Report)> = Vec::new();
+        let mut failures: Vec<String> = Vec::new();
+        for path in paths {
+            match Report::load(path) {
+                Ok(report) => loaded.push((path, report)),
+                Err(reason) if failures.contains(&reason) => {}
+                Err(reason) => failures.push(reason),
+            }
+        }
+        if !failures.is_empty() {
+            return Err(failures.join("; "));
+        }
+        let mut union = Report::default();
+        // The first file that supplied each id, so a conflict names the file it is with and not
+        // merely the file read just before.
+        let mut origin: BTreeMap<String, &Path> = BTreeMap::new();
+        for (path, report) in loaded {
+            let ids: Vec<String> = report.outcomes.keys().cloned().collect();
+            let right = format!("`{}`", path.display());
+            union = union.merge_labelled(
+                report,
+                &|id| {
+                    origin
+                        .get(id)
+                        .map_or_else(String::new, |earlier| format!("`{}`", earlier.display()))
+                },
+                &right,
+            )?;
+            for id in ids {
+                origin.entry(id).or_insert(path);
+            }
+        }
+        Ok(union)
+    }
+
+    /// The union of two reports, by test id. Identical outcomes dedupe; an id with different
+    /// outcomes in the two is `Err` naming it — never a silent tie-break, for the reason
+    /// [`insert`] gives within one report. `self` is not changed when it fails.
+    pub fn merge(self, other: Report) -> Result<Report, String> {
+        self.merge_labelled(
+            other,
+            &|_| "the first report".to_string(),
+            "the second report",
+        )
+    }
+
+    /// [`Report::merge`] with the labels a conflict names: `left` for the id's earlier source,
+    /// `right` for `other`.
+    fn merge_labelled(
+        mut self,
+        other: Report,
+        left: &dyn Fn(&str) -> String,
+        right: &str,
+    ) -> Result<Report, String> {
+        for (id, outcome) in other.outcomes {
+            match self.outcomes.get(&id) {
+                Some(have) if *have != outcome => {
+                    return Err(format!(
+                        "test id `{id}` has different outcomes in {} ({}) and in {right} ({}): \
+                         the evidence is unusable until the two agree, and neither is chosen \
+                         for you",
+                        left(&id),
+                        word(*have),
+                        word(outcome),
+                    ));
+                }
+                Some(_) => {}
+                None => {
+                    self.outcomes.insert(id, outcome);
+                }
+            }
+        }
+        Ok(self)
     }
 
     /// No testcase elements at all — a distinct state the gate reports as UNVERIFIABLE.
@@ -192,11 +285,20 @@ fn parse_testcase(
     // string no claim could ever link to intentionally. An id that cannot be written is not a
     // test report entry.
     if name.is_empty() || classname.is_empty() {
-        return Err(format!(
+        let mut reason = format!(
             "`<testcase>` has an empty {} attribute: the id is `classname::name` and an empty \
              part names no test",
             if name.is_empty() { "name" } else { "classname" }
-        ));
+        );
+        if classname.is_empty() {
+            // The one producer we have seen write this: pytest, for a collection error. The run was
+            // interrupted, so the rest of the report is not evidence either — refused whole.
+            reason.push_str(
+                "; pytest writes an empty classname for a collection error (the run was \
+                 interrupted, so nothing else in this report is evidence)",
+            );
+        }
+        return Err(reason);
     }
     let id = format!("{classname}::{name}");
     let mut outcome = TestOutcome::Passed;
@@ -254,6 +356,15 @@ fn insert(
              a rename or a flake must not read as a chosen result",
             slot.get()
         )),
+    }
+}
+
+/// An outcome as a word a person reads in a conflict message.
+fn word(outcome: TestOutcome) -> &'static str {
+    match outcome {
+        TestOutcome::Passed => "passed",
+        TestOutcome::Failed => "failed",
+        TestOutcome::Skipped => "skipped",
     }
 }
 

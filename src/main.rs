@@ -12,7 +12,7 @@
 //!   req [--root <dir>] impact <claim-id>   — what depends on that claim, transitively
 //!   req [--root <dir>] gate [--format text|json] k=v [...]
 //!                                          — may this selection ship? (policies over applying claims)
-//!   req [--root <dir>] check [--test-report F] [--format text|json]
+//!   req [--root <dir>] check [--test-report F]... [--format text|json]
 //!                                          — may this repository ship? every declared variant and
 //!                                            projection, folded into one verdict (ADR 0023)
 //!   req [--root <dir>] propose <a.yml> <b.yml> [--provider-cmd <cmd>]
@@ -282,7 +282,7 @@ an unreproducible selection, or another command's projection (--check); 2 usage.
 `docs/adopting.md` for the loop.";
 
 const GATE_HELP: &str = "\
-usage: req gate [--format text|json] [--test-report <file>] [key=value ...]
+usage: req gate [--format text|json] [--test-report <file>]... [key=value ...]
 
 Runs the release policies over the claims a variant leaves applying — pins hold, relations
 resolve, dependencies decided, rationale present, and (with `--test-report <file>`) tests
@@ -311,6 +311,13 @@ listed under `process_evidenced` — a reported fact, not machine proof and not 
 an empty `tests:` never implies it, and when every applying claim declares it no report is
 needed.
 
+`--test-report` may be given more than once (a project with several stacks passes one report each,
+`--test-report a.xml --test-report b.xml`): the gate judges the **union** of the reports. A test
+id in two reports with the same outcome counts once; with different outcomes the evidence is
+unusable and the message names the id and both files. One report that cannot be read or parsed
+(a pytest collection error among them) makes `tests_linked` UNVERIFIABLE, once, naming that file,
+because a test absent from the union might be in the one that failed to load.
+
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 answers as a `req.gate/2` document on stdout: schema, generator, `rules_v`, the selection, the
 folded verdict, the six policies (`pins_hold` also carries `checked`, the number of pins it judged,
@@ -325,14 +332,17 @@ with the remedy; 2 usage. Fail outranks Unverifiable, and an undecided claim out
 `docs/adopting.md` for the loop.";
 
 const CHECK_HELP: &str = "\
-usage: req check [--test-report <file>] [--format text|json]
+usage: req check [--test-report <file>]... [--format text|json]
 
 May this repository ship? Reads the two release lists beside the corpus — `.req/variants` and
 `.req/projections` — runs one step per line and folds them into ONE verdict, so an adopter's
 gate is this command and not a shell loop that has to get the fold right.
 
 `.req/variants`: one complete release context per line, `key=value` words, run as `req gate
---test-report <file> <line>`; the test report is read once and shared. `.req/projections`: one
+--test-report <file> <line>`; the test reports are read once and shared. `--test-report` may be
+repeated, and every gate step judges the union of the reports (the gate's rule: an id with
+different outcomes in two, or one report that cannot be read, is UNVERIFIABLE, naming the
+file). `.req/projections`: one
 repo-relative path per line, run as `req render --check <path>`. The grammar is the same for
 both: `#` starts a comment, an empty line is skipped, a trailing CR is stripped, a line is split
 on blanks with no pathname expansion (a `*` in a value is data), and a final line without a

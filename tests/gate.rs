@@ -357,3 +357,474 @@ fn a_direction_label_error_outranks_the_vacuous_denominator() {
     assert_eq!(ev.verdict, Verdict::Fail);
     assert_eq!(req::bench::exit_code(ev.verdict), 1);
 }
+
+// ---------------------------------------------------------------------------
+// #64 (ADR 0024): the CLI gate over several reports and over pytest's own output.
+// ---------------------------------------------------------------------------
+
+mod test_evidence {
+    //! `req gate --test-report` over **several reports** and over **pytest's own output** (#64, ADR 0024).
+    //!
+    //! The public seam is the compiled `req` against a corpus built in a temp dir. The oracles are
+    //! independent of `req`: the pytest fixtures in `tests/fixtures/junit/` are real pytest 9.2.0 output
+    //! (`README.md` there), and every expected exit comes from the documented meaning of the case —
+    //! a pass confirms a claim, a failure fails it, a skip is not a pass (ADR 0019 §5, ADR 0024 §4), an
+    //! id the evidence does not carry cannot be confirmed. Items (c), (d) and the gate half of (f) are
+    //! the spec's (`docs/specs/64-test-evidence.md`, unit 64-1).
+
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process::{Command, Stdio};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn req_bin() -> PathBuf {
+        std::env::var_os("CARGO_BIN_EXE_req")
+            .map(PathBuf::from)
+            .expect("integration tests run with CARGO_BIN_EXE_req set")
+    }
+
+    fn fixture(name: &str) -> String {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/junit")
+            .join(name)
+            .display()
+            .to_string()
+    }
+
+    const MIXED: &str = "pytest-mixed.xml";
+    const ESCAPES: &str = "pytest-param-escapes.xml";
+
+    /// A fresh corpus: `req init`, the starter claim removed, claims added by the test. No claim
+    /// carries a selector, so a bare `req gate` decides every claim and only the evidence is in play.
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Self {
+            static N: AtomicU64 = AtomicU64::new(0);
+            let dir = std::env::temp_dir().join(format!(
+                "req-gate-evidence-{}-{}-{name}",
+                std::process::id(),
+                N.fetch_add(1, Ordering::SeqCst)
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("creates the scratch dir");
+            let init = Command::new(req_bin())
+                .arg("init")
+                .current_dir(&dir)
+                .output()
+                .expect("runs req init");
+            assert_eq!(init.status.code(), Some(0), "req init must succeed");
+            fs::remove_file(dir.join("claims/REQ-0001.yml")).expect("removes the starter claim");
+            Scratch(dir)
+        }
+
+        /// A corpus of machine-evidenced claims, one per `(claim id, linked test id)`.
+        fn linking(name: &str, links: &[(&str, &str)]) -> Self {
+            let s = Scratch::new(name);
+            for (index, (id, test)) in links.iter().enumerate() {
+                let ms = 200 + index * 100;
+                let value = format!("0.{}", ms / 100);
+                let test = test.replace('"', "\\\"");
+                let text = format!(
+                    "schema: req.claim/2\n\
+                 claim_id: {id}\n\
+                 statement: \"The {id} service shall respond to a health check within {ms} ms.\"\n\
+                 applicability: []\n\
+                 relations: []\n\
+                 tests:\n  - \"{test}\"\n\
+                 rationale:\n  source: docs/requirements.md\n  date: 2026-11-04\n  rejected_alternatives: []\n  assumptions: []\n\
+                 pins:\n  operator: LE\n  value: \"{value}\"\n  unit: s\n"
+                );
+                fs::write(s.0.join(format!("claims/{id}.yml")), text).expect("writes a claim");
+            }
+            s
+        }
+
+        fn write(&self, relative: &str, text: &str) -> String {
+            let path = self.0.join(relative);
+            fs::write(&path, text).expect("writes a file");
+            path.display().to_string()
+        }
+
+        fn gate(&self, args: &[&str]) -> Out {
+            let mut full = vec!["gate"];
+            full.extend_from_slice(args);
+            let out = Command::new(req_bin())
+                .args(&full)
+                .current_dir(&self.0)
+                .output()
+                .expect("runs req");
+            Out::from(out)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    struct Out {
+        code: i32,
+        stdout: String,
+        stderr: String,
+    }
+
+    impl Out {
+        fn from(out: std::process::Output) -> Self {
+            Out {
+                code: out.status.code().expect("req exits, never a signal"),
+                stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            }
+        }
+
+        fn all(&self) -> String {
+            format!("{}{}", self.stdout, self.stderr)
+        }
+    }
+
+    /// A one-case JUnit report in the shape pytest writes: `outcome` is `pass`, `fail` or `skip`.
+    fn pytest_case(classname: &str, name: &str, outcome: &str) -> String {
+        let body = match outcome {
+            "pass" => String::new(),
+            "fail" => "<failure message=\"assert False\"/>".to_string(),
+            "skip" => "<skipped type=\"pytest.skip\" message=\"not today\"/>".to_string(),
+            other => panic!("unknown outcome {other}"),
+        };
+        format!(
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" tests=\"1\"><testcase classname=\"{classname}\" name=\"{name}\" time=\"0.000\">{body}</testcase></testsuite></testsuites>"
+        )
+    }
+
+    // ---------------------------------------------------------------------------
+    // (c) pytest's own output through the gate
+    // ---------------------------------------------------------------------------
+
+    /// (c) A claim linked to a test pytest reports as passed is confirmed (exit 0) — for a plain id, a
+    /// class method, a parametrized id with a space, and the escaped ids of the other fixture.
+    #[test]
+    fn a_claim_linked_to_a_passing_pytest_case_passes() {
+        for (id, test, report) in [
+            ("REQ-0001", "tests.test_probe::test_passes", MIXED),
+            (
+                "REQ-0002",
+                "tests.test_probe.TestGroup::test_in_class",
+                MIXED,
+            ),
+            ("REQ-0003", "tests.test_probe::test_param[a b]", MIXED),
+            ("REQ-0004", "coll.test_param::test_p[a&b]", ESCAPES),
+            ("REQ-0005", "coll.test_param::test_p[x<y]", ESCAPES),
+            ("REQ-0006", "coll.test_param::test_p[q\"r]", ESCAPES),
+        ] {
+            let s = Scratch::linking("c-pass", &[(id, test)]);
+            let out = s.gate(&["--test-report", &fixture(report)]);
+            assert_eq!(out.code, 0, "{test}: {}", out.all());
+        }
+    }
+
+    /// (c) A failed test, a strict XPASS and a setup error are failures of the claim: exit 1.
+    #[test]
+    fn a_claim_linked_to_a_failing_pytest_case_fails() {
+        for test in [
+            "tests.test_probe::test_fails",
+            "tests.test_probe::test_xpass_strict",
+            "tests.test_probe::test_setup_error",
+        ] {
+            let s = Scratch::linking("c-fail", &[("REQ-0001", test)]);
+            let out = s.gate(&["--test-report", &fixture(MIXED)]);
+            assert_eq!(out.code, 1, "{test}: {}", out.all());
+            assert!(
+                out.stdout.contains(test),
+                "the test is named: {}",
+                out.stdout
+            );
+        }
+    }
+
+    /// (c) ADR 0024 §4, asserted so the consequence is pinned: a claim whose only linked test is
+    /// skipped (`@skip`, or an `xfail`) is exit 1 — never a pass, and a defect-class red rather than 3.
+    #[test]
+    fn a_claim_linked_only_to_a_skipped_pytest_case_is_exit_1_never_a_pass() {
+        for test in [
+            "tests.test_probe::test_skipped",
+            "tests.test_probe::test_xfail",
+        ] {
+            let s = Scratch::linking("c-skip", &[("REQ-0001", test)]);
+            let out = s.gate(&["--test-report", &fixture(MIXED)]);
+            assert_eq!(out.code, 1, "{test}: {}", out.all());
+            assert!(
+                out.stdout.contains("a skipped test is not a pass"),
+                "{}",
+                out.stdout
+            );
+        }
+    }
+
+    /// (c) An id the evidence does not carry cannot be confirmed: exit 3.
+    #[test]
+    fn a_claim_linked_to_an_id_pytest_did_not_report_is_exit_3() {
+        let s = Scratch::linking(
+            "c-absent",
+            &[("REQ-0001", "tests.test_probe::test_renamed")],
+        );
+        let out = s.gate(&["--test-report", &fixture(MIXED)]);
+        assert_eq!(out.code, 3, "{}", out.all());
+        assert!(out.stdout.contains("not in the report"), "{}", out.stdout);
+    }
+
+    /// (b) at the seam: a collection-error report makes `tests_linked` UNVERIFIABLE (exit 3), once,
+    /// naming the file and the likely cause.
+    #[test]
+    fn a_collection_error_report_is_unverifiable_and_says_why() {
+        let s = Scratch::linking(
+            "b-collection",
+            &[
+                ("REQ-0001", "tests.test_probe::test_passes"),
+                ("REQ-0002", "tests.test_probe::test_param[1]"),
+            ],
+        );
+        let report = fixture("pytest-collection-error.xml");
+        let out = s.gate(&["--test-report", &report]);
+        assert_eq!(out.code, 3, "{}", out.all());
+        assert!(
+            out.stdout.contains(&report),
+            "the file is named: {}",
+            out.stdout
+        );
+        assert!(out.stdout.contains("collection error"), "{}", out.stdout);
+        assert_eq!(
+            out.stdout.matches("cannot be read").count(),
+            1,
+            "judged once, not per claim: {}",
+            out.stdout
+        );
+    }
+
+    // ---------------------------------------------------------------------------
+    // (d) several reports: the union
+    // ---------------------------------------------------------------------------
+
+    /// (d) Two reports with disjoint ids are a union: a claim linked into each passes, and the same
+    /// corpus over either report alone cannot be confirmed (the other claim's test is absent).
+    #[test]
+    fn two_reports_with_disjoint_ids_are_a_union() {
+        let s = Scratch::linking(
+            "d-union",
+            &[
+                ("REQ-0001", "tests.test_probe::test_passes"),
+                ("REQ-0002", "coll.test_param::test_p[a&b]"),
+            ],
+        );
+        let (mixed, escapes) = (fixture(MIXED), fixture(ESCAPES));
+        let both = s.gate(&["--test-report", &mixed, "--test-report", &escapes]);
+        assert_eq!(both.code, 0, "{}", both.all());
+        let reversed = s.gate(&["--test-report", &escapes, "--test-report", &mixed]);
+        assert_eq!(
+            reversed.code,
+            0,
+            "order does not matter: {}",
+            reversed.all()
+        );
+        let mixed_form = s.gate(&["--test-report", &mixed, &format!("--test-report={escapes}")]);
+        assert_eq!(mixed_form.code, 0, "both spellings: {}", mixed_form.all());
+        for alone in [&mixed, &escapes] {
+            let out = s.gate(&["--test-report", alone]);
+            assert_eq!(
+                out.code,
+                3,
+                "one report alone lacks the other's test: {}",
+                out.all()
+            );
+        }
+    }
+
+    /// (d) The same id with the same outcome in two reports dedupes.
+    #[test]
+    fn the_same_id_with_the_same_outcome_dedupes() {
+        let s = Scratch::linking("d-dedupe", &[("REQ-0001", "tests.test_probe::test_passes")]);
+        let again = s.write(
+            "again.xml",
+            &pytest_case("tests.test_probe", "test_passes", "pass"),
+        );
+        let out = s.gate(&["--test-report", &fixture(MIXED), "--test-report", &again]);
+        assert_eq!(out.code, 0, "{}", out.all());
+    }
+
+    /// (d) The same id with different outcomes is unusable evidence: UNVERIFIABLE, **once** (not per
+    /// claim), naming the id and **both files** — whichever outcome would have been "the right one".
+    #[test]
+    fn the_same_id_with_different_outcomes_is_unverifiable_once_naming_both_files() {
+        let s = Scratch::linking(
+            "d-conflict",
+            &[
+                ("REQ-0001", "tests.test_probe::test_passes"),
+                ("REQ-0002", "tests.test_probe::test_param[1]"),
+            ],
+        );
+        let other = s.write(
+            "other.xml",
+            &pytest_case("tests.test_probe", "test_passes", "fail"),
+        );
+        let mixed = fixture(MIXED);
+        let out = s.gate(&["--test-report", &mixed, "--test-report", &other]);
+        assert_eq!(out.code, 3, "{}", out.all());
+        assert!(
+            out.stdout.contains("tests.test_probe::test_passes"),
+            "{}",
+            out.stdout
+        );
+        assert!(
+            out.stdout.contains(&mixed),
+            "the first file: {}",
+            out.stdout
+        );
+        assert!(
+            out.stdout.contains(&other),
+            "the second file: {}",
+            out.stdout
+        );
+        assert_eq!(
+            out.stdout.matches("cannot be read").count(),
+            1,
+            "judged once, not per claim: {}",
+            out.stdout
+        );
+        // Neither order lets one outcome win.
+        let swapped = s.gate(&["--test-report", &other, "--test-report", &mixed]);
+        assert_eq!(swapped.code, 3, "{}", swapped.all());
+    }
+
+    /// (d) One unreadable report makes the evidence UNVERIFIABLE once, naming the file — even though
+    /// the other report alone would have passed: a test absent from the union might be in the one that
+    /// failed to load.
+    #[test]
+    fn one_unreadable_report_is_unverifiable_even_if_the_other_would_pass() {
+        let s = Scratch::linking(
+            "d-unreadable",
+            &[
+                ("REQ-0001", "tests.test_probe::test_passes"),
+                ("REQ-0002", "tests.test_probe::test_param[1]"),
+            ],
+        );
+        let mixed = fixture(MIXED);
+        assert_eq!(
+            s.gate(&["--test-report", &mixed]).code,
+            0,
+            "setup: the readable report alone passes"
+        );
+        let missing = s.0.join("not-there.xml").display().to_string();
+        let broken = s.write("broken.xml", "<testsuites><testcase");
+        for bad in [&missing, &broken] {
+            for args in [
+                ["--test-report", &mixed, "--test-report", bad],
+                ["--test-report", bad, "--test-report", &mixed],
+            ] {
+                let out = s.gate(&args);
+                assert_eq!(out.code, 3, "{args:?}: {}", out.all());
+                assert!(
+                    out.stdout.contains(bad.as_str()),
+                    "{args:?}: names it: {}",
+                    out.stdout
+                );
+                assert_eq!(
+                    out.stdout.matches("cannot be read").count(),
+                    1,
+                    "{args:?}: once, not per claim: {}",
+                    out.stdout
+                );
+            }
+        }
+    }
+
+    /// (d) An empty report beside one with cases is accepted; two empty reports are "carries no test
+    /// cases"; the same path twice is accepted.
+    #[test]
+    fn an_empty_member_is_accepted_two_empty_ones_carry_no_cases_and_a_path_twice_is_harmless() {
+        let s = Scratch::linking("d-empty", &[("REQ-0001", "tests.test_probe::test_passes")]);
+        let empty_a = s.write("empty-a.xml", "<testsuites/>");
+        let empty_b = s.write("empty-b.xml", "<testsuites name=\"pytest tests\"/>");
+        let mixed = fixture(MIXED);
+
+        let one_empty = s.gate(&["--test-report", &empty_a, "--test-report", &mixed]);
+        assert_eq!(one_empty.code, 0, "{}", one_empty.all());
+
+        let both_empty = s.gate(&["--test-report", &empty_a, "--test-report", &empty_b]);
+        assert_eq!(both_empty.code, 3, "{}", both_empty.all());
+        assert!(
+            both_empty.stdout.contains("carries no test cases"),
+            "{}",
+            both_empty.stdout
+        );
+
+        let twice = s.gate(&["--test-report", &mixed, "--test-report", &mixed]);
+        assert_eq!(twice.code, 0, "{}", twice.all());
+    }
+
+    /// A report path is the operator's own argument and is read as given, so a report may arrive on a
+    /// pipe — `cat report.xml | req gate --test-report /dev/stdin` — as it did before several reports
+    /// were allowed; a directory is still a named unreadable report (exit 3).
+    #[cfg(unix)]
+    #[test]
+    fn a_report_may_arrive_on_a_pipe_and_a_directory_is_named_unreadable() {
+        let s = Scratch::linking("d-pipe", &[("REQ-0001", "tests.test_probe::test_passes")]);
+        let report = std::fs::read(fixture(MIXED)).expect("reads the pytest fixture");
+        let mut child = Command::new(req_bin())
+            .args(["gate", "--test-report", "/dev/stdin"])
+            .current_dir(&s.0)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawns req");
+        {
+            use std::io::Write;
+            let mut stdin = child.stdin.take().expect("has stdin");
+            stdin.write_all(&report).expect("writes the report");
+        }
+        let out = child.wait_with_output().expect("collects the output");
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        assert_eq!(out.status.code(), Some(0), "{text}");
+
+        let dir = s.0.display().to_string();
+        let out = s.gate(&["--test-report", &dir]);
+        assert_eq!(out.code, 3, "{}", out.all());
+        assert!(out.stdout.contains(&dir), "{}", out.stdout);
+    }
+
+    // ---------------------------------------------------------------------------
+    // (f) usage
+    // ---------------------------------------------------------------------------
+
+    /// (f) `--test-report` with no value, an empty value or an option-shaped value is exit 2 with the
+    /// usage line, in either spelling and wherever the repeat falls — before any report is read.
+    #[test]
+    fn test_report_usage_errors_stay_exit_2() {
+        let s = Scratch::linking("f-usage", &[("REQ-0001", "tests.test_probe::test_passes")]);
+        let mixed = fixture(MIXED);
+        for args in [
+            vec!["--test-report"],
+            vec!["--test-report="],
+            vec!["--test-report", ""],
+            vec!["--test-report", "-x"],
+            vec!["--test-report=-x"],
+            vec!["--test-report", &mixed, "--test-report"],
+            vec!["--test-report", &mixed, "--test-report="],
+            vec!["--test-report", &mixed, "--test-report", ""],
+            vec!["--test-report", &mixed, "--test-report=--x"],
+        ] {
+            let out = s.gate(&args);
+            assert_eq!(out.code, 2, "{args:?}: {}", out.all());
+            assert!(
+                out.stderr.contains("usage: req gate"),
+                "{args:?}: {}",
+                out.stderr
+            );
+            assert!(
+                out.stdout.is_empty(),
+                "{args:?}: nothing was judged: {}",
+                out.stdout
+            );
+        }
+    }
+}

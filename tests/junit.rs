@@ -416,3 +416,237 @@ fn load_names_the_path_when_the_file_cannot_be_read() {
     let reason = Report::load(&path).expect_err("a missing report must be an error");
     assert!(reason.contains(&path.display().to_string()), "{reason}");
 }
+
+// ---------------------------------------------------------------------------
+// pytest's `--junitxml` (issue #64, ADR 0024 §1). The fixtures are real pytest 9.2.0 output
+// (`tests/fixtures/junit/README.md`); every expectation below is pytest's documented meaning of the
+// case, written by hand, never read back from `req`.
+// ---------------------------------------------------------------------------
+
+fn fixture(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/junit")
+        .join(name)
+}
+
+/// (a) `pytest-mixed.xml`: the ten cases, each with the outcome pytest documents for it — a pass,
+/// the three parametrized ids (one with a space), a class method; a failure, a strict XPASS (a
+/// failure by `xfail_strict`) and a setup error (an error is a failure here); `@skip` and a
+/// non-strict `xfail` (both a skip).
+#[test]
+fn every_pytest_case_in_the_mixed_fixture_has_the_outcome_pytest_documents() {
+    let report = Report::load(&fixture("pytest-mixed.xml")).expect("pytest's own output must load");
+    let expected = [
+        ("tests.test_probe::test_passes", TestOutcome::Passed),
+        ("tests.test_probe::test_param[1]", TestOutcome::Passed),
+        ("tests.test_probe::test_param[2]", TestOutcome::Passed),
+        ("tests.test_probe::test_param[a b]", TestOutcome::Passed),
+        (
+            "tests.test_probe.TestGroup::test_in_class",
+            TestOutcome::Passed,
+        ),
+        ("tests.test_probe::test_fails", TestOutcome::Failed),
+        ("tests.test_probe::test_xpass_strict", TestOutcome::Failed),
+        ("tests.test_probe::test_setup_error", TestOutcome::Failed),
+        ("tests.test_probe::test_skipped", TestOutcome::Skipped),
+        ("tests.test_probe::test_xfail", TestOutcome::Skipped),
+    ];
+    assert_eq!(
+        report.test_count(),
+        expected.len(),
+        "no case more, none less"
+    );
+    for (id, outcome) in expected {
+        assert_eq!(report.outcome(id), Some(outcome), "{id}");
+    }
+}
+
+/// (a) `pytest-param-escapes.xml`: `&amp;`, `&lt;` and `&quot;` in a `name` attribute decode to the
+/// characters a claim's `tests:` link would write.
+#[test]
+fn pytest_escapes_in_a_parametrized_name_decode_to_the_written_id() {
+    let report =
+        Report::load(&fixture("pytest-param-escapes.xml")).expect("pytest's own output must load");
+    assert_eq!(report.test_count(), 3);
+    for id in [
+        "coll.test_param::test_p[a&b]",
+        "coll.test_param::test_p[x<y]",
+        "coll.test_param::test_p[q\"r]",
+    ] {
+        assert_eq!(report.outcome(id), Some(TestOutcome::Passed), "{id}");
+    }
+}
+
+/// (b) pytest writes a collection error as a `<testcase classname="">` and the run was interrupted,
+/// so nothing else is evidence: the whole report is refused (never read partially), the existing
+/// wording stays, and the message names the cause.
+#[test]
+fn a_collection_error_report_is_refused_whole_and_the_message_says_why() {
+    let path = fixture("pytest-collection-error.xml");
+    let reason = Report::load(&path).expect_err("a collection error is not evidence");
+    assert!(
+        reason.contains("empty classname attribute"),
+        "the existing refusal stays: {reason}"
+    );
+    assert!(
+        reason.contains("collection error"),
+        "the message names pytest's collection error as the likely cause: {reason}"
+    );
+    assert!(
+        reason.contains("interrupted"),
+        "…and that the run was interrupted, so nothing else is evidence: {reason}"
+    );
+    assert!(
+        reason.contains(&path.display().to_string()),
+        "the file is named: {reason}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Several reports: the union (ADR 0024 §2)
+// ---------------------------------------------------------------------------
+
+fn one_case(classname: &str, name: &str, outcome: TestOutcome) -> String {
+    let body = match outcome {
+        TestOutcome::Passed => String::new(),
+        TestOutcome::Failed => "<failure message=\"x\"/>".to_string(),
+        TestOutcome::Skipped => "<skipped message=\"x\"/>".to_string(),
+    };
+    format!(
+        "<testsuites><testsuite name=\"s\"><testcase classname=\"{classname}\" name=\"{name}\">{body}</testcase></testsuite></testsuites>"
+    )
+}
+
+fn write_temp(label: &str, text: &str) -> PathBuf {
+    let path = temp_path(label);
+    std::fs::write(&path, text).expect("writes a fixture report");
+    path
+}
+
+#[test]
+fn merge_is_the_union_by_id() {
+    let a = parse_ok(&one_case("a", "x", TestOutcome::Passed));
+    let b = parse_ok(&one_case("b", "y", TestOutcome::Failed));
+    let union = a.merge(b).expect("disjoint ids merge");
+    assert_eq!(union.test_count(), 2);
+    assert_eq!(union.outcome("a::x"), Some(TestOutcome::Passed));
+    assert_eq!(union.outcome("b::y"), Some(TestOutcome::Failed));
+}
+
+#[test]
+fn merge_dedupes_an_identical_outcome_and_refuses_a_different_one() {
+    let passed = parse_ok(&one_case("a", "x", TestOutcome::Passed));
+    let again = parse_ok(&one_case("a", "x", TestOutcome::Passed));
+    let failed = parse_ok(&one_case("a", "x", TestOutcome::Failed));
+    assert_eq!(
+        passed
+            .clone()
+            .merge(again)
+            .expect("identical dedupes")
+            .test_count(),
+        1
+    );
+    let reason = passed
+        .merge(failed)
+        .expect_err("a different outcome for one id is unusable");
+    assert!(reason.contains("a::x"), "the id is named: {reason}");
+}
+
+#[test]
+fn merging_an_empty_report_changes_nothing() {
+    let a = parse_ok(&one_case("a", "x", TestOutcome::Passed));
+    let empty = parse_ok("<testsuites/>");
+    assert_eq!(a.clone().merge(empty.clone()).expect("merges"), a);
+    assert_eq!(empty.clone().merge(a.clone()).expect("merges"), a);
+    assert!(empty.clone().merge(empty).expect("merges").is_empty());
+}
+
+#[test]
+fn load_many_reads_every_file_and_judges_the_union() {
+    let a = write_temp("many-a", &one_case("a", "x", TestOutcome::Passed));
+    let b = write_temp("many-b", &one_case("b", "y", TestOutcome::Skipped));
+    let union = Report::load_many(&[a.as_path(), b.as_path()]).expect("the union loads");
+    let _ = std::fs::remove_file(&a);
+    let _ = std::fs::remove_file(&b);
+    assert_eq!(union.test_count(), 2);
+    assert_eq!(union.outcome("b::y"), Some(TestOutcome::Skipped));
+}
+
+#[test]
+fn load_many_names_both_files_and_the_id_on_a_conflict() {
+    let a = write_temp("conflict-a", &one_case("a", "x", TestOutcome::Passed));
+    let b = write_temp("conflict-b", &one_case("a", "x", TestOutcome::Failed));
+    let reason = Report::load_many(&[a.as_path(), b.as_path()])
+        .expect_err("one id with two outcomes is unusable");
+    let _ = std::fs::remove_file(&a);
+    let _ = std::fs::remove_file(&b);
+    assert!(reason.contains("a::x"), "{reason}");
+    assert!(reason.contains(&a.display().to_string()), "{reason}");
+    assert!(reason.contains(&b.display().to_string()), "{reason}");
+}
+
+#[test]
+fn load_many_names_the_first_file_of_a_conflict_that_is_not_the_previous_one() {
+    // The conflict is between the third file and the FIRST, with a clean file between them: the
+    // union does not forget where an id came from.
+    let a = write_temp("three-a", &one_case("a", "x", TestOutcome::Passed));
+    let b = write_temp("three-b", &one_case("b", "y", TestOutcome::Passed));
+    let c = write_temp("three-c", &one_case("a", "x", TestOutcome::Skipped));
+    let reason = Report::load_many(&[a.as_path(), b.as_path(), c.as_path()])
+        .expect_err("a conflict across files");
+    for path in [&a, &b, &c] {
+        let _ = std::fs::remove_file(path);
+    }
+    assert!(reason.contains(&a.display().to_string()), "{reason}");
+    assert!(reason.contains(&c.display().to_string()), "{reason}");
+    assert!(
+        !reason.contains(&b.display().to_string()),
+        "the innocent file is not blamed: {reason}"
+    );
+}
+
+#[test]
+fn load_many_refuses_the_whole_set_when_one_member_is_unreadable_and_names_it() {
+    let good = write_temp("member-good", &one_case("a", "x", TestOutcome::Passed));
+    let missing = temp_path("member-missing");
+    let _ = std::fs::remove_file(&missing);
+    let bad = write_temp("member-bad", "<testsuites><testcase");
+    for order in [
+        [good.as_path(), missing.as_path()],
+        [missing.as_path(), good.as_path()],
+    ] {
+        let reason = Report::load_many(&order).expect_err("one member cannot be read");
+        assert!(reason.contains(&missing.display().to_string()), "{reason}");
+    }
+    let reason = Report::load_many(&[good.as_path(), bad.as_path()]).expect_err("unparsable");
+    let _ = std::fs::remove_file(&good);
+    let _ = std::fs::remove_file(&bad);
+    assert!(reason.contains(&bad.display().to_string()), "{reason}");
+}
+
+#[test]
+fn load_many_accepts_an_empty_member_the_same_path_twice_and_an_all_empty_set() {
+    let cases = write_temp("shape-cases", &one_case("a", "x", TestOutcome::Passed));
+    let empty = write_temp("shape-empty", "<testsuites/>");
+    let union = Report::load_many(&[empty.as_path(), cases.as_path()]).expect("empty + cases");
+    assert_eq!(union.test_count(), 1);
+    let twice = Report::load_many(&[cases.as_path(), cases.as_path()]).expect("same path twice");
+    assert_eq!(twice.test_count(), 1);
+    let none = Report::load_many(&[empty.as_path(), empty.as_path()]).expect("both empty");
+    assert!(none.is_empty(), "an empty union is still an empty report");
+    let _ = std::fs::remove_file(&cases);
+    let _ = std::fs::remove_file(&empty);
+}
+
+#[test]
+fn load_many_of_nothing_is_an_empty_report() {
+    let none = Report::load_many(&[]).expect("no path, no report to refuse");
+    assert!(none.is_empty());
+}
+
+#[test]
+fn a_directory_is_not_a_report_and_is_named() {
+    let dir = std::env::temp_dir();
+    let reason = Report::load(&dir).expect_err("a directory is not a report");
+    assert!(reason.contains(&dir.display().to_string()), "{reason}");
+}

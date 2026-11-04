@@ -957,7 +957,7 @@ fn out_beside_format_json_is_exit_2() {
         assert_eq!(out.code, 2, "{args:?}: {}", out.all());
         assert!(
             out.stderr
-                .contains("usage: req check [--test-report <file>] [--format text|json]"),
+                .contains("usage: req check [--test-report <file>]... [--format text|json]"),
             "{args:?}: {}",
             out.stderr
         );
@@ -992,7 +992,7 @@ fn argument_misuse_is_exit_2_with_usage() {
         assert_eq!(out.code, 2, "{args:?}: {}", out.all());
         assert!(
             out.stderr
-                .contains("usage: req check [--test-report <file>] [--format text|json]"),
+                .contains("usage: req check [--test-report <file>]... [--format text|json]"),
             "{args:?}: {}",
             out.stderr
         );
@@ -1099,5 +1099,264 @@ fn no_non_pass_run_prints_a_pass_verdict() {
                 out.stdout
             );
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// #64 (ADR 0024 §2): `--test-report` repeated — the union, forwarded to every gate step
+// ---------------------------------------------------------------------------
+
+/// A one-case JUnit report, as pytest writes it: `outcome` is `pass`, `fail` or `skip`.
+fn case_report(s: &Scratch, name: &str, classname: &str, case: &str, outcome: &str) -> String {
+    let body = match outcome {
+        "pass" => "",
+        "fail" => "<failure message=\"assert False\"/>",
+        "skip" => "<skipped type=\"pytest.skip\" message=\"not today\"/>",
+        other => panic!("unknown outcome {other}"),
+    };
+    let text = format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" tests=\"1\"><testcase classname=\"{classname}\" name=\"{case}\" time=\"0.000\">{body}</testcase></testsuite></testsuites>"
+    );
+    s.write(name, text.as_bytes());
+    name.to_string()
+}
+
+/// Machine-evidenced claims proved by two stacks (Rust and Python), in a corpus with two variants:
+/// each variant needs both reports.
+fn two_stacks(name: &str) -> Scratch {
+    let s = Scratch::new(name);
+    s.claim("REQ-0001", None, MS_200, None, Some("rust::passes"));
+    s.claim(
+        "REQ-0002",
+        Some("deployment_mode == air_gapped"),
+        MS_300,
+        None,
+        Some("py.test_probe::test_passes"),
+    );
+    s.claim(
+        "REQ-0003",
+        Some("deployment_mode == connected"),
+        MS_400,
+        None,
+        Some("py.test_probe::test_passes"),
+    );
+    s.variants("deployment_mode=air_gapped\ndeployment_mode=connected\n");
+    s
+}
+
+/// (e) The default-variant step (no `.req/variants`) is a gate step too: it must get the whole
+/// report list, not the first report.
+#[test]
+fn the_default_variant_step_gets_every_report() {
+    let s = Scratch::new("e-default-step");
+    s.claim("REQ-0001", None, MS_200, None, Some("probe::passes"));
+    s.claim("REQ-0002", None, MS_300, None, Some("other::passes"));
+    let first = s.report("first.xml", Outcome::Passed);
+    s.write(
+        "second.xml",
+        b"<testsuites><testsuite name=\"o\"><testcase name=\"passes\" classname=\"other\"/></testsuite></testsuites>",
+    );
+    let out = s.req(&[
+        "check",
+        "--test-report",
+        &first,
+        "--test-report",
+        "second.xml",
+    ]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(out.all().contains("the default variant"), "{}", out.all());
+    let first_only = s.req(&["check", "--test-report", &first]);
+    assert_eq!(
+        first_only.code, 3,
+        "setup: REQ-0002's test is only in the second report"
+    );
+}
+
+/// (e) `req check --test-report a --test-report b` gives **each** gate step the union: both variant
+/// lines pass, where either report alone leaves a step unable to confirm; and the exit equals the
+/// standalone `req gate` with the same two flags for every line.
+#[test]
+fn check_gives_each_gate_step_the_union_of_the_reports() {
+    let s = two_stacks("e-union");
+    let rust = case_report(&s, "rust.xml", "rust", "passes", "pass");
+    let py = case_report(&s, "py.xml", "py.test_probe", "test_passes", "pass");
+
+    let out = s.req(&["check", "--test-report", &rust, "--test-report", &py]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert_eq!(
+        out.step_lines().len(),
+        2,
+        "both variant steps ran:\n{}",
+        out.stdout
+    );
+    assert!(
+        out.step_lines().iter().all(|l| l.starts_with("[PASS] ")),
+        "{}",
+        out.stdout
+    );
+
+    for line in ["deployment_mode=air_gapped", "deployment_mode=connected"] {
+        let oracle = s.req(&["gate", "--test-report", &rust, "--test-report", &py, line]);
+        assert_eq!(oracle.code, 0, "setup: {line}: {}", oracle.all());
+    }
+    for alone in [&rust, &py] {
+        let out = s.req(&["check", "--test-report", alone]);
+        assert_eq!(
+            out.code,
+            3,
+            "one report alone cannot confirm the other stack's claim:\n{}",
+            out.all()
+        );
+    }
+}
+
+/// (e) The `=` spelling, the order and a repeated path are the same union; the exit of `check`
+/// equals the standalone gate's for a failing member and for a conflict.
+#[test]
+fn check_with_repeated_reports_has_the_exit_of_the_standalone_gate() {
+    let s = two_stacks("e-exit");
+    let rust = case_report(&s, "rust.xml", "rust", "passes", "pass");
+    let py_ok = case_report(&s, "py.xml", "py.test_probe", "test_passes", "pass");
+    let py_bad = case_report(&s, "py-bad.xml", "py.test_probe", "test_passes", "fail");
+    let rust_bad = case_report(&s, "rust-bad.xml", "rust", "passes", "fail");
+
+    let spelled = s.req(&[
+        "check",
+        &format!("--test-report={py_ok}"),
+        "--test-report",
+        &rust,
+        "--test-report",
+        &rust,
+    ]);
+    assert_eq!(spelled.code, 0, "{}", spelled.all());
+
+    // (flags, the variant line whose gate decides the fold)
+    for flags in [
+        // a failing member: the connected line fails
+        vec![rust.as_str(), py_bad.as_str()],
+        // a conflict between the two members: unusable evidence
+        vec![py_ok.as_str(), py_bad.as_str()],
+        // a failing first member
+        vec![rust_bad.as_str(), py_ok.as_str()],
+        // a member that does not exist
+        vec![rust.as_str(), "nope.xml"],
+    ] {
+        let mut check_args = vec!["check"];
+        for report in &flags {
+            check_args.extend(["--test-report", report]);
+        }
+        let checked = s.req(&check_args);
+        let mut worst = 0;
+        for line in ["deployment_mode=air_gapped", "deployment_mode=connected"] {
+            let mut gate_args = vec!["gate"];
+            for report in &flags {
+                gate_args.extend(["--test-report", report]);
+            }
+            gate_args.push(line);
+            let standalone = s.req(&gate_args).code;
+            worst = match (worst, standalone) {
+                (1, _) | (_, 1) => 1,
+                (3, _) | (_, 3) => 3,
+                _ => 0,
+            };
+        }
+        assert_eq!(
+            checked.code,
+            worst,
+            "{flags:?}: check's exit is the fold of the standalone gates':\n{}",
+            checked.all()
+        );
+        assert_ne!(
+            checked.code, 0,
+            "{flags:?}: setup: each of these is a non-pass"
+        );
+    }
+}
+
+/// (e) An unreadable member makes every gate step UNVERIFIABLE and names the file in each; the
+/// readable report alone would have passed.
+#[test]
+fn check_names_the_unreadable_member_in_every_gate_step() {
+    let s = two_stacks("e-unreadable");
+    let rust = case_report(&s, "rust.xml", "rust", "passes", "pass");
+    let py = case_report(&s, "py.xml", "py.test_probe", "test_passes", "pass");
+    s.write("broken.xml", b"<testsuites><testcase");
+    assert_eq!(
+        s.req(&["check", "--test-report", &rust, "--test-report", &py])
+            .code,
+        0,
+        "setup: the readable pair passes"
+    );
+    let out = s.req(&[
+        "check",
+        "--test-report",
+        &rust,
+        "--test-report",
+        "broken.xml",
+        "--test-report",
+        &py,
+    ]);
+    assert_eq!(out.code, 3, "{}", out.all());
+    assert_eq!(out.step_lines().len(), 2, "{}", out.stdout);
+    assert!(
+        out.step_lines()
+            .iter()
+            .all(|l| l.starts_with("[UNVERIFIABLE] ")),
+        "{}",
+        out.stdout
+    );
+    // The text rendering names the policy, not the reason; the JSON carries each gate step's whole
+    // document, so the file must be named once per step.
+    let json = s.req(&[
+        "check",
+        "--format",
+        "json",
+        "--test-report",
+        &rust,
+        "--test-report",
+        "broken.xml",
+        "--test-report",
+        &py,
+    ]);
+    assert_eq!(json.code, 3, "{}", json.all());
+    assert!(
+        json.stdout.matches("broken.xml").count() >= 2,
+        "each gate step's document names the unreadable file: {}",
+        json.stdout
+    );
+}
+
+/// (f) `--test-report` with no value, an empty one or an option-shaped one stays exit 2 with the
+/// usage line, wherever the repeat falls, and nothing runs.
+#[test]
+fn a_repeated_test_report_flag_still_needs_a_file() {
+    let s = two_stacks("f-usage");
+    let rust = case_report(&s, "rust.xml", "rust", "passes", "pass");
+    for args in [
+        vec!["check", "--test-report"],
+        vec!["check", "--test-report="],
+        vec!["check", "--test-report", ""],
+        vec!["check", "--test-report", "-x"],
+        vec!["check", "--test-report=-x"],
+        vec!["check", "--test-report", rust.as_str(), "--test-report"],
+        vec!["check", "--test-report", rust.as_str(), "--test-report="],
+        vec!["check", "--test-report", rust.as_str(), "--test-report", ""],
+        vec![
+            "check",
+            "--test-report",
+            rust.as_str(),
+            "--test-report",
+            "--format",
+        ],
+    ] {
+        let out = s.req(&args);
+        assert_eq!(out.code, 2, "{args:?}: {}", out.all());
+        assert!(
+            out.stderr
+                .contains("usage: req check [--test-report <file>]"),
+            "{args:?}: {}",
+            out.stderr
+        );
+        assert!(out.step_lines().is_empty(), "{args:?}: nothing ran");
     }
 }
