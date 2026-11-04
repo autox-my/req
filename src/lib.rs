@@ -13,6 +13,10 @@ pub mod bench;
 // four states are unit-testable here even though a build script is not.
 pub mod build_identity;
 pub mod canon;
+// The release lists folded into one verdict (ADR 0023): reads `.req/variants` and
+// `.req/projections`, runs the gate and `render --check` code for each line, and applies the gate's
+// own fold. Nothing here computes an address or a policy.
+pub mod check;
 pub mod compare;
 pub mod decision;
 // Internal plumbing: every caller is in-crate (canon, decision, bench, model), and the raw

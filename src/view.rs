@@ -853,6 +853,76 @@ fn run_check(
     invocation_context: &Context,
     root: &Path,
 ) -> i32 {
+    let judged = check_projection(generator, command, path, invocation_context, root);
+    print!("{}", judged.stdout);
+    eprint!("{}", judged.stderr);
+    judged.code
+}
+
+/// What one `--check` decided, without printing it: the exit, and the lines it would have written
+/// to each stream. `req check` runs the same judgement for each listed projection (ADR 0023 §4)
+/// and reports the lines under the step, so a stale file still names its first differing line.
+pub struct ProjectionCheck {
+    pub code: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// `req render --check <path>`'s judgement, with no context named: the projection is judged under
+/// its own recorded selection, exactly as the documented CI line does. The one call `req check`
+/// makes per listed projection.
+pub fn check_render_projection(path: &Path, root: &Path) -> ProjectionCheck {
+    check_projection(GENERATOR_RENDER, "render", path, &Context::new(), root)
+}
+
+fn check_projection(
+    generator: &str,
+    command: &str,
+    path: &Path,
+    invocation_context: &Context,
+    root: &Path,
+) -> ProjectionCheck {
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    let code = judge_projection(
+        generator,
+        command,
+        path,
+        invocation_context,
+        root,
+        &mut stdout,
+        &mut stderr,
+    );
+    ProjectionCheck {
+        code,
+        stdout,
+        stderr,
+    }
+}
+
+fn judge_projection(
+    generator: &str,
+    command: &str,
+    path: &Path,
+    invocation_context: &Context,
+    root: &Path,
+    stdout: &mut String,
+    stderr: &mut String,
+) -> i32 {
+    // The same lines the command always printed, collected: a `println!`/`eprintln!` in this body
+    // appends to the stream it names.
+    macro_rules! println {
+        ($($arg:tt)*) => {{
+            stdout.push_str(&format!($($arg)*));
+            stdout.push('\n');
+        }};
+    }
+    macro_rules! eprintln {
+        ($($arg:tt)*) => {{
+            stderr.push_str(&format!($($arg)*));
+            stderr.push('\n');
+        }};
+    }
     let stored = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) => {
