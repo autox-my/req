@@ -1741,6 +1741,15 @@ pub fn load_registry(root: &std::path::Path) -> Result<Registry, String> {
 /// unit, lints) and each pin's verdict, and it reports: exit 0 whatever it found, 3 when the
 /// corpus cannot be read. The check that gates pins is `req gate` (`pins_hold`).
 pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
+    run_claim_diagnostics_with(root, false)
+}
+
+/// [`run_claim_diagnostics_at`] with the opt-in `--fail-on-flag` (issue #106): the same output on
+/// stdout, and a flagged pin on **any** claim — applying in some variant or not — exits 1, naming
+/// the claims on stderr. It answers "is any pin wrong" before test evidence exists; it is not a
+/// release verdict, so a clean run says so and never prints the gate's word `PASS`. A corpus that
+/// cannot be read stays 3 either way.
+pub fn run_claim_diagnostics_with(root: &std::path::Path, fail_on_flag: bool) -> i32 {
     let claims = match load_claims(root) {
         Ok(c) => c,
         Err(e) => {
@@ -1751,6 +1760,7 @@ pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
 
     let (mut unstructured, mut pins, mut pinned_claims, mut flagged, mut linted) =
         (0usize, 0usize, 0usize, 0usize, 0usize);
+    let mut flagged_claims: Vec<&str> = Vec::new();
     for loaded in claims.iter() {
         let derived = &loaded.derived;
         let form = &derived.form;
@@ -1812,9 +1822,13 @@ pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
         }
         pins += derived.pins.len();
         pinned_claims += usize::from(!derived.pins.is_empty());
+        let before = flagged;
         for check in &derived.pins {
             flagged += usize::from(check.flags());
             println!("  {}", check.describe());
+        }
+        if flagged > before {
+            flagged_claims.push(loaded.claim.claim_id.as_str());
         }
     }
     println!(
@@ -1822,11 +1836,28 @@ pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
          {flagged} flagged; lints on {linted} claim(s) \
          (diagnostics: the parse is derived from `statement` at load and stored nowhere \
          (req.claim/2); a pin agrees or is a flag — a contradiction, or a slot the parse does \
-         not carry; `req canon` reports and never fails on a flag, and the check that gates pins is \
-         `req gate` (pins_hold))",
+         not carry; `req canon` reports and fails on a flag only with `--fail-on-flag`; the check that gates a \
+         release is `req gate` (pins_hold))",
         claims.len()
     );
-    0
+    if !fail_on_flag {
+        return 0;
+    }
+    if flagged_claims.is_empty() {
+        eprintln!(
+            "--fail-on-flag: no pin is flagged on any claim. This is not a release verdict: \
+             tests, relations and decisions were not judged; `req gate` judges those."
+        );
+        0
+    } else {
+        eprintln!(
+            "--fail-on-flag: {flagged} pin(s) flagged on {} claim(s): {}. Re-word the statement or \
+             leave the flag; never edit a pin to fit the parse.",
+            flagged_claims.len(),
+            flagged_claims.join(", ")
+        );
+        1
+    }
 }
 
 /// The message `req canon --fill` and `req canon --verify` answer with (exit 2): the flags are

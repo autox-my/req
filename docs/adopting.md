@@ -194,7 +194,7 @@ including the tri-state — and `req <command> --help` works before a corpus exi
 3. **Values are canonical SI.** `within 200 ms` parses to `value "0.2"`, `unit s`: pin the exact
    decimal string the parser derives, not the units the prose used. `unit: ms` is a contradiction,
    and `"0.30"` is not a canonical decimal (`"0.3"` is), so it cannot be pinned.
-4. **`req canon` never fails on a flag.** It reports (it exits 3 only when the corpus cannot be read); it never gates. The check that gates is `req gate`:
+4. **`req canon` fails on a flag only if you ask.** It reports (it exits 3 only when the corpus cannot be read); `req canon --fail-on-flag` is the opt-in that exits 1 on a flagged pin, for the time before every claim has a linked test. The check that gates a release is `req gate`:
    the loop in one sentence is edit → `req canon` to see the parse → `req gate`. A claim's
    `applicability:` list is part of its address (since rules v5), so editing it moves the address
    exactly as editing the statement does.
@@ -741,9 +741,14 @@ window. Each step names its deciding line; the explanation is in the section it 
 
    `--write` writes the drafts and names them (`wrote: <n> claim(s) — claims/REQ-0002.yml, …`).
 4. **Ratify: read the parse, pin the bound** (*The authoring loop and its traps*): `req canon` reports and
-   never gates — one row per claim with its derived parse, one `pin <key> <value>: agrees` (or `FLAG …`)
+   by default never gates — one row per claim with its derived parse, one `pin <key> <value>: agrees` (or `FLAG …`)
    line per pin, and a last line `claims: <n> (<u> unstructured); pins: <p> on <c> claim(s), <f> flagged; …`.
-   Nothing is filled: there is nothing derived to write. A flagged pin is the gate's to fail (`pins_hold`).
+   Nothing is filled: there is nothing derived to write. A flagged pin is the gate's to fail (`pins_hold`), and
+   the gate cannot be green until every applying claim has a passing linked test or declares `evidence:
+   process` — so until then wire `req canon --fail-on-flag` into CI: exit 1 when any pin of any claim is
+   flagged, 0 when none is, 3 when the corpus cannot be read. Its green is **not** a release verdict (tests,
+   relations and decisions were not judged); replace it with `req gate` at step 5, do not add it to the
+   release path as a substitute.
 5. **Gate it** (*Link each claim to its proving test*, *CI*, *The coverage rule*): declare each release in
    `.req/variants`, run the suite for the report, then one `req gate --test-report
    target/nextest/ci/junit.xml <key=value ...>` per line. With every applying claim linked to a passing
