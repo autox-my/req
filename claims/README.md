@@ -41,7 +41,8 @@ the canonical form and the address are computed from `statement` when the corpus
 claim and each pin's verdict; `pins:` states what the parse must be where it is load-bearing.
 
 These files were migrated from `req.claim/1` on 2026-11-04 by `tools/migrate_claims.py` (M3).
-Every address is the one the v1 file stored (rules v6), and the migration's pins — REQ-0008
+Every address is the one the v1 file stored (rules v6) — except REQ-0017 (re-worded) and REQ-0007
+(split, M4-1), which moved on purpose — and the migration's pins — REQ-0008
 `value`, REQ-0009 `value`/`operator`, REQ-0010 `value`/`operator`, REQ-0022 `value` — all agree
 with the parse. The history below describes the v1 format, when the slots were authored beside
 the statement and `--fill`/`--verify` wrote and checked the stored fields.

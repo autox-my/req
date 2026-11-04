@@ -356,7 +356,8 @@ FAIL; an explicit context that contradicts the recorded selection is a usage err
 never drift. A v3-or-later manifest also attests the decision log's chain head at a position:
 a rewritten prefix or a truncated log is FAIL, decisions appended after it are not. A v4
 manifest attests each claim's `tests_hash` (its evidence declaration and links); a v3 one says
-once that it predates v4, so its tests are not attested — not a FAIL. A manifest whose `rules_v`
+once that it predates v4, so its tests are not attested — not a FAIL. A claim's `pins:` are not
+attested by any version (ADR 0022): deleting one after signing still verifies. A manifest whose `rules_v`
 differs from this build's is UNVERIFIABLE, not judged: an older one is re-signed, a newer one
 is verified with a build that writes it. Trust is read from `baselines/trust.yml` (ADR 0010),
 by calendar date: a key expired at the signing time, or revoked at or before it, is FAIL; one
