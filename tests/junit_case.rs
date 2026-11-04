@@ -10,8 +10,14 @@
 //! execute bit, a command that outlives its timeout (and one whose *grandchild* does), a command
 //! that kills itself with a signal, and an adapter that is itself sent SIGTERM.
 //!
-//! A machine without `python3` prints `SKIP` with the reason and returns — a skipped test is never
-//! reported as a pass by this file's own words (`scripts/check.sh` skips the same way).
+//! `python3` is a hard prerequisite of this file, like `minisign` and `bash` for the Baseline gate
+//! tests: a test that returned early would be recorded as **passed** in the JUnit report `req gate`
+//! reads, which is the absence-reads-as-pass failure this repository exists to prevent. A machine
+//! without it fails the suite loudly (`scripts/check.sh` skips only the adapter's own self-check
+//! step, and says SKIP there).
+#![cfg(unix)]
+
+mod common;
 
 use req::junit::{Report, TestOutcome};
 use std::fs;
@@ -106,7 +112,7 @@ struct Scratch {
 }
 
 impl Scratch {
-    /// `None` (after printing why) when `python3` is not on PATH: the caller returns, visibly.
+    /// Always `Some`: `python3` missing is a panic (see the module doc), never an early return.
     fn new(name: &str) -> Option<Scratch> {
         let python_ok = Command::new("python3")
             .arg("--version")
@@ -114,10 +120,10 @@ impl Scratch {
             .stderr(Stdio::null())
             .status()
             .is_ok_and(|status| status.success());
-        if !python_ok {
-            eprintln!("SKIP junit_case::{name}: python3 is not on PATH, so the adapter cannot run");
-            return None;
-        }
+        assert!(
+            python_ok,
+            "junit_case::{name}: python3 is not on PATH, so the adapter cannot run (a hard prerequisite)"
+        );
         static N: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
             "req-junit-case-{}-{}-{name}",
@@ -393,21 +399,26 @@ fn a_timeout_kills_the_grandchild_too() {
         .expect("the grandchild recorded its pid")
         .trim()
         .to_string();
+    assert_gone(&pid, "grandchild");
+}
+
+/// True while `pid` is a live process. A zombie (killed, not yet reaped by whatever inherited it —
+/// a plain container's PID 1 may never reap) counts as dead: `kill -0` succeeds on a zombie, so the
+/// process state is read instead.
+fn is_alive(pid: &str) -> bool {
+    let out = Command::new("ps")
+        .args(["-o", "stat=", "-p", pid])
+        .output()
+        .expect("runs ps");
+    let state = String::from_utf8_lossy(&out.stdout);
+    let state = state.trim();
+    !state.is_empty() && !state.starts_with('Z')
+}
+
+fn assert_gone(pid: &str, what: &str) {
     let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        let alive = Command::new("kill")
-            .args(["-0", &pid])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|status| status.success());
-        if !alive {
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "grandchild {pid} still runs after the timeout"
-        );
+    while is_alive(pid) {
+        assert!(Instant::now() < deadline, "{what} {pid} is still running");
         std::thread::sleep(Duration::from_millis(50));
     }
 }
@@ -443,7 +454,12 @@ fn an_interrupted_adapter_stops_the_command_and_records_an_error() {
     // The earlier run passed; the interrupted one must overwrite that pass.
     assert_eq!(s.case("c", &["true"]).code, 0);
     let started = s.path("started");
-    let script = format!("touch '{}'; exec sleep 30", started.display());
+    let pidfile = s.path("command.pid");
+    let script = format!(
+        "echo $$ > '{}'; touch '{}'; exec sleep 30",
+        pidfile.display(),
+        started.display()
+    );
     let report = s.report().display().to_string();
     let mut child = Command::new("python3")
         .arg(adapter_script())
@@ -482,6 +498,11 @@ fn an_interrupted_adapter_stops_the_command_and_records_an_error() {
         std::thread::sleep(Duration::from_millis(20));
     };
     assert_eq!(status.code(), Some(143));
+    let pid = fs::read_to_string(&pidfile)
+        .expect("the command recorded its pid")
+        .trim()
+        .to_string();
+    assert_gone(&pid, "the interrupted adapter's command");
     let xml = s.xml();
     assert!(
         xml.contains("<error message=\"interrupted by SIGTERM: "),
@@ -704,6 +725,129 @@ fn the_write_leaves_no_temp_file_behind() {
     );
     assert_eq!(s.listing("out"), vec!["junit.xml"]);
     assert_eq!(s.load().test_count(), 3);
+}
+
+/// Atomic means the report is replaced, not rewritten in place: a temp file renamed over it gives the
+/// path a new inode, while `open(report, "w")` would keep the old one and expose a truncated file to
+/// a concurrent `req gate` or a crash.
+#[test]
+fn a_rewrite_replaces_the_file_instead_of_truncating_it() {
+    use std::os::unix::fs::MetadataExt;
+    let Some(s) = Scratch::new("inode") else {
+        return;
+    };
+    assert_eq!(s.case("a", &["true"]).code, 0);
+    let before = fs::metadata(s.report()).expect("stats the report").ino();
+    assert_eq!(s.case("b", &["true"]).code, 0);
+    let after = fs::metadata(s.report()).expect("stats the report").ino();
+    assert_ne!(
+        before, after,
+        "the report was rewritten in place, not replaced"
+    );
+}
+
+/// Two different `(classname, name)` pairs can join to one id when a part contains `::`. `req` would
+/// read them as one test, so the second must not silently replace the first (a pass overwriting an
+/// unrelated failure), and the refusal comes before the command runs.
+#[test]
+fn a_colliding_pair_is_refused_before_the_command_runs() {
+    let Some(s) = Scratch::new("collision") else {
+        return;
+    };
+    let report = s.report().display().to_string();
+    let first = Command::new("python3")
+        .arg(adapter_script())
+        .args([
+            "--report",
+            &report,
+            "--classname",
+            "a::b",
+            "--name",
+            "c",
+            "--",
+            "sh",
+            "-c",
+            "exit 1",
+        ])
+        .output()
+        .expect("runs the adapter");
+    assert_eq!(first.status.code(), Some(1));
+    let before = fs::read(s.report()).expect("reads the report");
+    let marker = s.path("ran");
+    let touch = format!("touch '{}'", marker.display());
+    let second = Command::new("python3")
+        .arg(adapter_script())
+        .args([
+            "--report",
+            &report,
+            "--classname",
+            "a",
+            "--name",
+            "b::c",
+            "--",
+            "sh",
+            "-c",
+            &touch,
+        ])
+        .output()
+        .expect("runs the adapter");
+    assert_eq!(
+        second.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert!(!marker.exists(), "the command must not have run");
+    assert_eq!(fs::read(s.report()).expect("reads the report"), before);
+}
+
+/// A DTD hidden in UTF-16 would pass a byte scan and still be decoded by the XML parser: any
+/// non-UTF-8 existing report is refused and left byte-identical.
+#[test]
+fn a_utf16_report_with_a_dtd_is_refused_and_left_alone() {
+    let Some(s) = Scratch::new("utf16") else {
+        return;
+    };
+    let text = "<?xml version=\"1.0\" encoding=\"utf-16\"?><!DOCTYPE a [<!ENTITY x \"y\">]><testsuites><testsuite name=\"junit_case\"/></testsuites>";
+    let mut bytes = vec![0xff, 0xfe];
+    for unit in text.encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    fs::create_dir_all(s.report().parent().expect("has a directory")).expect("makes the directory");
+    fs::write(s.report(), &bytes).expect("writes the report");
+    let run = s.case("c", &["true"]);
+    assert_eq!(run.code, 2, "{}", run.err());
+    assert_eq!(fs::read(s.report()).expect("reads the report"), bytes);
+}
+
+/// The gate runs the adapter's self-check: deleting the step from `scripts/check.sh` reddens this, as
+/// it does for the other tools' tables (a plan executes nothing and is never a pass).
+#[test]
+fn the_gate_plan_names_the_adapter_self_check() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for args in [vec!["plan"], vec!["--fast", "plan"]] {
+        let mut command = Command::new("bash");
+        command
+            .arg(root.join("scripts/check.sh"))
+            .args(&args)
+            .current_dir(&root);
+        common::point_home_at_toolchain(&mut command);
+        let plan = command.output().expect("runs scripts/check.sh");
+        let stdout = String::from_utf8_lossy(&plan.stdout);
+        assert_eq!(
+            plan.status.code(),
+            Some(3),
+            "a plan is never a pass:\n{stdout}"
+        );
+        assert!(
+            stdout.lines().any(|line| line
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .contains("tools/junit_case.py --self-check")),
+            "the gate must self-check the adapter in {args:?}:\n{stdout}"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -265,7 +265,16 @@ def _blank(text):
 
 def parse_rows(data):
     """The rows of a report in exactly this shape; `Refused` (naming why) otherwise."""
-    if b"<!DOCTYPE" in data or b"<!ENTITY" in data:
+    # The adapter only ever writes UTF-8 without a BOM. Anything else (UTF-16/32, a BOM, a NUL) could
+    # hide a DTD from a byte scan yet still be decoded by the XML parser, so it is refused up front and
+    # the DTD scan runs on the decoded text.
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise Refused("it is not UTF-8, the only encoding this adapter writes") from None
+    if text.startswith("\ufeff") or "\x00" in text:
+        raise Refused("it carries a byte-order mark or a NUL, which this adapter never writes")
+    if "<!DOCTYPE" in text or "<!ENTITY" in text:
         raise Refused("it carries a DTD, which this adapter never writes")
     try:
         root = ET.fromstring(data)
@@ -316,11 +325,18 @@ def parse_rows(data):
 
 
 def merge_row(rows, row):
-    """`rows` with `row` replacing the one of the same id (in place), else appended."""
+    """`rows` with `row` replacing the one of the same id (in place), else appended. Two different
+    `(classname, name)` pairs can join to one id when a part contains `::`; `req` cannot tell them
+    apart, so replacing one with the other would let a pass overwrite an unrelated failure — refused."""
     identity = case_id(row.classname, row.name)
     merged = list(rows)
     for index, old in enumerate(merged):
         if case_id(old.classname, old.name) == identity:
+            if (old.classname, old.name) != (row.classname, row.name):
+                raise Refused(
+                    f"`{identity}` is already recorded for a different (classname, name) pair "
+                    f"({old.classname!r}, {old.name!r}); the two would be one test to `req`"
+                )
             merged[index] = row
             return merged
     merged.append(row)
@@ -415,7 +431,9 @@ def preflight(options):
     exists = inspect_target(options.report)
     if exists and not options.fresh:
         try:
-            read_rows(options.report)
+            existing = read_rows(options.report)
+            # The same refusal `record` would make, before the command runs.
+            merge_row(existing, Row(options.classname, options.name, None, "", None))
         except Refused as error:
             raise Refused(f"{error}; the command was not run, nothing was written (--fresh starts a new report)") from None
     directory = report_directory(options.report)
