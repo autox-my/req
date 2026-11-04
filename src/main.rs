@@ -162,7 +162,7 @@ denominator). A run that found a defect is 1 even when it was degraded.
 `docs/adopting.md` for the loop.";
 
 const CANON_HELP: &str = "\
-usage: req canon
+usage: req canon [--fail-on-flag]
 
 Prints, per claim, the parse its `statement` derives — structured or unstructured, modality,
 subject, operator, value, unit, and the lints the canonicalizer raised — and each pin's
@@ -180,8 +180,15 @@ file whose declared `schema:` is not the one this build writes (`req --version` 
 of no `req.claim/<n>` shape is a broken file. A `req.claim/2` file carrying a removed
 `req.claim/1` key is a parse error that names the key.
 
-exit: 0 diagnostics reported — not a pass: it reports, and it never gates; 3 a registry or
-claim file that cannot be read (or is NOT JUDGED); 2 usage, including `--fill` and `--verify`.
+`--fail-on-flag` is the opt-in for the window between \"pinned\" and \"every claim has a linked
+test\", when `req gate` cannot yet be green: the output is unchanged, and the exit is 1 when any
+pin is flagged. It looks at every claim, not only the ones a variant applies, so a wrong pin
+behind a selector cannot hide. Its green is not a release verdict: tests, relations and
+decisions were not judged, and `req gate` still decides the release.
+
+exit: 0 diagnostics reported — not a pass: it reports, and it never gates; with `--fail-on-flag`,
+0 means no pin is flagged and 1 means at least one is; 3 a registry or claim file that cannot be
+read (or is NOT JUDGED); 2 usage, including `--fill` and `--verify`.
 
 `docs/adopting.md` for the loop.";
 
@@ -508,15 +515,23 @@ const COMMANDS: &[Command] = &[
         name: "canon",
         run: |args, corpus| match args.first().map(String::as_str) {
             None => canon::run_claim_diagnostics_at(corpus),
+            // The opt-in (issue #106): same diagnostics, exit 1 on a flagged pin. Exactly this one
+            // argument — every other spelling or combination falls to the usage error below.
+            Some("--fail-on-flag") if args.len() == 1 => {
+                canon::run_claim_diagnostics_with(corpus, true)
+            }
             // Removed in `req.claim/2` (ADR 0022): there is nothing stored to write or check.
             // A usage error that says why, rather than "unrecognized flag", because a script or
             // a habit written against `req.claim/1` is the likeliest caller.
             Some("--fill" | "--verify") => {
-                eprintln!("{}\nusage: req canon", canon::FILL_VERIFY_REMOVED);
+                eprintln!(
+                    "{}\nusage: req canon [--fail-on-flag]",
+                    canon::FILL_VERIFY_REMOVED
+                );
                 2
             }
             Some(other) => {
-                eprintln!("unrecognized flag: {other}\nusage: req canon");
+                eprintln!("unrecognized flag: {other}\nusage: req canon [--fail-on-flag]");
                 2
             }
         },

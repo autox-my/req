@@ -348,7 +348,7 @@ fn print_next_steps() {
          \n\
          Next steps:\n\
          \x20 1. Edit `statement`, then run `req canon`: it prints the parse the statement\n\
-         \x20    derives and each pin's verdict, and never fails on a flag. Nothing derived is stored,\n\
+         \x20    derives and each pin's verdict, and fails on a flag only with `--fail-on-flag`. Nothing derived is stored,\n\
          \x20    so there is nothing to fill; `req gate` is the check that gates (`pins_hold`).\n\
          \x20 2. Give the claim its evidence. Link the test that proves it — add `tests:` with\n\
          \x20    the `classname::name` id the JUnit report carries — or declare\n\
@@ -689,7 +689,7 @@ and its provenance and nothing derived; add `pins:` where the parse is load-bear
    `pins:` state the bound of its sample statement: change them with the statement, or delete
    them, or `req gate` fails `pins_hold` on a pin you no longer mean.
 2. Run `req canon`. It prints the parse the statement derives and each pin's verdict. It reports
-   and never gates: a flagged pin does not fail it (it exits 3 only when the corpus cannot be read).
+   and by default never gates: a flagged pin does not fail it unless you pass `--fail-on-flag` (it exits 3 only when the corpus cannot be read).
 3. Run `req gate` before you ship; the CI section of req's `docs/adopting.md` wires it. A pin
    that does not hold fails `pins_hold` (exit 1).
 

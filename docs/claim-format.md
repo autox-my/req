@@ -153,7 +153,7 @@ never agree — a non-canonical decimal, a comparator outside T1.5 — is a **lo
 flag whose cause is a typo. `unit: none` agrees with a unitless parse.
 
 A flagged pin **moves no address** — pins are outside the canonical form. It reports: `req
-canon` prints each pin's verdict (and exits 0, it never gates), and the release gate's
+canon` prints each pin's verdict (and exits 0 unless `--fail-on-flag` asks for exit 1 on a flag), and the release gate's
 `pins_hold` policy fails (exit 1) on any flagged pin of an applying claim, naming it. With no
 pin in the selection, `pins_hold` passes and says it held zero pins — exercised, not skipped.
 
