@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.119" timestamp="2026-11-04T00:00:00.000000+00:00" hostname="host"><testcase classname="" name="coll.test_broken" time="0.000"><error message="collection failure">ImportError while importing test module '/work/coll/test_broken.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/homebrew/Cellar/python@3.15/3.15.2/Frameworks/Python.framework/Versions/3.15/lib/python3.15/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+coll/test_broken.py:1: in &lt;module&gt;
+    import nonexistent_module_xyz
+E   ModuleNotFoundError: No module named 'nonexistent_module_xyz'</error></testcase></testsuite></testsuites>

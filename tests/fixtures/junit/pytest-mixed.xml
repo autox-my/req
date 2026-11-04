@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="2" skipped="2" tests="10" time="0.042" timestamp="2026-11-04T00:00:00.000000+00:00" hostname="host"><testcase classname="tests.test_probe" name="test_passes" time="0.000" /><testcase classname="tests.test_probe" name="test_fails" time="0.000"><failure message="AssertionError: assert 'a&lt;b &amp; c&gt;' == 'x'&#10;  &#10;  - x&#10;  + a&lt;b &amp; c&gt;">def test_fails():
+&gt;       assert "a&lt;b &amp; c&gt;" == "x"
+E       AssertionError: assert 'a&lt;b &amp; c&gt;' == 'x'
+E         
+E         - x
+E         + a&lt;b &amp; c&gt;
+
+tests/test_probe.py:7: AssertionError</failure></testcase><testcase classname="tests.test_probe" name="test_skipped" time="0.000"><skipped type="pytest.skip" message="not today">/work/tests/test_probe.py:9: not today</skipped></testcase><testcase classname="tests.test_probe" name="test_xfail" time="0.000"><skipped type="pytest.xfail" message="known" /></testcase><testcase classname="tests.test_probe" name="test_xpass_strict" time="0.000"><failure message="[XPASS(strict)] ">[XPASS(strict)] </failure></testcase><testcase classname="tests.test_probe" name="test_param[1]" time="0.000" /><testcase classname="tests.test_probe" name="test_param[2]" time="0.000" /><testcase classname="tests.test_probe" name="test_param[a b]" time="0.000" /><testcase classname="tests.test_probe" name="test_setup_error" time="0.000"><error message="failed on setup with &quot;RuntimeError: setup blew up&quot;">@pytest.fixture
+    def broken():
+&gt;       raise RuntimeError("setup blew up")
+E       RuntimeError: setup blew up
+
+tests/test_probe.py:27: RuntimeError</error></testcase><testcase classname="tests.test_probe.TestGroup" name="test_in_class" time="0.000"><properties><property name="req" value="REQ-0003" /></properties></testcase></testsuite></testsuites>
