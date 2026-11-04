@@ -1,6 +1,10 @@
 # 0014. An authored slot that contradicts the parse is a defect, whatever its shape
 
-**Status: accepted** — proposed by the agent, ratified by the maintainer on 2026-10-20, and
+**Status: superseded by [ADR 0022](0022-claims-are-authored-fingerprints-are-derived.md)** (2026-11-03):
+`req.claim/2` removes the authored slots this ADR checks; a pin agrees or is a flag, and the annotation
+category is gone. The text below is the record of the decision as it stood.
+
+**Original status: accepted** — proposed by the agent, ratified by the maintainer on 2026-10-20, and
 **amended twice the same day** — once after prototyping the rule against the whole corpus, once after
 implementing it (see the two *Amendments* at the end). The decision answers review finding [F2]. Date proposed: 2026-10-20.
  The decision answers review

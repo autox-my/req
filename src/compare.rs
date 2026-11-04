@@ -264,8 +264,8 @@ pub fn run(path_a: &str, path_b: &str, root: &std::path::Path) -> i32 {
         }
     };
     let (va, vb) = (
-        crate::canon::evaluate_claim(&a, &registry),
-        crate::canon::evaluate_claim(&b, &registry),
+        crate::canon::derive(&a, &registry),
+        crate::canon::derive(&b, &registry),
     );
     let direction = compare(&va.form, &vb.form);
     println!("{} -> {}: {}", a.claim_id, b.claim_id, direction.as_str());
@@ -276,34 +276,25 @@ pub fn run(path_a: &str, path_b: &str, root: &std::path::Path) -> i32 {
         println!("  one side has no structured form, so there is nothing to compare");
         return 3;
     }
-    if va.flags() > 0 || vb.flags() > 0 {
+    let (flags_a, flags_b) = (va.flagged_pins().count(), vb.flagged_pins().count());
+    if flags_a > 0 || flags_b > 0 {
         println!(
-            "  note: a claim's authored slots disagree with its parse ({} / {} flags) — \
-             run `req canon` before trusting the classification",
-            va.flags(),
-            vb.flags()
+            "  note: a pin disagrees with its claim's parse ({flags_a} / {flags_b} flagged) — \
+             run `req canon` before trusting the classification"
         );
     }
-    let (addr_a, addr_b) = (
-        crate::canon::address_hex(&crate::canon::canonical_json(&va.form)),
-        crate::canon::address_hex(&crate::canon::canonical_json(&vb.form)),
-    );
+    let (addr_a, addr_b) = (va.address, vb.address);
     println!("  {} -> {}", &addr_a[..12], &addr_b[..12]);
     0
 }
 
 fn load_claim(path: &str) -> Result<crate::model::ClaimFile, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("read {path}: {e}"))?;
-    let claim: crate::model::ClaimFile =
-        yaml_serde::from_str(&text).map_err(|e| format!("parse {path}: {e}"))?;
     // A side declaring a format this build does not write is a claim that will not load, exactly
     // as the docstring above says: classifying it would report a direction over a parse nothing
     // judged, and the loader (which this path does not go through) refuses the same file. Same
-    // class, same home: `claim_schema_reason`, never a second opinion.
-    if let Some(reason) = crate::canon::claim_schema_reason(&claim) {
-        return Err(format!("{path}: {reason}"));
-    }
-    Ok(claim)
+    // class, same home: `canon::parse_claim`, never a second opinion.
+    crate::canon::parse_claim(&text).map_err(|e| format!("{path}: {e}"))
 }
 
 fn rank(m: Option<Modality>) -> Option<u8> {

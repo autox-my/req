@@ -1,28 +1,11 @@
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-0004
 statement: >-
   The req tool shall emit proposals for reviewer ratification.
-modality: SHALL
-subject: REQ_TOOL
-attribute: semantic_layer_output
-operator: EQ
-value: proposals_only
-unit: none
-conditions: []
 applicability: []
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
 tests:
   - "req::evidence::a_provider_answer_is_an_unratified_proposal_never_an_edit"
 evidence: machine
-canonical:
-  rules_v: 6
-  subject_registry: 1
-  form: |-
-    {"action":"emit proposals for reviewer ratification","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: ddc6992dd05b4da58ae21e5dda821d488f7fcaea04b9a5849ab8d11e00f2bf80
 rationale:
   source: docs/adr/0004-model-proposes-human-disposes.md
   date: 2026-10-07

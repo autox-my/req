@@ -177,7 +177,7 @@ const FIXTURE_RATIONALE_DIGEST: &str =
 
 /// `printf 'req.tests.v1\0{"evidence":"machine","tests":[]}' | shasum -a 256` (the `\0` is a
 /// literal NUL byte) — the fixture rows link no test, and the pinned v4 bytes must carry the
-/// digest of that empty **declaration**. `tests/fill.rs` pins the same value against its own
+/// digest of that empty **declaration**. `tests/address_recompute.rs` pins the same value against its own
 /// oracle; an earlier draft hashed the bare list (60dd3ab0…) and the review caught the two pins
 /// disagreeing — the implementation hashes the declaration.
 const EMPTY_TESTS_DIGEST: &str = "f70c34ce463f8c0294ac8846abea5b911d5933c42a9d978522bff8c6b5445d53";
@@ -217,7 +217,7 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
         tests: Vec::new(),
         evidence: req::model::Evidence::Machine,
         tests_hash: EMPTY_TESTS_DIGEST.to_string(),
-        stored: req::fill::StoredState::Verified,
+        pins: Vec::new(),
         rationale_source: provenance.source,
         rationale_date: provenance.date,
     }

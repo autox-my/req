@@ -16,7 +16,7 @@ req::evidence::the_parity_corpus_meets_its_false_split_target
 req::evidence::the_core_crate_carries_no_network_client
 req::evidence::no_command_starts_a_sync_or_polling_loop
 req::select::an_undecided_key_is_unknown_never_false
-req::fill::fill_writes_derived_fields_and_the_address_recomputes
+req::address_recompute::the_address_recomputes_from_the_canonical_bytes_and_matches_the_signed_manifest
 req::evidence::canonical_forms_serialize_quantities_as_exact_decimal_strings
 req::bench::tests::n005_lints_untestable_comparator
 req::view::incoming_relations_are_derived_from_the_outgoing_side

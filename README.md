@@ -6,8 +6,9 @@ A semantic, git-native requirements engine.
 claim per file in git, written in a small, reviewable format. A claim's identity is its
 `claim_id` — not its path and not its history, and not its wording. Its *meaning fingerprint* is
 a content address over its *canonical meaning*: a deterministic pipeline parses the statement,
-normalises it against a subject registry, and hashes the result. Two claims with the same
-fingerprint are candidates for one requirement, however differently they are worded — req never
+normalises it against a subject registry, and hashes the result — every time the claim is loaded,
+so a claim file stores what its author wrote and nothing derived (`req.claim/2`, ADR 0022). Two
+claims with the same fingerprint are candidates for one requirement, however differently they are worded — req never
 merges them; a human ratifies. Two claims that differ in a bound, an actor, or a modality are
 different requirements, however similar their prose.
 
@@ -38,8 +39,8 @@ identity ([ADR 0020](docs/adr/0020-the-address-is-a-meaning-fingerprint.md), acc
 
 | command | the question it answers |
 | --- | --- |
-| `req init` | start a corpus here — a starter claim already filled and verified, its registry, and the authoring README |
-| `req canon` | what each claim parses to, and whether the parse still agrees with the author's slots |
+| `req init` | start a corpus here — a starter claim whose pins hold, its registry, and the authoring README |
+| `req canon` | what each claim's statement derives, and whether each of its pins holds |
 | `req bench` | does the fingerprint hold — zero false merges over the corpora; exit non-zero and the build is red |
 | `req select` | which claims apply in a variant — selectors, not branches — with UNKNOWN as a first-class answer |
 | `req render`, `req trace` | the compiled spec view, and the traceability matrix with every edge named |

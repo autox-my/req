@@ -2,13 +2,12 @@
 """tools/adopt.py — draft req claims from a document you already have (issue #44).
 
 The blocker for an adopter with a `spec.md`, a backlog or a capabilities table is not parsing:
-a claim's structured slots must be *authored* (the parity invariant), so a tool that guessed
-`modality`, `value` or `operator` from prose would be the one path that can enshrine a
-contradicted parse. What is honest to draft is the part the claim format already sanctions —
-an **unstructured** claim: a statement, its provenance, and `unstructured: true`, with every
-structured slot absent. That claim is legal as written (`req canon` reports 0 flags), it is
-*unfilled* (`req canon --fill` derives `canonical.form` and `address`), and the human then
-either leaves it qualitative or authors the slots. The drafts are proposals (ADR 0004).
+since `req.claim/2` (ADR 0022) a claim's parse is **derived** from its statement when it is
+loaded, and nothing derived is stored. So what a draft carries is exactly what a human would
+author first — the statement, its provenance, empty `applicability` and `relations` — and
+nothing else: no slot to guess, nothing to fill. `req canon` then shows the parse each draft
+derives, and the human pins a load-bearing bound (`pins:`) where there is one. The drafts are
+proposals (ADR 0004).
 
 This script is a starting point adopters **copy and adjust**; it is deliberately not a req
 subcommand (issue #44's scope) and the mapping is per-project. Two conventions are built in,
@@ -35,17 +34,17 @@ the run asks for `--date` rather than borrowing a revision that does not contain
 Exit codes, the same three-state discipline as req:
 
   0  drafted (dry run, or written with --write)
-  1  a definite problem — nothing extracted, no candidate is a prose-only statement, the target
-     already exists, or the document is already drafted into this corpus; nothing was written
-  2  usage — a missing `--from`/`--subject`, an unreadable `--date`, or no date the tool can
-     honestly borrow (not in git, or changed since its last commit)
+  1  a definite problem — nothing extracted, the target already exists, or the document is
+     already drafted into this corpus; nothing was written
+  2  usage — a missing `--from`, an unreadable `--date`, or no date the tool can honestly
+     borrow (not in git, or changed since its last commit)
   3  UNVERIFIABLE — the document, the corpus, the subject registry, or `req` itself cannot be
      read, so nothing can be drafted honestly
 
-Nothing derived is ever written: `canonical.form` stays the empty placeholder and `address`
-stays `null`. The values a draft must carry (`schema`, `rules_v`) are read from
-`req --version`, and the registry version from `aliases/subjects.yml` — never hardcoded, so a
-rules bump cannot leave this template behind.
+Nothing derived is ever written, and no pin is guessed. This tool drafts `req.claim/2` claims
+only (`DRAFT_SCHEMA`): it asks `req --version` which schema the binary judges and refuses
+(UNVERIFIABLE, exit 3) any other, so a format bump fails loud instead of leaving this template
+behind; the report names the build's `rules_v` it ran against.
 """
 import argparse
 import datetime
@@ -81,16 +80,9 @@ REGISTRY_VERSION_RE = re.compile(r"^version:[ \t]*(?P<value>\d+)[ \t]*$", re.MUL
 VERSION_RULES_RE = re.compile(r"^[ \t]*rules_v[ \t]+(?P<value>\d+)[ \t]*$", re.MULTILINE)
 VERSION_SCHEMA_RE = re.compile(r"^[ \t]*claim_schema[ \t]+(?P<value>\S+)[ \t]*$", re.MULTILINE)
 CLAIM_SCHEMA_RE = re.compile(r"^req\.claim/\d+$")
+# The one schema `CLAIM_TEMPLATE` writes; a binary reporting another cannot load the draft.
+DRAFT_SCHEMA = "req.claim/2"
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-SUBJECT_RE = re.compile(r"^[A-Za-z0-9_.\-]+$")
-
-# Why a candidate that parses as a structured claim is skipped: `unstructured: true` contradicts
-# that parse, and `req canon --fill` refuses it — the slots are the author's, so this tool must
-# not write it.
-STRUCTURED_REASON = (
-    "parses as a structured claim — only its author can supply the slots (author it, or re-word "
-    "it as prose)"
-)
 
 CLAIMS_DIR = "claims"
 REGISTRY_PATH = "aliases/subjects.yml"
@@ -99,25 +91,16 @@ REQ_BINARY = "req"
 # The draft claim, byte for byte: a fixed template, not a serialized mapping. python3's
 # standard library has no YAML writer, and a round-trip through a serializer would produce a
 # file whose diff is unreadable — while this shape is the contract `docs/adopting.md` states
-# and the sibling of `src/init.rs`'s starter template. Every field the claim's parse requires
-# is here; every derived field is the placeholder `req canon --fill` rewrites.
+# and the sibling of `src/init.rs`'s starter template. It is a `req.claim/2` claim: the authored
+# fields only, nothing derived and no pin (ADR 0022).
 CLAIM_TEMPLATE = """\
-# A draft claim, adopted from {document}. `statement` is the whole parse here: the structured
-# slots are the human's (a draft is a proposal, ADR 0004). Next: run `req canon --fill` — it
-# writes the derived `canonical.form` and `address` below — then either leave the claim
-# qualitative or author the slots. Never hand-write either derived field.
+# A draft claim, adopted from {document}. Nothing derived is stored: `req canon` shows the
+# parse this statement derives. A draft is a proposal (ADR 0004): edit the statement, add the
+# applicability and relations it needs, and pin a load-bearing bound under `pins:` if it has one.
 schema: {schema}
 claim_id: {claim_id}
 statement: {statement}
-modality: UNSTRUCTURED
-subject: {quoted_subject}
 applicability: []
-unstructured: true
-canonical:
-  rules_v: {rules_v}
-  subject_registry: {registry_v}
-  form: ""
-address: null
 rationale:
   source: {quoted_source}
   date: {date}
@@ -138,22 +121,14 @@ conventions (no heuristics, no model):
   A line that looks like a candidate and is not drafted is named with its reason and counted
   (`empty text`, `no id`, `outside the heading`). A skipped line is never silent.
 
-  --subject is required: one decision per document, not per claim, and the value is used
-  verbatim in the claim (an unregistered surface stays literal, so aliasing it is a later,
-  deliberate act).
   --date is the rationale date; without it the source document's last git commit date is used,
   and the report names the commit. A date is never invented: no commit to borrow — untracked,
   or changed since its last commit — is a usage error asking for --date.
 
-the draft this writes: an `unstructured: true` claim with its statement and provenance, and
-NOTHING derived — `canonical.form` is the empty placeholder and `address` is null. `req canon`
-accepts it, `req canon --fill` completes it, and the structured slots stay the human's.
-
-Only a statement the canonicalizer leaves unstructured is draftable: the candidates are run
-through `req canon --fill` in a throwaway corpus (the same derivation that would refuse the fill),
-and a candidate that would carry a discrepancy flag — a `shall` with a subject and an action, say —
-is reported as **skipped**, because its slots are the author's to write. Re-word it as prose, or
-author the claim, or copy this script and adjust the mapping.
+the draft this writes: a `req.claim/2` claim with its statement and provenance, and NOTHING
+derived — no parse, no address, no pin (ADR 0022). The loader derives the parse when the claim
+is read; `req canon` shows it, structured or not, and pinning a load-bearing bound is the
+human's next step.
 
 The corpus root is --root, else $REQ_ROOT, else the working directory — never an ancestor: this
 tool writes claims, so a run inside a subdirectory must not draft into a parent you never
@@ -316,7 +291,7 @@ def extract(lines, convention, under=None):
             if not text:
                 skips.append((index + 1, "empty text"))
             elif text in seen:
-                # Two claims with the same statement, subject and modality share an address:
+                # Two claims with the same statement share an address:
                 # drafting the repeat would create a duplicate claim under a second id.
                 skips.append((index + 1, f"duplicate of #L{seen[text]}"))
             else:
@@ -390,8 +365,9 @@ def next_claim_number(used):
 def parse_version(text):
     """`(rules_v, claim_schema)` from `req --version`, or None.
 
-    Pure so the self-check can table-drive the shapes without a binary: the two values are what
-    a draft is judged by, and a hardcoded copy of either is exactly the drift this avoids.
+    Pure so the self-check can table-drive the shapes without a binary. `rules_v` is reported,
+    never hardcoded; the claim schema is compared with `DRAFT_SCHEMA` by `read_axes`, which is the
+    one place that refuses a binary this template cannot be loaded by.
     """
     rules = VERSION_RULES_RE.search(text)
     schema = VERSION_SCHEMA_RE.search(text)
@@ -441,7 +417,7 @@ def yaml_quote(text):
     return '"' + "".join(out) + '"'
 
 
-def render_claim(document, source, statement, date, subject, claim_id, rules_v, registry_v, schema):
+def render_claim(document, source, statement, date, claim_id, schema):
     """One draft claim file's exact bytes.
 
     `document` is the path the reader is pointed at; `source` is the provenance the rationale
@@ -455,9 +431,6 @@ def render_claim(document, source, statement, date, subject, claim_id, rules_v, 
         schema=schema,
         claim_id=claim_id,
         statement=yaml_quote(statement),
-        quoted_subject=yaml_quote(subject),
-        rules_v=rules_v,
-        registry_v=registry_v,
         quoted_source=yaml_quote(source),
         date=date,
     )
@@ -546,7 +519,7 @@ def read_corpus(root):
         if match is None:
             raise Unverifiable(
                 f"{entry}: no `claim_id:` line — this corpus cannot be read as a corpus; "
-                "`req canon --verify` names the defect"
+                "`req canon` names the defect"
             )
         claim_id = match.group("value").strip()
         # Both numbers are reserved: the declared id is what the claim is, and the file name is
@@ -575,8 +548,8 @@ def read_corpus(root):
     version = REGISTRY_VERSION_RE.search(registry_text)
     if version is None:
         raise Unverifiable(
-            f"{registry}: no `version:` line — the registry cannot be read, and a draft's "
-            "`canonical.subject_registry` would be a guess"
+            f"{registry}: no `version:` line — the registry cannot be read, so the parse the "
+            "drafts derive could not be named"
         )
     return Corpus(root, used, sources, int(version.group("value")))
 
@@ -593,13 +566,47 @@ def req_binary():
     if binary is None:
         raise Unverifiable(
             "`req` is not on PATH — install it at a pinned rev (docs/adopting.md), because a "
-            "draft's `rules_v` and claim schema come from the binary that will judge it"
+            "draft's claim schema comes from the binary that will judge it"
         )
     return binary
 
 
+def loader_check(binary, root, targets, texts):
+    """Run the corpus plus the drafts through the real loader (`req canon`) before anything is
+    written, in a scratch copy of the corpus, and raise Unverifiable if it does not load.
+
+    The loader is the only judge of a claim file: a raw look at a `schema:` line misses a comment,
+    a block scalar, a missing schema, a removed v1 key, a duplicate id and an invalid pin, and a
+    template that drifted from the format would be written and reported as `drafted:` all the
+    same. The same run is what turns an older-schema corpus away (its message names
+    tools/migrate_claims.py).
+    """
+    with tempfile.TemporaryDirectory(prefix="req-adopt-") as scratch:
+        copy = pathlib.Path(scratch)
+        for name in (CLAIMS_DIR, "aliases"):
+            if (root / name).is_dir():
+                shutil.copytree(root / name, copy / name)
+        (copy / CLAIMS_DIR).mkdir(exist_ok=True)
+        for (_claim_id, target), text in zip(targets, texts):
+            (copy / CLAIMS_DIR / target.name).write_text(text, encoding="utf-8")
+        try:
+            completed = subprocess.run(
+                [binary, "--root", str(copy), "canon"],
+                capture_output=True, text=True, check=False,
+            )
+        except OSError as error:
+            raise Unverifiable(f"cannot run `{binary} canon`: {error}") from error
+    if completed.returncode != 0:
+        detail = (completed.stderr.strip() or completed.stdout.strip() or "no output")
+        raise Unverifiable(
+            f"the corpus plus these drafts does not load (`req canon` exited "
+            f"{completed.returncode}), so nothing was written. The loader says why:\n{detail}"
+        )
+
+
 def read_axes():
-    """`(rules_v, claim_schema)` from the `req` on PATH — the values a draft must carry."""
+    """`(rules_v, claim_schema)` from the `req` on PATH — the schema a draft declares, and the
+    rules version its parse is derived under (reported)."""
     binary = req_binary()
     try:
         completed = subprocess.run(
@@ -613,85 +620,18 @@ def read_axes():
             f"{completed.stderr.strip() or 'no output'}"
         )
     axes = parse_version(completed.stdout)
+    if axes is not None and axes[1] != DRAFT_SCHEMA:
+        raise Unverifiable(
+            f"`{binary}` reports claim_schema {axes[1]}, but this tool drafts {DRAFT_SCHEMA} "
+            "claims: a draft under another schema would not load — use a matching req build or "
+            "the matching copy of this tool"
+        )
     if axes is None:
         raise Unverifiable(
             f"`{binary} --version` does not name `rules_v` and `claim_schema` — a build "
             "older than the claim format this tool writes cannot be drafted against"
         )
     return axes
-
-
-def undraftable(drafts, corpus, source, date, subject, rules_v, schema):
-    """The candidate line numbers whose `unstructured: true` draft the canonicalizer refuses.
-
-    The draft path's premise is that a prose-only claim is legal *as written*, and it holds only
-    for a statement the canonicalizer leaves unstructured. A statement that parses as a
-    structured claim contradicts `unstructured: true`, and `req canon --fill` refuses it — so the
-    candidates are run through that same derivation in a throwaway corpus (a copy of this
-    corpus's registry, the drafted files, and nothing else), and a refusal is attributed back to
-    its source line. `--fill` writes only inside the temporary directory.
-    """
-    binary = req_binary()
-    with tempfile.TemporaryDirectory(prefix="req-adopt-check-") as work:
-        root = pathlib.Path(work)
-        (root / CLAIMS_DIR).mkdir()
-        (root / "aliases").mkdir()
-        shutil.copyfile(corpus.root / REGISTRY_PATH, root / "aliases" / "subjects.yml")
-        line_of = {}
-        for index, (line, statement) in enumerate(drafts):
-            claim_id = f"REQ-{index + 1:04d}"
-            line_of[claim_id] = line
-            (root / CLAIMS_DIR / f"{claim_id}.yml").write_text(
-                render_claim(
-                    document=source,
-                    source=f"{source}#L{line}",
-                    statement=statement,
-                    date=date,
-                    subject=subject,
-                    claim_id=claim_id,
-                    rules_v=rules_v,
-                    registry_v=corpus.registry_v,
-                    schema=schema,
-                ),
-                encoding="utf-8",
-            )
-        completed = subprocess.run(
-            [binary, "--root", str(root), "canon", "--fill"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if completed.returncode not in (0, 3):
-            raise Unverifiable(
-                f"`{binary} canon --fill` exited {completed.returncode} while checking the "
-                f"candidates: {completed.stderr.strip() or 'no output'}"
-            )
-        refused = set()
-        for output in completed.stdout.splitlines():
-            match = re.match(r"^(REQ-\d+)[ \t]+REFUSED\b", output)
-            if match and match.group(1) in line_of:
-                refused.add(line_of[match.group(1)])
-        # The summary is the verdict, and it is required: `--fill` exits 3 for a refusal *and*
-        # for a corpus it could not read, printing only stderr in the latter case. No summary
-        # therefore means nothing was judged — which must be UNVERIFIABLE, never "every
-        # candidate is legal" (that is the false success this check exists to prevent).
-        summary = re.search(r"refused (\d+)", completed.stdout)
-        if summary is None:
-            detail = (
-                completed.stderr.strip()
-                or completed.stdout.strip()
-                or "no output"
-            )
-            raise Unverifiable(
-                "the candidate check produced no verdict (`req canon --fill` printed no "
-                f"`refused <n>` summary, so nothing was judged): {detail}"
-            )
-        if int(summary.group(1)) != len(refused):
-            raise Unverifiable(
-                "the candidate check reported a refusal this run could not attribute to a line:"
-                f"\n{completed.stdout.strip()}"
-            )
-        return refused
 
 
 def git_date(document):
@@ -776,7 +716,6 @@ def report(args, corpus, source, drafts, skips, targets, written, rules_v):
     """
     scope = f'under the heading "{args.under}"' if args.under else "whole document"
     print(f"source: {source} ({args.convention}, {scope})")
-    print(f"subject: {args.subject}")
     print(f"date: {args.date} ({args.date_origin})")
     print(f"root: {corpus.root}")
     print(f"req: rules_v {rules_v}, registry {corpus.registry_v}")
@@ -794,6 +733,10 @@ def report(args, corpus, source, drafts, skips, targets, written, rules_v):
     print()
     print(f"drafted: {len(drafts)}")
     print(f"skipped: {len(skips)}")
+    print(
+        "next: `req canon` shows the parse each draft derives (nothing derived is stored); pin a "
+        "load-bearing bound under `pins:`"
+    )
     if written:
         names = ", ".join(relative(corpus.root, target) for _claim_id, target in targets)
         print(f"wrote: {len(written)} claim(s) — {names}")
@@ -889,7 +832,7 @@ def run(args):
 
     # A document already adopted is refused before anything else: the drafts are in the
     # corpus, and drafting them again would duplicate claims (two claims sharing a statement
-    # and a subject share an address). This is what makes a second `--write` over the same
+    # share an address). This is what makes a second `--write` over the same
     # document refuse and overwrite nothing. Only this tool's own `<doc>#L<n>` provenance is
     # evidence of an earlier draft — `req init`'s starter claim carries a pencil sketch
     # (`source: docs/requirements.md`) that no adoption produced.
@@ -935,32 +878,11 @@ def run(args):
     if error is not None:
         raise Problem(f"nothing extracted: {error}\n{headings_of(lines)}")
 
-    # A draft is legal as written only if the canonicalizer leaves its statement unstructured.
-    # The same derivation `req canon --fill` runs decides that, in a throwaway corpus, before
-    # anything is written: a candidate it refuses is named and skipped, never drafted.
-    if drafts:
-        refused = undraftable(drafts, corpus, source, args.date, args.subject, rules_v, schema)
-        if refused:
-            kept = []
-            for line, statement in drafts:
-                if line in refused:
-                    skips.append((line, STRUCTURED_REASON))
-                else:
-                    kept.append((line, statement))
-            drafts = kept
-        skips.sort()
-
     if not drafts:
         scope = f"under {args.under!r}" if args.under else "whole document"
         # The skipped lines are named even here: the finding is that nothing was drafted, and
         # *why* each candidate was skipped is its remedy.
         reasons = "".join(f"\n  skip {source}#L{line}  {reason}" for line, reason in skips)
-        if any(reason == STRUCTURED_REASON for _line, reason in skips):
-            raise Problem(
-                f"nothing drafted from {source} ({args.convention}, {scope}): every candidate "
-                "parses as a structured claim, and this tool drafts only prose-only "
-                "(unstructured) claims — their slots are the author's to write" + reasons
-            )
         raise Problem(
             f"nothing extracted from {source} ({args.convention}, {scope})\n"
             "  bullets are `- `, `* ` and `1. `; req-lines are `- REQ-<n>: text`" + reasons
@@ -977,13 +899,12 @@ def run(args):
                 source=f"{source}#L{line}",
                 statement=statement,
                 date=args.date,
-                subject=args.subject,
                 claim_id=claim_id,
-                rules_v=rules_v,
-                registry_v=corpus.registry_v,
                 schema=schema,
             )
         )
+
+    loader_check(req_binary(), corpus.root, targets, texts)
 
     if args.write:
         for _claim_id, target in targets:
@@ -1083,11 +1004,8 @@ def self_check():
         source="docs/capabilities.md#L3",
         statement='The copilot reads "each" document \\ once.',
         date="2026-10-21",
-        subject="system",
         claim_id="REQ-0016",
-        rules_v=5,
-        registry_v=1,
-        schema="req.claim/1",
+        schema="req.claim/2",
     )
 
     rows = [
@@ -1203,14 +1121,27 @@ def self_check():
         ("date: a day that does not exist is not", valid_date("2026-02-30"), False),
         ("date: a timestamp is not a date", valid_date("2026-10-21T00:00:00Z"), False),
         (
-            "draft: the form is the empty placeholder, and there is no address",
-            (field(draft, "  form: "), field(draft, "address: ")),
-            ('form: ""', "address: null"),
+            "draft: nothing derived and no req.claim/1 slot is written",
+            [
+                key
+                for key in (
+                    "modality", "subject", "attribute", "operator", "value", "unit",
+                    "conditions", "exception", "temporal", "quantifier", "unstructured",
+                    "canonical", "address", "pins",
+                )
+                if field(draft, f"{key}:") is not None
+            ],
+            [],
         ),
         (
-            "draft: the claim is unstructured, which is what makes it legal as written",
-            (field(draft, "modality: "), field(draft, "unstructured: ")),
-            ("modality: UNSTRUCTURED", "unstructured: true"),
+            "draft: the authored fields a req.claim/2 file requires are all there",
+            [field(draft, f"{key}:") for key in ("applicability", "relations")],
+            ["applicability: []", "relations: []"],
+        ),
+        (
+            "draft: the schema is the one the binary reports",
+            field(draft, "schema: "),
+            "schema: req.claim/2",
         ),
         (
             "duplicates: a repeated statement is skipped, never drafted twice",
@@ -1221,11 +1152,6 @@ def self_check():
             "draft: a C1 control is escaped, like the C0 range",
             yaml_quote("a\u0085b"),
             '"a\\x85b"',
-        ),
-        (
-            "draft: the subject is a quoted string, so `null` cannot become the YAML null",
-            field(draft, "subject: "),
-            'subject: "system"',
         ),
         (
             "draft: a statement's quotes and backslashes are escaped for YAML",
@@ -1252,7 +1178,7 @@ def parse_args(argv):
     parser = argparse.ArgumentParser(
         prog="tools/adopt.py",
         description=(
-            "Draft req claims from a document you already have: one `unstructured` claim per "
+            "Draft req claims from a document you already have: one `req.claim/2` claim per "
             "statement, with its provenance, and nothing derived."
         ),
         epilog=HELP_EPILOG,
@@ -1278,12 +1204,6 @@ def parse_args(argv):
         choices=("bullets", "req-lines"),
         default="bullets",
         help="bullets (default): each list item; req-lines: `- REQ-<n>: text`",
-    )
-    parser.add_argument(
-        "--subject",
-        required=True,
-        metavar="<id>",
-        help="the claim's subject id, used verbatim (one decision per document)",
     )
     parser.add_argument(
         "--date",
@@ -1323,13 +1243,6 @@ def main(argv):
 
     args = parse_args(argv)
     args.date_origin = "--date" if args.date is not None else None
-    if not SUBJECT_RE.match(args.subject):
-        print(
-            f"usage: --subject must be a subject id (letters, digits, `_`, `.`, `-`), not "
-            f"{args.subject!r} — its value is used verbatim in the claim",
-            file=sys.stderr,
-        )
-        return 2
     if args.date is not None and not valid_date(args.date):
         print(
             f"usage: --date must be a calendar date in YYYY-MM-DD form, not {args.date!r}",

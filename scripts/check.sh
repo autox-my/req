@@ -345,11 +345,11 @@ else
   run cargo check --locked --manifest-path experiments/tier2/Cargo.toml --all-targets
   run cargo test --locked --manifest-path experiments/tier2/Cargo.toml
 fi
-run cargo run -q -- canon   # exit 3 = UNVERIFIABLE (never a pass)
-# The stored addresses must match the current rules and recompute from the stored
-# bytes: a rules bump without a re-fill exits 3 (candidates), a hand-edited digest
-# exits 1 (mismatch). This is REQ-0017 enforced, not asserted.
-run cargo run -q -- canon --verify
+# The corpus loads under the strict req.claim/2 loader and every claim's parse is derived
+# (exit 3 = UNVERIFIABLE, never a pass). Nothing derived is stored in a claim file (ADR 0022),
+# so there is no `canon --verify` step: the pins are held by each release's `req gate`
+# (`pins_hold`), and every address is re-derived against the signed manifest just below.
+run cargo run -q -- canon
 # The committed Baseline (F5): the gate re-checks what a human signed. See
 # verify_baseline above for what each exit means — 1 and 3 both block.
 verify_baseline "$baseline_file"
@@ -550,6 +550,15 @@ else
   skip "python3 or tools/adopt.py missing: cannot self-check the document extractor"
 fi
 
+# The claim migrator's table (tools/migrate_claims.py, ADR 0022): what a req.claim/1 file keeps,
+# which authored slots become pins, what it drops and what it refuses. No `req` and no repository
+# writes (its `run()` cases work in a cleaned-up temp dir), so `--fast` keeps it. A missing python3 or script prints SKIP, never PASS.
+if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/migrate_claims.py" ] && command -v python3 >/dev/null 2>&1; }; then
+  run python3 "$PWD/tools/migrate_claims.py" --self-check
+else
+  skip "python3 or tools/migrate_claims.py missing: cannot self-check the claim migrator"
+fi
+
 # The task-envelope validator's table (tools/orchestration/validate_envelope.py): the report
 # contract every delegated worker answers with (AGENTS.md, Orchestration). Pure, no filesystem
 # and no `req`, so `--fast` keeps it. A missing python3 or script prints SKIP, never PASS.
@@ -601,8 +610,8 @@ fi
 
 # The five-minute path (`docs/adopting.md`, "For an agent"), rehearsed for real against the binary this run just
 # built. `tools/quickstart.sh` does in a `mktemp -d` what the page tells an adopter to do — `req
-# init`, the extractor's dry run and `--write`, an authored applicability, `canon --fill` then
-# `--verify`, the declared variant's `gate`, `render --out` then `--check` — offline and with no
+# init`, the extractor's dry run and `--write`, an authored applicability, `canon` showing the
+# derived parse, the declared variant's `gate`, `render --out` then `--check` — offline and with no
 # $HOME write, and prints the one line the page's claim is measured by: `QUICKSTART <n>s`. The
 # page says "under five minutes", so the gate carries the clock rather than trusting the prose:
 # the script fails at n >= 300 and on any step whose wrong-but-zero answer its assertions catch.

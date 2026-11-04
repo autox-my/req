@@ -1,30 +1,13 @@
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-0009
 statement: >-
   The benchmark harness shall classify direction of change on the structural
   direction gold set with accuracy of at least 0.95.
-modality: SHALL
-subject: BENCH
-attribute: direction_classification_accuracy
-operator: GE
-value: "0.95"
-unit: none
-conditions: []
 applicability:
   - set == direction_gold_structural
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
 tests:
   - "req::evidence::the_direction_gold_set_meets_its_accuracy_target"
 evidence: machine
-canonical:
-  rules_v: 6
-  subject_registry: 1
-  form: |-
-    {"action":"classify direction of change on the structural direction gold set with accuracy of","applicability":["set == direction_gold_structural"],"conditions":[],"exception":null,"modality":"SHALL","operator":"GE","qualifier":"","raw":"","subject":"BENCH","temporal":null,"unstructured":false,"unit":null,"value":"0.95"}
-address: 9f25a65419a3e25d5d6a6e9a60c8b8e4a45390242450e04a3a2bfa277f45969d
 rationale:
   source: docs/canonical-hashing.md
   date: 2026-10-07
@@ -33,3 +16,6 @@ rationale:
 relations:
   - type: refines
     to: REQ-0008
+pins:
+  value: "0.95"
+  operator: GE

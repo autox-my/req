@@ -8,7 +8,7 @@
 // helper one target does not use is not dead code — it is in use by another.
 #![allow(dead_code)]
 
-use req::fill::StoredState;
+use req::canon::{PinCheck, PinVerdict};
 use req::model::{Rationale, Relation, rationale_digest, relations_digest};
 use req::select::Applies;
 use req::view::Row;
@@ -69,7 +69,7 @@ pub fn rationale_columns(source: &str, date: &str) -> Provenance {
     }
 }
 
-/// A settled, verified, fully-provenanced claim with the given outgoing relations.
+/// A settled, fully-provenanced claim with no pins and the given outgoing relations.
 pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
     // Real digests over this row's own content: a placeholder hash beside real relations
     // is a Row state `load_rows` can never produce, and a fixture that could not exist
@@ -92,14 +92,23 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
         tests: Vec::new(),
         tests_hash: req::model::tests_digest(&[], req::model::Evidence::Machine),
         evidence: req::model::Evidence::Machine,
-        stored: StoredState::Verified,
+        pins: Vec::new(),
         rationale_source: provenance.source,
         rationale_date: provenance.date,
     }
 }
 
-pub fn stored(mut row: Row, state: StoredState) -> Row {
-    row.stored = state;
+/// The row with one pin and a **hand-authored verdict**. These rows are inputs to the gate's
+/// policy seam (`evaluate_claims`), not loadable claims: the verdict is whatever the test says,
+/// so a fixture can name a state (`Agrees` for a slot the row's statement does not carry) that
+/// `canon::evaluate_pins` would not produce. The derivation itself is judged through the CLI in
+/// `tests/claim_v2.rs` and `tests/pins.rs`.
+pub fn pinned(mut row: Row, key: &'static str, pinned: &str, verdict: PinVerdict) -> Row {
+    row.pins.push(PinCheck {
+        key,
+        pinned: pinned.to_string(),
+        verdict,
+    });
     row
 }
 

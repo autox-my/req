@@ -70,7 +70,7 @@ pins:                      # OPTIONAL
    with the stored fields. `req.gate/1` becomes **`req.gate/2`** (a policy was renamed); its exit
    contract is otherwise unchanged. Update `--help`.
 6. **Schema version.** `CLAIM_SCHEMA_V = 2`. A `req.claim/1` file is a migration candidate (NOT JUDGED,
-   exit 3) through the existing `claim_schema_reason`; its message names `tools/migrate_claims.py`.
+   exit 3) through the loader's schema judgement (`claim_schema_reason` was folded into `canon::parse_claim`); its message names `tools/migrate_claims.py`.
    Newer and malformed values behave as today. `--version` reports `claim_schema req.claim/2`.
 7. **Everything that read a stored address reads the derived one**, with the same bytes: `render`,
    `trace`, `impact`, `compare`, `baseline` (emit, verify, drift), `audit`, `init`. The Baseline

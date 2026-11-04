@@ -4,10 +4,10 @@
 # What this proves (all of it observed, none of it asserted from memory):
 #   * a fresh project reaches a gated, rendered corpus from a `spec.md` with the
 #     commands docs/adopting.md ("For an agent") prints, in a scratch directory, with no network;
-#   * the extractor drafts only what the canonicalizer leaves unstructured, skips a
-#     structured `shall` with its reason, and writes nothing on a dry run;
-#   * `applicability` is authored before `canon --fill` (identity carries it since
-#     rules v5), and `--fill` writes the derived fields `--verify` then checks;
+#   * the extractor drafts every candidate as a `req.claim/2` claim carrying nothing derived
+#     (ADR 0022), names a skipped line with its reason, and writes nothing on a dry run;
+#   * an authored `applicability` and the statement are all the address needs: `req canon`
+#     shows the parse each claim derives at load, with nothing to fill and nothing to verify;
 #   * a corpus carrying a selector makes bare `gate` UNVERIFIABLE (exit 3, ADR 0015)
 #     while the declared variant gates PASS, and every claim is decided;
 #   * the release gate's test-evidence policy (ADR 0019) answers honestly before any link
@@ -160,6 +160,18 @@ require_out_re() { # <extended-regex>: the captured output must match it, not me
 
 require_grep() { # <pattern> <file> <why>
   grep -Eq "$1" "$2" || fail "$STEP_NAME: $3 ($2 does not match /$1/)"
+}
+
+require_no_grep() { # <pattern> <file> <why>
+  # grep answers 0 match, 1 no match, 2 could not read: only 1 is the answer asked for, so an
+  # unreadable file fails the step rather than passing as "no match".
+  local status=0
+  grep -Eq "$1" "$2" || status=$?
+  case "$status" in
+    0) fail "$STEP_NAME: $3 ($2 matches /$1/)" ;;
+    1) ;;
+    *) fail "$STEP_NAME: could not read $2 to check that $3 (grep exit $status)" ;;
+  esac
 }
 
 claim_count() {
@@ -315,9 +327,10 @@ cat > docs/capabilities.md <<'SPEC'
 
 - The system shall complete within 200 ms.
 - Operators can review every recorded decision.
+- Operators can review every recorded decision.
 SPEC
-# The `shall` bullet is deliberately structured: the extractor must skip it (its slots
-# are the author's), and the prose bullet is the one it may draft.
+# One structured `shall`, one prose bullet and a repeat of it: both statements draft (their
+# parse is derived, never authored), and the repeat is skipped with its reason.
 [ -s docs/capabilities.md ] || fail "$STEP_NAME: docs/capabilities.md is empty"
 step_ok
 
@@ -326,11 +339,11 @@ CLAIMS_BEFORE="$(claim_count)"
 [ "$CLAIMS_BEFORE" -eq 1 ] || fail "preflight: expected 1 claim after init, found $CLAIMS_BEFORE"
 
 run_step "extract a draft, dry run (nothing may be written)" 0 \
-  "python3 $REPO_ROOT/tools/adopt.py --from docs/capabilities.md --subject SYSTEM --date $TODAY (dry run)" \
-  python3 "$REPO_ROOT/tools/adopt.py" --from docs/capabilities.md --subject SYSTEM --date "$TODAY"
-require_out "draft  REQ-0002  claims/REQ-0002.yml"
-require_out "docs/capabilities.md#L4"
-require_out "skip   docs/capabilities.md#L3  parses as a structured claim"
+  "python3 $REPO_ROOT/tools/adopt.py --from docs/capabilities.md --date $TODAY (dry run)" \
+  python3 "$REPO_ROOT/tools/adopt.py" --from docs/capabilities.md --date "$TODAY"
+require_out "draft  REQ-0002  claims/REQ-0002.yml  docs/capabilities.md#L3"
+require_out "draft  REQ-0003  claims/REQ-0003.yml  docs/capabilities.md#L4"
+require_out "skip   docs/capabilities.md#L5  duplicate of #L4"
 require_out "dry run: nothing written"
 # The property the dry run exists for: it wrote no claim at all.
 require_absent claims/REQ-0002.yml
@@ -338,17 +351,46 @@ require_absent claims/REQ-0002.yml
   || fail "$STEP_NAME: the dry run changed the claim count ($CLAIMS_BEFORE -> $(claim_count))"
 
 run_step "write the drafts (the extractor's --write)" 0 \
-  "python3 $REPO_ROOT/tools/adopt.py --from docs/capabilities.md --subject SYSTEM --date $TODAY --write" \
-  python3 "$REPO_ROOT/tools/adopt.py" --from docs/capabilities.md --subject SYSTEM --date "$TODAY" --write
-require_out "wrote: 1 claim(s)"
+  "python3 $REPO_ROOT/tools/adopt.py --from docs/capabilities.md --date $TODAY --write" \
+  python3 "$REPO_ROOT/tools/adopt.py" --from docs/capabilities.md --date "$TODAY" --write
+require_out "wrote: 2 claim(s)"
 require_file claims/REQ-0002.yml
-# A draft must carry NOTHING derived — only `--fill` writes canonical.form and address.
-require_grep '^address: null$' claims/REQ-0002.yml "the draft already carries an address"
-require_grep '^applicability: \[\]$' claims/REQ-0002.yml "the draft has no empty applicability anchor"
-[ "$(claim_count)" -eq $((CLAIMS_BEFORE + 1)) ] \
-  || fail "$STEP_NAME: expected $((CLAIMS_BEFORE + 1)) claims, found $(claim_count)"
+require_file claims/REQ-0003.yml
+# A draft carries NOTHING derived (req.claim/2): no address, no canonical form, no guessed pin.
+for draft in claims/REQ-0002.yml claims/REQ-0003.yml; do
+  require_no_grep '^(address|canonical|pins):' "$draft" "the draft carries a derived field or a pin"
+  require_grep '^applicability: \[\]$' "$draft" "the draft has no empty applicability anchor"
+done
+[ "$(claim_count)" -eq $((CLAIMS_BEFORE + 2)) ] \
+  || fail "$STEP_NAME: expected $((CLAIMS_BEFORE + 2)) claims, found $(claim_count)"
 
-step_start "author ONE applicability predicate into the draft (identity carries it: before --fill)"
+derived_address() { # <claim id> — the address `req render` derives for it, now
+  # The whole document is read before the script answers: exiting at the first match would close
+  # the pipe on `req render` and fail the pipeline under `pipefail` (as `require_out` notes).
+  # `req render` exits 3 when a claim is undecided (the case after the edit): the document is
+  # still complete, so 0 and 3 are both fine here.
+  { req render --format json || [ $? -eq 3 ]; } | python3 -c '
+import json, sys
+want = sys.argv[1]
+found = []
+def walk(node):
+    if isinstance(node, dict):
+        if node.get("claim_id") == want and "address" in node:
+            found.append(node["address"])
+        for value in node.values():
+            walk(value)
+    elif isinstance(node, list):
+        for value in node:
+            walk(value)
+walk(json.load(sys.stdin))
+if len(found) != 1:
+    raise SystemExit(1)
+print(found[0])
+' "$1"
+}
+
+step_start "author ONE applicability predicate into a draft (the address carries it)"
+ADDRESS_BEFORE="$(derived_address REQ-0002)" || fail "$STEP_NAME: no derived address for REQ-0002 before the edit"
 AUTHOR_OUT="$(python3 - "$WORK_DIR/claims/REQ-0002.yml" <<'PY' 2>&1
 import pathlib
 import sys
@@ -370,26 +412,16 @@ if [ "$RC" -ne 0 ]; then
 fi
 require_grep '^  - deployment_mode == air_gapped$' claims/REQ-0002.yml \
   "the authored applicability predicate is not in the draft"
-require_grep '^address: null$' claims/REQ-0002.yml \
-  "authoring applicability must not fill the address"
+# The claim in the step's title: the applicability is part of the derived address, so it moved.
+ADDRESS_AFTER="$(derived_address REQ-0002)" || fail "$STEP_NAME: no derived address for REQ-0002 after the edit"
+[ "$ADDRESS_BEFORE" != "$ADDRESS_AFTER" ] \
+  || fail "$STEP_NAME: authoring an applicability predicate did not move REQ-0002's address ($ADDRESS_BEFORE)"
 step_ok
 
-run_step "req canon reports (exit 0 by contract; zero discrepancy flags)" 0 \
+run_step "req canon shows the derived parse (exit 0 by contract; no pin flagged)" 0 \
   "req canon" req canon
-require_out "claims: 2; discrepancy flags: 0"
-
-run_step "req canon --fill writes the derived fields" 0 \
-  "req canon --fill" req canon --fill
-require_out "filled 1, already current 1, refused 0"
-# The fill completed the draft: a real address, and the predicate it was authored with.
-require_grep '^address: [0-9a-f]{8,}$' claims/REQ-0002.yml "the fill wrote no address"
-require_grep '^  form: [|]-$' claims/REQ-0002.yml "the fill wrote no canonical form"
-require_grep '^  - deployment_mode == air_gapped$' claims/REQ-0002.yml \
-  "the fill dropped the authored applicability predicate"
-
-run_step "req canon --verify (the check that gates)" 0 \
-  "req canon --verify" req canon --verify
-require_out "verified 2, candidates 0, mismatches 0"
+require_out "claims: 3 (1 unstructured); pins: 3 on 1 claim(s), 0 flagged"
+require_out_re '^REQ-0002 +structured +SHALL '
 
 step_start "declare the release variant (.req/variants)"
 mkdir -p .req || fail "$STEP_NAME: cannot create .req/"
@@ -411,23 +443,21 @@ run_step "gate with no test evidence is UNVERIFIABLE (a policy that cannot be ex
 require_out "no --test-report"
 
 step_start "link each claim to its proving test and write the report the gate reads"
-python3 - "$WORK_DIR/claims/REQ-0001.yml" "$WORK_DIR/claims/REQ-0002.yml" <<'PY'
+python3 - "$WORK_DIR/claims/REQ-0001.yml" "$WORK_DIR/claims/REQ-0002.yml" "$WORK_DIR/claims/REQ-0003.yml" <<'PY'
 import pathlib
 import sys
 
 for path in sys.argv[1:]:
     claim = pathlib.Path(path)
     text = claim.read_text()
-    # A draft is `unstructured: true`; a structured claim is `unstructured: false`. Either way
-    # exactly one line carries the field, and the link goes right after it (authored, before
-    # the derived `canonical:` block).
-    anchors = [a for a in ("unstructured: false\n", "unstructured: true\n") if text.count(a) == 1]
-    if len(anchors) != 1:
-        raise SystemExit("expected exactly one `unstructured:` line in %s" % claim)
-    anchor = anchors[0]
+    # Every req.claim/2 claim carries exactly one `relations:` key at the top level; the link
+    # goes right before it (an authored field, like everything in the file).
+    if text.count("\nrelations:") != 1:
+        raise SystemExit("expected exactly one `relations:` line in %s" % claim)
+    anchor = "\nrelations:"
     claim_id = claim.stem
     test_id = "quickstart::%s" % claim_id.lower().replace("-", "_")
-    claim.write_text(text.replace(anchor, anchor + 'tests:\n  - "%s"\n' % test_id))
+    claim.write_text(text.replace(anchor, '\ntests:\n  - "%s"' % test_id + anchor))
     print("linked %s -> %s" % (claim_id, test_id), file=sys.stderr)
 PY
 RC=$?
@@ -435,14 +465,15 @@ if [ "$RC" -ne 0 ]; then
   printf -- '--- step failed: %s\n    exit: %s (allowed: 0)\n' "$STEP_NAME" "$RC" >&2
   fail "$STEP_NAME (exit $RC)"
 fi
-# A stand-in for the adopter's own nextest run: the artefact nextest writes, carrying the two
+# A stand-in for the adopter's own nextest run: the artefact nextest writes, carrying the three
 # linked tests as passed. The gate is a reader, and what it can prove is what the report says.
 printf '%s\n' \
   '<?xml version="1.0" encoding="UTF-8"?>' \
-  '<testsuites name="quickstart" tests="2" skipped="0" failures="0" errors="0">' \
+  '<testsuites name="quickstart" tests="3" skipped="0" failures="0" errors="0">' \
   '    <testsuite name="quickstart">' \
   '        <testcase name="req_0001" classname="quickstart"/>' \
   '        <testcase name="req_0002" classname="quickstart"/>' \
+  '        <testcase name="req_0003" classname="quickstart"/>' \
   '    </testsuite>' \
   '</testsuites>' > quickstart-junit.xml \
   || fail "$STEP_NAME: cannot write the JUnit report"

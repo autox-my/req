@@ -258,23 +258,7 @@ claim_id: {claim_id}
 statement: >-
   The req tool shall treat a single claim as the unit of requirements authorship,
   review, and merge.
-modality: SHALL
-subject: REQ_TOOL
-attribute: unit_of_work
-operator: EQ
-value: claim
-unit: none
-conditions: []
 applicability: []
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
-canonical:
-  rules_v: null
-  subject_registry: 1
-  form: null
-address: null
 rationale:
   source: docs/adr/0001-the-unit-is-a-claim.md
   date: 2026-10-07
@@ -366,6 +350,43 @@ fn a_side_declaring_a_format_this_build_cannot_establish_is_not_judged() {
     assert!(
         out.contains(&format!("req.claim/{}", req::canon::CLAIM_SCHEMA_V + 1)),
         "the verdict must name the declared format:\n{out}"
+    );
+}
+
+/// A flagged pin never changes the classification, but `compare` reports it: the one visible
+/// consequence of a pin in this command. The claim pins `modality: SHALL` (it agrees) and
+/// `value: "0.2"` against a 500 ms statement (0.5 s derived, so a contradiction): of two pins one
+/// is flagged, which is what tells "count the flagged ones" from "count every pin". The pair is
+/// still classified (exit 0).
+#[test]
+fn a_flagged_pin_is_reported_and_never_changes_the_classification() {
+    let pinned = format!(
+        "{}pins:\n  modality: SHALL\n  value: \"0.2\"\n",
+        claim_text("REQ-0001", &claim_schema())
+            .replace(
+                "The req tool shall treat a single claim as the unit of requirements authorship,\n  review, and merge.",
+                "The API shall respond within 500 ms.",
+            )
+    );
+    assert!(
+        pinned.contains("within 500 ms"),
+        "the statement edit landed:\n{pinned}"
+    );
+    // The pair differs in exactly the pin: the second side states the same claim without one.
+    let unpinned = pinned
+        .replace("pins:\n  modality: SHALL\n  value: \"0.2\"\n", "")
+        .replace("REQ-0001", "REQ-0002");
+    assert!(!unpinned.contains("pins:"), "{unpinned}");
+    let f = Fixture::new("pin-flag-note")
+        .claim("REQ-0001.yml", &pinned)
+        .claim("REQ-0002.yml", &unpinned);
+
+    let (code, out) = f.compare("REQ-0001.yml", "REQ-0002.yml");
+    assert_eq!(code, 0, "the pair is still classified:\n{out}");
+    assert!(out.contains("identical"), "{out}");
+    assert!(
+        out.contains("a pin disagrees with its claim's parse (1 / 0 flagged)"),
+        "the flag is reported with the count for each side:\n{out}"
     );
 }
 

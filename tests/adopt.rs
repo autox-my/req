@@ -1,15 +1,14 @@
 //! `tools/adopt.py` — the draft path: a document in, **legal** claims out.
 //!
 //! The seam is the CLI, not the extractor's functions: what the tool promises is a file set
-//! that `req canon`, `req canon --fill` and `req canon --verify` accept, so every check here
-//! drives the script and then the compiled binary over the corpus it wrote. A unit-tested
-//! string builder would prove nothing about that.
+//! that `req canon`, `req render` and `req gate` accept, so every check here drives the script
+//! and then the compiled binary over the corpus it wrote. A unit-tested string builder would
+//! prove nothing about that.
 //!
-//! The oracle for "the drafts are unfilled" is `req canon --fill`'s own count: a draft that
-//! carried a derived `form` or `address` would be *already current* to `--fill`, and `filled 2`
-//! is the measurement that the tool derived nothing. The draft's shape is checked directly too
-//! (`form: ""`, `address: null`) — the two assertions fail differently: one catches a derived
-//! value, the other catches a template that drifted from `src/init.rs`'s.
+//! The oracle for "the drafts carry nothing derived" is twofold and fails two ways: the draft's
+//! bytes carry none of the `req.claim/1` slots or stored fields (a template that drifted), and
+//! the strict `req.claim/2` loader accepts them (a removed key is a parse error naming it, ADR
+//! 0022) — so `req canon` exiting 0 over the drafts is itself the measurement.
 //!
 //! `python3` is required, and its absence is a **failure named here** rather than a skipped
 //! check (`require_minisign` in `tests/baseline.rs` is the precedent): a skipped check is never
@@ -192,29 +191,6 @@ fn adopt(cwd: &Path, args: &[&str]) -> Outcome {
     }
 }
 
-/// `tools/adopt.py` with `bin_dir` first on `PATH` — the seam a fake `req` needs.
-#[cfg(unix)]
-fn adopt_with_bin_dir(cwd: &Path, args: &[&str], bin_dir: &Path) -> Outcome {
-    let mut path_value = bin_dir.as_os_str().to_os_string();
-    if let Some(existing) = std::env::var_os("PATH") {
-        path_value.push(":");
-        path_value.push(existing);
-    }
-    let output = Command::new(python3())
-        .arg(adopt_py())
-        .args(args)
-        .current_dir(cwd)
-        .env_remove("REQ_ROOT")
-        .env("PATH", path_value)
-        .output()
-        .expect("runs tools/adopt.py");
-    Outcome {
-        code: output.status.code().unwrap_or(-1),
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-    }
-}
-
 /// `tools/adopt.py` with `REQ_ROOT` naming the corpus (the other root-resolution branch).
 fn adopt_with_req_root(cwd: &Path, args: &[&str], root: &Path) -> Outcome {
     let mut path_value = req_bin()
@@ -291,14 +267,7 @@ fn the_draft_path_is_green_end_to_end() {
     // The dry run is the default: it prints, writes nothing, and names the skipped line.
     let dry = adopt(
         fx.path(),
-        &[
-            "--from",
-            "docs/capabilities.md",
-            "--subject",
-            "system",
-            "--date",
-            "2026-10-21",
-        ],
+        &["--from", "docs/capabilities.md", "--date", "2026-10-21"],
     );
     dry.assert_code(0, "the dry run");
     assert!(
@@ -331,8 +300,6 @@ fn the_draft_path_is_green_end_to_end() {
         &[
             "--from",
             "docs/capabilities.md",
-            "--subject",
-            "system",
             "--date",
             "2026-10-21",
             "--write",
@@ -345,10 +312,8 @@ fn the_draft_path_is_green_end_to_end() {
         write.stdout
     );
 
-    // The drafts are legal, unfilled, and carry no derived field: `form` is the placeholder
-    // `--fill` rewrites and `address` is `null`. `--fill` itself is the independent oracle
-    // below — `filled 2` is only possible if the tool derived nothing.
-    let (rules_v, schema) = version_axes();
+    // The drafts are legal and carry nothing derived (ADR 0022): no parse, no address, no pin.
+    let (_rules_v, schema) = version_axes();
     for (path, statement, source_line) in [
         (
             "claims/REQ-0002.yml",
@@ -367,31 +332,27 @@ fn the_draft_path_is_green_end_to_end() {
             Some(format!("schema: {schema}").as_str()),
             "{path} must declare the schema this build writes:\n{text}"
         );
-        assert_eq!(
-            field(&text, "  rules_v: "),
-            Some(format!("  rules_v: {rules_v}").as_str()),
-            "{path} must carry the rules version `req --version` reports:\n{text}"
-        );
-        assert_eq!(
-            field(&text, "modality: "),
-            Some("modality: UNSTRUCTURED"),
-            "{path}: an unstructured claim is the only legal draft:\n{text}"
-        );
-        assert_eq!(
-            field(&text, "unstructured: "),
-            Some("unstructured: true"),
-            "{path}:\n{text}"
-        );
-        assert_eq!(
-            field(&text, "  form: "),
-            Some("  form: \"\""),
-            "{path} must leave the form as the placeholder `--fill` rewrites:\n{text}"
-        );
-        assert_eq!(
-            field(&text, "address: "),
-            Some("address: null"),
-            "{path} must never carry an address:\n{text}"
-        );
+        for key in [
+            "modality:",
+            "subject:",
+            "attribute:",
+            "operator:",
+            "value:",
+            "unit:",
+            "conditions:",
+            "unstructured:",
+            "canonical:",
+            "address:",
+            "pins:",
+        ] {
+            assert_eq!(
+                field(&text, key),
+                None,
+                "{path} carries nothing derived and no pin it could only guess (`{key}`):\n{text}"
+            );
+        }
+        assert_eq!(field(&text, "applicability: "), Some("applicability: []"));
+        assert_eq!(field(&text, "relations: "), Some("relations: []"));
         assert!(
             text.contains(statement),
             "{path} must carry its statement from the document:\n{text}"
@@ -412,35 +373,24 @@ fn the_draft_path_is_green_end_to_end() {
         assert!(!fx.exists(path), "the skipped line must not become a claim");
     }
 
-    // The loop the draft path hands to the human: `canon` reports, `--fill` derives the two
-    // fields, `--verify` proves them.
+    // The loop the draft path hands to the human: `canon` shows the derived parse of all three
+    // claims (`init`'s starter and the two drafts) and nothing is flagged; the corpus renders.
     let canon = req(fx.path(), &["canon"]);
     canon.assert_code(0, "req canon over the drafts");
     assert!(
-        canon.stdout.contains("discrepancy flags: 0"),
-        "the drafts are legal as written:\n{}",
+        canon.stdout.contains("claims: 3 (") && canon.stdout.contains(", 0 flagged"),
+        "the drafts load under the strict v2 loader, and no pin is flagged:\n{}",
         canon.stdout
     );
-
-    let fill = req(fx.path(), &["canon", "--fill"]);
-    fill.assert_code(0, "req canon --fill");
-    assert!(
-        fill.stdout.contains("filled 2"),
-        "both drafts must have been unfilled — a drafted form or address would make one \
-         already current:\n{}",
-        fill.stdout
-    );
-
-    let verify = req(fx.path(), &["canon", "--verify"]);
-    verify.assert_code(0, "req canon --verify");
-    // Three claims: `init`'s starter claim and the two drafts. `--fill`'s `filled 2` above is
-    // the load-bearing count (the starter was already current); this one proves the filled
-    // corpus verifies end to end.
-    assert!(
-        verify.stdout.contains("verified 3"),
-        "the drafts must verify after one fill:\n{}",
-        verify.stdout
-    );
+    let render = req(fx.path(), &["render"]);
+    render.assert_code(0, "req render over the drafts");
+    for id in ["REQ-0001", "REQ-0002", "REQ-0003"] {
+        assert!(
+            render.stdout.contains(id),
+            "{id} renders:\n{}",
+            render.stdout
+        );
+    }
 }
 
 #[test]
@@ -451,8 +401,6 @@ fn a_second_write_over_the_same_document_refuses_and_overwrites_nothing() {
     let args = [
         "--from",
         "docs/capabilities.md",
-        "--subject",
-        "system",
         "--date",
         "2026-10-21",
         "--write",
@@ -501,20 +449,66 @@ fn a_second_write_over_the_same_document_refuses_and_overwrites_nothing() {
     );
 }
 
+/// The tool drafts the schema its template writes. A `req` that reports another one cannot load
+/// the draft, so the tool fails loud (UNVERIFIABLE, exit 3) naming both schemas, instead of
+/// writing an unloadable corpus and exiting 0. A fake `req` first on `PATH` is the seam: the tool
+/// asks `req --version` and nothing else before drafting.
+#[cfg(unix)]
+#[test]
+fn a_req_reporting_another_claim_schema_is_unverifiable_and_writes_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fx = Fixture::new("req-adopt-schema-mismatch");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    let init = req(fx.path(), &["init"]);
+    init.assert_code(0, "req init");
+
+    let bin = fx.path().join("fake-bin");
+    std::fs::create_dir_all(&bin).expect("fake bin dir");
+    let fake = bin.join("req");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\nprintf 'req 0.1.0\\n  rules_v            6\\n  claim_schema       req.claim/3\\n'\n",
+    )
+    .expect("fake req");
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+
+    let mut path_value = bin.as_os_str().to_os_string();
+    path_value.push(":");
+    path_value.push(std::env::var_os("PATH").unwrap_or_default());
+    let output = Command::new(python3())
+        .arg(adopt_py())
+        .args([
+            "--from",
+            "docs/capabilities.md",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ])
+        .current_dir(fx.path())
+        .env_remove("REQ_ROOT")
+        .env("PATH", path_value)
+        .output()
+        .expect("runs tools/adopt.py");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(3), "stderr:\n{stderr}");
+    assert!(
+        stderr.contains("req.claim/3") && stderr.contains("req.claim/2"),
+        "the message names the schema the binary reports and the one the tool drafts:\n{stderr}"
+    );
+    assert!(
+        !fx.exists("claims/REQ-0002.yml"),
+        "nothing is drafted against a schema the tool does not write"
+    );
+}
+
 #[test]
 fn no_corpus_is_unverifiable_and_names_init() {
     let fx = Fixture::new("req-adopt-nocorpus");
     fx.write("docs/capabilities.md", CAPABILITIES);
     let out = adopt(
         fx.path(),
-        &[
-            "--from",
-            "docs/capabilities.md",
-            "--subject",
-            "system",
-            "--date",
-            "2026-10-21",
-        ],
+        &["--from", "docs/capabilities.md", "--date", "2026-10-21"],
     );
     out.assert_code(3, "no corpus");
     assert!(
@@ -535,14 +529,7 @@ fn an_unreadable_document_is_unverifiable() {
     req(fx.path(), &["init"]).assert_code(0, "req init");
     let out = adopt(
         fx.path(),
-        &[
-            "--from",
-            "docs/absent.md",
-            "--subject",
-            "system",
-            "--date",
-            "2026-10-21",
-        ],
+        &["--from", "docs/absent.md", "--date", "2026-10-21"],
     );
     out.assert_code(3, "a document that is not there");
     assert!(
@@ -554,21 +541,116 @@ fn an_unreadable_document_is_unverifiable() {
     );
 }
 
+/// `--subject` is gone with `req.claim/2`'s subject slot (ADR 0022): the subject is derived from
+/// the statement. An adopter's script still passing it is told so — a usage error naming the
+/// flag — rather than having it silently ignored.
+/// A corpus the loader does not accept is not drafted into: the tool runs the corpus plus the
+/// drafts through `req canon` before writing anything, so every shape the loader rejects — an
+/// older schema (also with a comment or a block scalar on the line), a missing schema, a removed
+/// v1 key, an invalid pin — turns the run away (exit 3) and writes nothing. The older-schema
+/// message names the migration tool. A control: a valid file with a quoted schema is no obstacle.
 #[test]
-fn a_missing_subject_is_a_usage_error() {
+fn a_corpus_the_loader_rejects_is_unverifiable_and_nothing_is_drafted() {
+    let valid = |schema_line: &str, extra: &str| {
+        format!(
+            "{schema_line}\nclaim_id: REQ-0009\nstatement: An existing claim.\napplicability: []\n\
+             relations: []\nrationale:\n  source: x\n  date: 2026-10-07\n  \
+             rejected_alternatives: []\n  assumptions: []\n{extra}"
+        )
+    };
+    let current = req::canon::claim_schema();
+    let older = format!("{}1", req::canon::CLAIM_SCHEMA_PREFIX);
+    for (name, text, migrator) in [
+        ("older", valid(&format!("schema: {older}"), ""), true),
+        (
+            "older-comment",
+            valid(&format!("schema: {older}  # old"), ""),
+            true,
+        ),
+        ("older-block", valid("schema: >-\n  req.claim/1", ""), true),
+        ("no-schema", valid("# no schema here", ""), false),
+        (
+            "removed-key",
+            valid(&format!("schema: {current}"), "modality: SHALL\n"),
+            false,
+        ),
+        (
+            "bad-pin",
+            valid(&format!("schema: {current}"), "pins:\n  value: \"0.30\"\n"),
+            false,
+        ),
+    ] {
+        let fx = Fixture::new(&format!("req-adopt-reject-{name}"));
+        fx.write("docs/capabilities.md", CAPABILITIES);
+        req(fx.path(), &["init"]).assert_code(0, "req init");
+        fx.write("claims/REQ-0009.yml", &text);
+        let out = adopt(
+            fx.path(),
+            &[
+                "--from",
+                "docs/capabilities.md",
+                "--date",
+                "2026-10-21",
+                "--write",
+            ],
+        );
+        out.assert_code(3, &format!("{name}: a corpus the loader rejects"));
+        assert!(
+            out.stderr.contains("predates") == migrator,
+            "{name}: only an older schema is reported as predating the format (and the loader \
+             names the migration tool there):\n{}",
+            out.stderr
+        );
+        assert!(
+            !fx.exists("claims/REQ-0010.yml"),
+            "{name}: nothing is drafted into it"
+        );
+    }
+
+    let fx = Fixture::new("req-adopt-reject-control");
+    fx.write("docs/capabilities.md", CAPABILITIES);
+    req(fx.path(), &["init"]).assert_code(0, "req init");
+    fx.write(
+        "claims/REQ-0009.yml",
+        &valid(&format!("schema: \"{current}\""), ""),
+    );
+    adopt(
+        fx.path(),
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
+    )
+    .assert_code(0, "a quoted current schema is a valid corpus");
+}
+
+#[test]
+fn a_subject_flag_is_a_usage_error_since_the_subject_is_derived() {
     let fx = Fixture::new("req-adopt-nosubject");
     fx.write("docs/capabilities.md", CAPABILITIES);
     req(fx.path(), &["init"]).assert_code(0, "req init");
     let out = adopt(
         fx.path(),
-        &["--from", "docs/capabilities.md", "--date", "2026-10-21"],
+        &[
+            "--from",
+            "docs/capabilities.md",
+            "--subject",
+            "system",
+            "--date",
+            "2026-10-21",
+            "--write",
+        ],
     );
-    out.assert_code(2, "a missing --subject");
+    out.assert_code(2, "a removed --subject");
     assert!(
         out.stderr.contains("--subject"),
-        "the usage error must name the missing flag:\n{}",
+        "the usage error must name the flag:\n{}",
         out.stderr
     );
+    assert!(!fx.exists("claims/REQ-0002.yml"), "nothing is written");
 }
 
 #[test]
@@ -576,10 +658,7 @@ fn a_date_absent_from_the_source_and_from_git_is_a_usage_error() {
     let fx = Fixture::new("req-adopt-nodate");
     fx.write("docs/capabilities.md", CAPABILITIES);
     req(fx.path(), &["init"]).assert_code(0, "req init");
-    let out = adopt(
-        fx.path(),
-        &["--from", "docs/capabilities.md", "--subject", "system"],
-    );
+    let out = adopt(fx.path(), &["--from", "docs/capabilities.md"]);
     out.assert_code(2, "no --date and no commit date to borrow");
     assert!(
         out.stderr.contains("--date"),
@@ -629,16 +708,7 @@ fn the_date_defaults_to_the_sources_last_commit_and_never_to_today() {
     req(fx.path(), &["init"]).assert_code(0, "req init");
     git_commit_all(&fx, "the source document");
 
-    let out = adopt(
-        fx.path(),
-        &[
-            "--from",
-            "docs/capabilities.md",
-            "--subject",
-            "system",
-            "--write",
-        ],
-    );
+    let out = adopt(fx.path(), &["--from", "docs/capabilities.md", "--write"]);
     out.assert_code(0, "the date comes from the document's last commit");
     let draft = fx.read("claims/REQ-0002.yml");
     assert!(
@@ -660,10 +730,7 @@ fn a_tracked_document_with_uncommitted_changes_has_no_date_to_borrow() {
         &format!("{CAPABILITIES}\n- A bullet added after the commit.\n"),
     );
 
-    let blocked = adopt(
-        fx.path(),
-        &["--from", "docs/capabilities.md", "--subject", "system"],
-    );
+    let blocked = adopt(fx.path(), &["--from", "docs/capabilities.md"]);
     blocked.assert_code(2, "a changed document with no --date");
     assert!(
         blocked.stderr.contains("--date") && blocked.stderr.contains("uncommitted"),
@@ -674,14 +741,7 @@ fn a_tracked_document_with_uncommitted_changes_has_no_date_to_borrow() {
     // The authored date is the remedy, and the run then succeeds.
     let dated = adopt(
         fx.path(),
-        &[
-            "--from",
-            "docs/capabilities.md",
-            "--subject",
-            "system",
-            "--date",
-            "2026-10-21",
-        ],
+        &["--from", "docs/capabilities.md", "--date", "2026-10-21"],
     );
     dated.assert_code(0, "the same document with an authored date");
 }
@@ -702,8 +762,6 @@ fn the_init_starter_placeholder_does_not_block_adoption_from_that_document() {
         &[
             "--from",
             "docs/requirements.md",
-            "--subject",
-            "system",
             "--date",
             "2026-10-21",
             "--write",
@@ -723,91 +781,46 @@ fn the_init_starter_placeholder_does_not_block_adoption_from_that_document() {
     );
 }
 
-/// A draft is legal as written only when the canonicalizer leaves its statement unstructured:
-/// a `shall` sentence parses as a structured claim, contradicts `unstructured: true`, and
-/// `req canon --fill` refuses it. The tool must report such a candidate and never write it.
+/// Since `req.claim/2` a structured statement is drafted like any other: its parse is derived at
+/// load, so there is no authored slot for the draft to contradict. What the tool must not do is
+/// guess the pins — the draft carries none, and `req canon` shows the derived parse the human pins.
 #[test]
-fn a_structured_statement_is_reported_and_never_drafted() {
+fn a_structured_statement_is_drafted_with_its_parse_derived_and_no_pin_guessed() {
     let fx = Fixture::new("req-adopt-structured");
     req(fx.path(), &["init"]).assert_code(0, "req init");
     fx.write(
         "docs/mixed.md",
-        "# Mixed\n\n- The system shall log every decision.\n- The copilot cites every source it quotes.\n",
+        "# Mixed\n\n- The system shall log every decision within 200 ms.\n- The copilot cites every source it quotes.\n",
     );
-    let dry = adopt(
-        fx.path(),
-        &[
-            "--from",
-            "docs/mixed.md",
-            "--subject",
-            "system",
-            "--date",
-            "2026-10-21",
-        ],
-    );
-    dry.assert_code(0, "one prose candidate drafts, the `shall` one is skipped");
-    assert!(
-        dry.stdout.contains("drafted: 1") && dry.stdout.contains("skipped: 1"),
-        "the counts name both outcomes:\n{}",
-        dry.stdout
-    );
-    assert!(
-        dry.stdout.contains("parses as a structured claim") && dry.stdout.contains("#L3"),
-        "the skipped statement is named with its reason and line:\n{}",
-        dry.stdout
-    );
-
     let write = adopt(
         fx.path(),
-        &[
-            "--from",
-            "docs/mixed.md",
-            "--subject",
-            "system",
-            "--date",
-            "2026-10-21",
-            "--write",
-        ],
+        &["--from", "docs/mixed.md", "--date", "2026-10-21", "--write"],
     );
-    write.assert_code(0, "the write run");
-    let draft = fx.read("claims/REQ-0002.yml");
+    write.assert_code(0, "both candidates draft");
     assert!(
-        draft.contains("statement: \"The copilot cites every source it quotes.\""),
-        "only the prose candidate is drafted:\n{draft}"
+        write.stdout.contains("drafted: 2") && write.stdout.contains("skipped: 0"),
+        "{}",
+        write.stdout
+    );
+    let structured = fx.read("claims/REQ-0002.yml");
+    assert!(
+        structured.contains("statement: \"The system shall log every decision within 200 ms.\""),
+        "{structured}"
     );
     assert!(
-        !draft.contains("shall log every decision"),
-        "the structured candidate is not written:\n{draft}"
+        field(&structured, "pins:").is_none(),
+        "a pin is the author's statement, never the tool's guess:\n{structured}"
     );
-    req(fx.path(), &["canon"]).assert_code(0, "the written drafts are legal as written");
-
-    // Every candidate structured: a definite problem, nothing written.
-    fx.write(
-        "docs/shall-only.md",
-        "# Shall\n\n- The system shall log every decision.\n",
-    );
-    let none = adopt(
-        fx.path(),
-        &[
-            "--from",
-            "docs/shall-only.md",
-            "--subject",
-            "system",
-            "--date",
-            "2026-10-21",
-            "--write",
-        ],
-    );
-    none.assert_code(1, "no candidate is a prose-only claim");
+    let canon = req(fx.path(), &["canon"]);
+    canon.assert_code(0, "the drafts load");
+    let row = canon
+        .stdout
+        .lines()
+        .find(|line| line.starts_with("REQ-0002 "))
+        .unwrap_or_else(|| panic!("no REQ-0002 row:\n{}", canon.stdout));
     assert!(
-        none.stderr.contains("nothing drafted")
-            && none.stderr.contains("parses as a structured claim"),
-        "the finding names why nothing was drafted:\n{}",
-        none.stderr
-    );
-    assert!(
-        !fx.exists("claims/REQ-0003.yml"),
-        "nothing is written when no candidate is draftable"
+        row.contains("structured") && row.contains("op LE") && row.contains("value 0.2"),
+        "the parse is derived, and shown for the human to pin:\n{row}"
     );
 }
 
@@ -826,8 +839,6 @@ fn a_duplicate_candidate_is_named_and_not_drafted_twice() {
         &[
             "--from",
             "docs/capabilities.md",
-            "--subject",
-            "system",
             "--date",
             "2026-10-21",
             "--write",
@@ -852,95 +863,6 @@ fn a_duplicate_candidate_is_named_and_not_drafted_twice() {
     req(fx.path(), &["canon"]).assert_code(0, "the written draft is legal");
 }
 
-/// `req canon --fill` exits 3 both for a refusal *and* for a corpus it could not read, printing
-/// only stderr in the latter case. A candidate check with no `refused <n>` summary judged
-/// nothing, and treating that as "every candidate is legal" is the false success the check
-/// exists to prevent: it must be UNVERIFIABLE, and nothing may be written.
-#[cfg(unix)]
-#[test]
-fn a_candidate_check_with_no_verdict_is_unverifiable_not_a_pass() {
-    use std::os::unix::fs::PermissionsExt;
-
-    let fx = Fixture::new("req-adopt-nosummary");
-    req(fx.path(), &["init"]).assert_code(0, "req init");
-    fx.write("docs/capabilities.md", CAPABILITIES);
-
-    // A `req` that answers `--version` like this build but fails the candidate check the way
-    // `--fill` does when it cannot read the corpus: exit 3, a message on stderr, no summary.
-    let fake_dir = fx.path().join("fake-bin");
-    fs::create_dir_all(&fake_dir).expect("creates the fake bin directory");
-    let fake = fake_dir.join("req");
-    fs::write(
-        &fake,
-        "#!/bin/sh\n\
-         if [ \"$1\" = \"--version\" ]; then\n\
-         \x20 printf 'req 0.1.0\\n  rules_v            5\\n  claim_schema       req.claim/1\\n'\n\
-         \x20 exit 0\n\
-         fi\n\
-         echo 'cannot read the corpus registry' >&2\n\
-         exit 3\n",
-    )
-    .expect("writes the fake req");
-    let mut permissions = fs::metadata(&fake)
-        .expect("the fake req exists")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&fake, permissions).expect("makes the fake req executable");
-
-    let out = adopt_with_bin_dir(
-        fx.path(),
-        &[
-            "--from",
-            "docs/capabilities.md",
-            "--subject",
-            "system",
-            "--date",
-            "2026-10-21",
-            "--write",
-        ],
-        &fake_dir,
-    );
-    out.assert_code(3, "a candidate check that judged nothing");
-    assert!(
-        out.stderr.contains("no verdict") || out.stderr.contains("no `refused"),
-        "the unknown is reported as UNVERIFIABLE, naming what was missing:\n{}",
-        out.stderr
-    );
-    assert!(
-        !fx.exists("claims/REQ-0002.yml"),
-        "nothing is written when the candidates were not judged"
-    );
-}
-
-/// A subject id that YAML would otherwise resolve to a non-string (`null`, `true`, `1.5`) must
-/// still arrive as a string, or the draft is a file the strict `ClaimFile` cannot deserialize
-/// while the tool reports success.
-#[test]
-fn a_yaml_shaped_subject_is_still_a_string_in_the_claim() {
-    let fx = Fixture::new("req-adopt-subject");
-    fx.write("docs/capabilities.md", CAPABILITIES);
-    req(fx.path(), &["init"]).assert_code(0, "req init");
-    let out = adopt(
-        fx.path(),
-        &[
-            "--from",
-            "docs/capabilities.md",
-            "--subject",
-            "null",
-            "--date",
-            "2026-10-21",
-            "--write",
-        ],
-    );
-    out.assert_code(0, "a subject YAML would otherwise resolve to null");
-    let draft = fx.read("claims/REQ-0002.yml");
-    assert!(
-        draft.contains("subject: \"null\""),
-        "the subject is a quoted string, not the YAML null scalar:\n{draft}"
-    );
-    req(fx.path(), &["canon"]).assert_code(0, "the draft parses");
-}
-
 /// A directory in `claims/` makes the corpus one `req` refuses (the corpus is flat). Drafting
 /// into it would leave a tree that is red and that this tool reported writing successfully.
 #[test]
@@ -954,8 +876,6 @@ fn a_directory_in_claims_is_a_corpus_error_not_a_silent_skip() {
         &[
             "--from",
             "docs/capabilities.md",
-            "--subject",
-            "system",
             "--date",
             "2026-10-21",
             "--write",
@@ -987,14 +907,7 @@ fn a_non_utf8_document_is_unverifiable_and_named() {
     .expect("writes raw bytes");
     let out = adopt(
         fx.path(),
-        &[
-            "--from",
-            "docs/capabilities.md",
-            "--subject",
-            "system",
-            "--date",
-            "2026-10-21",
-        ],
+        &["--from", "docs/capabilities.md", "--date", "2026-10-21"],
     );
     out.assert_code(3, "a document that is not UTF-8");
     assert!(
@@ -1024,8 +937,6 @@ fn a_run_from_a_subdirectory_uses_the_named_root_and_one_provenance_basis() {
         "..",
         "--from",
         "docs/capabilities.md",
-        "--subject",
-        "system",
         "--date",
         "2026-10-21",
         "--write",
@@ -1056,14 +967,7 @@ fn a_run_from_a_subdirectory_uses_the_named_root_and_one_provenance_basis() {
     fs::create_dir_all(fx.path().join("sub2")).expect("creates a second subdirectory");
     let env_run = adopt_with_req_root(
         &fx.path().join("sub2"),
-        &[
-            "--from",
-            "docs/more.md",
-            "--subject",
-            "system",
-            "--date",
-            "2026-10-21",
-        ],
+        &["--from", "docs/more.md", "--date", "2026-10-21"],
         fx.path(),
     );
     env_run.assert_code(0, "REQ_ROOT resolves the document against the corpus root");
@@ -1089,8 +993,6 @@ fn req_lines_ignores_the_sources_ids_and_names_every_skipped_line() {
             "docs/backlog.md",
             "--convention",
             "req-lines",
-            "--subject",
-            "system",
             "--date",
             "2026-10-21",
             "--write",
@@ -1145,8 +1047,6 @@ fn the_heading_scope_is_respected_and_everything_outside_it_is_named() {
             "docs/capabilities.md",
             "--under",
             "Capabilities",
-            "--subject",
-            "system",
             "--date",
             "2026-10-21",
         ],
@@ -1178,8 +1078,6 @@ fn nothing_extracted_is_a_definite_problem_and_names_why() {
         &[
             "--from",
             "docs/capabilities.md",
-            "--subject",
-            "system",
             "--date",
             "2026-10-21",
             "--write",
@@ -1199,8 +1097,6 @@ fn nothing_extracted_is_a_definite_problem_and_names_why() {
         &[
             "--from",
             "docs/skips-only.md",
-            "--subject",
-            "system",
             "--date",
             "2026-10-21",
             "--write",

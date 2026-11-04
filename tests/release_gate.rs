@@ -2,8 +2,8 @@
 
 mod common;
 
-use common::{rationale, row, stored};
-use req::fill::StoredState;
+use common::{pinned, rationale, row};
+use req::canon::PinVerdict;
 use req::gate::{Outcome, evaluate_claims, exit_code};
 use req::select::{Applies, Context};
 
@@ -42,9 +42,11 @@ fn an_undecided_claim_is_unverifiable_and_a_defect_outranks_it() {
     );
 
     let defect = evaluate_claims(
-        &[stored(
+        &[pinned(
             row("REQ-A", Applies::Yes, &[]),
-            StoredState::Mismatch("stored address does not recompute".to_string()),
+            "operator",
+            "LT",
+            PinVerdict::Contradiction("LE".to_string()),
         )],
         &Context::new(),
     );
@@ -61,9 +63,11 @@ fn an_undecided_claim_is_unverifiable_and_a_defect_outranks_it() {
 fn claims_outside_the_selection_do_not_fail_the_gate() {
     let rows = vec![
         row("REQ-A", Applies::Yes, &[]),
-        stored(
+        pinned(
             row("REQ-B", Applies::No, &[]),
-            StoredState::Mismatch("tampered digest".to_string()),
+            "value",
+            "5",
+            PinVerdict::NotCarried,
         ),
         rationale(row("REQ-C", Applies::No, &[]), ""),
     ];
@@ -71,28 +75,60 @@ fn claims_outside_the_selection_do_not_fail_the_gate() {
     assert_eq!(exit_code(&results, 0), 0, "{results:?}");
 }
 
+/// `pins_hold` (ADR 0022): both flag classes are a defect, never an open question — the author
+/// said what the statement must parse to, and it does not. The policy sits where
+/// `addresses_current` sat, first in the list.
 #[test]
-fn a_hand_edited_digest_fails_and_an_unfilled_claim_does_not_pass() {
-    let tampered = vec![stored(
+fn a_flagged_pin_fails_whether_contradicted_or_not_carried() {
+    for (verdict, clause) in [
+        (
+            PinVerdict::Contradiction("LE".to_string()),
+            "contradicts the parse (LE)",
+        ),
+        (PinVerdict::NotCarried, "is not carried by the parse"),
+    ] {
+        let rows = vec![pinned(
+            row("REQ-A", Applies::Yes, &[]),
+            "operator",
+            "LT",
+            verdict.clone(),
+        )];
+        let results = evaluate_claims(&rows, &Context::new());
+        assert_eq!(exit_code(&results, 0), 1, "{verdict:?}: {results:?}");
+        assert_eq!(results[0].name, "pins_hold");
+        assert_eq!(results[0].outcome, Outcome::Fail);
+        assert!(results[0].offenders[0].contains("REQ-A: pin operator LT"));
+        assert!(
+            results[0].offenders[0].contains(clause),
+            "{verdict:?} is reported as `{clause}`, not as the other class: {:?}",
+            results[0].offenders
+        );
+    }
+    let agreeing = vec![pinned(
         row("REQ-A", Applies::Yes, &[]),
-        StoredState::Mismatch("stored address does not recompute".to_string()),
+        "operator",
+        "LE",
+        PinVerdict::Agrees,
     )];
-    let results = evaluate_claims(&tampered, &Context::new());
-    assert_eq!(exit_code(&results, 0), 1);
-    assert_eq!(results[0].outcome, Outcome::Fail);
-    assert!(results[0].offenders[0].contains("does not recompute"));
-
-    let unfilled = vec![stored(
-        row("REQ-A", Applies::Yes, &[]),
-        StoredState::Candidate("unfilled".to_string()),
-    )];
-    let results = evaluate_claims(&unfilled, &Context::new());
-    assert_eq!(
-        exit_code(&results, 0),
-        3,
-        "not wrong, but not confirmed either"
+    let results = evaluate_claims(&agreeing, &Context::new());
+    assert_eq!(results[0].outcome, Outcome::Pass, "{results:?}");
+    assert!(
+        results[0].detail.contains("1 pin(s), 1 held"),
+        "{results:?}"
     );
-    assert_eq!(results[0].outcome, Outcome::Unverifiable);
+    assert_eq!(results[0].checked, Some(1), "{results:?}");
+}
+
+/// The reason `checked` exists: a pass over a selection that pins nothing is told from a pass that
+/// held some. Zero is reported as `Some(0)` with the "zero pins" disclosure, not omitted.
+#[test]
+fn a_selection_with_no_pins_passes_and_says_it_checked_zero() {
+    let rows = vec![row("REQ-A", Applies::Yes, &[])];
+    let results = evaluate_claims(&rows, &Context::new());
+    assert_eq!(results[0].name, "pins_hold");
+    assert_eq!(results[0].outcome, Outcome::Pass, "{results:?}");
+    assert_eq!(results[0].checked, Some(0), "{results:?}");
+    assert!(results[0].detail.contains("zero pins"), "{results:?}");
 }
 
 #[test]
@@ -321,9 +357,8 @@ mod cli {
             &self.0
         }
 
-        /// Add one claim carrying the given `applicability` predicates. Its authored slots are a
-        /// parity-clean shape (they must be: `canon --fill` refuses a contradicted parse); the
-        /// derived fields are written by `canon --fill`, never by this fixture.
+        /// Add one claim carrying the given `applicability` predicates. A `req.claim/2` file:
+        /// authored fields only, nothing derived (ADR 0022).
         pub fn claim(&self, id: &str, applicability: &[&str]) {
             // A default link into the fixture report, so a test about **another** policy is not
             // re-answering the evidence question; the evidence tests use `claim_with` explicitly.
@@ -342,21 +377,11 @@ mod cli {
             .expect("writes a claim");
         }
 
-        /// `req canon --fill` — the only thing that may write an address or a canonical form.
-        pub fn fill(&self) {
-            let output = Command::new(req_bin())
-                .arg("--root")
-                .arg(self.path())
-                .arg("canon")
-                .arg("--fill")
-                .output()
-                .expect("runs the compiled binary");
-            assert!(
-                output.status.success(),
-                "the fixture must fill cleanly: {}{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
+        /// Add `pins:` to a claim the fixture already wrote.
+        pub fn pin(&self, id: &str, pins: &str) {
+            let path = self.0.join("claims").join(format!("{id}.yml"));
+            let text = std::fs::read_to_string(&path).expect("reads the claim");
+            std::fs::write(&path, format!("{text}pins:\n{pins}")).expect("writes the pins");
         }
 
         /// The gate over this fixture, with a report that passes every link the fixture's claims
@@ -391,27 +416,6 @@ mod cli {
             ));
             crate::common::passing_junit(&self.path().join("claims"), &path)
         }
-
-        /// Overwrite the `address:` line `canon --fill` already wrote. The fixture does this on
-        /// purpose, and only here: it is the hand-edited digest `addresses_current` exists to
-        /// catch. Authoring an address into the template instead would be that defect, not a test
-        /// of it — which is why the template's anchor is only ever a placeholder.
-        pub fn tamper_address(&self, id: &str) {
-            let path = self.0.join("claims").join(format!("{id}.yml"));
-            let text = std::fs::read_to_string(&path).expect("reads the filled claim");
-            let corrupted: Vec<String> = text
-                .lines()
-                .map(|line| {
-                    if line.starts_with("address: ") {
-                        format!("address: {}", "f".repeat(64))
-                    } else {
-                        line.to_string()
-                    }
-                })
-                .collect();
-            std::fs::write(&path, format!("{}\n", corrupted.join("\n")))
-                .expect("writes the corrupted claim");
-        }
     }
 
     impl Drop for Fixture {
@@ -420,9 +424,7 @@ mod cli {
         }
     }
 
-    /// One authored claim. The `canonical`/`address` block is deliberately empty: it is the anchor
-    /// `canon --fill` writes into, and `Fixture::fill` asserts the fill succeeded before any test
-    /// observes the gate.
+    /// One authored `req.claim/2` claim: nothing derived, nothing to fill (ADR 0022).
     fn claim_text(id: &str, applicability: &[&str], tests: &[&str], evidence: &str) -> String {
         let tests_block = if tests.is_empty() {
             "tests: []\n".to_string()
@@ -443,37 +445,19 @@ mod cli {
             block
         };
         format!(
-            r#"schema: req.claim/1
+            r#"schema: req.claim/2
 claim_id: {id}
 statement: >-
   The req tool shall require numeric claim fields to be serialized as exact
   decimal strings.
-modality: SHALL
-subject: REQ_TOOL
-attribute: numeric_value_encoding
-operator: EQ
-value: exact_decimal_strings
-unit: none
-conditions: []
-{block}exception: null
-temporal: null
-quantifier: null
-unstructured: false
-{tests_block}evidence: {evidence}
-canonical:
-  rules_v: 0
-  subject_registry: 0
-  form: |-
-    {{}}
-address: {zeros}
+{block}{tests_block}evidence: {evidence}
 rationale:
   source: tests/release_gate.rs
   date: 2026-10-07
   rejected_alternatives: []
   assumptions: []
 relations: []
-"#,
-            zeros = "0".repeat(64)
+"#
         )
     }
 
@@ -531,7 +515,6 @@ relations: []
     fn a_variant_that_selects_no_claim_is_unverifiable_not_a_pass() {
         let fixture = Fixture::new("vacuous");
         fixture.claim("REQ-9001", &["mode == beta", "region == eu"]);
-        fixture.fill();
         let out = fixture.gate(&["mode=beta"]);
         // `region` is absent from the context, so the only claim is undecided: 0 applying, and on
         // `main` that printed `verdict: PASS` and exited 0.
@@ -550,7 +533,7 @@ relations: []
         // `mode=beta` IS declared, so the vacuity alone decided this: the four claim policies
         // pass over the empty applying set.
         for name in [
-            "addresses_current",
+            "pins_hold",
             "relations_resolve",
             "dependencies_decided",
             "rationale_present",
@@ -576,7 +559,6 @@ relations: []
         let fixture = Fixture::new("undecided");
         fixture.claim("REQ-9001", &[]);
         fixture.claim("REQ-9002", &["mode == beta"]);
-        fixture.fill();
 
         let bare = fixture.gate(&[]);
         assert_eq!(bare.code, 3, "{}", bare.text);
@@ -660,8 +642,7 @@ relations: []
         let fixture = Fixture::new("defect-undecided");
         fixture.claim("REQ-9001", &[]);
         fixture.claim("REQ-9002", &["mode == beta"]);
-        fixture.fill();
-        fixture.tamper_address("REQ-9001");
+        fixture.pin("REQ-9001", "  modality: SHOULD\n");
 
         let out = fixture.gate(&[]);
         assert_eq!(out.code, 1, "{}", out.text);
@@ -671,9 +652,9 @@ relations: []
             out.headline()
         );
         assert!(
-            out.policy("addresses_current").starts_with("[FAIL]"),
+            out.policy("pins_hold").starts_with("[FAIL]"),
             "{}",
-            out.policy("addresses_current")
+            out.policy("pins_hold")
         );
     }
 
@@ -729,7 +710,7 @@ relations: []
         // Nothing else is wrong with the *policies*: this refusal is one reason for the 3, and
         // the four undecided claims ADR 0015 counts are the other.
         for name in [
-            "addresses_current",
+            "pins_hold",
             "relations_resolve",
             "dependencies_decided",
             "rationale_present",
@@ -779,7 +760,6 @@ relations: []
         let fixture = Fixture::new("ge-compared");
         fixture.claim("REQ-9001", &[]);
         fixture.claim("REQ-9002", &["runs >= 20"]);
-        fixture.fill();
         let out = fixture.gate(&["runs=100"]);
         assert_eq!(out.code, 0, "{}", out.text);
         assert!(
@@ -809,7 +789,6 @@ relations: []
         let fixture = Fixture::new("ge-non-numeric");
         fixture.claim("REQ-9001", &[]);
         fixture.claim("REQ-9002", &["runs >= 20"]);
-        fixture.fill();
         let out = fixture.gate(&["runs=abc"]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
@@ -844,7 +823,6 @@ relations: []
         let fixture = Fixture::new("mixed");
         fixture.claim("REQ-9001", &["revision == 3"]);
         fixture.claim("REQ-9002", &["revision >= 3"]);
-        fixture.fill();
 
         // Declared: confirmed, both claims apply, nothing to refuse.
         let declared = fixture.gate(&["revision=3"]);
@@ -876,7 +854,6 @@ relations: []
         let fixture = Fixture::new("unparsed");
         fixture.claim("REQ-9001", &[]);
         fixture.claim("REQ-9002", &["field = value"]);
-        fixture.fill();
         let out = fixture.gate(&["field=value"]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
@@ -935,7 +912,6 @@ relations: []
         fixture.claim("REQ-9001", &[]);
         fixture.claim("REQ-9002", &["field = value"]);
         fixture.claim("REQ-9003", &["mode == beta"]);
-        fixture.fill();
         let out = fixture.gate(&[]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
@@ -963,7 +939,6 @@ relations: []
         let fixture = Fixture::new("ge-nondecimal");
         fixture.claim("REQ-9001", &[]);
         fixture.claim("REQ-9002", &["runs >= twenty"]);
-        fixture.fill();
         let out = fixture.gate(&["runs=25"]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(
@@ -980,22 +955,22 @@ relations: []
 
     // ---- all three outcomes through the public seam ------------------------------------------
 
-    /// The third outcome, end to end: an address that does not recompute is a **defect** — FAIL,
-    /// exit 1 — not an open question. `canon --fill` wrote the address and the fixture then
-    /// corrupted it, which is exactly the hand-edited digest `addresses_current` exists to catch;
-    /// with PASS and UNVERIFIABLE pinned above, the whole tri-state is reachable from the CLI.
+    /// The third outcome, end to end: a pin the derived parse does not hold is a **defect** —
+    /// FAIL, exit 1 — not an open question (ADR 0022's `pins_hold`, where `addresses_current`
+    /// stood). With PASS and UNVERIFIABLE pinned above, the whole tri-state is reachable from
+    /// the CLI.
     #[test]
-    fn a_hand_edited_address_fails_the_gate() {
-        let fixture = Fixture::new("tampered");
+    fn a_flagged_pin_fails_the_gate() {
+        let fixture = Fixture::new("flagged-pin");
         fixture.claim("REQ-9001", &[]);
-        fixture.fill();
-        fixture.tamper_address("REQ-9001");
+        fixture.pin("REQ-9001", "  modality: SHOULD\n");
 
         let out = fixture.gate(&[]);
         assert_eq!(out.code, 1, "{}", out.text);
-        let block = out.policy("addresses_current");
+        let block = out.policy("pins_hold");
         assert!(block.starts_with("[FAIL]"), "{block}");
         assert!(block.contains("REQ-9001"), "{block}");
+        assert!(block.contains("SHALL"), "the parse is named: {block}");
         assert!(
             out.policy("selectors_confirmed").starts_with("[PASS]"),
             "the context is empty, so the invocation raises nothing: {}",
@@ -1199,7 +1174,6 @@ mod evidence {
     fn gate_with(tag: &str, tests: &[&str], cases: &[(&str, &str)]) -> cli::Outcome {
         let fixture = Fixture::new(tag);
         fixture.claim_with("REQ-9001", &[], tests, "machine");
-        fixture.fill();
         let report = fixture.path().join("report.xml");
         write_junit(&report, cases);
         fixture.gate_with_report(&[], &report)
@@ -1212,7 +1186,6 @@ mod evidence {
         let fixture = Fixture::new("evidence-no-link");
         fixture.claim_with("REQ-9001", &[], &[], "machine");
         fixture.claim_with("REQ-9002", &[], &["fixture::b"], "machine");
-        fixture.fill();
         let report = fixture.path().join("report.xml");
         write_junit(&report, &[("fixture::b", "passed")]);
         let out = fixture.gate_with_report(&[], &report);
@@ -1314,7 +1287,6 @@ mod evidence {
         let fixture = Fixture::new("evidence-unreadable");
         fixture.claim_with("REQ-9001", &[], &["fixture::a"], "machine");
         fixture.claim_with("REQ-9002", &[], &["fixture::b"], "machine");
-        fixture.fill();
         let out = fixture.gate_raw(&[]);
         assert_eq!(out.code, 3, "{}", out.text);
         let policy = out.policy("tests_linked");
@@ -1356,7 +1328,6 @@ mod evidence {
     fn test_report_without_a_value_is_a_usage_error() {
         let fixture = Fixture::new("evidence-missing-value");
         fixture.claim("REQ-9001", &[]);
-        fixture.fill();
         let out = fixture.gate_raw(&["--test-report"]);
         assert_eq!(out.code, 2, "{}", out.text);
         assert!(
@@ -1373,7 +1344,6 @@ mod evidence {
         let fixture = Fixture::new("evidence-process");
         fixture.claim_with("REQ-9001", &[], &[], "process");
         fixture.claim_with("REQ-9002", &[], &[], "process");
-        fixture.fill();
         // No report at all: nothing machine-evidenced needs it.
         let out = fixture.gate_raw(&[]);
         assert_eq!(out.code, 0, "{}", out.text);
@@ -1394,7 +1364,6 @@ mod evidence {
         // table calls out — process must never be inferred from empty tests.
         let machine = Fixture::new("evidence-process-not-inferred");
         machine.claim_with("REQ-9001", &[], &[], "machine");
-        machine.fill();
         let out = machine.gate_raw(&[]);
         assert_eq!(out.code, 3, "{}", out.text);
         assert!(

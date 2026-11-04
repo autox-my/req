@@ -89,8 +89,8 @@ impl Drop for NoCorpus {
     }
 }
 
-/// A two-claim corpus created by the real bootstrap (`req init`), so the fixture's claims carry
-/// derived fields the derivation wrote — never a hand-written address.
+/// A two-claim corpus created by the real bootstrap (`req init`): authored `req.claim/2` claims
+/// only — the parse and address are derived at load (ADR 0022), so nothing is hand-written.
 struct Corpus(PathBuf);
 
 impl Corpus {
@@ -132,14 +132,7 @@ impl Corpus {
             "the fixture must actually move the statement, not only the claim id"
         );
         fs::write(self.claim_path("REQ-0002"), second).expect("writes the second claim");
-        // The derived fields are the derivation's to write: the statement moved, so the
-        // address must be re-derived exactly as a human would do it.
-        let out = run_at(self.path(), &["canon", "--fill"]);
-        assert_eq!(
-            out.code, 0,
-            "the fixture corpus must be filled and green:\n{}\n{}",
-            out.stdout, out.stderr
-        );
+        // Nothing derived is stored (ADR 0022): the next load derives the moved address.
     }
 
     /// A claim the empty context leaves **undecided** — the projection must still be written
@@ -154,12 +147,6 @@ impl Corpus {
         );
         assert_ne!(replaced, text, "the fixture must actually add a predicate");
         fs::write(&path, replaced).expect("writes the predicate");
-        let out = run_at(self.path(), &["canon", "--fill"]);
-        assert_eq!(
-            out.code, 0,
-            "the scoped claim must be filled and green:\n{}\n{}",
-            out.stdout, out.stderr
-        );
     }
 
     fn write(&self, name: &str, text: &str) -> PathBuf {
@@ -456,8 +443,6 @@ fn changing_a_claim_makes_the_old_projection_stale() {
     );
     assert_ne!(claim, edited, "the claim must actually move");
     fs::write(&path, edited).expect("writes the edited claim");
-    let filled = run_at(corpus.path(), &["canon", "--fill"]);
-    assert_eq!(filled.code, 0, "{}", filled.stderr);
 
     let checked = corpus.out(&["render", "--check", "spec.md"]);
     assert_eq!(

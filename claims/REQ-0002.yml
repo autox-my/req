@@ -1,29 +1,12 @@
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-0002
 statement: >-
   The req tool shall record each acceptance or rejection of a change as a signed
   Decision carrying role, meaning, timestamp, and any dissent.
-modality: SHALL
-subject: REQ_TOOL
-attribute: decision_records
-operator: EQ
-value: first_class_signed_objects
-unit: none
-conditions: []
 applicability: []
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
 tests:
   - "req::decision::canonical_bytes_are_stable_and_the_hash_covers_the_road_not_taken"
 evidence: machine
-canonical:
-  rules_v: 6
-  subject_registry: 1
-  form: |-
-    {"action":"record each acceptance or rejection of a change as a signed decision carrying role, meaning, timestamp, and any dissent","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: 6e6ba2ec76ee4ebd98d2c1e6a6257f4f0a7bfcbc714f216d314e70d3f83e3d90
 rationale:
   source: docs/adr/0005-authority-is-a-signed-decision.md
   date: 2026-10-07

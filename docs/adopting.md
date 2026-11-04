@@ -57,7 +57,7 @@ Exit 0, and exactly three files:
 
 | path | what it is |
 | --- | --- |
-| `claims/REQ-0001.yml` | a starter claim, already filled and verified — a real parse of its statement, with the derived `canonical.form` and `address` written by the same path `req canon --fill` uses |
+| `claims/REQ-0001.yml` | a starter claim in `req.claim/2`: its statement, provenance and `pins:` (the bound its statement must parse to) — nothing derived; the loader derives its parse and address every time it is read (ADR 0022) |
 | `claims/README.md` | the authoring loop and its traps, in your project's tree |
 | `aliases/subjects.yml` | the subject registry: what your prose calls a thing, and the id its address covers |
 
@@ -69,11 +69,11 @@ silently ignored root would create a corpus somewhere you did not ask for, so ru
 the corpus. It prints the next steps, including the CI file. Confirm what you got:
 
 ```bash
-req canon --verify   # exit 0, "rules_v 6; verified 1, candidates 0, mismatches 0"
+req canon            # exit 0; the derived parse, and "pins: 3 on 1 claim(s), 0 flagged"
 req gate             # exit 3 — the starter claim links no test yet (ADR 0019); see "Link each claim…"
 ```
 
-If `req canon --verify` is not exit 0, the corpus is not yours yet — report it with the command and
+If `req canon` is not exit 0, or flags a pin, the corpus is not yours yet — report it with the command and
 the exit code (bottom of this page). `req gate` exits **3** here by design, not by accident: the
 starter claim is machine-evidenced (the default) with no link and no report, an unexercised policy is
 never a pass, and it has no process declaration to fall back on. The section *Link each claim to its proving test* is what turns it green.
@@ -81,11 +81,11 @@ never a pass, and it has no process declaration to fall back on. The section *Li
 ## Adopting from documents you already have
 
 A project usually starts with prose: a `spec.md`, a backlog, a capabilities table. `req init` gives
-you a corpus, not those requirements, and a tool that guessed `modality`, `value` or `operator` from
-a sentence would be the one path that can enshrine a contradicted parse. What *is* honest to draft
-is the part the claim format already sanctions: an **`unstructured: true` claim** — the statement,
-its provenance (the document **and the line**, recorded relative to the corpus root), and every
-structured slot absent.
+you a corpus, not those requirements. Since `req.claim/2` (ADR 0022) a claim's parse is **derived**
+from its statement at load and nothing derived is stored, so what is honest to draft is exactly what
+a human authors first: the statement, its provenance (the document **and the line**, recorded
+relative to the corpus root), and empty `applicability` and `relations` — no slot to guess, nothing
+to fill, and no pin.
 
 req ships no importer and no `adopt` subcommand (issue #44): the mapping from a document to claims
 is per-project. `tools/adopt.py` in req's repository is therefore a **starting point to copy and
@@ -94,29 +94,17 @@ change it to fit your document.
 
 ```bash
 # from the corpus root (the directory holding claims/), with adopt.py copied into your project
-python3 tools/adopt.py --from docs/capabilities.md --subject system --date YYYY-MM-DD           # dry run
-python3 tools/adopt.py --from docs/capabilities.md --subject system --date YYYY-MM-DD --write   # the drafts
-req canon                # exit 0, "discrepancy flags: 0" — every draft the tool wrote is legal as written
-req canon --fill         # derives canonical.form and address
-req canon --verify       # exit 0 — the drafts are complete claims
+python3 tools/adopt.py --from docs/capabilities.md --date YYYY-MM-DD           # dry run
+python3 tools/adopt.py --from docs/capabilities.md --date YYYY-MM-DD --write   # the drafts
+req canon                # exit 0 — the parse each draft derives, structured or not
 ```
 
-**The loop is the point.** The drafts are *unfilled* on purpose — `canonical.form` is left as the
-empty placeholder and `address` is `null` — because only the derivation writes those fields, and a
-draft that carried a derived value would be an address over a parse nobody authored. After
-`--fill` a draft is a complete, legal claim, and it is **still a proposal**: the human decides
-whether to leave it qualitative or to author the slots that give it structure (ADR 0004). The tool
-never writes a slot, never derives an address, and never decides whether a bullet is one
-requirement or three.
-
-**The honest boundary, exactly.** A draft is legal *only because it is unstructured* — the
-format's marker for prose that has not been parsed, not a claim whose parse was skipped. So only a
-statement the canonicalizer leaves unstructured can be drafted: the candidates are run through
-`req canon --fill` in a throwaway corpus (the same derivation that would refuse the fill), and a
-statement that parses as a structured claim — typically a `shall` with a subject and an action —
-is **reported as skipped**, never written, because its slots are the author's to write. If every
-candidate is like that, the run is exit 1 and says so. Re-word it as prose, author the claim, or
-copy the script and adjust the mapping.
+**The loop is the point.** A draft is a complete, legal claim the moment it is written, and it is
+**still a proposal**: the human reads the parse `req canon` shows, re-words a statement whose parse
+is not what was meant, adds the applicability and relations it needs, and pins a load-bearing bound
+(`pins:`) where there is one (ADR 0004). The tool never writes a pin, never derives anything, and
+never decides whether a bullet is one requirement or three. A structured `shall` and a prose-only
+sentence are drafted alike — the difference is in the derived parse, which is req's to compute.
 
 Two conventions are built in, and neither is a heuristic:
 
@@ -127,9 +115,9 @@ Two conventions are built in, and neither is a heuristic:
 
 `--under <heading>` limits the run to one section (a heading's subsections are under it, and a
 heading inside a fenced code block is not a heading).
-`--subject <id>` is required and is the whole document's subject — one decision per document, not
-per claim — and it is written verbatim into each claim: an unregistered surface stays literal in
-the parse, so aliasing it is a later, deliberate act. `--date` is the rationale date; without it the
+There is no `--subject` (exit 2 if given): the subject is derived from each statement against
+`aliases/subjects.yml`, and an unregistered surface stays literal in the parse, so aliasing it is a
+later, deliberate act. `--date` is the rationale date; without it the
 source document's **last git commit date** is used, and the report names the commit it borrowed.
 A document with **uncommitted changes** has no commit that describes its text, so that run is a
 usage error asking for `--date`; with no commit at all it is the same. A date is authored, never
@@ -137,7 +125,7 @@ invented, exactly as `req baseline --at` is.
 
 **Every skipped line is named with its reason and counted.** A line that looks like a candidate and
 is not drafted — an empty item, a `req-lines` item with no id, an item outside the named heading,
-or a statement that parses as a structured claim — appears in the report as
+or a repeat of an earlier item — appears in the report as
 `skip <doc>#L<n> <reason>`, and the summary line says how many. A
 requirement silently dropped at adoption is the failure this project exists to prevent, so the
 report is the reviewable output.
@@ -184,35 +172,37 @@ Pin the paths your project commits in **`.req/projections`** — one repo-relati
 projection that vanished is silent decay), and a list that checked nothing is not a pass. The list
 is deliberately small: a projection is committed where it is a **deliverable**, not as a cache of
 every view, and adding a path is a decision. A `spec.md` cannot go stale by construction, because
-the only way to change it is to change the corpus — which has its own gates (`req canon --verify`,
-`req gate`, `req baseline --verify`).
+the only way to change it is to change the corpus — which has its own gates (`req gate`,
+`req baseline --verify`).
 
 ## The authoring loop and its traps
 
 Every command's `--help` carries its own `exit:` line — the codes that command answers,
 including the tri-state — and `req <command> --help` works before a corpus exists.
 
-1. **Edit `statement`, then re-run `req canon --fill`.** The slots below the statement are its
-   *authored parse*; `--fill` re-derives `canonical.form` and `address` and writes them into the
-   anchor lines. A hand-authored numeric slot that disagrees with the parse is **refused** — exit 3,
-   nothing written — because an address over a contradicted parse would enshrine the contradiction.
-   Never hand-write `address` or `canonical.form`: a hand-written digest is a critical finding, and
-   `req canon --verify` is what detects it.
-2. **Values are canonical SI.** `within 200 ms` is `value: "0.2"`, `unit: s` — the exact decimal
-   string the parser derives, not the units the prose used. `unit: ms` and `unit: seconds` are parse
-   flags, and `"0.30"` is not a canonical decimal (`"0.3"` is).
-3. **`req canon` always exits 0.** It reports the divergences; it never gates. The check that gates
-   is `req canon --verify`: exit 0 verified, 1 a digest that does not recompute — or, measured, a
-   draft still carrying the empty `form` anchor with `address: null`, reported as
-   `form stored but no address` (its remedy is `--fill`, not a retype) — 3 a re-canonicalization
-   candidate (a claim with no `form` field at all, or one filled under other rules) — re-fill it, do
-   not retype it.
-4. **A claim's `applicability:` list is part of its identity** (since rules v5): author it *before*
-   `--fill`, and re-fill when you change it — the loop in one sentence: authoring moves the statement,
-   `--fill` moves `canonical.form` and the address, `--verify` is what you gate on.
-5. **An empty `claims/` is UNVERIFIABLE (exit 3)** — for both `canon --verify` and `gate`. Zero
-   claims cannot be told from every claim having vanished, so never "clean up" a corpus down to
-   nothing; delete a requirement by deleting its claim, deliberately.
+1. **Edit `statement`, then run `req canon` to see the parse.** Nothing derived is stored in a
+   claim file (`req.claim/2`, ADR 0022): the parse, the canonical form and the address are computed
+   every time the claim is loaded, so there is nothing to fill and nothing to hand-write. `req canon`
+   prints, per claim, the derived structure, modality, subject, operator, value, unit and lints, and
+   each pin's verdict.
+2. **Pin what is load-bearing.** `pins:` (any of `modality`, `subject`, `operator`, `value`,
+   `unit`) states what the statement must parse to. A pin agrees, or it is a flag — a
+   *contradiction* (the parse says something else) or *not carried* (the parse holds no such
+   value); there is no third category. A flagged pin moves no address; `req gate` fails on it
+   (`pins_hold`, exit 1).
+3. **Values are canonical SI.** `within 200 ms` parses to `value "0.2"`, `unit s`: pin the exact
+   decimal string the parser derives, not the units the prose used. `unit: ms` is a contradiction,
+   and `"0.30"` is not a canonical decimal (`"0.3"` is), so it cannot be pinned.
+4. **`req canon` never fails on a flag.** It reports (it exits 3 only when the corpus cannot be read); it never gates. The check that gates is `req gate`:
+   the loop in one sentence is edit → `req canon` to see the parse → `req gate`. A claim's
+   `applicability:` list is part of its address (since rules v5), so editing it moves the address
+   exactly as editing the statement does.
+5. **An empty `claims/` is UNVERIFIABLE (exit 3)** — for `canon` and `gate` alike. Zero claims
+   cannot be told from every claim having vanished, so never "clean up" a corpus down to nothing;
+   delete a requirement by deleting its claim, deliberately.
+6. **A `req.claim/1` file is NOT JUDGED (exit 3).** Migrate it with `tools/migrate_claims.py` from
+   req's repository — a dry run by default that prints every key it drops and every pin it creates;
+   `--write` rewrites the file. A format bump moves no address.
 
 ## Sign the Baseline
 
@@ -243,7 +233,7 @@ req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not y
   time verifies for that Baseline even when today is later; a key that had already **expired** at the
   signing time fails (it was not valid when the signature was made), and a key **revoked after** the
   signing time no longer invalidates it — revocation is prospective. Whether a claim is *current* remains
-  `canon --verify`'s and `audit`'s business, which re-derive addresses. `--now <date>` is the explicit
+  `baseline --verify`'s and `audit`'s business, which re-derive addresses. `--now <date>` is the explicit
   override for the judgement time; it is a verification flag, not an emission one.
 - **`baselines/trust.yml` must carry the matching public key**, or verification is UNVERIFIABLE — an
   unknown key is never a pass. Rotate by adding a key beside the old one with its own validity window
@@ -405,8 +395,6 @@ jobs:
           # `$GITHUB_PATH` applies to *later* steps only; this step's own PATH is unchanged.
           export PATH="$HOME/.local/bin:$PATH"
           req --version
-      - name: every stored address still recomputes (variant-independent)
-        run: req canon --verify
       # The tests that prove the claims (ADR 0019). This template is Rust and uses nextest because
       # it writes the JUnit/XUnit document `req gate --test-report` reads; on another stack, run
       # your own test command and point `--test-report` at the report it writes. A claim with no
@@ -525,7 +513,7 @@ jobs:
           fi
           exit $rc
       # The agent-facing half (pack C): the verdicts as JSON documents, kept off the log.
-      # An agent reviewing this pull request reads `req.gate/1`, never a scraped text line.
+      # An agent reviewing this pull request reads `req.gate/2`, never a scraped text line.
       - name: the JSON views, as build artifacts (an agent reads these, not the log)
         if: always()
         run: |
@@ -713,7 +701,7 @@ you so: it exits 3 and names that claim among the undecided.
 
 Nothing about the tool changes; only whether it is run. The gate becomes a ritual, and a ritual that
 is not enforced is not a gate. The cheapest enforcement is a `pre-push` hook that runs
-`req canon --verify` and then the same loop over `.req/variants` shown above — on a corpus carrying
+the same loop over `.req/variants` shown above — on a corpus carrying
 a selector the bare invocation is UNVERIFIABLE (ADR 0015), so the loop *is* the gate. Run the suite
 first (nextest, one profile, one report) and pass `--test-report` on every line, or the gate is
 UNVERIFIABLE for lack of evidence. Do not
@@ -731,24 +719,24 @@ window. Each step names its deciding line; the explanation is in the section it 
 1. **Install at a pinned rev** (*Install req*). Exit **0**, `req --version` printing `rules_v` and
    `built from`; `<PIN>` is read with `git rev-parse --short origin/main`, never copied out of a document.
 2. **Start the corpus** (*Start a corpus*): `req init`, exit **0**, first line `Wrote a working, verified
-   corpus in the current directory:`, exactly three files. Confirm with `req canon --verify` → exit **0**,
-   `rules_v 6; verified 1, candidates 0, mismatches 0`. Its refusals are on `req init --help`.
+   corpus in the current directory:`, exactly three files. Confirm with `req canon` → exit **0**, last line
+   beginning `claims: 1 (0 unstructured); pins: 3 on 1 claim(s), 0 flagged`. Its refusals are on
+   `req init --help`.
 3. **Bring your own spec** (*Adopting from documents you already have*): copy `tools/adopt.py` out of the
    req checkout at the rev you installed and run it from the corpus root. A **dry run** is the default and
    prints, exit **0**:
 
    ```text
    draft  REQ-0002  claims/REQ-0002.yml  docs/capabilities.md#L<n>
-   skip   docs/capabilities.md#L<m>  parses as a structured claim — only its author can supply the slots (author it, or re-word it as prose)
+   skip   docs/capabilities.md#L<m>  empty text
    dry run: nothing written — pass --write to write them
    ```
 
    `--write` writes the drafts and names them (`wrote: <n> claim(s) — claims/REQ-0002.yml, …`).
-4. **Ratify: author, fill, verify** (*The authoring loop and its traps*): `req canon` reports and never
-   gates — its last line is `claims: <n>; discrepancy flags: <n>`; `req canon --fill` prints
-   `rules_v 6; filled <n>, already current <n>, refused <n> (a refusal is UNVERIFIABLE, never a pass)` and
-   refuses a contradicted claim (`REFUSED`, exit **3**, nothing written); `req canon --verify` is the check
-   that gates.
+4. **Ratify: read the parse, pin the bound** (*The authoring loop and its traps*): `req canon` reports and
+   never gates — one row per claim with its derived parse, one `pin <key> <value>: agrees` (or `FLAG …`)
+   line per pin, and a last line `claims: <n> (<u> unstructured); pins: <p> on <c> claim(s), <f> flagged; …`.
+   Nothing is filled: there is nothing derived to write. A flagged pin is the gate's to fail (`pins_hold`).
 5. **Gate it** (*Link each claim to its proving test*, *CI*, *The coverage rule*): declare each release in
    `.req/variants`, run the suite for the report, then one `req gate --test-report
    target/nextest/ci/junit.xml <key=value ...>` per line. With every applying claim linked to a passing
@@ -764,17 +752,18 @@ window. Each step names its deciding line; the explanation is in the section it 
 Paste the block in `examples/agents-snippet.md` into your project's own `AGENTS.md` — it is this list, cut
 for an adopter's agent. The four prohibitions, and why each one matters:
 
-- **Never hand-write `address` or `canonical.form`.** Both are derived: `req canon --fill` writes them into an existing claim, and `req init` derives the starter claim through that same path. A hand-written digest is a critical finding, and `req canon --verify` is what detects it.
+- **Never add a derived field to a claim file.** The parse, the canonical form and the address are derived at load and stored nowhere (`req.claim/2`); a file carrying `address`, `canonical` or any removed slot is a parse error that names the key. State a load-bearing slot as a pin instead — and never edit a pin to match a parse the statement was not meant to have.
 - **Never edit a committed projection.** Regenerate it with `req render --out`; `req render --check` is what proves it current. An edit moves bytes the corpus did not produce, and `--check` reports it.
-- **Never treat `req canon`'s exit 0 as a pass.** It reports divergences and always exits 0; the check that gates is `req canon --verify`.
+- **Never treat `req canon`'s exit 0 as a pass.** It reports the derived parse and each pin's verdict and does not fail on a flag; the check that gates is `req gate`.
 - **Never auto-merge.** A change direction is classified for a human to ratify, two addresses that differ are different requirements, and ratification is the human's act (ADR 0004).
 
 ### What it can read
 
 `--format json` on `render`, `trace`, `gate` and `audit` prints the same answer as a document on stdout —
-`req.render/1`, `req.trace/1`, `req.gate/1`, `req.audit/1` — with the exit code identical to the text form.
+`req.render/1`, `req.trace/1`, `req.gate/2`, `req.audit/1` — with the exit code identical to the text form.
 It renders the verdict, it does not add one. The CI Action writes them to `req-views/` (see *CI*), with
-**one gate document per declared release**; a `req.gate/1` document carries **six** `policies` and a
+**one gate document per declared release**; a `req.gate/2` document carries **six** `policies` (the first is
+`pins_hold`) and a
 top-level `process_evidenced` array, so a consumer that reads only the machine count would overstate what
 was proven. Read the artifact, not the log; the gate step remains what decides the build.
 

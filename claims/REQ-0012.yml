@@ -1,31 +1,13 @@
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-0012
 statement: >-
   The req tool shall need no network access for any claim operation when the
   deployment is configured offline.
-modality: SHALL
-subject: REQ_TOOL
-attribute: claim_operations_network_dependency
-operator: EQ
-value: none_when_configured_offline
-unit: none
-conditions:
-  - "when: the deployment is configured offline"
 applicability:
   - deployment_mode == air_gapped
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
 tests:
   - "req::evidence::the_core_crate_carries_no_network_client"
 evidence: machine
-canonical:
-  rules_v: 6
-  subject_registry: 1
-  form: |-
-    {"action":"need no network access for any claim operation","applicability":["deployment_mode == air_gapped"],"conditions":["when: the deployment is configured offline"],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: efa29f8ef62d9178e6f9d74b7dce6d058a2f01f805f132bc7d8e7da574427751
 rationale:
   source: docs/design.md
   date: 2026-10-07

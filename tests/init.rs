@@ -2,8 +2,8 @@
 //!
 //! The seam is the **CLI**. Every check drives the compiled binary against a fresh
 //! directory under the system temp dir (the pattern `tests/cli_version.rs` established),
-//! because what `init` promises is a *file set a reader will use*: `req canon --verify`,
-//! `req gate` and the corpus loader all read it back. A private writer unit-tested in
+//! because what `init` promises is a *file set a reader will use*: `req canon`, `req gate`
+//! and the corpus loader all read it back. A private writer unit-tested in
 //! isolation would prove nothing about that.
 //!
 //! The address is checked **twice, because the two checks fail differently**. A *golden*
@@ -11,9 +11,11 @@
 //! `init` existed — is the independent oracle: recomputing the value with the same functions
 //! `build` uses (read the claim, parse it, re-derive) asserts only that the two agree, which
 //! an implementation that never derived a correct address would also satisfy. Keeping the
-//! fresh derivation *beside* it catches the other failure: a file whose stored form no longer
-//! matches its own parse. The golden is not "the implementation's output written down" — when
-//! `RULES_V` moves it is regenerated deliberately, in that commit, as every other golden is.
+//! fresh derivation *beside* it catches the other failure: a loader whose derived address is
+//! not the one its own canonical bytes hash to. Since `req.claim/2` (ADR 0022) the file stores
+//! neither — the golden is the address the starter claim *derives*, unchanged by the format
+//! bump. It is not "the implementation's output written down" — when `RULES_V` moves it is
+//! regenerated deliberately, in that commit, as every other golden is.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -37,7 +39,7 @@ fn run_at(cwd: &Path, args: &[&str]) -> Outcome {
         .args(args)
         .current_dir(cwd)
         // `init` creates a root instead of reading one, but the commands driven *after* it
-        // in these fixtures (`canon --verify`, `gate`) resolve one, and an inherited
+        // in these fixtures (`canon`, `gate`) resolve one, and an inherited
         // `REQ_ROOT` would point them at another tree and make the check meaningless.
         .env_remove("REQ_ROOT")
         .output()
@@ -152,11 +154,11 @@ fn assert_iso_date(value: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Acceptance 1-3: a fresh directory, a filled corpus, a green gate
+// Acceptance 1-3: a fresh directory, a working corpus, a green gate
 // ---------------------------------------------------------------------------
 
 #[test]
-fn init_creates_a_filled_corpus_in_the_current_directory() {
+fn init_creates_a_working_corpus_in_the_current_directory() {
     let fx = Fixture::new("req-init-fresh");
     let out = run_at(fx.path(), &["init"]);
 
@@ -186,7 +188,7 @@ fn init_creates_a_filled_corpus_in_the_current_directory() {
     for required in [
         "https://git.xantu-barb.ts.net/fdx/req/issues",
         ".req/variants",
-        "req canon --verify",
+        "req canon",
         "req gate",
     ] {
         assert!(
@@ -196,26 +198,44 @@ fn init_creates_a_filled_corpus_in_the_current_directory() {
         );
     }
 
-    // The claim that landed is a real parse of the authored statement, filled by the same
-    // path `canon --fill` uses — checked by re-deriving the address from what is on disk.
-    let registry = req::canon::load_registry(fx.path()).expect("the registry `init` wrote loads");
+    // The claim that landed is the authored fields of `req.claim/2` and nothing derived; the
+    // loader derives its parse and address, checked here against the golden (the independent
+    // recomputation of the corpus' addresses is `tests/address_recompute.rs`).
     let claims = req::canon::load_claims(fx.path()).expect("the corpus `init` wrote loads");
     assert_eq!(claims.len(), 1, "one starter claim, not a seed set");
     let claim = &claims[0].claim;
+    let derived = &claims[0].derived;
     assert_eq!(claim.claim_id, "REQ-0001");
+    assert_eq!(claim.schema, req::canon::claim_schema());
     assert_eq!(
         claim.statement,
         "The API shall respond to a health check within 200 ms."
     );
-    assert_eq!(claim.modality, "SHALL");
-    assert_eq!(claim.subject, "API");
-    assert_eq!(claim.operator.as_deref(), Some("LE"));
+    assert_eq!(derived.form.modality_str(), "SHALL");
+    assert_eq!(derived.form.subject, "API");
+    assert_eq!(derived.form.operator_str(), "LE");
+    let pins = claim
+        .pins
+        .as_ref()
+        .expect("the starter claim pins its bound");
+    assert_eq!(pins.operator.as_deref(), Some("LE"));
     assert_eq!(
-        claim.value.as_deref(),
+        pins.value.as_deref(),
         Some("0.2"),
         "canonical SI, not 200 ms"
     );
-    assert_eq!(claim.unit.as_deref(), Some("s"));
+    assert_eq!(pins.unit.as_deref(), Some("s"));
+    assert_eq!(
+        derived.pins.len(),
+        3,
+        "the starter claim ships three pins, each judged: {:?}",
+        derived.pins
+    );
+    assert!(
+        derived.pins.iter().all(|check| !check.flags()),
+        "every pin the starter claim ships holds: {:?}",
+        derived.pins
+    );
     assert!(
         claim.applicability.is_empty(),
         "the starter claim is unconditional"
@@ -223,36 +243,22 @@ fn init_creates_a_filled_corpus_in_the_current_directory() {
     assert!(claim.relations.is_empty(), "no relation to invent");
     assert_iso_date(&claim.rationale.date);
 
-    let derived = req::canon::address_hex(&req::canon::canonical_json(
-        &req::canon::evaluate_claim(claim, &registry).form,
-    ));
     assert_eq!(
-        claim.address.as_deref(),
-        Some(STARTER_ADDRESS),
+        derived.address, STARTER_ADDRESS,
         "the starter claim's address is a **golden derived outside this crate** — the prototype \
          corpus filled at the commit before `init` existed. A mismatch is either a derivation \
          that moved without a rules bump (a defect) or a deliberate `RULES_V` bump, which \
          regenerates this constant in the same commit"
     );
-    assert_eq!(
-        claim.address.as_deref(),
-        Some(derived.as_str()),
-        "and the stored address must be the one its own stored parse derives, so a file whose \
-         form and address disagree cannot pass on the golden alone"
-    );
-    assert_eq!(
-        claim.canonical.rules_v,
-        Some(req::canon::RULES_V),
-        "the starter claim carries this build's rules version"
-    );
-    assert!(
-        claim
-            .canonical
-            .form
-            .as_deref()
-            .is_some_and(|form| !form.is_empty()),
-        "the form is filled, not an anchor left for a human"
-    );
+    let text = fx.read("claims/REQ-0001.yml");
+    for key in req::model::REMOVED_V1_KEYS {
+        assert!(
+            !text
+                .lines()
+                .any(|line| line.starts_with(&format!("{key}:"))),
+            "the starter claim stores nothing derived and no v1 slot (`{key}`):\n{text}"
+        );
+    }
 
     // The registry declares the surface the statement uses, or the parse would flag the
     // subject as literal and the claim would not be green.
@@ -269,16 +275,16 @@ fn init_creates_a_filled_corpus_in_the_current_directory() {
     // not start by transcribing.
     let readme = fx.read("claims/README.md");
     for required in [
-        "req canon --fill",
-        "req canon --verify",
-        "req canon", // reports and always exits 0
+        "req canon", // reports and never gates
+        "req gate",
+        "pins:",
         "SI",
-        "refused",
+        "derived",
         "address",
+        "tools/migrate_claims.py",
         "tools/adopt.py",
         // The runnable form: required flags, and --write because the default is a dry run.
         "--from",
-        "--subject",
         "--write",
     ] {
         assert!(
@@ -294,16 +300,13 @@ fn the_fresh_corpus_is_green() {
     let init = run_at(fx.path(), &["init"]);
     assert_eq!(init.code, 0, "{}\n{}", init.stdout, init.stderr);
 
-    let verify = run_at(fx.path(), &["canon", "--verify"]);
-    assert_eq!(
-        verify.code, 0,
-        "the claim `init` ships must verify in the directory it created:\n{}\n{}",
-        verify.stdout, verify.stderr
-    );
+    // `canon` reports the derivation and every pin it holds, in the directory it created.
+    let canon = run_at(fx.path(), &["canon"]);
+    assert_eq!(canon.code, 0, "{}\n{}", canon.stdout, canon.stderr);
     assert!(
-        verify.stdout.contains("verified 1"),
-        "the verify line must report the claim it checked:\n{}",
-        verify.stdout
+        canon.stdout.contains("pins: 3 on 1 claim(s), 0 flagged"),
+        "the starter claim's three pins hold:\n{}",
+        canon.stdout
     );
 
     // The release gate now asks the flagship question too: does a test that proves the claim
@@ -325,8 +328,8 @@ fn the_fresh_corpus_is_green() {
     let claim_path = fx.join("claims/REQ-0001.yml");
     let claim = std::fs::read_to_string(&claim_path).expect("reads the starter claim");
     let linked = claim.replace(
-        "unstructured: false\n",
-        "unstructured: false\ntests:\n  - \"init::starter\"\n",
+        "relations: []\n",
+        "relations: []\ntests:\n  - \"init::starter\"\n",
     );
     assert_ne!(linked, claim, "the link was authored");
     std::fs::write(&claim_path, linked).expect("writes the linked claim");
@@ -356,14 +359,11 @@ fn the_fresh_corpus_is_green() {
         evidenced.stdout
     );
 
-    // Diagnostics settle too: a claim that ships with flags would redden the adopter's
-    // `req canon` on day one even though it does not gate.
-    let canon = run_at(fx.path(), &["canon"]);
-    assert_eq!(canon.code, 0, "{}\n{}", canon.stdout, canon.stderr);
+    // The pins are part of the gate it passed: `pins_hold` held all three.
     assert!(
-        canon.stdout.contains("discrepancy flags: 0"),
-        "the starter claim must be a clean parse:\n{}",
-        canon.stdout
+        evidenced.stdout.contains("[PASS] pins_hold"),
+        "{}",
+        evidenced.stdout
     );
 }
 
@@ -778,7 +778,7 @@ fn init_creates_its_own_root_and_never_walks_up_to_an_ancestor() {
     assert_written(&child);
 
     // The child is now the resolved root, and the ancestor is untouched.
-    let verify = run_at(&child, &["canon", "--verify"]);
+    let verify = run_at(&child, &["canon"]);
     assert_eq!(verify.code, 0, "{}\n{}", verify.stdout, verify.stderr);
     assert!(
         verify
@@ -867,7 +867,6 @@ fn the_adoption_doc_carries_the_verified_install_form_and_the_ci_gate() {
     // be red, because a failed input redirection does not stop a `set -e` script.
     for required in [
         "[ -r .req/variants ]",
-        "req canon --verify",
         "req gate",
         ".req/variants",
         "https://git.xantu-barb.ts.net/fdx/req/issues",
@@ -909,7 +908,7 @@ fn artifact_script() -> String {
 #[cfg(unix)]
 fn run_block_containing(anchor: &str) -> String {
     let lines: Vec<&str> = req::init::CI_SNIPPET.lines().collect();
-    // The snippet has several `run: |` blocks (deploy key, install, verify, gate, JSON views).
+    // The snippet has several `run: |` blocks (deploy key, install, tests, gate, JSON views).
     // The block asked for is the one containing the anchor, and the opener is the nearest
     // `run: |` above it — positional, not "the first" or "the last".
     let anchor_at = lines

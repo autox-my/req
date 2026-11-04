@@ -48,7 +48,14 @@ pub const RULES_V: u32 = 6;
 /// format bump moves no address — but the loader judges it by direction, so a `req.claim/0` file
 /// is a migration candidate (NOT JUDGED) rather than silently accepted by a build that writes a
 /// field the old file's contract did not have.
-pub const CLAIM_SCHEMA_V: u32 = 1;
+///
+/// 1 -> 2 (ADR 0022): a claim is **authored**, its parse is **derived**. The eleven authored
+/// parse slots that re-stated the statement and the stored `canonical`/`address` are removed; an optional
+/// `pins:` states what the parse must be where it is load-bearing. The address derivation and
+/// its bytes do not change, so the bump moves no address — the dogfood list and the signed
+/// Baseline are the proof. A `req.claim/1` file is a migration candidate
+/// (`tools/migrate_claims.py`).
+pub const CLAIM_SCHEMA_V: u32 = 2;
 /// The `schema:` identifier's prefix: the value is `req.claim/<version>`. Split from the
 /// version so the version is stated once, as a number, and the identifier is derived.
 pub const CLAIM_SCHEMA_PREFIX: &str = "req.claim/";
@@ -128,7 +135,8 @@ impl ClaimSchema {
             ClaimSchema::Older(_) => Some(format!(
                 "declares schema {declared}, which predates {current}: the claim was NOT JUDGED — \
                  the file is a migration candidate, and a format bump moves no address \
-                 (docs/claim-format.md). Migrate it to {current}"
+                 (docs/claim-format.md). Migrate it to {current} with tools/migrate_claims.py \
+                 (a dry run by default; `--write` rewrites the file)"
             )),
             ClaimSchema::Newer(_) => Some(format!(
                 "declares schema {declared}, newer than the {current} this build writes: the claim \
@@ -143,17 +151,6 @@ impl ClaimSchema {
             )),
         }
     }
-}
-
-/// The one call a reader makes to judge a file's declared format: the reason its parse cannot be
-/// established by this build, or `None` when the file declares the schema this build writes.
-///
-/// One home for the judgement, so a reader cannot re-decide it — or forget to look. The corpus
-/// loader calls it, and so does every non-test reader that parses a claim file itself (the CLI's
-/// `compare`, and the fill path): two spellings of "is this the format I write" is exactly how
-/// one of them ends up silently accepting a declaration it cannot judge.
-pub fn claim_schema_reason(claim: &crate::model::ClaimFile) -> Option<String> {
-    classify_claim_schema(&claim.schema).reason(&claim.schema)
 }
 
 /// Versioned domain tag — a rules bump never silently re-hashes ratified history
@@ -1269,7 +1266,7 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
             qualifier,
             conditions,
             // The parser derives no selector: applicability is an *input* the claim
-            // supplies, injected by `evaluate_claim` before the form is hashed.
+            // supplies, injected by `derive` before the form is hashed.
             applicability: BTreeSet::new(),
             exception: None,
             temporal: None,
@@ -1279,315 +1276,248 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
 }
 
 // ---------------------------------------------------------------------------
-// req canon — claim-file diagnostics (the parity-invariant surface, v0)
+// Derived at load (ADR 0022): the parse, the form, the address, the pins' verdicts
 // ---------------------------------------------------------------------------
 
-/// `req canon` (v0 diagnostics) parses each claim's statement with the same pipeline and
-/// reports every field the pipeline can verify today against the *authored* slots:
-/// unstructured-tag consistency, modality, subject (via the registry), value, unit,
-/// operator and conditions. `attribute` stays unverified **by design**: its lexicon has no
-/// parser to agree with, so the diagnostic says so rather than flagging nearly every claim.
-///
-/// The three quantity slots are judged by ADR 0014's four-case rule (as amended 2026-10-20):
-/// a slot the parse derived and the author contradicts, or omits, is a flag. An authored slot
-/// the canonical form does not *carry* is an **annotation** — reported and counted, never a
-/// flag and never silent — but only when the claim is authored as the qualitative triple
-/// (`unit: none`, a non-numeric value, and either `operator: EQ` or no operator at all: `none`
-/// and an absent/`null` operator are the same no-operator marker). A quantity-shaped claim that authors a
-/// slot the parse missed is a contradiction: the bound would otherwise leave the address, and
-/// that is a false merge. A qualitative claim's derived value/unit are not compared either —
-/// the parser can find a stray number in prose (REQ-0014's `exactly one commit` yields
-/// `value 1 / EQ`), and the authored triple is the author's statement of state — so the
-/// per-claim cell shows what identity carries beside the annotation.
-/// One claim's parity-invariant verdict: the parse, and whether each *authored* slot agrees
-/// with it. Shared by `req canon` (which reports the divergence) and `req canon --fill`
-/// (which refuses to derive for a divergent claim) — the two must never drift apart.
-pub struct ClaimVerdict {
+/// What a claim's statement **derives** — computed when the claim is loaded and stored nowhere
+/// (`req.claim/2`, ADR 0022). Every reader of an address reads this one, so `render`, `trace`,
+/// `impact`, `baseline`, `audit`, `gate` and `compare` hash the same bytes.
+#[derive(Debug, Clone)]
+pub struct Derived {
+    /// The canonical form: the statement's parse, with the authored `applicability` injected
+    /// (an *input* to identity, ADR 0003 — the statement carries no selector syntax).
     pub form: CanonicalForm,
-    pub unstructured_ok: bool,
-    pub modality_ok: bool,
-    pub subject_ok: bool,
-    /// `value`, `unit` and `operator` are judged separately so the report can show an
-    /// annotation as its own state instead of folding it into `ok` or `FLAG`.
-    pub value_check: SlotCheck,
-    pub unit_check: SlotCheck,
-    pub op_check: SlotCheck,
-    /// Parsed conditions vs authored conditions: a claim that gains one is a different
-    /// claim (T1.8), so disagreement here is a divergence and not a detail.
-    pub conditions_ok: bool,
-    pub conditions_detail: String,
-    /// Authored slots the canonical layer cannot represent (quantifier, exception,
-    /// temporal). A gap in the *rules*, reported and refused — never silently ignored.
-    pub slots_ok: bool,
-    pub slots_detail: String,
-    pub v_parsed: String,
-    pub u_parsed: String,
-    pub authored_v: String,
-    pub authored_u: String,
-    pub op_parsed: String,
-    pub authored_op: String,
-    /// Whether the parse derived an operator, past its `"none"` sentinel. The report uses it
-    /// to choose between showing the parsed operator and `n/a`; it is not a verdict.
-    pub op_checkable: bool,
+    /// What the canonicalizer could not decide (T1.6/T1.10), reported rather than guessed.
+    pub lints: Vec<Lint>,
+    /// The canonical bytes (T1.9) — the sha256 input.
+    pub canonical: String,
+    /// `sha256("req.claim.v1\0" ‖ canonical)`, the meaning fingerprint (ADR 0020).
+    pub address: String,
+    /// Each authored pin's verdict against [`Derived::form`], in [`crate::model::Pins::entries`]
+    /// order; empty when the claim pins nothing.
+    pub pins: Vec<PinCheck>,
 }
 
-/// One authored slot's parity verdict (ADR 0014, as amended 2026-10-20).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SlotCheck {
-    /// Both sides agree, or neither side carries the slot.
-    Ok,
-    /// The parse derived the slot and the authored slot contradicts it.
-    Contradiction,
-    /// The parse derived the slot and the author left it out.
-    Omission,
-    /// The author wrote a qualitative slot the canonical form does not carry. Reported and
-    /// counted, never a flag: it is a statement of state, not a defect of identity. Only the
-    /// qualitative convention reaches this state — a quantity-shaped claim that authors a slot
-    /// the parse missed is a contradiction.
-    Annotation,
-}
-
-impl SlotCheck {
-    /// An annotation is the class the report shows in its own cell; it is never a flag.
-    pub fn is_annotation(self) -> bool {
-        matches!(self, SlotCheck::Annotation)
+impl Derived {
+    /// Whether the statement is derived-unstructured (the §4 fallback, REQ-0007). Derived,
+    /// never authored: `req.claim/2` has no `unstructured:` key.
+    pub fn unstructured(&self) -> bool {
+        self.form.unstructured
     }
 
-    /// The two directions `req canon --fill` refuses, exactly as before.
-    pub fn flags(self) -> bool {
-        matches!(self, SlotCheck::Contradiction | SlotCheck::Omission)
+    /// The modality a view shows: the derived one, or `UNSTRUCTURED` for the fallback — the
+    /// word `req.claim/1` authors wrote for such a claim, kept so a projection's bytes do not
+    /// move with the format.
+    pub fn modality_label(&self) -> &'static str {
+        if self.form.unstructured {
+            "UNSTRUCTURED"
+        } else {
+            self.form.modality_str()
+        }
+    }
+
+    /// The pins that flag (a contradiction or a slot the parse does not carry).
+    pub fn flagged_pins(&self) -> impl Iterator<Item = &PinCheck> {
+        self.pins.iter().filter(|check| check.flags())
     }
 }
 
-impl ClaimVerdict {
-    pub fn flags(&self) -> usize {
-        [
-            self.unstructured_ok,
-            self.modality_ok,
-            self.subject_ok,
-            self.conditions_ok,
-            self.slots_ok,
-        ]
-        .iter()
-        .filter(|ok| !**ok)
-        .count()
-            + [self.value_check, self.unit_check, self.op_check]
-                .iter()
-                .filter(|check| check.flags())
-                .count()
-    }
-
-    /// Annotations carried by this claim. The summary counts *claims* carrying at least one,
-    /// so a caller asks [`ClaimVerdict::has_annotation`] rather than summing this.
-    pub fn annotations(&self) -> usize {
-        [self.value_check, self.unit_check, self.op_check]
-            .iter()
-            .filter(|check| check.is_annotation())
-            .count()
-    }
-
-    pub fn has_annotation(&self) -> bool {
-        self.annotations() > 0
-    }
-}
-
-/// The four-case table ADR 0014's Amendment states, in one place: what the canonical form
-/// derived, what the author wrote, and whether the two agree when both are present.
-///
-/// `qualitative` is the convention that makes an annotation honest: the corpus's
-/// `attribute = value` triple (`operator: EQ`, `unit: none`, non-numeric value). Only that
-/// shape is an annotation. A **quantity-shaped** claim that authors a slot the parse never
-/// derived is a contradiction and a flag: the bound would stay out of the address, so two
-/// claims differing only in it would collapse — the false merge this check exists to prevent,
-/// and a flag before the amendment. The distinction is what keeps a bound the parse missed
-/// from being silently deleted.
-fn classify_slot(derived: bool, authored: bool, agree: bool, qualitative: bool) -> SlotCheck {
-    match (derived, authored) {
-        (true, true) if agree => SlotCheck::Ok,
-        (true, true) => SlotCheck::Contradiction,
-        (true, false) => SlotCheck::Omission,
-        (false, true) if qualitative => SlotCheck::Annotation,
-        (false, true) => SlotCheck::Contradiction,
-        (false, false) => SlotCheck::Ok,
-    }
-}
-
-/// Is the authored value a canonical decimal? This is deliberately *not* the parity gate it
-/// used to be — it only recognizes the corpus's qualitative convention below, so a state
-/// name is not mistaken for a quantity.
-fn authored_is_quantity(value: &str) -> bool {
-    // The whole string must be numeric, not just its first character: a digit-leading *state
-    // name* (`2_tier_sync`) is a name, and treating it as a quantity would make a legitimate
-    // qualitative annotation a contradiction. But the exemption must not widen the other way:
-    // a non-canonical *numeral* (`1_000`, `200ms`, `0.2s`) is still a quantity the parse did
-    // not derive, and annotating it would let the bound leave the address (a false merge).
-    // The asymmetric cost decides which side an ambiguous value lands on: a wrongly flagged
-    // name is noise, a wrongly annotated bound silently deletes it.
-    if parse_decimal(value).is_some() || parse_decimal(&value.replace('_', "")).is_some() {
-        return true;
-    }
-    // A digit run followed by digits/underscores or a unit the T1.4 table knows is a quantity.
-    let Some((_, Some(suffix))) = leading_numeric_part(value) else {
-        return false;
-    };
-    let suffix = suffix.trim_start_matches('_');
-    let letters: String = suffix.chars().filter(|c| c.is_ascii_alphabetic()).collect();
-    letters.is_empty()
-        || suffix.starts_with(|c: char| c.is_ascii_digit())
-        || units().contains_key(letters.to_lowercase().as_str())
-}
-
-/// The qualitative convention the corpus authors: an `attribute = value` triple with
-/// `operator: EQ`, no unit, and a non-numeric value (REQ-0001 `unit_of_work = claim`,
-/// REQ-0015 `continuous_bidirectional_file_sync = absent`). The canonical form carries
-/// value/unit/operator only for quantities, so such a triple is not representable and is an
-/// annotation. The parser may still find a stray number in the prose ("any two claims" → 2),
-/// which is why the derived value is not compared against the authored state name: comparing
-/// it is the prototype that flagged 31 slots across 17 of 21 claims.
-///
-/// A **missing** operator is the no-operator marker, exactly as `operator: none` spells it.
-/// Reading `operator: null` as quantity-shaped made the value a contradiction although the
-/// claim carries no bound at all, and made two spellings of one qualitative triple disagree.
-fn is_qualitative_convention(value: &str, operator: &str, unit: &str) -> bool {
-    !value.is_empty()
-        && !authored_is_quantity(value)
-        && (operator == "EQ" || operator == "none" || operator.is_empty())
-        && unit == "none"
-}
-
-/// The parity invariant, per claim: re-parse `statement` and compare the derived
-/// form against every authored slot that is actually checkable.
-pub fn evaluate_claim(claim: &crate::model::ClaimFile, registry: &Registry) -> ClaimVerdict {
-    let (mut form, _lints) = canonicalize_statement(&claim.statement, registry);
+/// Derive a claim's form, address, lints and pin verdicts. Pure: the claim and the registry in,
+/// the derivation out — the one place an address is computed from a claim, so no reader can
+/// hash a different form.
+pub fn derive(claim: &crate::model::ClaimFile, registry: &Registry) -> Derived {
+    let (mut form, lints) = canonicalize_statement(&claim.statement, registry);
     // Authored selectors are an *input* to the canonical form (ADR 0003), sorted for
-    // determinism. They are not derived from the statement — the formal selector syntax
-    // is deferred — so they are set here, and the parity invariant below compares only
-    // what the parser produces.
+    // determinism by the `BTreeSet`. They are not derived from the statement — the formal
+    // selector syntax is deferred — so they are set here, before the form is hashed.
     form.applicability = claim.applicability.iter().cloned().collect();
-
-    let unstructured_ok = form.unstructured == claim.unstructured;
-    let modality_ok = claim.unstructured || form.modality_str() == claim.modality;
-    // An authored-unstructured claim has no structured subject to compare; the
-    // unstructured tag is the field that carries that decision.
-    let subject_ok = claim.unstructured || form.subject == claim.subject;
-
-    // The value/unit/operator four-case rule (ADR 0014, as amended). `attribute` is
-    // deliberately absent: it is unverified by design.
-    let authored_v = claim.value.clone().unwrap_or_default();
-    let authored_u = claim.unit.clone().unwrap_or_else(|| "none".to_string());
-    let authored_op = claim.operator.clone().unwrap_or_default();
-    let v_parsed = form
-        .value
+    let canonical = canonical_json(&form);
+    let address = address_hex(&canonical);
+    let pins = claim
+        .pins
         .as_ref()
-        .map(canonical_decimal)
+        .map(|pins| evaluate_pins(pins, &form))
         .unwrap_or_default();
-    let u_parsed = form.unit.clone().unwrap_or_else(|| "none".to_string());
-    let op_parsed = form.operator_str().to_string();
-
-    let qualitative = is_qualitative_convention(&authored_v, &authored_op, &authored_u);
-    let value_derived = !qualitative && form.value.is_some();
-    let unit_derived = !qualitative && form.unit.as_deref().is_some_and(|u| u != "none");
-    let op_derived = op_parsed != "none";
-    let authored_v_present = !authored_v.is_empty();
-    let authored_u_present = claim.unit.as_deref().is_some_and(|u| u != "none");
-    // `operator: none` is the canonical no-operator sentinel, exactly as `unit: none` is the
-    // no-unit one: a claim that spells it is not authoring an operator.
-    let authored_op_present = claim
-        .operator
-        .as_deref()
-        .is_some_and(|o| !o.is_empty() && o != "none");
-
-    let value_check = classify_slot(
-        value_derived,
-        authored_v_present,
-        v_parsed == authored_v,
-        qualitative,
-    );
-    let unit_check = classify_slot(
-        unit_derived,
-        authored_u_present,
-        u_parsed == authored_u,
-        qualitative,
-    );
-    let op_check = classify_slot(
-        op_derived,
-        authored_op_present,
-        op_parsed == authored_op,
-        qualitative,
-    );
-
-    // Conditions ARE parsed (T1.8), so they are comparable — and a claim that gains one
-    // is a different claim, which makes an authored list that disagrees with the parse a
-    // divergence rather than a detail. Before this, authored conditions were silently
-    // unverified.
-    let authored_conditions: BTreeSet<String> = claim.conditions.iter().cloned().collect();
-    let conditions_ok = authored_conditions == form.conditions;
-    let conditions_detail = if conditions_ok {
-        String::new()
-    } else {
-        format!(
-            "conditions parsed [{}] vs authored [{}]",
-            form.conditions
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>()
-                .join("; "),
-            authored_conditions
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>()
-                .join("; ")
-        )
-    };
-
-    // Slots the canonical layer cannot represent. Authoring one is not a mistake in the
-    // claim — it is a gap in the rules — so it is reported and `--fill` refuses, rather
-    // than writing an address that silently ignores what the author wrote.
-    let mut unrepresented: Vec<&str> = Vec::new();
-    if claim.quantifier.is_some() {
-        unrepresented.push("quantifier");
-    }
-    if claim.exception.is_some() {
-        unrepresented.push("exception");
-    }
-    if claim.temporal.is_some() {
-        unrepresented.push("temporal");
-    }
-    let slots_ok = unrepresented.is_empty();
-    let slots_detail = unrepresented.join(",");
-
-    ClaimVerdict {
+    Derived {
         form,
-        unstructured_ok,
-        modality_ok,
-        subject_ok,
-        value_check,
-        unit_check,
-        op_check,
-        conditions_ok,
-        conditions_detail,
-        slots_ok,
-        slots_detail,
-        v_parsed,
-        u_parsed,
-        authored_v,
-        authored_u,
-        op_parsed,
-        authored_op,
-        op_checkable: op_derived,
+        lints,
+        canonical,
+        address,
+        pins,
     }
+}
+
+/// One pin's verdict (ADR 0022). Two outcomes besides agreement, and **both flag**: there is no
+/// annotation category, because a pin the parse does not carry is precisely the bound that would
+/// otherwise leave identity in silence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PinVerdict {
+    /// The derived form holds exactly the pinned value.
+    Agrees,
+    /// The derived form holds something else for this key — named, so the flag is checkable.
+    Contradiction(String),
+    /// The derived form holds no value for this key at all (an unstructured statement, or one
+    /// whose parse found no comparator, number or unit).
+    NotCarried,
+}
+
+/// One pinned key, what it pinned, and the verdict.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PinCheck {
+    pub key: &'static str,
+    pub pinned: String,
+    pub verdict: PinVerdict,
+}
+
+impl PinCheck {
+    /// A contradiction and a not-carried pin both flag; only agreement does not.
+    pub fn flags(&self) -> bool {
+        !matches!(self.verdict, PinVerdict::Agrees)
+    }
+
+    /// The verdict in words, as `req canon` and the gate print it.
+    pub fn describe(&self) -> String {
+        match &self.verdict {
+            PinVerdict::Agrees => format!("pin {} {}: agrees", self.key, self.pinned),
+            PinVerdict::Contradiction(derived) => format!(
+                "pin {} {}: FLAG contradiction — the parse says {derived}",
+                self.key, self.pinned
+            ),
+            PinVerdict::NotCarried => format!(
+                "pin {} {}: FLAG not carried — the parse holds no {}",
+                self.key, self.pinned, self.key
+            ),
+        }
+    }
+}
+
+/// Is `value` a canonical exact decimal string — the form [`canonical_decimal`] writes (`"0.3"`,
+/// never `"0.30"`, `".3"`, `"+1"` or `"3e-1"`)? The claim-format rule for a pinned `value`.
+pub fn is_canonical_decimal(value: &str) -> bool {
+    !value.contains(['e', 'E'])
+        && value
+            .parse::<Decimal>()
+            .is_ok_and(|d| canonical_decimal(&d) == value)
+}
+
+/// Judge every pin against a derived form. Pure, and the whole rule (ADR 0022):
+///
+/// * the form holds no value for the key → **not carried** (a flag);
+/// * it holds the pinned value exactly → **agrees**;
+/// * it holds another → **contradiction** (a flag), naming the derived value.
+///
+/// `value` is compared as the canonical decimal string the form serializes, so `"0.3"` agrees
+/// with a parse of `0.30` and `"0.30"` cannot be pinned at all ([`crate::model::validate_pins`]).
+/// `unit: none` is the no-unit marker: it agrees with a form that carries no unit (or the
+/// dimensionless `none`), and is contradicted by one that carries a unit. An unstructured form
+/// carries nothing, so every pin on it is not carried.
+pub fn evaluate_pins(pins: &crate::model::Pins, form: &CanonicalForm) -> Vec<PinCheck> {
+    let structured = !form.unstructured;
+    let derived_unit = form.unit.clone().filter(|u| u != "none");
+    pins.entries()
+        .into_iter()
+        .map(|(key, pinned)| {
+            let derived: Option<String> = if !structured {
+                None
+            } else {
+                match key {
+                    "modality" => form.modality.map(|m| m.as_str().to_string()),
+                    "subject" => Some(form.subject.clone()).filter(|s| !s.is_empty()),
+                    "operator" => form.operator.map(|c| c.as_str().to_string()),
+                    "value" => form.value.as_ref().map(canonical_decimal),
+                    "unit" => Some(derived_unit.clone().unwrap_or_else(|| "none".to_string())),
+                    _ => None,
+                }
+            };
+            let verdict = match derived {
+                // `unit: none` pinned over a form with a unit is a contradiction, and a real
+                // unit pinned over a unitless form is a unit the parse does not carry.
+                Some(d) if key == "unit" && d == "none" && pinned != "none" => {
+                    PinVerdict::NotCarried
+                }
+                Some(d) if d == pinned => PinVerdict::Agrees,
+                Some(d) => PinVerdict::Contradiction(d),
+                None => PinVerdict::NotCarried,
+            };
+            PinCheck {
+                key,
+                pinned: pinned.to_string(),
+                verdict,
+            }
+        })
+        .collect()
+}
+
+/// Parse one claim file's text under this build's contract (`req.claim/2`), in the order a
+/// reader needs the answers:
+///
+/// 1. the declared `schema:` — a file of another format is NOT JUDGED
+///    ([`ClaimSchema::reason`]), before its keys are held to a contract they were not written
+///    against (a `req.claim/1` file carries every removed key, and the remedy is a migration,
+///    not fifteen key errors);
+/// 2. a removed `req.claim/1` key, **named** — never silently ignored;
+/// 3. the strict [`crate::model::ClaimFile`] (a misspelled key, a missing `relations:`);
+/// 4. the `pins:` values and the `tests:` declaration.
+///
+/// The one parse every reader calls — the corpus loader and `compare`'s two paths — so the
+/// judgement has one home.
+pub fn parse_claim(text: &str) -> Result<crate::model::ClaimFile, String> {
+    #[derive(serde::Deserialize)]
+    struct DeclaredSchema {
+        #[serde(default)]
+        schema: Option<String>,
+    }
+    if let Ok(DeclaredSchema {
+        schema: Some(declared),
+    }) = yaml_serde::from_str::<DeclaredSchema>(text)
+        && let Some(reason) = classify_claim_schema(&declared).reason(&declared)
+    {
+        return Err(reason);
+    }
+    if let Ok(keys) = yaml_serde::from_str::<BTreeMap<String, serde::de::IgnoredAny>>(text) {
+        let removed: Vec<String> = crate::model::REMOVED_V1_KEYS
+            .iter()
+            .filter(|key| keys.contains_key(**key))
+            .map(|key| format!("`{key}`"))
+            .collect();
+        if !removed.is_empty() {
+            return Err(format!(
+                "carries {}, removed in {current} (ADR 0022): the parse is derived from \
+                 `statement` when the claim is loaded and nothing derived is stored. A removed \
+                 `modality`, `subject`, `operator`, `value` or `unit` can be stated as a pin under \
+                 `pins:`. `conditions`, `unstructured`, `canonical` and `address` are derived: \
+                 the statement carries them. `exception`, `temporal`, `quantifier` and \
+                 `attribute` have no slot in the form at all: their words belong in `statement`, \
+                 and `req canon` lints any the parse refused to hold (`uncovered_content`). \
+                 `tools/migrate_claims.py` migrates a whole `req.claim/1` file",
+                removed.join(", "),
+                current = claim_schema()
+            ));
+        }
+    }
+    let claim: crate::model::ClaimFile =
+        yaml_serde::from_str(text).map_err(|e| format!("does not parse as a claim: {e}"))?;
+    if let Some(pins) = &claim.pins {
+        crate::model::validate_pins(pins)?;
+    }
+    // The authored link list is part of the file contract even though it is outside
+    // identity: an empty or duplicated id is refused here, where the file can be named,
+    // rather than becoming a confusing gate finding later (ADR 0019).
+    crate::model::validate_tests(&claim.tests, claim.evidence)?;
+    Ok(claim)
 }
 
 /// One claim file, loaded and validated: the path it came from, the file name the
 /// scan already validated as UTF-8 (the naming pass re-derives nothing, so a broken
-/// invariant cannot turn into a misleading "empty stem" complaint), its bytes (the
-/// writers preserve comments, so `text` is what `--fill` edits), and its parse.
+/// invariant cannot turn into a misleading "empty stem" complaint), its bytes, its parse,
+/// and what its statement **derives** — computed here, at load, and stored nowhere (ADR 0022).
 #[derive(Debug)]
 pub struct LoadedClaim {
     pub path: std::path::PathBuf,
     pub name: String,
     pub text: String,
     pub claim: crate::model::ClaimFile,
+    pub derived: Derived,
 }
 
 /// The canonical `REQ-<digits>` stem: uppercase exactly, because the canonical
@@ -1643,16 +1573,15 @@ fn looks_like_claim_file(name: &str) -> bool {
 ///   claim written in another encoding), or a **directory** — the corpus is flat, so a
 ///   subdirectory is a place a claim can be filed out of sight;
 /// - an unreadable file, or YAML that does not parse under the strict `ClaimFile`
-///   (a misspelled key names itself; a missing `applicability`/`relations` does too);
-/// - a `schema:` that is not the file format this build writes (`CLAIM_SCHEMA_V`): parsed and
-///   never consulted, it was decoration — and the address does not cover the field, so a wrong
-///   value moved no address either and nothing would have noticed. Judged **by direction**, as
-///   [`crate::baseline::rules_mismatch`] judges `rules_v`: older is a migration candidate, newer
-///   is a question this build cannot answer, and a value of no `req.claim/<n>` shape is a broken
-///   file. All three are NOT JUDGED, and refusing here means no command — `canon`, `--verify`,
-///   `--fill`, the views, the gate, `compare` — can quietly ignore the declaration. `compare`
-///   reads its two sides by path rather than through this loader, and calls
-///   [`claim_schema_reason`] itself so the judgement still has one home;
+///   (a misspelled key names itself; a missing `applicability`/`relations` does too; a removed
+///   `req.claim/1` key is named as removed, ADR 0022);
+/// - a `schema:` that is not the file format this build writes (`CLAIM_SCHEMA_V`), judged
+///   **first** by [`parse_claim`] and **by direction**, as [`crate::baseline::rules_mismatch`]
+///   judges `rules_v`: older is a migration candidate, newer is a question this build cannot
+///   answer, and a value of no `req.claim/<n>` shape is a broken file. All three are NOT JUDGED,
+///   and refusing here means no command — `canon`, the views, the gate, `compare` — can quietly
+///   ignore the declaration. `compare` reads its two sides by path rather than through this
+///   loader, and calls [`parse_claim`] itself so the judgement still has one home;
 /// - two files declaring one `claim_id` — their **content** is compared, so an
 ///   identical copy and a divergent rewrite are named differently;
 /// - a claim-shaped file that is not `REQ-<digits>.yml` (`req-0008.yml`,
@@ -1664,7 +1593,11 @@ fn looks_like_claim_file(name: &str) -> bool {
 /// The duplicate pass runs over every parsed candidate *before* the naming pass, so
 /// the one way two files can share an id — the `.yaml` twin of a `.yml` — is
 /// reported as the duplicate it is rather than as a filename complaint.
+///
+/// The registry is loaded first (a corpus whose registry cannot be read derives nothing, and is
+/// UNVERIFIABLE), and every claim's [`Derived`] is computed against it.
 pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
+    let registry = load_registry(root)?;
     let dir = root.join("claims");
     let mut candidates: Vec<(std::path::PathBuf, String)> = Vec::new();
     for entry in
@@ -1722,26 +1655,17 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
     for (path, name) in candidates {
         let text =
             std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        let claim: crate::model::ClaimFile =
-            yaml_serde::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
-        // The declared file-format version, judged where the file is loaded — so that every
-        // command inherits the check rather than each one re-deciding whether to look, and so
-        // `--fill` refuses to write derived fields into a format this build does not write.
-        // `reason` is `None` only for the schema this build writes.
-        if let Some(reason) = claim_schema_reason(&claim) {
-            return Err(format!("{}: {reason}", path.display()));
-        }
-        // The authored link list is part of the file contract even though it is outside
-        // identity: an empty or duplicated id is refused here, where the file can be named,
-        // rather than becoming a confusing gate finding later (ADR 0019).
-        if let Err(reason) = crate::model::validate_tests(&claim.tests, claim.evidence) {
-            return Err(format!("{}: {reason}", path.display()));
-        }
+        // The declared format first, then the removed keys, the strict contract, the pins and
+        // the test links — all in `parse_claim`, so every command inherits the checks rather
+        // than each one re-deciding whether to look.
+        let claim = parse_claim(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+        let derived = derive(&claim, &registry);
         loaded.push(LoadedClaim {
             path,
             name,
             text,
             claim,
+            derived,
         });
     }
 
@@ -1806,14 +1730,11 @@ pub fn load_registry(root: &std::path::Path) -> Result<Registry, String> {
 /// it. The root is resolved once at the CLI boundary and threaded to every read path
 /// (ADR 0012), so this is also the seam the strict loader is exercised through against a
 /// fixture corpus — without writing into the repository's own `claims/`.
+///
+/// It prints the **derived** parse per claim (structure, modality, subject, operator, value,
+/// unit, lints) and each pin's verdict, and it reports: exit 0 whatever it found, 3 when the
+/// corpus cannot be read. The check that gates pins is `req gate` (`pins_hold`).
 pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
-    let registry = match load_registry(root) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("[UNVERIFIABLE] {e}");
-            return 3;
-        }
-    };
     let claims = match load_claims(root) {
         Ok(c) => c,
         Err(e) => {
@@ -1822,114 +1743,89 @@ pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
         }
     };
 
-    let mut checked = 0usize;
-    let mut flags_total = 0usize;
-    let mut annotated_claims = 0usize;
+    let (mut unstructured, mut pins, mut pinned_claims, mut flagged, mut linted) =
+        (0usize, 0usize, 0usize, 0usize, 0usize);
     for loaded in claims.iter() {
-        let claim = &loaded.claim;
-        let verdict = evaluate_claim(claim, &registry);
-        checked += 1;
-        flags_total += verdict.flags();
-        annotated_claims += usize::from(verdict.has_annotation());
+        let derived = &loaded.derived;
+        let form = &derived.form;
+        let dash = |s: Option<String>| s.unwrap_or_else(|| "-".to_string());
+        let lints: Vec<&str> = derived.lints.iter().map(|l| l.code.as_str()).collect();
+        unstructured += usize::from(derived.unstructured());
+        linted += usize::from(!lints.is_empty());
+        let (modality, subject, operator, value, unit) = if derived.unstructured() {
+            (
+                "-".to_string(),
+                "-".to_string(),
+                "-".to_string(),
+                "-".to_string(),
+                "-".to_string(),
+            )
+        } else {
+            (
+                form.modality_str().to_string(),
+                Some(form.subject.clone())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "-".to_string()),
+                dash(form.operator.map(|c| c.as_str().to_string())),
+                dash(form.value.as_ref().map(canonical_decimal)),
+                dash(form.unit.clone().filter(|u| u != "none")),
+            )
+        };
         println!(
-            "{:<9} {:<9} {:<9} {:<12} {:<30} {:<26} {:<9}",
-            claim.claim_id,
-            mark(
-                verdict.unstructured_ok,
-                verdict.form.unstructured.to_string()
-            ),
-            mark(verdict.modality_ok, verdict.form.modality_str().to_string()),
-            mark(verdict.subject_ok, verdict.form.subject.clone()),
-            value_unit_cell(&verdict),
-            op_cell(&verdict),
-            mark(
-                verdict.conditions_ok && verdict.slots_ok,
-                if !verdict.slots_ok {
-                    format!("unrepresentable: {}", verdict.slots_detail)
-                } else {
-                    verdict.conditions_detail.clone()
-                }
-            ),
+            "{:<9} {:<12} {:<9} {:<12} op {:<4} value {:<6} unit {:<5} lints {}",
+            loaded.claim.claim_id,
+            if derived.unstructured() {
+                "unstructured"
+            } else {
+                "structured"
+            },
+            modality,
+            subject,
+            operator,
+            value,
+            unit,
+            if lints.is_empty() {
+                "-".to_string()
+            } else {
+                lints.join(",")
+            },
         );
+        // What the row cannot hold: the words a lint names, and the identity-bearing parts of the
+        // form (a condition or qualifier that reached the address, or did not).
+        if !derived.unstructured() {
+            if !form.conditions.is_empty() {
+                let conditions: Vec<&str> = form.conditions.iter().map(String::as_str).collect();
+                println!("  conditions: {}", conditions.join("; "));
+            }
+            if !form.qualifier.is_empty() {
+                println!("  qualifier: {}", form.qualifier);
+            }
+        }
+        for lint in &derived.lints {
+            println!("  lint {}: {}", lint.code, lint.detail);
+        }
+        pins += derived.pins.len();
+        pinned_claims += usize::from(!derived.pins.is_empty());
+        for check in &derived.pins {
+            flagged += usize::from(check.flags());
+            println!("  {}", check.describe());
+        }
     }
-    let _ = &registry;
     println!(
-        "claims: {checked}; discrepancy flags: {flags_total}; annotations: \
-         {annotated_claims} claim(s) \
-         (v0 diagnostic: `ann` is an authored value/unit/operator the canonical form does not \
-         derive — counted, never a flag, never part of identity; `attribute` is unverified by \
-         design, as are rationale wording and applicability predicate syntax; authoring \
-         quantifier/exception/temporal is refused, never ignored)"
+        "claims: {} ({unstructured} unstructured); pins: {pins} on {pinned_claims} claim(s), \
+         {flagged} flagged; lints on {linted} claim(s) \
+         (diagnostics: the parse is derived from `statement` at load and stored nowhere \
+         (req.claim/2); a pin agrees or is a flag — a contradiction, or a slot the parse does \
+         not carry; `req canon` reports and never fails on a flag, and the check that gates pins is \
+         `req gate` (pins_hold))",
+        claims.len()
     );
     0
 }
 
-/// The value+unit cell. The two slots share one column because the parse derives them
-/// together; the worst state wins, and a flag names both sides so the contradiction is
-/// checkable rather than merely reported.
-fn value_unit_cell(v: &ClaimVerdict) -> String {
-    let value = if v.v_parsed.is_empty() {
-        "-"
-    } else {
-        v.v_parsed.as_str()
-    };
-    let authored = if v.authored_v.is_empty() {
-        "-"
-    } else {
-        v.authored_v.as_str()
-    };
-    if v.value_check.flags() || v.unit_check.flags() {
-        let mut parts: Vec<String> = Vec::new();
-        if v.value_check.flags() {
-            parts.push(format!("value {value}/{authored}"));
-        }
-        if v.unit_check.flags() {
-            parts.push(format!("unit {}/{}", v.u_parsed, v.authored_u));
-        }
-        return format!("FLAG {}", parts.join("; "));
-    }
-    if v.value_check.is_annotation() || v.unit_check.is_annotation() {
-        // Both are rendered when both are annotations: one cell hiding the other would be the
-        // invisibility ADR 0014's Amendment exists to remove. The parsed side is rendered too
-        // when identity carried one (a qualitative claim can yield a stray number), so an
-        // annotation cannot be misread as "the form derives nothing".
-        // `unit_check` cannot itself be an annotation: the qualitative convention requires
-        // `unit: none`, so a unit the parse did not derive is a contradiction. The parsed side
-        // is rendered when identity carried one — unit included, because a qualitative claim
-        // can yield a stray number *and* a unit (`shall wait 200 ms` authored `value: claim`) —
-        // so an annotation cannot be misread as "the form derives nothing".
-        let parsed = if v.v_parsed.is_empty() {
-            String::new()
-        } else if v.u_parsed == "none" {
-            format!(" (parse {})", v.v_parsed)
-        } else {
-            format!(" (parse {} {})", v.v_parsed, v.u_parsed)
-        };
-        return format!("ann value {}{parsed}", v.authored_v);
-    }
-    // `none` is the canonical no-unit sentinel: name a unit only when one exists.
-    if v.u_parsed == "none" && v.authored_u == "none" {
-        format!("ok {value}/{authored}")
-    } else {
-        format!("ok {value}/{authored} {}", v.u_parsed)
-    }
-}
-
-/// The operator cell: a third state distinct from `ok` and `FLAG`, as ADR 0014 requires.
-fn op_cell(v: &ClaimVerdict) -> String {
-    match v.op_check {
-        SlotCheck::Ok if v.op_checkable => format!("ok {}", v.op_parsed),
-        SlotCheck::Ok => "ok n/a".to_string(),
-        SlotCheck::Annotation => format!("ann {}", v.authored_op),
-        SlotCheck::Contradiction => format!("FLAG {}/{}", v.op_parsed, v.authored_op),
-        SlotCheck::Omission => format!("FLAG missing ({})", v.op_parsed),
-    }
-}
-
-fn mark(ok: bool, detail: String) -> String {
-    if ok {
-        "ok".to_string()
-    } else {
-        format!("FLAG {detail}")
-    }
-}
+/// The message `req canon --fill` and `req canon --verify` answer with (exit 2): the flags are
+/// removed in `req.claim/2`, because there is nothing stored to write or to check (ADR 0022).
+pub const FILL_VERIFY_REMOVED: &str = "req canon --fill and --verify are removed: nothing derived \
+is stored in req.claim/2 — the parse, the canonical form and the address are computed from \
+`statement` when a claim is loaded — so there is nothing to fill or verify. `req canon` shows the \
+derived parse and each pin's verdict; the check for pins is `req gate` (pins_hold).";

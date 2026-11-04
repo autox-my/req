@@ -27,7 +27,9 @@ use serde::Serialize;
 pub const SCHEMA_RENDER: &str = "req.render/1";
 pub const SCHEMA_TRACE: &str = "req.trace/1";
 pub const SCHEMA_AUDIT: &str = "req.audit/1";
-pub const SCHEMA_GATE: &str = "req.gate/1";
+/// `/2` (ADR 0022): the first policy is `pins_hold`, where `/1` had `addresses_current` — a
+/// policy was renamed, so the shape moved; the exit contract did not.
+pub const SCHEMA_GATE: &str = "req.gate/2";
 
 /// The two renderings. `Text` is the default, and the only one a bare command uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

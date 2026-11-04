@@ -1,9 +1,10 @@
-# Claim-file format — v1
+# Claim-file format — v2
 
-Status: `req.claim/1`. Implements docs/adr/0002-git-is-transport-not-identity.md
+Status: `req.claim/2`. Implements docs/adr/0002-git-is-transport-not-identity.md
 (one claim per file), docs/adr/0019-claims-carry-authored-test-links.md (authored test
-links, attested and outside identity) and docs/canonical-hashing.md (identity, tiers,
-freeze).
+links, attested and outside identity), docs/adr/0022-claims-are-authored-fingerprints-are-derived.md
+(a claim is authored, its parse is derived at load, no fingerprint is stored) and
+docs/canonical-hashing.md (identity, tiers, freeze).
 
 ## Layout
 
@@ -19,8 +20,11 @@ The Baseline has landed too, so neither line is a deferral now: `baselines/trust
 committed trust anchor (ADR 0010), `baselines/<variant>.json` is the canonical manifest a
 human signs with its `.minisig` beside it, and `req baseline --verify` re-derives every
 address under the variant that manifest records. Claims never store approval
-state: it is derived from `decisions/DEC-*.yml` and from the signed Baseline, never copied
-into claim files.
+state, and since `req.claim/2` they store no fingerprint either: approval is derived from
+`decisions/DEC-*.yml` and from the signed Baseline, and the address is derived from the claim
+when it is loaded — neither is copied into claim files. The signed manifest is where an
+address *is* stored, per claim, and drift against it is the check that replaced the stored
+digest (ADR 0022).
 
 The Decision log itself landed at build step 8 (ADR 0005), so its shape is no longer a
 deferral: **one YAML file per Decision** under `decisions/`, named `DEC-<zero-padded>.yml`
@@ -36,20 +40,24 @@ reader is `src/decision.rs`, whose `log_paths` reads `root.join("decisions")`.
 
 | Axis | Where | Effect of a bump |
 |---|---|---|
-| File format | `schema: req.claim/1` | a migration; addresses unchanged — v1 adds the readable `tests:`/`evidence:` fields, an older declaration is a migration candidate (exit 3), and no `RULES_V` moves |
-| Normalization rules | `canonical.rules_v` | re-canonicalization of affected claims → *candidates* needing re-ratification (hashing spec §5); history never silently rewritten |
+| File format | `schema: req.claim/2` | a migration; addresses unchanged — v2 removes the authored slots and the stored fingerprint (ADR 0022), an older declaration is a migration candidate (exit 3, `tools/migrate_claims.py`), and no `RULES_V` moves |
+| Normalization rules | the build (`RULES_V`, `req --version`) | moves the derived addresses of affected claims → *candidates* needing re-ratification, seen as drift against the signed manifest (hashing spec §5); history never silently rewritten |
 | Subject registry | `aliases/subjects.yml` version | same effect as a rules bump, scoped to claims using affected subjects |
 
-The declared `schema:` is **judged when a file is loaded**, against the value this build writes
-(`CLAIM_SCHEMA_V` in `src/canon.rs`, reported by `req --version` as `claim_schema`). A file
-declaring an *older* format is a migration candidate; a *newer* one is a question this build
-cannot answer, because the file is not wrong — the reader is old; and a value that is not of the
-`req.claim/<n>` shape at all is a broken file, not a version question. All three are **NOT
-JUDGED** (exit 3), never `verified`: nothing inside the file was compared to anything, and the
-declared format is what makes the rest of it readable as a claim of this build's contract. The
-judgement lives in `claim_schema_reason` (`src/canon.rs`), which the loader calls and so does
-every reader that reads a claim by path (`compare`, the fill path) — one home, so no command can
-ignore the declaration.
+The rules and registry versions are **properties of the build and the registry**, reported by
+`req --version` and carried in every manifest and projection header; a claim file names
+neither, because it stores nothing they produce.
+
+The declared `schema:` is **judged when a file is loaded**, first, against the value this build
+writes (`CLAIM_SCHEMA_V` in `src/canon.rs`, reported by `req --version` as `claim_schema`). A file
+declaring an *older* format is a migration candidate — the message names
+`tools/migrate_claims.py`; a *newer* one is a question this build cannot answer, because the file
+is not wrong — the reader is old; and a value that is not of the `req.claim/<n>` shape at all is a
+broken file, not a version question. All three are **NOT JUDGED** (exit 3): nothing inside the
+file was compared to anything, and the declared format is what makes the rest of it readable as
+a claim of this build's contract. The judgement lives in `parse_claim` (`src/canon.rs`), which the
+loader calls and so does every reader that reads a claim by path (`compare`, `propose`) — one
+home, so no command can ignore the declaration.
 
 The class is assigned by the **load loop**, not by the schema check alone: an equally definite
 **duplicate `claim_id`** — two files declaring one id, their content compared — is UNVERIFIABLE
@@ -59,108 +67,108 @@ reports it the same way. The two classes are therefore **coupled**: if either ev
 
 ## Field reference
 
+A claim file carries what a human **authors**, and nothing derived.
+
+```yaml
+schema: req.claim/2
+claim_id: REQ-0009
+statement: >-
+  The benchmark harness shall classify direction of change on the structural
+  direction gold set with accuracy of at least 0.95.
+applicability:
+  - set == direction_gold_structural
+tests:
+  - "req::evidence::the_direction_gold_set_meets_its_accuracy_target"
+evidence: machine
+rationale:
+  source: docs/canonical-hashing.md
+  date: 2026-10-07
+  rejected_alternatives: []
+  assumptions: []
+relations:
+  - type: refines
+    to: REQ-0008
+pins:
+  value: "0.95"
+  operator: GE
+```
+
 | Field | Meaning | Notes |
 |---|---|---|
+| `schema` | `req.claim/2` | judged first, by direction (above) |
 | `claim_id` | stable human label | never derived — it survives rewording (CONTEXT.md) |
-| `statement` | the human sentence | **the source of truth in prose** |
-| `modality` | SHALL / SHALL-NOT / MAY / SHOULD | mapping table = hashing spec T1.6; `UNSTRUCTURED` when unparseable (see below) |
-| `subject` | registry id | must resolve in `aliases/subjects.yml` |
-| `attribute` / `operator` / `value` / `unit` | the bounded obligation, or the qualitative annotation | operator per T1.5 {LT, LE, EQ, GE, GT, NE}; `unit: none` when there is no unit. `value`/`unit`/`operator` are checked against the parse (contradiction and omission are flags; a qualitative triple is an annotation — see the parity invariant); `attribute` is unverified by design |
-| `conditions[]` | guard clauses **parsed from the statement** (when/if/unless/during) | part of identity; sorted at T1.8. `req canon` compares it with the parse, so a scope predicate written here but absent from the statement is a *flag*, not a nuance — a variant belongs in `applicability` |
-| `applicability[]` | variant predicates (`applies_when`) — the **selector slot** | **required** (an omitted key is a parse error, never `[]`); part of identity (ADR 0003); since rules v5 an *input* to the canonical form, because the statement carries no formal selector syntax: the sorted authored list is hashed |
-| `exception`, `temporal`, `quantifier` | reserved slots: no derivation, no field | `null` when unused; authoring one is **refused** by `req canon --fill` rather than silently dropped from identity |
-| `unstructured` | true → the structured slots are all null | the claim gets its raw-form canonical bytes + address per hashing spec §4, and opts out of structural merge-direction analysis |
-| `canonical` | `{rules_v, subject_registry, form}` | written **only** by the derivation — `req canon --fill` in an existing claim, `req init` for a new corpus's starter claim; `form` is stored as a YAML literal block so the hashed bytes are the stored bytes |
-| `address` | `sha256("req.claim.v1\0" \|\| canonical_form_bytes)` | written by the same derivation (`req canon --fill`, or `req init`'s starter claim); `req canon --verify` enforces `sha256(tag \|\| stored form) == address` (REQ-0017) |
-| `rationale` | object: `source`, `date`, `rejected_alternatives[]`, `assumptions[]` | all four **required** (an omitted list is a parse error, not an empty one); the losing side is preserved — never a string field |
+| `statement` | the human sentence | **the source of truth**: its parse, canonical form and address are derived from it at load |
+| `applicability[]` | variant predicates (`applies_when`) — the **selector slot** | **required** (an omitted key is a parse error, never `[]`); part of identity (ADR 0003): an *input* to the canonical form, because the statement carries no formal selector syntax — the sorted authored list is hashed |
 | `relations[]` | `{type, to}` outgoing only | **required** (an omitted key is a parse error: relations sit outside the canonical form, so a dropped key leaves the address untouched while the edges vanish); incoming relations are always *derived* by traversal, never stored (REQ-0020); `relations: []` = a root claim |
 | `tests` | the test ids that prove the claim — **authored**, optional | `[String]` of `classname::name` ids (the `classname` and the test's `name` the JUnit report writes, joined by `::`); **outside the canonical form**, so adding, removing or renaming a link moves no address (ADR 0019); on a **machine** claim (the default) absent or `[]` = no linked test, which the gate names (a finding, never a parse error); under `evidence: process` the list is empty by definition; attested in the signed Baseline by `tests_hash`, hashed over the **sorted** list; an empty or duplicated string in the list is a load error — a link that names no test, or names one twice, is not a link |
 | `evidence` | how the claim's evidence is established — `machine` (default) or `process` | authored, optional (omitted = `machine`); `process` is an explicit declaration that the **process itself** establishes the claim — a Decision, a signature, a workflow — and it must carry **no** `tests:` (naming both is a load error: machine or process, never both); **outside identity**, attested together with the links by `tests_hash`; an empty `tests:` list never implies `process` — that is the *no linked test* finding, not a declaration |
+| `rationale` | object: `source`, `date`, `rejected_alternatives[]`, `assumptions[]` | all four **required** (an omitted list is a parse error, not an empty one); the losing side is preserved — never a string field |
+| `pins` | what the parse **must** be, where it is load-bearing — optional | an object with any of `modality`, `subject`, `operator`, `value`, `unit` (any other key is a parse error); judged against the derived parse, never part of identity (see *Pins* below) |
 
 Reference types (`to`, `source`) use `claim_id`s, addresses, or repo paths —
 whatever stays stable under rewording.
 
-## Test links and process evidence (ADR 0019)
+## The derived view (computed at load, stored nowhere)
 
-`tests:` is authored and **outside the canonical form**: no address moves when a link is added,
-removed or renamed. What the Baseline attests instead is the whole declaration — `tests_hash` =
-`sha256("req.tests.v1\0" ‖ serde_json of {"evidence": "machine"|"process", "tests": <sorted ids>})`,
-written beside `relations_hash`/`rationale_hash` since envelope v4 — so unlinking a claim, or flipping
-its evidence mode, after signing is **FAIL**, exactly as a changed rationale is (ADR 0013 / ADR 0016). A **v3** manifest still verifies on its
-historical signed bytes and says once that it predates v4: its tests are *not attested*, which is not a
-failure because it never claimed to attest them. The gate reads the links when it is given a run's
-report (`req gate --test-report <junit.xml>`), and its `tests_linked` policy answers four ways over the
-**applying** claims: **PASS** when the claim links at least one test and at least one linked test
-**passed**; **FAIL** when every linked test is present in the report and **none passed** (a `skipped`
-test is not a pass); **UNVERIFIABLE — *no linked test*** when the claim carries no `tests:` entry — the
-flagship answer, named per claim; and **UNVERIFIABLE — *linked test not in the report*** when a linked
-id has no testcase in the report (renamed or deleted), which is never folded into PASS. The last two are
-the rename defence: a test id is the test's *identity*, so renaming the test leaves the claim pointing at
-an id the report no longer carries, and the answer is "cannot tell", never "passed". `FAIL` outranks any
-UNVERIFIABLE and both outrank PASS — the exit code is the existing fold, not a new one. An absent,
-unparsable or zero-testcase report is UNVERIFIABLE **once**, naming the reader's reason, never once per
-claim.
+When a claim is loaded, `canonicalize_statement` parses its `statement` against the corpus's
+`aliases/subjects.yml`, the authored `applicability` is injected, and the loader exposes what
+that **derives**: the canonical form, its canonical bytes (T1.9), the address
+`sha256("req.claim.v1\0" ‖ canonical bytes)`, the lints, and whether the statement is
+**unstructured** (the §4 fallback, as REQ-0007 is). Every command that reads an address —
+`render`, `trace`, `impact`, `compare`, `baseline` (emit, verify, drift), `audit`, `gate`,
+`init` — reads this one. `req canon` prints it per claim:
 
-The four outcomes judge **machine** evidence. A claim whose evidence is the process itself declares
-`evidence: process` with `tests: []`: the gate answers it **PASS as declared**, names it
-(`* process-evidenced (declared, not machine-proven): …`) under the `tests_linked` block and counts it in
-the summary and in `req.gate/1`'s `process_evidenced` array — never folded into the machine pass.
-**Process is never inferred**: an empty list on a machine claim is *no linked test*, UNVERIFIABLE, and
-naming both process evidence and links is a load error (exit 3). With only process claims in scope, the
-gate needs no `--test-report`.
+| derived | meaning |
+|---|---|
+| structure | `structured`, or `unstructured` when no deterministic parse exists (the raw form is hashed) |
+| modality | SHALL / SHALL-NOT / MAY / SHOULD — hashing spec T1.6 |
+| subject | the registry id the subject span resolves to (whole span only, T1.7); an unregistered surface stays literal |
+| operator / value / unit | the bound — operator per T1.5 {LT, LE, EQ, GE, GT, NE}; value a canonical exact decimal in canonical SI (`200 ms` → `0.2` `s`) |
+| conditions | guard clauses parsed from the statement (when/if/unless/during), sorted at T1.8 — part of identity |
+| lints | what the rules could not decide (`untestable_comparator`, `uncovered_content`, …) — reported, never guessed (REQ-0019) |
 
-## The parity invariant (what `req canon` must check)
+There is nothing to fill and nothing to verify: no command writes a derived field, and no file
+can carry a stale or hand-written one. A rules bump moves derived addresses at the next load —
+which is why a rules bump is still a deliberate, recorded event (hashing spec §5), seen as drift
+against the signed manifest rather than as a rewrite of every claim file.
 
-The statement is the source of truth; the structured slots are an **authored parse**
-of it. `req canon` re-parses the statement under the current rules and judges `value`,
-`unit` and `operator` by four cases, per slot:
+## Pins
 
-| the parse derived it? | the author wrote it? | verdict |
+A pin is the author's statement of what a claim must parse to, where the parse is
+load-bearing — the bound of a quantity, its comparator, its unit. It is judged against the
+derived parse, and there are exactly two outcomes besides agreement, **both flags**:
+
+| the parse holds a value for the key? | equal to the pin? | verdict |
 |---|---|---|
-| yes | yes, and they disagree | **flag** — a contradiction |
-| yes | no | **flag** — an omission |
-| no | yes | **annotation** — counted and shown, never a flag |
-| no | no | ok |
+| yes | yes | **agrees** |
+| yes | no | **flag — contradiction**: the parse says something else, and the flag names it |
+| no | — | **flag — not carried**: the parse holds no such value (an unstructured statement, or one with no comparator, number or unit) |
 
-A contradiction or an omission is a lint ERROR — never silently "corrected" in either
-direction, and `req canon --fill` refuses to write an address over it. An annotation is the
-other case: the canonical form carries value/unit/operator **only for quantities**, so a
-qualitative statement's authored triple is recorded rather than refused (ADR 0014's
-Amendment). It appears in a cell of its own (`ann`), is counted in the summary, and was
-never part of the address — reported and counted, never a flag, never silent.
+There is **no annotation category** (ADR 0022 removed it): a pin the parse does not carry is
+exactly the bound that would otherwise leave identity in silence. Values are compared
+**exactly**: `value` is a canonical exact decimal string in the parse's canonical unit (`"0.2"`
+for `200 ms`, never `"0.20"` or `".2"`), `unit` is the canonical unit symbol (`s`, not `ms`) or
+`none`, and `modality`/`operator` are the canonicalizer's own words. A pin value that could
+never agree — a non-canonical decimal, a comparator outside T1.5 — is a **load error**, not a
+flag whose cause is a typo. `unit: none` agrees with a unitless parse.
 
-The annotation is **only the qualitative triple** above. A quantity-shaped claim — a numeric
-authored `value`, a comparator other than `EQ`, or an authored `unit` — that authors a slot
-the parse did not derive is still a **contradiction and a flag**: the bound would otherwise
-stay out of the address, and two claims differing only in it would collapse (a false merge).
-`--fill` refuses it, exactly as before the amendment. `attribute` is **unverified by
-design**: its lexicon has no parser to agree with, so comparing it would flag nearly every
-claim and teach authors to ignore the report.
-
-If no deterministic parse exists, the claim is re-filed with `unstructured: true` after lint
-records why. This is the seam where writing a claim file *can be proven* against a
-claim file, before merge direction analysis is trusted.
+A flagged pin **moves no address** — pins are outside the canonical form. It reports: `req
+canon` prints each pin's verdict (and exits 0, it never gates), and the release gate's
+`pins_hold` policy fails (exit 1) on any flagged pin of an applying claim, naming it. With no
+pin in the selection, `pins_hold` passes and says it held zero pins — exercised, not skipped.
 
 ## Authoring rules
 
 - One obligation per claim. A "shall … and shall …" statement is two claims, split
   before filing.
-- Negation rides on `modality: SHALL-NOT`, never on reworded semantics, and a qualitative
-  predicate is an authored **annotation**: record it as an `attribute`/`operator`/`value`
-  triple with operator `EQ`, `unit: none`, and a non-numeric `value` ("shall not run a
-  continuous sync" → attribute `continuous_bidirectional_file_sync`, operator `EQ`, value
-  `absent`; "the unit of work is a claim" → `unit_of_work = claim`). `operator: EQ` is the
-  form to author; `operator: none` or an omitted operator is the same no-operator marker and
-  reads as the same annotation. The canonical form
-  derives value/unit/operator only for quantities, so such a triple is not identity:
-  `req canon` reports it as an annotation (`ann`), never as a flag and never as part of an
-  address. Do not delete the triple to silence the report, and do not expect it to be
-  verified — a non-numeric value is never compared with the parse.
-- Values are **exact decimal strings** *in canonical form*: strip trailing zeros at
-  write time (`"0.3"`, never `"0.30"`, never a float); never rounded, never truncated
-  (hashing spec T1.3/T1.4). In a quantity claim, a non-canonical authored value is exactly
-  what `req canon`'s flag exists to catch; in the qualitative convention above the value is
-  a state name, and it is an annotation rather than a flag.
+- Edit the statement, never a parse: there is no authored parse to edit. To see what a
+  statement derives, run `req canon`; to make a load-bearing slot checked, pin it.
+- Pin the bound of a quantity claim. A numeric threshold, its comparator and its unit are
+  what a rewording most easily moves without anyone noticing; a pin turns that into a
+  `pins_hold` failure. Pin values are **exact decimal strings** *in canonical form* (`"0.3"`,
+  never `"0.30"`, never a float); never rounded, never truncated (hashing spec T1.3/T1.4).
+- Negation rides on the statement's modality (`shall not` → `SHALL-NOT`), never on reworded
+  semantics; pin `modality: SHALL-NOT` where the prohibition is load-bearing.
 - Anything the rules cannot decide — bare `dB`, "under 200 ms" (ambiguous), "fast" —
   yields a lint finding (`untestable_quantity`, `untestable_comparator`,
   `ambiguous_modality`), never a guess (REQ-0019).
@@ -191,66 +199,120 @@ than proceeding over a corpus it could not read:
   file must also be a regular file — a symlink is not one.
 - **A corpus is never empty.** Zero claim files is a load error, not a pass: an empty
   corpus and a corpus whose every claim vanished are indistinguishable from the file set,
-  and `claims: 0; discrepancy flags: 0` must never read as success.
+  and `claims: 0` must never read as success.
 - **Unique ids.** Two files declaring one `claim_id` is a load error, and their
   **content is compared**: an identical duplicate (the fully silent case — it never
   shows as drift) and a divergent one are named differently. The duplicate pass runs
   over every candidate before the naming pass, so a second file claiming an existing
   id is reported as the duplicate it is, not merely as a filename complaint.
 - **Strict fields, at every level.** An unrecognized key is a parse error, in the claim
-  file and in its nested objects (`rationale`, `canonical`, `relations[]`): `applicabilty:`
+  file and in its nested objects (`rationale`, `relations[]`, `pins`): `applicabilty:`
   does not parse as an empty default, and neither does a misspelled
-  `rejected_alternatives:` inside `rationale`. The keys that carry meaning *outside* the
-  canonical form are **required**, because losing one moves no address and nothing else
-  would notice: `applicability` (a variant-scoped claim would otherwise become
-  unconditional — identity *is* the address, so that is two requirements collapsed into
-  one), `relations` (the edges would vanish from `trace` and `impact`), and the
-  rationale's `rejected_alternatives`/`assumptions` (the losing side of a decision would
-  be dropped from the record). Writing them as `[]` is how a claim says "none"; omitting
-  them is the failure this project treats as catastrophic. `tests` is the deliberate
-  exception (ADR 0019): it is **optional**, because "this claim has no linked test" must be a
-  fact the gate can *name* — exit 3, UNVERIFIABLE — rather than a parse error, and because a
-  claim whose proof does not exist yet is not a malformed claim. The omission is still not
-  silent: `tests_linked` reports it on every run, per claim. `evidence` is optional for the opposite
-  reason: its absence has a defined meaning (`machine`), so a required key would add nothing — while
-  `process` is never a default, because it is a claim about the process that only a human can make.
+  `rejected_alternatives:` inside `rationale`. A key `req.claim/1` carried and `req.claim/2`
+  removed (`modality`, `subject`, `attribute`, `operator`, `value`, `unit`, `conditions`,
+  `exception`, `temporal`, `quantifier`, `unstructured`, `canonical`, `address`) is a parse
+  error that **names the key** and says it was removed — never silently ignored, because an
+  author who wrote `value: "0.3"` beside the statement meant something, and the place to say
+  it now is `pins:`. The keys that carry meaning *outside* the canonical form are
+  **required**, because losing one moves no address and nothing else would notice:
+  `applicability` (a variant-scoped claim would otherwise become unconditional —
+  applicability is an input to identity, so that is two requirements collapsed into one),
+  `relations` (the edges would vanish from `trace` and `impact`), and the rationale's
+  `rejected_alternatives`/`assumptions` (the losing side of a decision would be dropped from
+  the record). Writing them as `[]` is how a claim says "none"; omitting them is the failure
+  this project treats as catastrophic. `tests` is the deliberate exception (ADR 0019): it is
+  **optional**, because "this claim has no linked test" must be a fact the gate can *name* —
+  exit 3, UNVERIFIABLE — rather than a parse error, and because a claim whose proof does not
+  exist yet is not a malformed claim. The omission is still not silent: `tests_linked`
+  reports it on every run, per claim. `evidence` is optional for the opposite reason: its
+  absence has a defined meaning (`machine`), so a required key would add nothing — while
+  `process` is never a default, because it is a claim about the process that only a human
+  can make. `pins` is optional because most claims have no load-bearing quantity.
 
 Directory entries that are not claims (`README.md`, editor droppings) are left alone;
 that is a naming rule, not a silence. One deliberate exception runs the other way: an
 entry whose *name* is not valid UTF-8 cannot be classified at all — it might be a claim
 written in some other encoding — so it fails the corpus rather than being skipped.
 
+## Test links and process evidence (ADR 0019)
+
+`tests:` is authored and **outside the canonical form**: no address moves when a link is added,
+removed or renamed. What the Baseline attests instead is the whole declaration — `tests_hash` =
+`sha256("req.tests.v1\0" ‖ serde_json of {"evidence": "machine"|"process", "tests": <sorted ids>})`,
+written beside `relations_hash`/`rationale_hash` since envelope v4 — so unlinking a claim, or flipping
+its evidence mode, after signing is **FAIL**, exactly as a changed rationale is (ADR 0013 / ADR 0016). A **v3** manifest still verifies on its
+historical signed bytes and says once that it predates v4: its tests are *not attested*, which is not a
+failure because it never claimed to attest them. The gate reads the links when it is given a run's
+report (`req gate --test-report <junit.xml>`), and its `tests_linked` policy answers four ways over the
+**applying** claims: **PASS** when the claim links at least one test and at least one linked test
+**passed**; **FAIL** when every linked test is present in the report and **none passed** (a `skipped`
+test is not a pass); **UNVERIFIABLE — *no linked test*** when the claim carries no `tests:` entry — the
+flagship answer, named per claim; and **UNVERIFIABLE — *linked test not in the report*** when a linked
+id has no testcase in the report (renamed or deleted), which is never folded into PASS. The last two are
+the rename defence: a test id is the test's *identity*, so renaming the test leaves the claim pointing at
+an id the report no longer carries, and the answer is "cannot tell", never "passed". `FAIL` outranks any
+UNVERIFIABLE and both outrank PASS — the exit code is the existing fold, not a new one. An absent,
+unparsable or zero-testcase report is UNVERIFIABLE **once**, naming the reader's reason, never once per
+claim.
+
+The four outcomes judge **machine** evidence. A claim whose evidence is the process itself declares
+`evidence: process` with `tests: []`: the gate answers it **PASS as declared**, names it
+(`* process-evidenced (declared, not machine-proven): …`) under the `tests_linked` block and counts it in
+the summary and in `req.gate/2`'s `process_evidenced` array — never folded into the machine pass.
+**Process is never inferred**: an empty list on a machine claim is *no linked test*, UNVERIFIABLE, and
+naming both process evidence and links is a load error (exit 3). With only process claims in scope, the
+gate needs no `--test-report`.
+
+## Migrating from `req.claim/1`
+
+A `req.claim/1` file is a migration candidate: every command reports it NOT JUDGED (exit 3) and
+names the tool. `tools/migrate_claims.py` (a starting point an adopter copies, like
+`tools/adopt.py`; dry run by default, `--write` to rewrite, `--self-check` for its table) moves a
+file across:
+
+| `req.claim/1` | `req.claim/2` |
+|---|---|
+| `schema`, `claim_id`, `statement`, `applicability`, `relations`, `tests`, `evidence`, `rationale` | kept, byte for byte (`schema` rewritten to `req.claim/2`) |
+| a numeric `value` (with the `operator` authored beside it, `EQ` included), an `operator` other than `EQ`/none, a `unit` other than `none` | `pins:` — the bound the author wrote is still checked against the parse |
+| `modality`, `subject`, `conditions`, `unstructured` | dropped — derived from `statement` at load (pin `modality`/`subject` by hand where load-bearing) |
+| the qualitative `attribute`/`value` triple | dropped — not representable in the form, and the annotation category is removed |
+| `exception`, `temporal`, `quantifier` | dropped — never represented; authoring one is now a parse error |
+| `canonical`, `address` | dropped — computed at load |
+
+The tool prints, per file, every key it dropped with its value and every pin it created, so the
+drops are reviewed rather than trusted. It refuses a file that is already `req.claim/2`. A format
+bump moves no address: the derivation, the canonical bytes and `RULES_V` are unchanged, which this
+repository's own migration proved by keeping all 21 dogfood addresses and its signed Baseline
+`[VERIFIED]` under the unchanged signature (M3, rules v6).
+
 ## State of the seed corpus
 
-`claims/REQ-0001 … claims/REQ-0022` (less REQ-0011, retired by ADR 0021 and not renumbered) were authored **structured-first**: the author
-supplied the parse deliberately, and `canonical.form`/`address` stayed `null` until the
-rules that define them existed. They are now **filled under rules v6** by
-`req canon --fill`, and `req canon --verify` reports `21 verified, 0 candidates, 0
-mismatches` (22 before REQ-0011 was retired), so the corpus is address-addressed end to end. Rules v6's coverage invariant
-(hashing spec T1.10) refuses a structured parse that leaves a clause no slot holds, which is
-why the "exactly once" half of the old REQ-0020 is its own claim, REQ-0022 (one obligation
-per claim): REQ-0020 keeps the outgoing-side obligation, structured, and REQ-0022 authors
-the single-home obligation as the value `1`. REQ-0004 and REQ-0021 state their obligation
-without the head "semantic layer", so their subject is the registered `REQ_TOOL`; the
-registry matches a whole subject span only, and no alias was added for the dropped head.
+`claims/REQ-0001 … claims/REQ-0022` (less REQ-0011, retired by ADR 0021 and not renumbered) were
+authored **structured-first** under `req.claim/1` and migrated to `req.claim/2` by
+`tools/migrate_claims.py` (ADR 0022) with **no address moving** — the 21 addresses `req render`
+derives at rules v6 equal the ones the v1 files stored, and `baselines/air-gapped.json`, which
+attests 17 of them, still verifies (REQ-0017 was then re-worded on purpose, see below, and the
+Baseline re-signed). The migration created eight pins on four claims — REQ-0008, REQ-0009,
+REQ-0010 and REQ-0022, each `value` and `operator` — all of which agree with the derived parse. REQ-0007 is derived
+unstructured, as it was authored unstructured. Rules v6's coverage invariant (hashing spec T1.10)
+refuses a structured parse that leaves a clause no slot holds, which is why the "exactly once" half
+of the old REQ-0020 is its own claim, REQ-0022 (one obligation per claim). REQ-0004 and REQ-0021
+state their obligation without the head "semantic layer", so their subject is the registered
+`REQ_TOOL`; the registry matches a whole subject span only, and no alias was added for the dropped
+head.
 
-Two properties make the filled state trustworthy, and both are enforced rather than
-assumed:
-
-- **`--fill` refuses a divergent claim.** If the parse disagrees with the authored
-  slots, the claim is left unfilled with a reported flag: an address over a parse that
-  contradicts the claim would enshrine the contradiction. A refusal exits 3
-  (UNVERIFIABLE), never 0.
-- **`--verify` is in the gate**, so a rules bump without a re-fill exits 3 (every claim
-  becomes a re-canonicalization *candidate*) and a hand-edited digest exits 1
-  (mismatch). `sha256(tag ‖ stored bytes) == stored address` is checked, not promised.
+REQ-0017's statement described the `req.claim/1` mechanism (a stored canonical form whose digest
+reproduces a stored address). Under `req.claim/2` that was false, so it was re-worded in the format
+change: the address is derived at load and is the one the signed Baseline attests. That moved its
+address and `tests_hash`, so the Baseline was re-emitted and re-signed; it is the one claim whose
+address moved.
 
 `claims/` also seeds `bench/corpus/parity.yml` (E-008/E-009 come from this project's own
 genuine paraphrases).
 
 ## Deliberately deferred
 
-- Formal predicate syntax for `applicability` (v1: informal strings).
+- Formal predicate syntax for `applicability` (v2: informal strings).
 - A formal timestamp authority for the signing time (RFC 3161). Envelope v3 (ADR 0016)
   records `signed_at` and the Decision-log head; the time is the signer's assertion, and
   replacing it with an externally attested one is still open. (The envelope itself is no

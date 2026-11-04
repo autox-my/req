@@ -1,47 +1,41 @@
-//! Claim slots vs identity: which authored slots reach the canonical form, and what
-//! happens to the ones that cannot.
+//! Claim slots vs identity: which authored fields reach the canonical form, and what happens to
+//! the slots that `req.claim/1` let an author write beside the parse.
 //!
-//! Three gaps were closed here, all of the same shape as the predicate-span bug — an
-//! authored slot that identity ignored:
+//! Three gaps were closed here, all of the same shape as the predicate-span bug — an authored
+//! slot that identity ignored:
 //!   * `applicability` (ADR 0003 says it is identity) had no field in the form at all;
-//!   * `conditions` were parsed but never compared with what the author wrote;
+//!   * `conditions` were parsed but never compared with what the author wrote — since
+//!     `req.claim/2` they are only derived, and a guard in the statement moves the address;
 //!   * `quantifier`/`exception`/`temporal` have no representation, and authoring one was
-//!     silently dropped. It is now refused, because the honest answer to "the rules
-//!     cannot carry this" is to say so, not to hash a form that ignores the author.
+//!     silently dropped. `req.claim/2` removed the keys (ADR 0022): authoring one is a parse
+//!     error that names it, because the honest answer to "the rules cannot carry this" is to say
+//!     so, not to hash a form that ignores the author.
 
-use req::canon::{canonical_json, evaluate_claim};
+use req::canon::{canonical_json, derive, parse_claim};
 use req::model::{ClaimFile, Registry};
 
 const CLAIM: &str = "\
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-X
 statement: The system shall log each command.
-modality: SHALL
-subject: SYSTEM
 applicability: []
-unstructured: false
-canonical:
-  rules_v: null
-  subject_registry: 1
-  form: null
-address: null
+relations: []
 rationale:
   source: docs/adr/0007-tier1-collapses-only-on-meaning-preserving-rules.md
   date: 2026-10-07
   rejected_alternatives: []
   assumptions: []
-relations: []
 ";
 
 fn claim(text: &str) -> ClaimFile {
-    yaml_serde::from_str(text).expect("claim parses")
+    parse_claim(text).expect("claim parses")
 }
 
-/// The authored selector slot, which the loader now requires to be present: the one
-/// line a variant claim edits. The count assertion is what makes the helper safe: a
-/// template with *no* anchor would leave the "variant" identical to the base (and the
-/// failure would read as a bug in `evaluate_claim`), while a second anchor would let
-/// `replacen(…, 1)` edit one line and silently corrupt the other.
+/// The authored selector slot, which the loader requires to be present: the one line a variant
+/// claim edits. The count assertion is what makes the helper safe: a template with *no* anchor
+/// would leave the "variant" identical to the base (and the failure would read as a bug in
+/// `derive`), while a second anchor would let `replacen(…, 1)` edit one line and silently
+/// corrupt the other.
 fn with_applicability(predicate: &str) -> String {
     assert_eq!(
         CLAIM.matches("applicability: []").count(),
@@ -63,9 +57,10 @@ fn with_applicability(predicate: &str) -> String {
 fn authored_applicability_is_part_of_identity() {
     let base = claim(CLAIM);
     let variant = claim(&with_applicability("deployment_mode == air_gapped"));
-    let a = evaluate_claim(&base, &Registry::empty());
-    let b = evaluate_claim(&variant, &Registry::empty());
+    let a = derive(&base, &Registry::empty());
+    let b = derive(&variant, &Registry::empty());
     assert_ne!(canonical_json(&a.form), canonical_json(&b.form));
+    assert_ne!(a.address, b.address);
     assert!(
         b.form
             .applicability
@@ -74,32 +69,30 @@ fn authored_applicability_is_part_of_identity() {
     assert!(a.form.applicability.is_empty());
 }
 
-/// Conditions ARE parsed (T1.8), so an authored list that disagrees with the parse is a
-/// divergence — before this, authored conditions were silently unverified.
+/// Conditions are parsed (T1.8) and, since `req.claim/2`, only derived: a statement that gains a
+/// guard clause is a different claim, so the derived condition reaches the form and moves the
+/// address — there is no authored list left for it to disagree with.
 #[test]
-fn authored_conditions_are_compared_with_the_parse() {
-    let plain = claim(CLAIM);
-    assert!(
-        evaluate_claim(&plain, &Registry::empty()).conditions_ok,
-        "no guard in the statement, no conditions authored"
-    );
+fn a_guard_in_the_statement_is_a_derived_condition_and_moves_the_address() {
+    let plain = derive(&claim(CLAIM), &Registry::empty());
+    assert!(plain.form.conditions.is_empty(), "no guard, no condition");
 
-    let guarded = claim(&CLAIM.replace(
-        "statement: The system shall log each command.",
-        "statement: The system shall log each command when the brake is engaged.",
-    ));
-    let v = evaluate_claim(&guarded, &Registry::empty());
-    assert!(
-        !v.conditions_ok,
-        "a parsed guard disagrees with authored []"
+    let guarded = derive(
+        &claim(&CLAIM.replace(
+            "statement: The system shall log each command.",
+            "statement: The system shall log each command when the brake is engaged.",
+        )),
+        &Registry::empty(),
     );
-    assert!(v.conditions_detail.contains("parsed"));
-    assert!(v.flags() >= 1);
+    assert_eq!(guarded.form.conditions.len(), 1, "{:?}", guarded.form);
+    assert_ne!(
+        plain.address, guarded.address,
+        "a gained guard is a new claim"
+    );
 }
 
-/// A slot the rules cannot represent is a gap in the *rules*. Authoring one is refused
-/// — reported, and `req canon --fill` will not write an address that ignores it — never
-/// silently dropped from identity.
+/// A slot the rules cannot represent is a gap in the *rules*. `req.claim/2` has no key for it:
+/// authoring one is a parse error that names the key — never silently dropped from identity.
 #[test]
 fn authoring_an_unrepresentable_slot_is_refused_not_ignored() {
     for (slot, line) in [
@@ -107,13 +100,9 @@ fn authoring_an_unrepresentable_slot_is_refused_not_ignored() {
         ("exception", "exception: unless the operator overrides"),
         ("temporal", "temporal: at all times"),
     ] {
-        let text = CLAIM.replace(
-            "unstructured: false",
-            &format!("unstructured: false\n{line}"),
-        );
-        let v = evaluate_claim(&claim(&text), &Registry::empty());
-        assert!(!v.slots_ok, "{slot} must be reported");
-        assert!(v.slots_detail.contains(slot), "{}", v.slots_detail);
-        assert!(v.flags() >= 1);
+        let text = format!("{CLAIM}{line}\n");
+        let error = parse_claim(&text).expect_err("an unrepresentable slot is refused");
+        assert!(error.contains(&format!("`{slot}`")), "{slot}: {error}");
+        assert!(error.contains("removed in req.claim/2"), "{slot}: {error}");
     }
 }

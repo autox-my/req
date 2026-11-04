@@ -69,8 +69,18 @@ fn unique_dir(name: &str) -> PathBuf {
     dir
 }
 
-/// A fixture corpus created by the real bootstrap (`req init`), so every claim carries derived
-/// fields the derivation wrote — never a hand-written address.
+/// `text.replace(old, new)` that fails, naming `old`, when the starter claim no longer contains
+/// it: a template edit must not turn a fixture's substitution into a silent no-op.
+fn replaced(text: String, old: &str, new: &str) -> String {
+    assert!(
+        text.contains(old),
+        "the starter claim no longer contains {old:?}: the fixture's substitution is a no-op"
+    );
+    text.replace(old, new)
+}
+
+/// A fixture corpus created by the real bootstrap (`req init`): authored `req.claim/2` claims,
+/// whose parse and address the loader derives — nothing derived is written (ADR 0022).
 struct Corpus(PathBuf);
 
 impl Corpus {
@@ -88,18 +98,20 @@ impl Corpus {
         let claim = fs::read_to_string(dir.join("claims/REQ-0001.yml")).expect("the starter claim");
         fs::write(
             dir.join("claims/REQ-0001.yml"),
-            claim.replace(
-                "unstructured: false\n",
-                "unstructured: false\ntests:\n  - \"fixture::REQ-0001\"\n",
+            replaced(
+                claim,
+                "relations: []\n",
+                "relations: []\ntests:\n  - \"fixture::REQ-0001\"\n",
             ),
         )
         .expect("links the starter claim");
         Corpus(dir)
     }
 
-    /// The starter corpus plus a second claim with the same authored slots (so the statement's
-    /// action may differ without touching the parity invariant), the given applicability and
-    /// outgoing relations. Derived fields are filled by `req canon --fill`, as a human would.
+    /// The starter corpus plus a second claim with the given statement, applicability and
+    /// outgoing relations. It carries **no pins**: it is judged only by what it derives, so a
+    /// statement without a 200 ms bound is not a `pins_hold` failure by inheritance. Nothing
+    /// derived is written: the loader derives it (ADR 0022).
     fn with_second_claim(
         name: &str,
         statement: &str,
@@ -145,19 +157,59 @@ impl Corpus {
             }
             block
         };
-        let text = first
-            .replace("claim_id: REQ-0001", &format!("claim_id: {id}"))
-            .replace("fixture::REQ-0001", &format!("fixture::{id}"))
-            .replace(
-                "statement: \"The API shall respond to a health check within 200 ms.\"",
-                &format!("statement: {statement:?}"),
-            )
-            .replace("applicability: []", &applicability_block)
-            .replace("relations: []", &relations_block);
+        // Every substitution must land: a template edit that moves one of these literals fails
+        // here, naming it, instead of leaving a copy that quietly kept the starter's statement.
+        let text = replaced(first, "claim_id: REQ-0001", &format!("claim_id: {id}"));
+        let text = replaced(text, "fixture::REQ-0001", &format!("fixture::{id}"));
+        let text = replaced(
+            text,
+            "statement: \"The API shall respond to a health check within 200 ms.\"",
+            &format!("statement: {statement:?}"),
+        );
+        let text = replaced(text, "applicability: []", &applicability_block);
+        let text = replaced(text, "relations: []", &relations_block);
+        // The starter's pins describe the starter's own statement: drop that block, and only
+        // that block (every following top-level key is kept), then check the authored fields
+        // survived and the pins did not.
+        let text = match text.find("\npins:\n") {
+            Some(at) => {
+                let after = &text[at + 1..];
+                let end = after
+                    .lines()
+                    .skip(1)
+                    .position(|l| !l.is_empty() && !l.starts_with(' '))
+                    .map(|n| {
+                        after
+                            .lines()
+                            .take(n + 1)
+                            .map(|l| l.len() + 1)
+                            .sum::<usize>()
+                    });
+                match end {
+                    Some(len) => format!("{}{}", &text[..at + 1], &after[len..]),
+                    None => text[..at + 1].to_string(),
+                }
+            }
+            None => text,
+        };
+        assert!(
+            !text.contains("\npins:"),
+            "the copied claim still carries the starter's pins:\n{text}"
+        );
+        for key in [
+            "schema:",
+            "claim_id:",
+            "statement:",
+            "applicability:",
+            "relations:",
+            "rationale:",
+        ] {
+            assert!(
+                text.lines().any(|l| l.starts_with(key)),
+                "the copied claim lost `{key}`:\n{text}"
+            );
+        }
         fs::write(self.claim_path(id), text).expect("writes the second claim");
-        // The derived fields are the derivation's to write: the claim moved, so its address
-        // must be re-derived exactly as a human would do it.
-        self.refill();
     }
 
     /// Write the JUnit report the gate reads, from the links the fixture claims carry, and return
@@ -176,19 +228,10 @@ impl Corpus {
         run_at(self.path(), &args)
     }
 
-    fn refill(&self) {
-        let out = run_at(self.path(), &["canon", "--fill"]);
-        assert_eq!(
-            out.code, 0,
-            "the fixture corpus must be filled and green:\n{}\n{}",
-            out.stdout, out.stderr
-        );
-    }
-
-    /// Rewrite a claim's statement **without** re-filling: the stored address and form now
-    /// disagree with a fresh parse. That is the definite defect `gate` reports as FAIL — no
-    /// hand-written digest, just an edit nobody re-derived.
-    fn rewrite_statement_without_refill(&self, id: &str, statement: &str) {
+    /// Rewrite a claim's statement. Nothing is stored to re-derive (ADR 0022): the next load
+    /// derives the new parse and address. A statement whose bound no longer matches the starter
+    /// claim's `pins:` is the definite defect `gate` reports as FAIL (`pins_hold`).
+    fn rewrite_statement(&self, id: &str, statement: &str) {
         let path = self.claim_path(id);
         let text = fs::read_to_string(&path).expect("the claim file");
         let mut replaced = false;
@@ -512,11 +555,10 @@ fn identity_moves_when_a_claim_address_moves() {
     assert_eq!(before.code, 0, "{}", before.stderr);
     let before = parse(&before.stdout);
 
-    corpus.rewrite_statement_without_refill(
+    corpus.rewrite_statement(
         "REQ-0002",
         "The API shall answer a readiness check within 200 ms.",
     );
-    corpus.refill();
     let after = run_at(corpus.path(), &["render", "--format", "json"]);
     assert_eq!(after.code, 0, "{}", after.stderr);
     let after = parse(&after.stdout);
@@ -678,7 +720,7 @@ fn gate_json_has_the_pinned_shape() {
             "verdict",
         ],
     );
-    assert_eq!(document["schema"], "req.gate/1");
+    assert_eq!(document["schema"], "req.gate/2");
     assert_eq!(document["generator"], "gate");
     assert_eq!(document["rules_v"], req::canon::RULES_V);
     assert_eq!(document["verdict"], "pass");
@@ -694,7 +736,7 @@ fn gate_json_has_the_pinned_shape() {
     assert_eq!(
         names,
         [
-            "addresses_current",
+            "pins_hold",
             "relations_resolve",
             "dependencies_decided",
             "rationale_present",
@@ -704,6 +746,13 @@ fn gate_json_has_the_pinned_shape() {
         "the policies keep the order the text report and the docs name"
     );
     for policy in policies {
+        // `checked` (the number of pins judged) is on `pins_hold` alone.
+        if policy["policy"] == "pins_hold" {
+            assert_keys(policy, &["checked", "details", "outcome", "policy"]);
+            // The starter claim pins three keys (operator, value, unit); nothing else here pins.
+            assert_eq!(policy["checked"], 3, "{policy}");
+            continue;
+        }
         assert_keys(policy, &["details", "outcome", "policy"]);
         assert_eq!(policy["outcome"], "pass");
         assert_eq!(policy["details"], serde_json::json!([]));
@@ -714,7 +763,7 @@ fn gate_json_has_the_pinned_shape() {
 /// and the text and JSON runs must agree on the code every time.
 #[test]
 fn gate_json_verdict_and_exit_code_agree_for_all_three_classes() {
-    // PASS: no selector, provenance present, addresses current.
+    // PASS: no selector, provenance present, every pin holds.
     let pass = Corpus::with_second_claim(
         "gate-pass",
         "The API shall respond to a readiness check within 200 ms.",
@@ -728,16 +777,17 @@ fn gate_json_verdict_and_exit_code_agree_for_all_three_classes() {
         &["deployment_mode == air_gapped"],
         &[],
     );
-    // FAIL: a definite defect — a claim edited after it was filled, its stored address stale.
+    // FAIL: a definite defect — a claim whose statement no longer holds the bound it pins
+    // (`value: "0.2"` pinned, `500 ms` = 0.5 s derived): `pins_hold` fails.
     let defect = Corpus::with_second_claim(
         "gate-defect",
         "The API shall respond to a readiness check within 200 ms.",
         &[],
         &[],
     );
-    defect.rewrite_statement_without_refill(
+    defect.rewrite_statement(
         "REQ-0001",
-        "The API shall answer a readiness check within 200 ms.",
+        "The API shall answer a readiness check within 500 ms.",
     );
 
     for (corpus, expected_code, expected_verdict) in [
@@ -765,6 +815,21 @@ fn gate_json_verdict_and_exit_code_agree_for_all_three_classes() {
         );
     }
 
+    // The FAIL is `pins_hold`'s, for the reason the fixture names, not some other policy's.
+    let defect_document = parse(&defect.run_gate(&["--format", "json"]).stdout);
+    let pins_hold = defect_document["policies"]
+        .as_array()
+        .expect("policies")
+        .iter()
+        .find(|p| p["policy"] == "pins_hold")
+        .expect("pins_hold is in the document");
+    assert_eq!(pins_hold["outcome"], "fail", "{pins_hold}");
+    assert_eq!(
+        pins_hold["details"],
+        serde_json::json!(["REQ-0001: pin value 0.2 contradicts the parse (0.5)"]),
+        "{pins_hold}"
+    );
+
     // The undecided claim is named with what the invocation is missing, never dropped.
     let json = undecided.run_gate(&["--format", "json"]);
     let document = parse(&json.stdout);
@@ -781,9 +846,9 @@ fn gate_json_verdict_and_exit_code_agree_for_all_three_classes() {
         &["deployment_mode == air_gapped"],
         &[],
     );
-    both.rewrite_statement_without_refill(
+    both.rewrite_statement(
         "REQ-0001",
-        "The API shall answer a readiness check within 200 ms.",
+        "The API shall answer a readiness check within 500 ms.",
     );
     let json = both.run_gate(&["--format", "json"]);
     assert_eq!(
@@ -1039,7 +1104,7 @@ fn each_help_page_carries_the_format_contract() {
         ("render", "req.render/1"),
         ("trace", "req.trace/1"),
         ("audit", "req.audit/1"),
-        ("gate", "req.gate/1"),
+        ("gate", "req.gate/2"),
     ] {
         let out = run_at(&dir, &[command, "--help"]);
         assert_eq!(out.code, 0, "`{command} --help`:\n{}", out.stderr);

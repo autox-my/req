@@ -1,30 +1,13 @@
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-0018
 statement: >-
   The req tool shall require numeric claim fields to be serialized as exact
   decimal strings.
-modality: SHALL
-subject: REQ_TOOL
-attribute: numeric_value_encoding
-operator: EQ
-value: exact_decimal_strings
-unit: none
-conditions: []
 applicability:
   - field == value
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
 tests:
   - "req::evidence::canonical_forms_serialize_quantities_as_exact_decimal_strings"
 evidence: machine
-canonical:
-  rules_v: 6
-  subject_registry: 1
-  form: |-
-    {"action":"require numeric claim fields to be serialized as exact decimal strings","applicability":["field == value"],"conditions":[],"exception":null,"modality":"SHALL","operator":"none","qualifier":"","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":null}
-address: 5e95be2d018feee258010c1bdfd049a842b058dd526c377f168dff16ca7c829a
 rationale:
   source: docs/canonical-hashing.md
   date: 2026-10-07

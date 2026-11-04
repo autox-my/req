@@ -21,27 +21,24 @@
 //! three-state rule as everywhere else: "we could not establish a green corpus" is neither
 //! a creation nor a refusal.
 //!
-//! # The starter claim is filled by the real path, and asserted green
+//! # The starter claim is derived by the real path, and asserted green
 //!
-//! `canonical.form` and `address` are **derived**, so `init` derives them with exactly the
-//! code `req canon --fill` runs — [`evaluate_claim`] → [`canonical_json`] → [`address_hex`]
-//! → [`fill_text`] — and then asserts the result with [`verify_text`], the same check
-//! `req canon --verify` performs. A literal digest in this file would pass every test today
-//! and go stale the moment `RULES_V` moves; the derivation cannot. If the assertion fails,
-//! nothing is left behind: a half-written corpus would be red *and* refuse the next `init`.
+//! A `req.claim/2` claim carries nothing derived (ADR 0022): `init` writes the authored fields
+//! only — statement, applicability, relations, rationale, and a `pins:` block stating what the
+//! statement must parse to — and then reads the corpus back through [`load_claims`], the loader
+//! every other command uses, which derives the parse, the form and the address and judges the
+//! pins. Success is reported only when every pin agrees: a template whose pins disagree with its
+//! own statement is this module's bug, and shipping it would ship a red gate.
 //!
-//! `rules_v`, the file schema and the registry version come from the constants that carry
-//! them ([`RULES_V`], [`crate::canon::claim_schema`], [`REGISTRY_V`]), never from literals
-//! typed into a template string.
+//! The file schema and the registry version come from the constants that carry them
+//! ([`crate::canon::claim_schema`], [`REGISTRY_V`]), never from literals typed into a template
+//! string.
 //!
 //! The rationale `date:` is the date `init` runs — provenance is written, not asked for —
 //! computed from `SystemTime` with the civil-from-days conversion in this module (no new
 //! dependency), which is unit-tested against known epoch dates.
 
-use crate::canon::{
-    RULES_V, address_hex, canonical_json, claim_schema, evaluate_claim, load_claims, load_registry,
-};
-use crate::fill::{StoredState, fill_text, verify_text};
+use crate::canon::{claim_schema, load_claims, parse_claim};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -57,9 +54,9 @@ const CLAIMS_DIR: &str = "claims";
 /// [`init_at`] — because a real one is under the root the caller named.
 const ALIASES_DIR: &str = "aliases";
 
-/// The registry's own file format and version. The version is provenance that rides the
-/// claim's `canonical.subject_registry`; the aliases themselves are what the address covers,
-/// so it is stated once here and written into both files from this constant.
+/// The registry's own file format and version, stated once here and written into the registry
+/// from these constants. The aliases themselves are what the address covers; a claim file
+/// carries no registry version (ADR 0022: nothing derived is stored in a claim).
 const REGISTRY_SCHEMA: &str = "req.subject_registry/0";
 const REGISTRY_V: u8 = 1;
 
@@ -196,69 +193,35 @@ fn init_at(root: &Path) -> Result<(), Failure> {
     }
 }
 
-/// Write the three files, deriving the claim's identity through the real path and reading
-/// the result back through the loader every other command uses.
+/// Write the three files, then read them back through the loader every other command uses, which
+/// derives the claim's parse and address and judges its pins.
 fn build(root: &Path, date: &str, created: &mut Created) -> Result<(), Failure> {
     created.dir(&root.join(ALIASES_DIR))?;
     created.file(&root.join(REGISTRY_PATH), &registry_template())?;
 
-    // Read the registry back the way every reader does, so the starter claim's parse is
-    // resolved against the aliases that are actually on disk rather than a second copy.
-    let registry = load_registry(root).map_err(Failure::Unverifiable)?;
-
-    let template = claim_template(registry.version, date);
-    let claim: crate::model::ClaimFile = yaml_serde::from_str(&template).map_err(|e| {
+    let template = claim_template(date);
+    // The template is held to the contract every reader holds a claim file to, before anything
+    // is written beside the registry.
+    parse_claim(&template).map_err(|e| {
         Failure::Unverifiable(format!("the starter claim template does not parse: {e}"))
     })?;
 
-    // The parity invariant decides, exactly as it does for `--fill`: a template whose
-    // authored slots disagree with its own statement is this module's bug, and shipping it
-    // unfilled would ship a claim the adopter cannot edit without a refusal.
-    let verdict = evaluate_claim(&claim, &registry);
-    if verdict.flags() > 0 {
-        return Err(Failure::Unverifiable(format!(
-            "the starter claim template disagrees with its own parse ({} flag(s)) — the \
-             template's statement and slots are out of step",
-            verdict.flags()
-        )));
-    }
-    let form_json = canonical_json(&verdict.form);
-    let address = address_hex(&form_json);
-    let filled = fill_text(
-        &template,
-        &form_json,
-        &address,
-        RULES_V,
-        registry.version as u32,
-    )
-    .map_err(Failure::Unverifiable)?;
-    match verify_text(&filled, &form_json, RULES_V) {
-        StoredState::Verified => {}
-        StoredState::Candidate(why) | StoredState::Mismatch(why) => {
-            return Err(Failure::Unverifiable(format!(
-                "the filled starter claim does not verify: {why}"
-            )));
-        }
-    }
-
     created.dir(&root.join(CLAIMS_DIR))?;
-    created.file(&root.join(CLAIM_PATH), &filled)?;
+    created.file(&root.join(CLAIM_PATH), &template)?;
     created.file(&root.join(CLAIMS_README), CLAIMS_README_TEMPLATE)?;
 
-    // End to end, through the loader: `init` reports success only on the file set
-    // `req canon --verify` reads, not on the text it intended to write.
-    let registry = load_registry(root).map_err(Failure::Unverifiable)?;
+    // End to end, through the loader: `init` reports success only on the file set every command
+    // reads, with the parse derived from the registry actually on disk — not on the text it
+    // intended to write. A pin that does not hold is the template's bug, and a red corpus is not
+    // a created one.
     let claims = load_claims(root).map_err(Failure::Unverifiable)?;
     for loaded in &claims {
-        let expected = canonical_json(&evaluate_claim(&loaded.claim, &registry).form);
-        match verify_text(&loaded.text, &expected, RULES_V) {
-            StoredState::Verified => {}
-            StoredState::Candidate(why) | StoredState::Mismatch(why) => {
-                return Err(Failure::Unverifiable(format!(
-                    "{}: the corpus `init` wrote is not green: {why}",
-                    loaded.path.display()
-                )));
-            }
+        if let Some(check) = loaded.derived.flagged_pins().next() {
+            return Err(Failure::Unverifiable(format!(
+                "{}: the corpus `init` wrote is not green: {}",
+                loaded.path.display(),
+                check.describe()
+            )));
         }
     }
     Ok(())
@@ -346,45 +309,31 @@ fn registry_template() -> String {
     )
 }
 
-/// The claim file, with the two derived fields as **anchor lines** for [`fill_text`]: the
-/// text below is what `init` hands the fill path, and what lands on disk is its output.
-///
-/// The anchor lines carry no inline comments: `fill_text` replaces those lines wholesale,
-/// so a comment written there would vanish without a trace. The header comment does survive,
-/// because it is a line of its own.
-fn claim_template(registry_version: u8, date: &str) -> String {
+/// The starter claim: the authored fields of `req.claim/2` and nothing derived (ADR 0022). Its
+/// `pins:` state what the statement must parse to — the bound, the comparator and the unit — so
+/// an edit that changes the parse is a `pins_hold` failure rather than a silent new address.
+fn claim_template(date: &str) -> String {
     format!(
-        "# The starter claim. Edit `statement`, then re-run `req canon --fill` — it rewrites the\n\
-         # derived `canonical.form` and `address` below through this same derivation. Never\n\
-         # hand-write either one. The authoring loop and its traps are in claims/README.md.\n\
+        "# The starter claim. Edit `statement`, then run `req canon` to see the parse it derives.\n\
+         # Nothing derived is stored here: the parse, the canonical form and the address are\n\
+         # computed when the claim is loaded. `pins:` states what the parse must be where it is\n\
+         # load-bearing; `req gate` fails on a pin the parse does not hold. The authoring loop and\n\
+         # its traps are in claims/README.md.\n\
          schema: {schema}\n\
          claim_id: REQ-0001\n\
          statement: \"The API shall respond to a health check within 200 ms.\"\n\
-         modality: SHALL\n\
-         subject: API\n\
-         attribute: health_check_latency\n\
-         operator: LE\n\
-         value: \"0.2\"\n\
-         unit: s\n\
-         conditions: []\n\
          applicability: []\n\
-         exception: null\n\
-         temporal: null\n\
-         quantifier: null\n\
-         unstructured: false\n\
-         canonical:\n\
-         \x20 rules_v: {rules_v}\n\
-         \x20 subject_registry: {registry_version}\n\
-         \x20 form: \"\"\n\
-         address: \"\"\n\
+         relations: []\n\
          rationale:\n\
          \x20 source: docs/requirements.md\n\
          \x20 date: {date}\n\
          \x20 rejected_alternatives: []\n\
          \x20 assumptions: []\n\
-         relations: []\n",
+         pins:\n\
+         \x20 operator: LE\n\
+         \x20 value: \"0.2\"\n\
+         \x20 unit: s\n",
         schema = claim_schema(),
-        rules_v = RULES_V,
     )
 }
 
@@ -393,14 +342,14 @@ fn claim_template(registry_version: u8, date: &str) -> String {
 fn print_next_steps() {
     println!(
         "Wrote a working, verified corpus in the current directory:\n  \
-         claims/REQ-0001.yml    the starter claim, already filled and verified\n  \
+         claims/REQ-0001.yml    the starter claim, its pins checked against its parse\n  \
          claims/README.md       the authoring loop and its traps\n  \
          aliases/subjects.yml   the subject registry (add an alias before you rely on one)\n\
          \n\
          Next steps:\n\
-         \x20 1. Edit `statement` — the slots below it are its authored parse — then re-run\n\
-         \x20    `req canon --fill`. `req canon --verify` is the check that gates; `req canon`\n\
-         \x20    only reports, and always exits 0.\n\
+         \x20 1. Edit `statement`, then run `req canon`: it prints the parse the statement\n\
+         \x20    derives and each pin's verdict, and never fails on a flag. Nothing derived is stored,\n\
+         \x20    so there is nothing to fill; `req gate` is the check that gates (`pins_hold`).\n\
          \x20 2. Give the claim its evidence. Link the test that proves it — add `tests:` with\n\
          \x20    the `classname::name` id the JUnit report carries — or declare\n\
          \x20    `evidence: process` when a Decision or a signature is the proof.\n\
@@ -438,7 +387,7 @@ fn print_next_steps() {
 /// review: the parts that matter (the `summary` fallback, the `gate()` bookkeeping, `exit
 /// $rc`, the readability assertion, the `--format json` artifact step) would otherwise be
 /// free to diverge with nothing failing. The artifact step is pack C's documents: an agent
-/// reads `req.gate/1` from the per-variant run artifacts instead of scraping this log.
+/// reads `req.gate/2` from the per-variant run artifacts instead of scraping this log.
 ///
 /// The readable-regular-file assertion is not decoration: a **failed input redirection does not
 /// stop a `set -e` script**, so without it an absent, unreadable, or non-regular `.req/variants`
@@ -492,8 +441,6 @@ jobs:
           # `$GITHUB_PATH` applies to *later* steps only; this step's own PATH is unchanged.
           export PATH="$HOME/.local/bin:$PATH"
           req --version
-      - name: every stored address still recomputes (variant-independent)
-        run: req canon --verify
       # The tests that prove the claims (ADR 0019). This template is Rust and uses nextest because
       # it writes the JUnit/XUnit document `req gate --test-report` reads; on another stack, run
       # your own test command and point `--test-report` at the report it writes. A claim with no
@@ -612,7 +559,7 @@ jobs:
           fi
           exit $rc
       # The agent-facing half (pack C): the verdicts as JSON documents, kept off the log.
-      # An agent reviewing this pull request reads `req.gate/1`, never a scraped text line.
+      # An agent reviewing this pull request reads `req.gate/2`, never a scraped text line.
       - name: the JSON views, as build artifacts (an agent reads these, not the log)
         if: always()
         run: |
@@ -715,56 +662,55 @@ jobs:
 /// text: nothing here is derived from the corpus, so it cannot drift from what was written.
 const CLAIMS_README_TEMPLATE: &str = r#"# claims/ — this project's requirement corpus
 
-One claim per file, in the req claim-file format. The file name is the `claim_id` it
-declares (`REQ-0001.yml`), the corpus is flat, and this README is not a claim (it is not
-claim-shaped, so the loader leaves it alone).
+One claim per file, in the req claim-file format (`req.claim/2`). The file name is the
+`claim_id` it declares (`REQ-0001.yml`), the corpus is flat, and this README is not a claim
+(it is not claim-shaped, so the loader leaves it alone).
 
-A claim's structured slots are an **authored parse of its `statement`** — the parity
-invariant. `req canon` re-parses the statement and reports every slot that disagrees;
-`canonical.form` and `address` are *derived* from that parse, never authored.
+A claim is **authored**: `statement`, `applicability`, `relations`, `rationale`, and optionally
+`tests`, `evidence` and `pins`. Its parse — modality, subject, comparator, value, unit,
+conditions — is **derived** from `statement` every time the claim is loaded, and so are its
+canonical form and its address. Nothing derived is stored in the file, so there is nothing to
+fill and nothing to hand-write. `pins:` states what the parse must be where it is load-bearing
+(`operator: LE`, `value: "0.2"`, `unit: s`); a pin the parse does not hold is a flag, never a
+silent note.
 
 A `spec.md`, a backlog or a capabilities table can seed this corpus instead of transcribing it:
 copy `tools/adopt.py` from req's repository, adjust its mapping to your document, and run it from
-this corpus's root with `python3 tools/adopt.py --from <doc> --subject <id> --date YYYY-MM-DD`
-first — a dry run that writes nothing and names every draft and every skipped line. (`--date` is
-required when the document is untracked or changed since its last commit; the tool never invents
-one.) Then add `--write` to draft one `unstructured: true` claim per prose-only candidate — a
-markdown list item (the default `bullets` convention) or, with `--convention req-lines`, a
-`- REQ-<n>:` line. A sentence that parses as a structured claim (typically `shall …`) is reported
-as skipped, because its slots are yours to author. Then `req canon --fill`; the slots are still
-yours.
+this corpus's root with `python3 tools/adopt.py --from <doc> --date YYYY-MM-DD` first — a dry
+run that writes nothing and names every draft and every skipped line. (`--date` is required when
+the document is untracked or changed since its last commit; the tool never invents one.) Then add
+`--write` to draft one claim per candidate — a markdown list item (the default `bullets`
+convention) or, with `--convention req-lines`, a `- REQ-<n>:` line. A draft carries the statement
+and its provenance and nothing derived; add `pins:` where the parse is load-bearing.
 
 ## The authoring loop
 
-1. Edit `statement` (and, when the statement really changed, the slots that parse it).
-2. Re-run `req canon --fill`. It re-derives `canonical.form` and `address` and writes them
-   into the anchor lines. **Never hand-write either one**: a hand-written digest is a
-   critical finding, and `req canon --verify` is what detects it.
-3. `req canon` reports the divergences and always exits 0. The check that gates is
-   `req canon --verify`: exit 0 verified, 1 a digest that does not recompute, 3 a
-   re-canonicalization candidate (unfilled, or filled under other rules) — re-fill, do not
-   re-type.
-4. Run `req gate` before you ship; the CI section of req's `docs/adopting.md` wires it.
+1. Edit `statement` (and `applicability`, which is part of the address too). The starter claim's
+   `pins:` state the bound of its sample statement: change them with the statement, or delete
+   them, or `req gate` fails `pins_hold` on a pin you no longer mean.
+2. Run `req canon`. It prints the parse the statement derives and each pin's verdict. It reports
+   and never gates: a flagged pin does not fail it (it exits 3 only when the corpus cannot be read).
+3. Run `req gate` before you ship; the CI section of req's `docs/adopting.md` wires it. A pin
+   that does not hold fails `pins_hold` (exit 1).
 
 ## The traps
 
-- **A numeric slot that disagrees with the parse is refused.** `req canon --fill` exits 3
-  and writes nothing rather than enshrine the contradiction. Re-word the statement, or
-  leave the claim unfilled — never edit the parse to fit the prose, and never the prose to
-  fit the parse.
-- **Values are canonical SI.** `within 200 ms` is `value: "0.2"`, `unit: s`: the exact
-  decimal string the parser derives. `unit: ms` and `unit: seconds` are parse flags, and
-  `"0.30"` is not a canonical decimal (`"0.3"` is).
+- **A pin that disagrees with the parse is a flag, and the gate fails on it.** Re-word the
+  statement, or correct the pin — never write the prose to fit the parse.
+- **Values are canonical SI.** `within 200 ms` parses to `value "0.2"`, `unit s`: pin the exact
+  decimal string the parser derives. `unit: ms` is a contradiction, and `"0.30"` is not a
+  canonical decimal (`"0.3"` is), so it cannot be pinned at all.
 - **An empty `claims/` is UNVERIFIABLE, not a pass.** Zero claims cannot be told from every
-  claim having vanished, so `req canon --verify` and `req gate` exit 3. Never "clean up" to
-  zero claims — delete a requirement by deleting its claim deliberately, in a commit that
-  says so.
+  claim having vanished, so `req canon` and `req gate` exit 3. Never "clean up" to zero claims —
+  delete a requirement by deleting its claim deliberately, in a commit that says so.
 - **One obligation per claim.** A statement carrying a second modal (`shall … and shall
   not …`) is two claims; split it.
 - **`applicability:` makes a claim variant-scoped.** Gate every variant you declare (one
   `req gate key=value ...` invocation per line in `.req/variants`): a claim the invocation
   leaves undecided is not examined, so `req gate` exits 3 and names it — the invocation that
   decides every claim is the gate (ADR 0015).
+- **A `req.claim/1` file is NOT JUDGED.** Migrate it with `tools/migrate_claims.py` from req's
+  repository (a dry run by default; `--write` rewrites it).
 "#;
 
 /// Today's date in UTC as `YYYY-MM-DD`, from `SystemTime` and the civil-from-days
@@ -855,27 +801,28 @@ mod tests {
     }
 
     #[test]
-    fn the_claim_template_parses_as_an_unfilled_claim() {
-        // A cheap in-crate guard on the string `init` writes: it parses as a typed
-        // `ClaimFile`, its anchors are empty, and its declared versions come from the
-        // constants. The end-to-end behaviour — the registry, the fill and the gate — is
-        // driven through the CLI in `tests/init.rs`; this one fails with a message about
-        // the template rather than about a subprocess.
+    fn the_claim_template_parses_as_a_v2_claim_with_nothing_derived() {
+        // A cheap in-crate guard on the string `init` writes: it parses under the contract every
+        // reader applies, declares the schema from the constant, and carries no derived field.
+        // The end-to-end behaviour — the registry, the derivation and the gate — is driven
+        // through the CLI in `tests/init.rs`; this one fails with a message about the template
+        // rather than about a subprocess.
         let date = "2026-01-01";
-        let text = claim_template(REGISTRY_V, date);
-        let claim: crate::model::ClaimFile =
-            yaml_serde::from_str(&text).expect("the starter claim template parses");
+        let text = claim_template(date);
+        let claim = parse_claim(&text).expect("the starter claim template parses");
         assert_eq!(claim.claim_id, "REQ-0001");
         assert_eq!(claim.schema, claim_schema());
-        assert_eq!(claim.canonical.rules_v, Some(RULES_V));
-        assert_eq!(claim.canonical.subject_registry, REGISTRY_V as u32);
         assert_eq!(claim.rationale.date, date);
-        assert_eq!(
-            claim.canonical.form.as_deref(),
-            Some(""),
-            "form is an anchor"
-        );
-        assert_eq!(claim.address.as_deref(), Some(""), "address is an anchor");
+        for key in crate::model::REMOVED_V1_KEYS {
+            assert!(
+                !text
+                    .lines()
+                    .any(|line| line.starts_with(&format!("{key}:"))),
+                "the starter claim stores nothing derived and no v1 slot: `{key}`"
+            );
+        }
+        let pins = claim.pins.expect("the starter claim pins its bound");
+        assert_eq!(pins.value.as_deref(), Some("0.2"));
     }
 
     // The three-way equality of the CI snippet — `init`'s `CI_SNIPPET` above,

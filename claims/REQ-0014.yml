@@ -1,27 +1,10 @@
-schema: req.claim/1
+schema: req.claim/2
 claim_id: REQ-0014
 statement: >-
   The req tool shall produce exactly one commit per ratified logical Decision.
-modality: SHALL
-subject: REQ_TOOL
-attribute: commit_unit
-operator: EQ
-value: one_ratified_logical_decision
-unit: none
-conditions: []
 applicability: []
-exception: null
-temporal: null
-quantifier: null
-unstructured: false
 tests: []
 evidence: process
-canonical:
-  rules_v: 6
-  subject_registry: 1
-  form: |-
-    {"action":"produce","applicability":[],"conditions":[],"exception":null,"modality":"SHALL","operator":"EQ","qualifier":"commit per ratified logical decision","raw":"","subject":"REQ_TOOL","temporal":null,"unstructured":false,"unit":null,"value":"1"}
-address: 4e99cbc538f719368ee8fcb6a3f273e5c05ee60968cb0b97517215156bf65281
 rationale:
   source: docs/design.md
   date: 2026-10-07
