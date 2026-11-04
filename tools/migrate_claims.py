@@ -44,6 +44,10 @@ the loader's or the gate's own words, writes nothing and exits 1. With no `req` 
 prove that and exits 3 (UNVERIFIABLE); `--no-verify` migrates without the check and says
 "NOT VERIFIED" on stdout and as its last line.
 
+The proof covers what this tool *changes*. An `applicability` selector is carried over verbatim
+(a test pins that), so whether a selector is well formed or can ever match is the input's property,
+not the migration's, and `req canon` does not judge it; check a variant with `req select`.
+
 Exit: 0 every file migrated (or would be, in a dry run), 1 a file was refused (by this tool, the
 loader or `pins_hold`), 2 usage, 3 `req` is not on PATH (or its answer cannot be read) so the
 output cannot be proven (`--no-verify` waives that).
@@ -848,8 +852,9 @@ def main(argv):
             verify = False
         elif arg == "--root":
             root = next(args, None)
-            if root is None:
-                print("usage: --root needs a corpus directory", file=sys.stderr)
+            if not root or root.startswith("-") or not os.path.isdir(root):
+                print(f"usage: --root needs an existing corpus directory (got {root!r})",
+                      file=sys.stderr)
                 return 2
         elif arg in ("-h", "--help"):
             print(__doc__)

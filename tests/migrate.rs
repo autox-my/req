@@ -136,15 +136,16 @@ fn migrate_with_path(cwd: &Path, args: &[&str], path_value: &std::ffi::OsStr) ->
 
 /// The migrator with the built `req` first on `PATH`.
 fn migrate(cwd: &Path, args: &[&str]) -> Outcome {
-    let mut path_value = req_bin()
-        .parent()
-        .expect("the binary has a parent")
-        .as_os_str()
-        .to_os_string();
+    let mut entries = vec![
+        req_bin()
+            .parent()
+            .expect("the binary has a parent")
+            .to_path_buf(),
+    ];
     if let Some(existing) = std::env::var_os("PATH") {
-        path_value.push(":");
-        path_value.push(existing);
+        entries.extend(std::env::split_paths(&existing));
     }
+    let path_value = std::env::join_paths(&entries).expect("PATH entries are valid");
     migrate_with_path(cwd, args, &path_value)
 }
 
@@ -420,4 +421,74 @@ fn a_claim_with_an_applicability_selector_has_its_pins_judged_too() {
     let done = migrate(&fixture.0, &["--write", "claims"]);
     done.assert_code(1, "the contradiction is found despite the selector");
     assert_eq!(fixture.snapshot(), before);
+}
+
+/// A selector is carried over verbatim: the migrator changes the pins, never the applicability, so
+/// the proof about pins does not pretend to judge a selector (review of #97).
+#[test]
+fn an_applicability_selector_is_carried_over_verbatim() {
+    let fixture = Fixture::new("selector-verbatim");
+    let text = v1_quantity("REQ-0001", "0.2")
+        .replace("applicability: []", "applicability:\n  - set == one");
+    fixture.write("claims/REQ-0001.yml", &text);
+    let done = migrate(&fixture.0, &["--write", "claims"]);
+    done.assert_code(0, "a valid corpus with a selector migrates");
+    assert!(
+        fixture
+            .read("claims/REQ-0001.yml")
+            .contains("applicability:\n  - set == one\n"),
+        "{}",
+        fixture.read("claims/REQ-0001.yml")
+    );
+}
+
+/// `--root` names the corpus whose `aliases/` the proof reuses: it works from another working
+/// directory, and a missing, option-shaped or non-directory value is a usage error (exit 2) that
+/// writes nothing — `--root --write` must not turn a write into a silent dry run.
+#[test]
+fn root_names_the_corpus_and_a_bad_value_is_a_usage_error() {
+    let fixture = Fixture::new("root-flag");
+    fixture.write("claims/REQ-0001.yml", &v1_quantity("REQ-0001", "0.2"));
+    let elsewhere = Fixture::new("root-elsewhere");
+    let claims = fixture.claims();
+    let claims = claims.to_str().expect("utf-8 path");
+    let root = fixture.0.to_str().expect("utf-8 path");
+
+    let ok = migrate(&elsewhere.0, &["--write", "--root", root, claims]);
+    ok.assert_code(0, "--root from another working directory");
+    assert!(
+        fixture
+            .read("claims/REQ-0001.yml")
+            .starts_with("schema: req.claim/2\n")
+    );
+
+    let before = fixture.snapshot();
+    for bad in [
+        vec!["--root"],
+        vec!["--root", "--write", claims],
+        vec!["--root", "", claims],
+        vec!["--root", "no-such-dir", claims],
+    ] {
+        let refused = migrate(&elsewhere.0, &bad);
+        refused.assert_code(2, &format!("bad --root value: {bad:?}"));
+    }
+    assert_eq!(fixture.snapshot(), before, "a usage error writes nothing");
+}
+
+/// A `req` that runs but gives no `pins_hold` policy to read is as unprovable as no `req`: exit 3,
+/// nothing written, never a silent pass.
+#[cfg(unix)]
+#[test]
+fn a_req_that_gives_no_pins_hold_policy_is_unverifiable() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::new("garbled-req");
+    fixture.write("claims/REQ-0001.yml", &v1_quantity("REQ-0001", "0.2"));
+    let before = fixture.snapshot();
+    let stub = Fixture::new("stub-bin");
+    let script = stub.0.join("req");
+    fs::write(&script, "#!/bin/sh\nexit 0\n").expect("writes the stub req");
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).expect("chmod the stub");
+    let done = migrate_with_path(&fixture.0, &["--write", "claims"], stub.0.as_os_str());
+    done.assert_code(3, "a req with no pins_hold answer is UNVERIFIABLE");
+    assert_eq!(fixture.snapshot(), before, "nothing is written");
 }
