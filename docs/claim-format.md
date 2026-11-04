@@ -157,6 +157,10 @@ canon` prints each pin's verdict (and exits 0, it never gates), and the release 
 `pins_hold` policy fails (exit 1) on any flagged pin of an applying claim, naming it. With no
 pin in the selection, `pins_hold` passes and says it held zero pins — exercised, not skipped.
 
+**Pins are not attested by the Baseline** (ADR 0022, a named loss). Unlike a test link, a pin is outside the
+signed manifest: removing or editing a pin after signing leaves `baseline --verify` at `[VERIFIED]`, and
+`pins_hold` then judges the pins that remain. Only the pins present at gate time are held to the parse.
+
 ## Authoring rules
 
 - One obligation per claim. A "shall … and shall …" statement is two claims, split
@@ -296,7 +300,7 @@ and `req gate` yourself.
 
 ## State of the seed corpus
 
-`claims/REQ-0001 … claims/REQ-0022` (less REQ-0011, retired by ADR 0021 and not renumbered) were
+`claims/REQ-0001 … claims/REQ-0023` (less REQ-0011, retired by ADR 0021 and not renumbered) were
 authored **structured-first** under `req.claim/1` and migrated to `req.claim/2` by
 `tools/migrate_claims.py` (ADR 0022) with **no address moving** — the 21 addresses `req render`
 derives at rules v6 equal the ones the v1 files stored, and `baselines/air-gapped.json`, which

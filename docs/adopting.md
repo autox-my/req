@@ -189,7 +189,8 @@ including the tri-state — and `req <command> --help` works before a corpus exi
    `unit`) states what the statement must parse to. A pin agrees, or it is a flag — a
    *contradiction* (the parse says something else) or *not carried* (the parse holds no such
    value); there is no third category. A flagged pin moves no address; `req gate` fails on it
-   (`pins_hold`, exit 1).
+   (`pins_hold`, exit 1). A pin is **not attested by the Baseline**: deleting one after signing
+   still verifies, so a pin is a check at gate time, not a signed promise.
 3. **Values are canonical SI.** `within 200 ms` parses to `value "0.2"`, `unit s`: pin the exact
    decimal string the parser derives, not the units the prose used. `unit: ms` is a contradiction,
    and `"0.30"` is not a canonical decimal (`"0.3"` is), so it cannot be pinned.
@@ -220,7 +221,9 @@ req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not y
 ```
 
 - **`--at` is required and is the signing time.** It goes *inside* the signed bytes, so it cannot be
-  backdated without breaking the signature. Req never invents one: emitting without `--at` is a usage
+  backdated without breaking the signature. Re-emit with the current time just before you run
+  `minisign -Sm`: copying an older manifest's time into a re-sign backdates it, and a key revoked in
+  that gap would still verify. Req never invents one: emitting without `--at` is a usage
   error (exit 2). A v3 manifest also attests the Decision log's chain head, and emission refuses (exit 3)
   when that log is absent, unparsable or tampered — a head that attests nothing must not be signed.
 - **`-Sm` is `-S` (sign) with `-m <manifest>`**, and its default output name is `<manifest>.minisig` —

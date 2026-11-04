@@ -14,7 +14,7 @@ rationale:
     - uniform ease
   assumptions:
     - deliberately qualitative, no measurable friction bound exists, lint should
-      flag untestable_comparator and that is accepted
+      flag untestable_qualifier and that is accepted
 relations:
   - type: refines
     to: REQ-0004
