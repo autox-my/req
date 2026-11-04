@@ -6,7 +6,10 @@
 
 // This module is compiled into *every* test target that declares `mod common;`, so a
 // helper one target does not use is not dead code — it is in use by another.
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "one shared fixture, compiled into every test target, so a helper unused by this target is used by another"
+)]
 
 use req::canon::{PinCheck, PinVerdict};
 use req::model::{Rationale, Relation, rationale_digest, relations_digest};

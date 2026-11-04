@@ -238,7 +238,7 @@ fn json_string(value: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c if u32::from(c) < 0x20 => out.push_str(&format!("\\u{:04x}", u32::from(c))),
             c => out.push(c),
         }
     }
@@ -1828,7 +1828,7 @@ fn today_utc() -> String {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let days = seconds / 86_400;
-    civil_from_days(days as i64)
+    civil_from_days(i64::try_from(days).expect("days since the epoch divided by 86_400 fit an i64"))
 }
 
 /// Howard Hinnant's `civil_from_days`: days since 1970-01-01 to a proleptic Gregorian date.

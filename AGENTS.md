@@ -34,7 +34,9 @@ its `req <cmd> --help` page, the adopter's loop is `docs/adopting.md`; this file
 ## Correctness rules
 - **FMR = 0 on the corpus is a hard gate.** FAIL or UNVERIFIABLE blocks; never relax it to land a change.
 - **Tier-1 determinism**: no `f32`/`f64` math, no `HashMap` iteration where an address is computed (sort
-  keys or `BTreeMap`), no locale-dependent formatting, no model I/O.
+  keys or `BTreeMap`), no locale-dependent formatting, no model I/O. Six clippy lints in `Cargo.toml`
+  (`as_conversions`, `cast_possible_truncation`, `cast_sign_loss`, `allow_attributes_without_reason`,
+  `unwrap_used`, `float_arithmetic`) enforce this on every path, not only on the ones reviewed.
 - **Three-state outcomes**: PASS / FAIL / UNVERIFIABLE. An unreadable corpus, a degraded registry or a
   skipped check is reported as such, never folded into PASS; `degraded` entries are part of the record.
 - **The statement is the source of truth**: its parse is *derived*, never authored. Never "fix" a flagged pin by

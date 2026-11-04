@@ -243,8 +243,12 @@ fn evaluate_corpus(relative: &str) -> (Corpus, Registry, req::bench::Evaluation)
     let root = repo_root();
     let corpus = Corpus::load(root.join(relative).to_str().expect("a UTF-8 path"))
         .expect("the corpus loads");
-    let registry = Registry::load(root.join("aliases/subjects.yml").to_str().unwrap())
-        .expect("the registry loads");
+    let registry = Registry::load(
+        root.join("aliases/subjects.yml")
+            .to_str()
+            .expect("a UTF-8 path"),
+    )
+    .expect("the registry loads");
     let evaluation = evaluate(&corpus, &registry);
     (corpus, registry, evaluation)
 }
@@ -271,6 +275,10 @@ fn the_direction_gold_set_meets_its_accuracy_target() {
         "a dangerous direction confusion is the analogue of a false merge: {:?}",
         evaluation.dangerous
     );
+    #[expect(
+        clippy::as_conversions,
+        reason = "a test's own ratio over corpus counts; the counts are far below 2^53, so the cast is exact"
+    )]
     let accuracy = evaluation.direction_correct as f64 / evaluation.direction_checked as f64;
     assert!(
         accuracy >= 0.95,
@@ -290,6 +298,10 @@ fn the_parity_corpus_meets_its_false_split_target() {
         evaluation.structured_equivalent > 0,
         "the false-split rate has no denominator — nothing was measured"
     );
+    #[expect(
+        clippy::as_conversions,
+        reason = "a test's own ratio over corpus counts; the counts are far below 2^53, so the cast is exact"
+    )]
     let fsr = evaluation.fsr_hits.len() as f64 / evaluation.structured_equivalent as f64;
     assert!(
         fsr <= 0.30,
@@ -795,7 +807,7 @@ fn tree(dir: &Path) -> Vec<(String, Vec<u8>)> {
             } else {
                 let rel = path
                     .strip_prefix(base)
-                    .unwrap()
+                    .expect("a walked path is under its base")
                     .to_string_lossy()
                     .into_owned();
                 out.push((rel, std::fs::read(&path).expect("reads a file")));

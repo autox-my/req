@@ -39,8 +39,8 @@ pub fn sha256_hex_prefixed(prefix: &[u8], bytes: &[u8]) -> String {
 fn to_hex(digest: &[u8]) -> String {
     let mut hex = String::with_capacity(digest.len() * 2);
     for byte in digest {
-        hex.push(HEX_DIGITS[(byte >> 4) as usize] as char);
-        hex.push(HEX_DIGITS[(byte & 0x0f) as usize] as char);
+        hex.push(char::from(HEX_DIGITS[usize::from(byte >> 4)]));
+        hex.push(char::from(HEX_DIGITS[usize::from(byte & 0x0f)]));
     }
     hex
 }

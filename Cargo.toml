@@ -20,3 +20,14 @@ unicode-normalization = "0.1"
 #     when L1 git-native serialization is implemented)
 # Every dependency above is upstream-pinned by Cargo.lock at first build; the pin is
 # part of the rules' provenance (a lockfile bump is a Tier-1 rules bump).
+
+# The six target lints behind the Correctness rules (AGENTS.md, Tier-1 determinism): a
+# silent `as` cast or a float in the fingerprint path is how an address drifts on a
+# platform, and a suppression has to say why. `-D warnings` at the gate makes each an error.
+[lints.clippy]
+as_conversions = "warn"
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+allow_attributes_without_reason = "warn"
+unwrap_used = "warn"
+float_arithmetic = "warn"

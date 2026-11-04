@@ -296,7 +296,9 @@ fn json_escape(s: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\t' => out.push_str("\\t"),
             '\r' => out.push_str("\\r"),
-            other if (other as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", other as u32)),
+            other if u32::from(other) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", u32::from(other)))
+            }
             other => out.push(other),
         }
     }
@@ -569,10 +571,10 @@ fn scale(d: Decimal, power: i32) -> Decimal {
     if power == 0 {
         d
     } else if power > 0 {
-        d.checked_mul(Decimal::new(10i64.pow(power as u32), 0))
+        d.checked_mul(Decimal::new(10i64.pow(power.unsigned_abs()), 0))
             .unwrap_or(d)
     } else {
-        d.checked_div(Decimal::new(10i64.pow((-power) as u32), 0))
+        d.checked_div(Decimal::new(10i64.pow(power.unsigned_abs()), 0))
             .unwrap_or(d)
     }
 }
@@ -1722,8 +1724,12 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
 
 /// The subject registry. A caller that cannot load it reports UNVERIFIABLE.
 pub fn load_registry(root: &std::path::Path) -> Result<Registry, String> {
-    Registry::load(root.join("aliases/subjects.yml").to_str().unwrap())
-        .map_err(|e| format!("registry load failed: {e}"))
+    Registry::load(
+        root.join("aliases/subjects.yml")
+            .to_str()
+            .expect("a registry path under the corpus root is valid UTF-8"),
+    )
+    .map_err(|e| format!("registry load failed: {e}"))
 }
 
 /// The diagnostics command over an explicit root: `claims/` and `aliases/` are read from
