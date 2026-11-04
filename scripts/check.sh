@@ -418,125 +418,73 @@ run cargo run -q -- bench   # seed parity corpus: 0 PASS / 1 FAIL / 3 UNVERIFIAB
   run cargo run -q -- bench bench/corpus/direction-v1.yml
   fi
 
-# The release gate over this repository's own corpus. `req gate` was the one subcommand the gate
-# never invoked, so the six variant-scoped claims in `claims/` were never examined by CI while a
-# bare `gate` printed PASS (`15 applying claim(s), 6 undecided`, measured). `.req/variants` is this
-# repository's own list — one `key=value ...` release per line, and the reader is this script,
-# because req knows nothing about the file.
+# The release check over this repository's own corpus: `req check` (ADR 0023). It reads the two
+# lists beside the corpus — `.req/variants`, one `key=value ...` release per line, and
+# `.req/projections`, one committed document path per line (ADR 0018) — runs one `req gate
+# --test-report <junit.xml> <line>` per release and one `req render --check <path>` per
+# projection, and folds them into ONE exit: 1 a defect, else 3 UNVERIFIABLE, else 0, 2 a malformed
+# list. The loops, the fold and the list grammar are req's and are tested in `tests/check.rs`; this
+# script is one invocation of the same command an adopter's CI runs (examples/github-workflows/
+# req.yml), not a second implementation of it. `bash scripts/check.sh` has no shell loop over
+# either list.
 #
-# Each line is a **complete** release context, and since ADR 0015 a green line means exactly that:
-# an undecided claim exits 3, so a dropped `set`, `deployment_mode` or `field` reddens this
-# step instead of passing silently — and the gate names the claim it cost. What no single line can
-# see is the property *across* lines — a claim that applies in no declared release is examined by
-# none of them — and that is what `tests/release_gate.rs` adds with
-# `every_claim_applies_in_at_least_one_declared_release`. Its per-line twin asserts exit 0 and
-# `, 0 undecided` for the declared lines — which proves today's lines are complete, not that
-# `exit_code` honours the count: a `gate` that stopped counting undecided would leave these lines
-# green. What fails in that case is the fixture tests that assert exit 3 for an undecided corpus:
-# `tests/release_gate.rs::a_bare_gate_that_leaves_a_claim_undecided_is_unverifiable` and
-# `::a_ge_with_a_non_decimal_bound_is_named_not_left_to_a_context`.
-if [ -r "$PWD/.req/variants" ]; then
-  variants_gated=0
-  # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while still
-  # assigning it, and a release appended without one would otherwise be silently dropped.
-  while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
-    # The tests' reader strips a trailing CR (`str::lines` plus `trim`); `read -r` keeps it, so a
-    # CRLF checkout would gate a `\r`-suffixed value the tests never see.
-    variant_line="${variant_line%$'\r'}"
-    # `read -a` splits on IFS and does **not** run pathname expansion: a bare expansion would
-    # glob-expand a value carrying `*`, `?` or `[` against the working directory.
-    read -r -a release <<< "${variant_line%%#*}"
-    [ "${#release[@]}" -gt 0 ] || continue
-    # </dev/null: nothing in the body may consume the remaining releases from this file's stdin.
-    # The evidence the policy reads: the report the test step just wrote. `req gate` without it
-    # answers UNVERIFIABLE (a policy that cannot be exercised is not a pass), and a report the
-    # run did not produce is absence, not "no failures found".
-    run cargo run -q -- gate --test-report "$JUNIT_REPORT" "${release[@]}" < /dev/null
-    variants_gated=$((variants_gated + 1))
-  done < "$PWD/.req/variants"
-  # "Nothing was examined" is not a pass. A file of only comments iterates zero times, and an
-  # unreadable file makes the redirection at `done` fail — the loop then does not execute, its
-  # non-zero status is discarded (`set -e` is off here), and without this the banner would print
-  # PASS with the release gate never run.
-  if [ "$variants_gated" -eq 0 ]; then
-    printf 'FAIL  .req/variants declares no release: nothing was gated, and a skipped check is never a pass\n'
-    fail=1
-  fi
-else
+# The history this replaces matters, because it is why the shell is gone: `req gate` was once the
+# one subcommand this gate never invoked, so six variant-scoped claims were never examined while a
+# bare `gate` printed PASS (`15 applying claim(s), 6 undecided`, measured). Each line of
+# `.req/variants` is a **complete** release context, and since ADR 0015 a green line means exactly
+# that: an undecided claim exits 3, so a dropped `set`, `deployment_mode` or `field` reddens the
+# step and the gate names the claim it cost. What no single line can see is the property *across*
+# lines — a claim that applies in no declared release is examined by none of them — and that is
+# what `tests/release_gate.rs::every_claim_applies_in_at_least_one_declared_release` adds.
+#
+# The evidence the policy reads is the report the test step just wrote (`$JUNIT_REPORT`): without
+# it the gate answers UNVERIFIABLE (a policy that cannot be exercised is not a pass), and a report
+# the run did not produce is absence, not "no failures found".
+#
+# What this script keeps of its own, stricter than `req check`'s default and deliberately so:
+#
+# * `.req/variants` is **tracked** in this repository, so its absence is a defect here. `req check`
+#   reads an absent list as the default variant (and says so, and is exit 3 on a corpus carrying a
+#   selector); for a repository that pins the list the better answer is the plain FAIL below, not
+#   an inherited softer rule. The same goes for a file that is not a readable regular file.
+# * A list that declares no release (comments only) is the default variant to `req check`, and it
+#   says so on its own line (`... declares no release: the default variant`). Here it is a FAIL:
+#   nothing was declared, so no declared release was gated. The line is read from the command's
+#   output, never re-derived from the file.
+#
+# `req check` prints a verdict, not a count, so the visibility a skipped check needs is read back
+# from its step lines: `variants gated: N` and `projections checked: N` are counted from the output
+# (`[PASS|FAIL|UNVERIFIABLE] gate …` / `… render …`), and the `projections: none pinned` line is the
+# command's own. A step that did not run therefore cannot read as a pass: the banner needs the
+# command's exit 0, and the counts are printed beside it so a reader sees how much it examined.
+variants_file="$PWD/.req/variants"
+if [ ! -f "$variants_file" ] || [ ! -r "$variants_file" ]; then
   # Not a SKIP. The file is tracked, so its absence is a defect — and a skipped check is never a
   # pass, which is the invariant this script exists to keep.
   printf 'FAIL  .req/variants is missing or unreadable: the release gate cannot run, and a skipped check is never a pass\n'
   fail=1
 fi
-
-# Committed projections (ADR 0018): a document generated from the corpus is checked by
-# regeneration, never trusted about itself, and never hand-edited in place — a difference is
-# exit 1, with the first differing line named. `.req/projections` is this repository's pinned
-# list — one repo-relative path per line, `#` comments, blank lines skipped, exactly the
-# `.req/variants` grammar above — and the reader is this script, because req knows nothing about
-# the file. The list is deliberately small (ADR 0018 §4): a projection is committed where it is a
-# *deliverable*, not as a cache of every view, and adding a path is a decision.
-#
-# Conditional on purpose: a project that commits no projection has nothing to check, so an absent
-# `.req/projections` is not a failed check. But "no list" and "a list this script cannot read" are
-# different states: a file that exists and is not readable (mode 000, a dangling link, a bad mount)
-# is a **pinned list that became unusable**, and it must be red — the `.req/variants` step makes the
-# same distinction beside it, and `[ -r ]` alone would fold the two into the tolerated one. Once the
-# list is readable the step is the gate's, and two conditions make "nothing was checked" red
-# instead of green — the release-gate step's lesson: a listed path that no longer exists (a
-# projection that vanished is silent decay), and a list that yielded no path at all (a comment-only
-# file examined nothing). The step prints how many projections it checked, so neither case can read
-# as a pass.
-projections_file="$PWD/.req/projections"
-if [ ! -e "$projections_file" ] && [ ! -L "$projections_file" ]; then
-  printf 'projections: none pinned (.req/projections absent; nothing to check)\n'
-elif [ ! -f "$projections_file" ] || [ ! -r "$projections_file" ]; then
-  # Present but unusable is not absent: a pinned list that cannot be examined must be red, or the
-  # gate reports "nothing pinned" about a path that is right there. `-L` covers a dangling link
-  # (`-e` cannot see through it), and `-f` refuses a directory, FIFO or device — a directory would
-  # otherwise fail the loop's redirection with a raw bash error and be blamed as "pins no
-  # projection", and a FIFO would block the gate forever.
-  printf 'FAIL  .req/projections is present but is not a readable regular file: the pinned list cannot be examined, and a skipped check is never a pass\n'
-  fail=1
+if [ "$dry" -eq 1 ]; then
+  # A plan executes nothing, and says what the default run would: the one command, with the report.
+  run cargo run -q -- check --test-report "$JUNIT_REPORT" < /dev/null
 else
-  projections_checked=0
-  projection_entries=0
-  while IFS= read -r projection_line || [ -n "${projection_line}" ]; do
-    # A CRLF checkout would otherwise ask for a path ending in `\r`.
-    projection_line="${projection_line%$'\r'}"
-    # One path per line: `read` trims the surrounding whitespace and takes the first word. More
-    # than one word is named rather than half-checked — a path containing whitespace would be
-    # silently truncated to its first word, and the step would check a file nobody listed.
-    read -r projection_path projection_rest <<< "${projection_line%%#*}"
-    [ -n "$projection_path" ] || continue
-    projection_entries=$((projection_entries + 1))
-    if [ -n "$projection_rest" ]; then
-      printf 'FAIL  .req/projections line names more than one word (one repo-relative path per line): %s\n' "$projection_line"
-      fail=1
-      continue
-    fi
-    if [ ! -f "$PWD/$projection_path" ]; then
-      printf 'FAIL  .req/projections lists a projection that is missing: %s\n' "$projection_path"
-      fail=1
-      continue
-    fi
-    # </dev/null: nothing in the body may consume the remaining paths from this file's stdin.
-    run cargo run -q -- render --check "$projection_path" < /dev/null
-    projections_checked=$((projections_checked + 1))
-  done < "$projections_file"
-  if [ "$dry" -eq 1 ]; then
-    # `plan` executes nothing, so it must not report a count that reads as checks performed.
-    printf 'projections planned: %d (nothing executed)\n' "$projections_checked"
-  else
-    printf 'projections checked: %d\n' "$projections_checked"
-  fi
-  # "Nothing was examined" is not a pass, and the reason is the *list*, not a missing file: a
-  # comment-only list iterates zero times. A list whose every entry was reported missing already
-  # failed above, and saying "pins no projection" there would name the wrong reason twice.
-  if [ "$projection_entries" -eq 0 ]; then
-    printf 'FAIL  .req/projections pins no projection: nothing was checked, and a skipped check is never a pass\n'
+  say "cargo run -q -- check --test-report $JUNIT_REPORT"
+  check_out="$(mktemp "${TMPDIR:-/tmp}/req-check.XXXXXX")"
+  # </dev/null: the command reads no stdin, and a script running it must not hand it ours.
+  cargo run -q -- check --test-report "$JUNIT_REPORT" < /dev/null > "$check_out" 2>&1
+  rc=$?
+  cat "$check_out"
+  if [ $rc -ne 0 ]; then
+    printf 'FAIL  cargo run -q -- check --test-report %s (exit %d)\n' "$JUNIT_REPORT" "$rc"
     fail=1
   fi
+  if grep -q 'declares no release: the default variant' "$check_out"; then
+    printf 'FAIL  .req/variants declares no release: nothing was gated, and a skipped check is never a pass\n'
+    fail=1
+  fi
+  printf 'variants gated: %d\n' "$(grep -c '^\[[A-Z]*\] gate ' "$check_out")"
+  printf 'projections checked: %d\n' "$(grep -c '^\[[A-Z]*\] render ' "$check_out")"
+  rm -f "$check_out"
 fi
 
 # The document extractor's pure half (tools/adopt.py): the two conventions, the heading scope,

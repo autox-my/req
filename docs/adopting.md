@@ -167,9 +167,10 @@ addresses, so a reader can see what it was built from before running anything. I
 failure case `--check` exists to catch.
 
 Pin the paths your project commits in **`.req/projections`** — one repo-relative path per line,
-`#` comments, blank lines skipped, the same grammar as `.req/variants` — and run
-`req render --check` for each in your CI job. A listed path that is missing is a failure (a
-projection that vanished is silent decay), and a list that checked nothing is not a pass. The list
+`#` comments, blank lines skipped, the same grammar as `.req/variants` — and `req check` (see *CI*)
+runs `req render --check` for each in the same step that gates your releases. A listed path that is
+missing is a failure (a projection that vanished is silent decay), and a list that checked nothing is
+not a pass. The list
 is deliberately small: a projection is committed where it is a **deliverable**, not as a cache of
 every view, and adding a path is a decision. A `spec.md` cannot go stale by construction, because
 the only way to change it is to change the corpus — which has its own gates (`req gate`,
@@ -446,95 +447,56 @@ jobs:
             exit 1
           fi
           cargo nextest run --profile ci
-      - name: the release gate — every declared variant, and the default when none is declared
+      # The release verdict (ADR 0023). `req check` reads `.req/variants` and `.req/projections`
+      # beside the corpus, runs one `req gate` per release line and one `req render --check` per
+      # pinned projection, and folds them into ONE exit: 1 when any step is a defect, else 3 when
+      # any cannot be confirmed, else 0; 2 for a malformed list or a usage error. The fold, the
+      # list grammar and "an absent or unreadable list is never silent" are req's, tested once, so
+      # this step re-implements none of them and adds only the job summary.
+      #
+      # The step's status IS `req check`'s: the command is not piped (a pipe reports the last
+      # command's status), not followed by `|| true`, and the step is not `continue-on-error`. The
+      # output goes to a file so the summary can quote its `verdict:` line, and the step ends by
+      # exiting with `code`, taken from the command's own status — an exit 3 (UNVERIFIABLE) is a
+      # red step, never a green one.
+      - name: the release check — every declared variant and projection, one verdict
         run: |
-          set -eu
-          # An absent, unreadable, or non-regular variants file must be red. A failed INPUT
-          # REDIRECTION does not stop a `set -e` script: the loop then never runs and the
-          # fallback below gates the bare variant, so the step can be green with no declared
-          # variant gated. `[ -f ]` proves a regular file, not readability; `[ -r ]` proves
-          # readability, not that a directory is not the path (a readable directory passes it
-          # and the redirection still fails) — so both are asserted.
-          [ -f .req/variants ] && [ -r .req/variants ] \
-            || { echo "missing, unreadable, or not a regular file .req/variants" >&2; exit 1; }
+          set -u
+          out="${RUNNER_TEMP:-$HOME}/req-check.out"
+          if req check --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" > "$out" 2>&1; then
+            code=0
+          else
+            code=$?
+          fi
+          cat "$out"
           # A job summary above the log (runner >= 13.2 sets one of these).
           # Absent variable = an older runner: the step must still pass, so the target is /dev/null.
           summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}"
-          printf '## req gate\n\n| variant | exit | verdict |\n| --- | --- | --- |\n' >> "$summary"
-          rc=0
-          rejected=0
-          gate() {
-            out="$(req gate --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" "$@" 2>&1)" && code=0 || code=$?
-            verdict="$(printf '%s' "$out" | sed -n 's/^verdict: //p' | head -1)"
-            printf '| `%s` | %s | %s |\n' "${*:-<none>}" "$code" "${verdict:-no verdict line}" >> "$summary"
-            # Fail outranks unverifiable, and nothing non-zero may be swallowed. The rule: 1 is
-            # sticky above every code; among the rest the **first** non-zero is kept. The first
-            # failed invocation is the one to investigate, and ranking 2/3/127 by severity would be
-            # this script inventing an order req's exit contract does not define (127 is the
-            # shell's, not req's). The previous rule kept the *last*, so a missing binary (127)
-            # followed by an UNVERIFIABLE (3) reported 3 — the tool never ran.
-            if [ "$code" -eq 1 ]; then
-              rc=1
-            elif [ "$code" -ne 0 ] && [ "$rc" -eq 0 ]; then
-              rc=$code
-            fi
-          }
-          gated=0
-          # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while
-          # still assigning it, and a release appended without one would otherwise be silently
-          # dropped. `read -a` splits on IFS and runs no pathname expansion, so a whitespace-only or
-          # comment-only line yields no element and is skipped rather than becoming a bare run.
-          while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
-            variant_line="${variant_line%$'\r'}"
-            read -r -a release <<< "${variant_line%%#*}"
-            [ "${#release[@]}" -gt 0 ] || continue
-            # A release line is a `key=value` context, never an option. A help flag wins WHEREVER
-            # it appears (`req gate deployment_mode=x --help` prints the page and exits 0 having
-            # gated nothing), so every argument is checked, not just the first.
-            release_option=0
-            for release_arg in "${release[@]}"; do
-              case "$release_arg" in -*) release_option=1 ;; esac
-            done
-            if [ "$release_option" -eq 1 ]; then
-              printf 'release line carries an option, so it is not a release: %s\n' "${release[*]}" >&2
-              rc=1
-              rejected=$((rejected + 1))
-              continue
-            fi
-            # /dev/null: nothing in the body may consume the remaining releases from this
-            # file's stdin — a command that reads stdin would shorten the list without error, and
-            # the loop would end early with a green step. scripts/check.sh guards the same loop
-            # the same way.
-            gate "${release[@]}" < /dev/null
-            gated=$((gated + 1))
-          done < .req/variants
-          # A comment-only file declares one variant — the default — and the bare invocation is
-          # its gate. With a line declared, the loop is the gate: a bare run beside it reports
-          # UNVERIFIABLE on any corpus carrying a selector (ADR 0015), and a false red beside
-          # green variants is how a real red gets ignored.
-          # A file whose lines were all rejected declared something, and it was malformed: it is
-          # not the "no variants" state, so the bare default is not its fallback. The sticky `rc`
-          # already makes the step red.
-          if [ "$gated" -eq 0 ] && [ "$rejected" -eq 0 ]; then
-            gate
-          fi
-          exit $rc
+          verdict="$(sed -n 's/^verdict: //p' "$out" | head -1)"
+          {
+            printf '## req check\n\n| exit | verdict |\n| --- | --- |\n| %s | %s |\n\n' "$code" "${verdict:-no verdict line}"
+            printf '```\n'
+            cat "$out"
+            printf '```\n'
+          } >> "$summary"
+          exit "$code"
       # The agent-facing half (pack C): the verdicts as JSON documents, kept off the log.
-      # An agent reviewing this pull request reads `req.gate/2`, never a scraped text line.
+      # An agent reviewing this pull request reads `req.check/1` (one document: the folded verdict
+      # and, per step, the whole `req.gate/2`), never a scraped text line.
       - name: the JSON views, as build artifacts (an agent reads these, not the log)
         if: always()
         run: |
           set -eu
           mkdir -p req-views
           # A view document is complete even when its verdict is open (pack C), so each exit
-          # class is recorded beside its document and never folded into this step: the gate
+          # class is recorded beside its document and never folded into this step: the check
           # above decides the build, and `always()` keeps the views when it went red.
           # `--format json` renders to stdout only — beside `--out`/`--check` it is a usage
           # error (exit 2) — so a redirect, not a flag, is how a document reaches the disk.
           #
           # The redirect goes to a `.tmp` name first because a command can fail WITHOUT writing
           # a document: an unreadable corpus prints `[UNVERIFIABLE]` to stderr and exits 3, and
-          # a bare `> req-views/gate.json` would leave a zero-byte file where a view should be.
+          # a bare `> req-views/check.json` would leave a zero-byte file where a view should be.
           # A consumer that parses an empty document believes it holds a verdict. So a view
           # that wrote nothing is named on the log and leaves no file at all.
           capture() {
@@ -552,53 +514,11 @@ jobs:
           capture render render
           capture trace trace
           capture audit audit
-          # The gate document is ONE PER VARIANT, exactly as the gate step runs it: a bare
-          # `req gate` is UNVERIFIABLE on a corpus carrying a selector (ADR 0015), so a bare
-          # document would say "cannot tell" beside a release that passed. With no release
-          # declared, the bare view IS the default variant's document.
-          releases=0
-          variants_read=0
-          rejected=0
-          if [ -f .req/variants ] && [ -r .req/variants ]; then
-            variants_read=1
-            while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
-              variant_line="${variant_line%$'\r'}"
-              read -r -a release <<< "${variant_line%%#*}"
-              [ "${#release[@]}" -gt 0 ] || continue
-              # The gate step above is red on this line; capture nothing rather than help text.
-              release_option=0
-              for release_arg in "${release[@]}"; do
-                case "$release_arg" in -*) release_option=1 ;; esac
-              done
-              if [ "$release_option" -eq 1 ]; then
-                printf 'release line carries an option, not captured: %s\n' "${release[*]}" >&2
-                rejected=$((rejected + 1))
-                continue
-              fi
-              releases=$((releases + 1))
-              capture "gate-${releases}" gate --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" "${release[@]}" < /dev/null
-            done < .req/variants
-          fi
-          # Only a file THIS STEP READ, declaring no line, is the default variant and its bare
-          # gate the document. A missing, unreadable or non-regular file is the red the gate step
-          # above already reported: the other views are kept, but no `gate.json` may read `pass`
-          # beside it.
-          if [ "$releases" -eq 0 ] && [ "$variants_read" -eq 1 ] && [ "$rejected" -eq 0 ]; then
-            capture gate gate --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" < /dev/null
-          elif [ "$releases" -eq 0 ] && [ "$variants_read" -eq 0 ]; then
-            printf 'no readable regular .req/variants: the gate step above is red, so no gate document is written\n' >&2
-          elif [ "$releases" -eq 0 ]; then
-            printf 'a release line carries an option: the gate step above is red, so no gate document is written\n' >&2
-          fi
+          capture check check --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml"
           # `if-no-files-found: error` on the upload only reds a COMPLETELY empty directory: one
-          # variant's document lost while its text gate passed would ship silently. The step knows
-          # how many documents it expects, so it checks instead of assuming.
-          expected=3
-          if [ "$releases" -gt 0 ]; then
-            expected=$((expected + releases))
-          elif [ "$variants_read" -eq 1 ] && [ "$rejected" -eq 0 ]; then
-            expected=$((expected + 1))
-          fi
+          # document lost while the check passed would ship silently. The step knows how many
+          # documents it expects (render, trace, audit and check), so it checks instead of assuming.
+          expected=4
           actual=0
           for document in req-views/*.json; do
             [ -f "$document" ] && actual=$((actual + 1))
@@ -630,23 +550,56 @@ own claim operations need no network (REQ-0012), so only the install is affected
 also exports `PATH="$HOME/.local/bin:$PATH"` — `$GITHUB_PATH` applies to later steps only, so
 without it that step's own `req --version` would be `command not found`.
 
+**The release step is one command: `req check`.** It reads the two lists beside the corpus —
+`.req/variants` (one complete release per line) and `.req/projections` (one committed document path
+per line) — runs a `req gate --test-report <junit.xml> <line>` for each release and a
+`req render --check <path>` for each projection, and folds the results into **one exit with the
+gate's contract**: **1** when any step is a defect, else **3** when any step cannot be confirmed,
+else **0**; **2** for a usage error or a malformed list, decided before any step runs. The step's
+status *is* that exit: the command is **not piped, not followed by `|| true`, and the step is not
+`continue-on-error`**, because a pipe reports the last command's status and a masked exit 3 is a
+green build over an unconfirmed release. The step keeps a copy of the output only to quote its
+`verdict:` line in the job summary, and ends in `exit "$code"` with `code` taken from the command's
+own status. Its output says which step produced which exit, and `verdict: PASS` is printed only when
+**every declared step ran and passed** — there is no `--only` and no `--skip`, so a green `check` is
+never a green subset.
+
+**Absent is not silent.** A repository with no `.req/variants` declares the default variant — one
+bare `req gate` — and `req check` says so on its own line; on a corpus carrying a selector that gate
+is **3** (ADR 0015), so deleting the list cannot turn the build green. A list that exists and cannot
+be read as a regular file (a directory, a dangling link, a mode-000 file) is **3**, never "absent".
+A comment-only `.req/variants` is the default variant, and says so. With no `.req/projections` the
+command prints `projections: none pinned` and checks none; a listed path that is **missing** (or not
+a regular file) is a failure — a projection that vanished is silent decay (ADR 0018) — and a list
+that yields no path is a failure too, because it examined nothing.
+
+**The grammar of both lists is `req check`'s**, tested once in Rust rather than reviewed in three
+copies of shell: `#` starts a comment, an empty line is skipped, a trailing carriage return is
+stripped, a line is split on whitespace with **no pathname expansion** (a `*` in a value is data),
+and a final line without a newline counts. A `.req/variants` line is `key=value` words and **never an
+option or a word without `=`** — `req gate --help` exits 0 having gated nothing, so an option-shaped
+line is rejected (exit **2**, naming `<file>:<line>`, before anything runs) rather than becoming a
+help page that "passes". A `.req/projections` line is exactly **one path**, relative to the corpus
+root; an absolute path or a `..` component is malformed, because the list is repository content and
+must not point outside it. `req check` adds no key, no section and no third file; what a line
+*means* is unchanged.
+
 **The JSON views are the agent-facing half.** The last two steps write pack C's documents and
 upload them as the `req-views` artifact, so an agent reviewing the pull request reads the verdict
-instead of scraping a log. `render`, `trace` and `audit` are written once; the **gate document is
-written once per declared release** (`gate-1.json`, `gate-2.json`, …), because a bare `req gate` is
-UNVERIFIABLE on a corpus carrying a selector (ADR 0015) and a single bare document would say
-"cannot tell" beside a release that passed. With a comment-only or empty `.req/variants`, `gate.json`
-*is* the default variant's document; an **absent or unreadable** file is the gate step's red, so
-the other views are kept and no gate document is written at all — a `pass` beside that red would be
-worse than no document. The capture step runs `if: always()` and **records** each command's exit class
-beside its document instead of folding it into the step: a document is complete even when its
-verdict is open (ADR 0018, and pack C's rule), and the gate step above is what decides the build.
+instead of scraping a log. `render`, `trace` and `audit` are written once, and **`check.json` is one
+`req.check/1` document**: the folded verdict and, per step, its kind, its line or path, its exit and,
+for a gate step, the whole `req.gate/2` document — one document where a per-variant capture used to
+need a loop. The capture step runs `if: always()` and **records** each command's exit class beside
+its document instead of folding it into the step: a document is complete even when its verdict is
+open (ADR 0018, and pack C's rule), and the `req check` step above is what decides the build.
 `--format json` renders to stdout only — beside `--out`/`--check` it is a usage error (exit 2) —
 so the redirect is how a document reaches the disk, and it goes to a `.tmp` name first: a view that
-fails **without writing a document** (an unreadable corpus prints `[UNVERIFIABLE]` and exits 3)
-leaves no file and is named on the log, because a zero-byte document is the one thing a consumer
-would parse and believe. `tests/ci_template.rs` pins `if: always()`, `if-no-files-found: error`, the captures and
-the set check by **count**, so a coordinated removal from all three copies is still red.
+fails **without writing a document** (an unreadable corpus prints `[UNVERIFIABLE]` and exits 3, a
+malformed list exits 2) leaves no file and is named on the log, because a zero-byte document is the
+one thing a consumer would parse and believe. The step knows it expects **four** documents
+(`render`, `trace`, `audit`, `check`) and is red on a partial set. `tests/ci_template.rs` pins
+`if: always()`, `if-no-files-found: error`, the captures and the set check by **count**, so a
+coordinated removal from all three copies is still red.
 
 The upload names `actions/upload-artifact@v4`. That version is the one **runner-specific** line in
 this file: check the major your GitHub or Forgejo runner implements and change it if it differs —
@@ -655,39 +608,27 @@ the JSON files are written to `req-views/` either way, and only the upload is ve
 **This body is one text in three places**, and a test keeps it that way: `req init` prints it,
 this page carries it, and `examples/github-workflows/req.yml` is the copy-ready file to `cp` into
 `.github/workflows/` or `.forgejo/workflows/`. `tests/ci_template.rs` compares the three byte for
-byte — the equality is checked, never assumed.
+byte — the equality is checked, never assumed — and refuses a copy that carries the old shell
+(a loop over `.req/variants`, `read -a`, a sticky `rc`) back.
 
-**`.req/variants`** is plain text beside the corpus, because the CI step is bash and YAML would need
-a parser: one gate invocation per line, `key=value` pairs space-separated, `#` starts a comment, and
-a line that is empty after stripping the comment is skipped. Two rules matter:
+**`.req/variants` and `.req/projections` are plain text beside the corpus**, the repository's to
+author and `req check`'s to read. Two lines you will write often:
 
-- **A release line is a `key=value` context, never an option.** Any argument that looks like an
-  option rejects the line, because a help flag wins **wherever it appears**: `req gate --help` and
-  `req gate deployment_mode=x --help` both exit **0** having gated nothing. The step goes red with
-  the offending line named, and a file whose every line was rejected is not the default variant:
-  neither the gate step nor the artifact step falls back to the bare run for it.
-- **No release line declares the default variant.** A comment-only `.req/variants` describes exactly
-  one variant — the default — so the step runs the bare-variant `req gate` (still with
-  `--test-report target/nextest/ci/junit.xml`) only when the loop read no line.
-  Once a line is declared, **the loop is the gate**: a bare run beside it is UNVERIFIABLE on any
-  corpus carrying a selector (ADR 0015), and a false red beside green variants is how a real red
-  gets ignored. The unscoped variant is still not a line — a blank line cannot be distinguished from
-  formatting, and a format where "nothing" means "the default variant" is a trap.
-- **The file must be a readable regular file.** `[ -f ]` **and** `[ -r ]` are asserted, because an
-  absent, unreadable, or non-regular file makes the loop's input redirection fail *without*
-  stopping a `set -e` script — every declared variant would be skipped, the fallback would gate the
-  bare variant, and the step would still exit 0. `[ -f ]` alone proves a regular file, not
-  readability; `[ -r ]` alone also passes for a readable *directory*, whose redirection still
-  fails. While you declare no variants, the file is valid with comments only.
+- **Declare the default variant by declaring nothing.** A comment-only `.req/variants` describes
+  exactly one variant — the default — and `req check` runs the bare-variant `req gate` (still with
+  the report) for it. Once a line is declared, **the lines are the gate**: a bare run beside them
+  would be UNVERIFIABLE on any corpus carrying a selector (ADR 0015), and a false red beside green
+  variants is how a real red gets ignored.
+- **Add a variant in the same commit as the `applicability:` that needs it** (*The coverage rule*).
 
 Two parts of the snippet are not verified on a runner: whether the job summary renders above the log, and
 the artifact upload — `actions/upload-artifact` and `if: always()` are the runner's behaviour, not req's.
-Everything else is plain shell, and `tests/init.rs` **executes this exact step** against a stub `req` over
-every shape it has to survive (no, comment-only, one-release, unreadable and option-shaped `.req/variants`;
-a release appended without a trailing newline; an unreadable corpus, where every command exits **3** and the
-step writes no documents and goes **red** because it knows how many it expects) — so those behaviours are
-checked rather than described. Confirm the table renders on your first pull request; if it does not, the step
-is still correct, it just loses the summary.
+Everything else is checked rather than described: `tests/ci_template.rs` **runs the release step's own
+command line** against corpora whose verdict is known (a fixture that must be exit 3 must make the step
+exit 3), `tests/init.rs` executes the step and the JSON-views step against a stub `req` (every exit code
+passes through; a view that wrote nothing leaves no file and the step goes **red** because it knows how
+many documents it expects), and `tests/check.rs` holds the fold and the list grammar. Confirm the table
+renders on your first pull request; if it does not, the step is still correct, it just loses the summary.
 
 ## The coverage rule
 
@@ -698,20 +639,21 @@ gate exits **3 (UNVERIFIABLE)** and names the claims it could not examine, with 
 invocation is the only one that can be green. So:
 
 **Every variant the project declares gets its own gate invocation.** That is what `.req/variants`
-is for — and since ADR 0019 each invocation also takes the run's report
-(`--test-report target/nextest/ci/junit.xml`), because without it the `tests_linked` policy cannot be
-exercised and the gate is UNVERIFIABLE rather than green. When you add an `applicability:` predicate to a claim, add its variant to `.req/variants`
-in the same commit — otherwise the claim is inside no gate invocation at all, and the bare run tells
-you so: it exits 3 and names that claim among the undecided.
+is for, and `req check` runs one `req gate` per line — and since ADR 0019 each invocation also takes
+the run's report (`--test-report target/nextest/ci/junit.xml`), because without it the `tests_linked`
+policy cannot be exercised and the gate is UNVERIFIABLE rather than green. When you add an
+`applicability:` predicate to a claim, add its variant to `.req/variants` in the same commit —
+otherwise the claim is inside no gate invocation at all, and the bare run tells you so: it exits 3
+and names that claim among the undecided.
 
 ## Without CI
 
 Nothing about the tool changes; only whether it is run. The gate becomes a ritual, and a ritual that
-is not enforced is not a gate. The cheapest enforcement is a `pre-push` hook that runs
-the same loop over `.req/variants` shown above — on a corpus carrying
-a selector the bare invocation is UNVERIFIABLE (ADR 0015), so the loop *is* the gate. Run the suite
-first (nextest, one profile, one report) and pass `--test-report` on every line, or the gate is
-UNVERIFIABLE for lack of evidence. Do not
+is not enforced is not a gate. The cheapest enforcement is a `pre-push` hook that runs the same one
+command as CI — `req check --test-report target/nextest/ci/junit.xml` — and fails on its status; on a
+corpus carrying a selector a bare `req gate` is UNVERIFIABLE (ADR 0015), so the declared lines *are*
+the gate, and `req check` runs every one of them and every pinned projection. Run the suite first
+(nextest, one profile, one report) or the gate is UNVERIFIABLE for lack of evidence. Do not
 oversell it: a local hook is a reminder, not a record, and nothing outside your machine can see
 whether it ran.
 
@@ -747,17 +689,22 @@ window. Each step names its deciding line; the explanation is in the section it 
    the gate cannot be green until every applying claim has a passing linked test or declares `evidence:
    process` — so until then wire `req canon --fail-on-flag` into CI: exit 1 when any pin of any claim is
    flagged, 0 when none is, 3 when the corpus cannot be read. Its green is **not** a release verdict (tests,
-   relations and decisions were not judged); replace it with `req gate` at step 5, do not add it to the
+   relations and decisions were not judged); replace it with `req check` at step 5, do not add it to the
    release path as a substitute.
 5. **Gate it** (*Link each claim to its proving test*, *CI*, *The coverage rule*): declare each release in
-   `.req/variants`, run the suite for the report, then one `req gate --test-report
-   target/nextest/ci/junit.xml <key=value ...>` per line. With every applying claim linked to a passing
-   test the first line is `# Release gate: <n> applying claim(s), 0 undecided (an undecided claim is never
-   treated as absent)` and the last is `verdict: PASS — every policy settled in the affirmative, and every
-   claim was decided`. A bare `req gate` on a corpus carrying a selector exits **3** and ends `verdict:
-   UNVERIFIABLE — nothing is wrong, but something cannot be confirmed`; that is correct since ADR 0015, not
-   a bug. Commit the document as a projection (*The document your project can commit*): `req render
-   --out docs/spec.md`, and `req render --check docs/spec.md` is the alarm.
+   `.req/variants`, run the suite for the report, then `req check --test-report
+   target/nextest/ci/junit.xml` — one command that runs a `req gate` per line, checks every path in
+   `.req/projections` and folds them into one exit (**0** every declared step ran and passed, **1** a
+   defect, **3** something cannot be confirmed, **2** a malformed list). With every applying claim linked
+   to a passing test it prints one `[PASS] gate <line> (exit 0)` per release and ends `verdict: PASS —
+   every declared step ran and passed`; a step that is not a pass lists the policies that were not PASS
+   under it. An undecided claim exits **3** (since ADR 0015) and a missing `.req/variants` is the
+   default variant, which on a corpus carrying a selector is also **3**: that is correct, not a bug.
+   The single gate for one selection is still `req gate --test-report target/nextest/ci/junit.xml
+   <key=value ...>` (first line `# Release gate: <n> applying claim(s), 0 undecided …`, last
+   `verdict: PASS — every policy settled in the affirmative, and every claim was decided`). Commit the
+   document as a projection (*The document your project can commit*): `req render --out docs/spec.md`,
+   list it in `.req/projections`, and `req check` is the alarm.
 
 To hand **one** of these steps to a coding agent in another project, fill in `examples/handoff-brief.md`: it
 names the step, the req rev to precheck with `req --version`, the input file, the exit code and line that
@@ -775,13 +722,14 @@ for an adopter's agent. The four prohibitions, and why each one matters:
 
 ### What it can read
 
-`--format json` on `render`, `trace`, `gate` and `audit` prints the same answer as a document on stdout —
-`req.render/1`, `req.trace/1`, `req.gate/2`, `req.audit/1` — with the exit code identical to the text form.
-It renders the verdict, it does not add one. The CI Action writes them to `req-views/` (see *CI*), with
-**one gate document per declared release**; a `req.gate/2` document carries **six** `policies` (the first is
-`pins_hold`) and a
-top-level `process_evidenced` array, so a consumer that reads only the machine count would overstate what
-was proven. Read the artifact, not the log; the gate step remains what decides the build.
+`--format json` on `render`, `trace`, `gate`, `audit` and `check` prints the same answer as a document on
+stdout — `req.render/1`, `req.trace/1`, `req.gate/2`, `req.audit/1`, `req.check/1` — with the exit code
+identical to the text form. It renders the verdict, it does not add one. The CI Action writes four of them
+to `req-views/` (see *CI*): `check.json` is **one** document for the whole release check, carrying every
+step's `req.gate/2` inside it. A `req.gate/2` document carries **six** `policies` (the first is
+`pins_hold`) and a top-level `process_evidenced` array, so a consumer that reads only the machine count
+would overstate what was proven. Read the artifact, not the log; the `req check` step remains what decides
+the build.
 
 The exit contract is on `req --help` and each command's `exit:` line: an agent consumes the exit code and
 the named line, not the prose. `req render --check <path>` is the drift alarm — 0 current, 1 stale or

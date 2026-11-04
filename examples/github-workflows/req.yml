@@ -89,95 +89,56 @@ jobs:
             exit 1
           fi
           cargo nextest run --profile ci
-      - name: the release gate — every declared variant, and the default when none is declared
+      # The release verdict (ADR 0023). `req check` reads `.req/variants` and `.req/projections`
+      # beside the corpus, runs one `req gate` per release line and one `req render --check` per
+      # pinned projection, and folds them into ONE exit: 1 when any step is a defect, else 3 when
+      # any cannot be confirmed, else 0; 2 for a malformed list or a usage error. The fold, the
+      # list grammar and "an absent or unreadable list is never silent" are req's, tested once, so
+      # this step re-implements none of them and adds only the job summary.
+      #
+      # The step's status IS `req check`'s: the command is not piped (a pipe reports the last
+      # command's status), not followed by `|| true`, and the step is not `continue-on-error`. The
+      # output goes to a file so the summary can quote its `verdict:` line, and the step ends by
+      # exiting with `code`, taken from the command's own status — an exit 3 (UNVERIFIABLE) is a
+      # red step, never a green one.
+      - name: the release check — every declared variant and projection, one verdict
         run: |
-          set -eu
-          # An absent, unreadable, or non-regular variants file must be red. A failed INPUT
-          # REDIRECTION does not stop a `set -e` script: the loop then never runs and the
-          # fallback below gates the bare variant, so the step can be green with no declared
-          # variant gated. `[ -f ]` proves a regular file, not readability; `[ -r ]` proves
-          # readability, not that a directory is not the path (a readable directory passes it
-          # and the redirection still fails) — so both are asserted.
-          [ -f .req/variants ] && [ -r .req/variants ] \
-            || { echo "missing, unreadable, or not a regular file .req/variants" >&2; exit 1; }
+          set -u
+          out="${RUNNER_TEMP:-$HOME}/req-check.out"
+          if req check --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" > "$out" 2>&1; then
+            code=0
+          else
+            code=$?
+          fi
+          cat "$out"
           # A job summary above the log (runner >= 13.2 sets one of these).
           # Absent variable = an older runner: the step must still pass, so the target is /dev/null.
           summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}"
-          printf '## req gate\n\n| variant | exit | verdict |\n| --- | --- | --- |\n' >> "$summary"
-          rc=0
-          rejected=0
-          gate() {
-            out="$(req gate --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" "$@" 2>&1)" && code=0 || code=$?
-            verdict="$(printf '%s' "$out" | sed -n 's/^verdict: //p' | head -1)"
-            printf '| `%s` | %s | %s |\n' "${*:-<none>}" "$code" "${verdict:-no verdict line}" >> "$summary"
-            # Fail outranks unverifiable, and nothing non-zero may be swallowed. The rule: 1 is
-            # sticky above every code; among the rest the **first** non-zero is kept. The first
-            # failed invocation is the one to investigate, and ranking 2/3/127 by severity would be
-            # this script inventing an order req's exit contract does not define (127 is the
-            # shell's, not req's). The previous rule kept the *last*, so a missing binary (127)
-            # followed by an UNVERIFIABLE (3) reported 3 — the tool never ran.
-            if [ "$code" -eq 1 ]; then
-              rc=1
-            elif [ "$code" -ne 0 ] && [ "$rc" -eq 0 ]; then
-              rc=$code
-            fi
-          }
-          gated=0
-          # `|| [ -n ... ]`: `read` returns non-zero on a final line with no trailing newline while
-          # still assigning it, and a release appended without one would otherwise be silently
-          # dropped. `read -a` splits on IFS and runs no pathname expansion, so a whitespace-only or
-          # comment-only line yields no element and is skipped rather than becoming a bare run.
-          while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
-            variant_line="${variant_line%$'\r'}"
-            read -r -a release <<< "${variant_line%%#*}"
-            [ "${#release[@]}" -gt 0 ] || continue
-            # A release line is a `key=value` context, never an option. A help flag wins WHEREVER
-            # it appears (`req gate deployment_mode=x --help` prints the page and exits 0 having
-            # gated nothing), so every argument is checked, not just the first.
-            release_option=0
-            for release_arg in "${release[@]}"; do
-              case "$release_arg" in -*) release_option=1 ;; esac
-            done
-            if [ "$release_option" -eq 1 ]; then
-              printf 'release line carries an option, so it is not a release: %s\n' "${release[*]}" >&2
-              rc=1
-              rejected=$((rejected + 1))
-              continue
-            fi
-            # /dev/null: nothing in the body may consume the remaining releases from this
-            # file's stdin — a command that reads stdin would shorten the list without error, and
-            # the loop would end early with a green step. scripts/check.sh guards the same loop
-            # the same way.
-            gate "${release[@]}" < /dev/null
-            gated=$((gated + 1))
-          done < .req/variants
-          # A comment-only file declares one variant — the default — and the bare invocation is
-          # its gate. With a line declared, the loop is the gate: a bare run beside it reports
-          # UNVERIFIABLE on any corpus carrying a selector (ADR 0015), and a false red beside
-          # green variants is how a real red gets ignored.
-          # A file whose lines were all rejected declared something, and it was malformed: it is
-          # not the "no variants" state, so the bare default is not its fallback. The sticky `rc`
-          # already makes the step red.
-          if [ "$gated" -eq 0 ] && [ "$rejected" -eq 0 ]; then
-            gate
-          fi
-          exit $rc
+          verdict="$(sed -n 's/^verdict: //p' "$out" | head -1)"
+          {
+            printf '## req check\n\n| exit | verdict |\n| --- | --- |\n| %s | %s |\n\n' "$code" "${verdict:-no verdict line}"
+            printf '```\n'
+            cat "$out"
+            printf '```\n'
+          } >> "$summary"
+          exit "$code"
       # The agent-facing half (pack C): the verdicts as JSON documents, kept off the log.
-      # An agent reviewing this pull request reads `req.gate/2`, never a scraped text line.
+      # An agent reviewing this pull request reads `req.check/1` (one document: the folded verdict
+      # and, per step, the whole `req.gate/2`), never a scraped text line.
       - name: the JSON views, as build artifacts (an agent reads these, not the log)
         if: always()
         run: |
           set -eu
           mkdir -p req-views
           # A view document is complete even when its verdict is open (pack C), so each exit
-          # class is recorded beside its document and never folded into this step: the gate
+          # class is recorded beside its document and never folded into this step: the check
           # above decides the build, and `always()` keeps the views when it went red.
           # `--format json` renders to stdout only — beside `--out`/`--check` it is a usage
           # error (exit 2) — so a redirect, not a flag, is how a document reaches the disk.
           #
           # The redirect goes to a `.tmp` name first because a command can fail WITHOUT writing
           # a document: an unreadable corpus prints `[UNVERIFIABLE]` to stderr and exits 3, and
-          # a bare `> req-views/gate.json` would leave a zero-byte file where a view should be.
+          # a bare `> req-views/check.json` would leave a zero-byte file where a view should be.
           # A consumer that parses an empty document believes it holds a verdict. So a view
           # that wrote nothing is named on the log and leaves no file at all.
           capture() {
@@ -195,53 +156,11 @@ jobs:
           capture render render
           capture trace trace
           capture audit audit
-          # The gate document is ONE PER VARIANT, exactly as the gate step runs it: a bare
-          # `req gate` is UNVERIFIABLE on a corpus carrying a selector (ADR 0015), so a bare
-          # document would say "cannot tell" beside a release that passed. With no release
-          # declared, the bare view IS the default variant's document.
-          releases=0
-          variants_read=0
-          rejected=0
-          if [ -f .req/variants ] && [ -r .req/variants ]; then
-            variants_read=1
-            while IFS= read -r variant_line || [ -n "${variant_line}" ]; do
-              variant_line="${variant_line%$'\r'}"
-              read -r -a release <<< "${variant_line%%#*}"
-              [ "${#release[@]}" -gt 0 ] || continue
-              # The gate step above is red on this line; capture nothing rather than help text.
-              release_option=0
-              for release_arg in "${release[@]}"; do
-                case "$release_arg" in -*) release_option=1 ;; esac
-              done
-              if [ "$release_option" -eq 1 ]; then
-                printf 'release line carries an option, not captured: %s\n' "${release[*]}" >&2
-                rejected=$((rejected + 1))
-                continue
-              fi
-              releases=$((releases + 1))
-              capture "gate-${releases}" gate --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" "${release[@]}" < /dev/null
-            done < .req/variants
-          fi
-          # Only a file THIS STEP READ, declaring no line, is the default variant and its bare
-          # gate the document. A missing, unreadable or non-regular file is the red the gate step
-          # above already reported: the other views are kept, but no `gate.json` may read `pass`
-          # beside it.
-          if [ "$releases" -eq 0 ] && [ "$variants_read" -eq 1 ] && [ "$rejected" -eq 0 ]; then
-            capture gate gate --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml" < /dev/null
-          elif [ "$releases" -eq 0 ] && [ "$variants_read" -eq 0 ]; then
-            printf 'no readable regular .req/variants: the gate step above is red, so no gate document is written\n' >&2
-          elif [ "$releases" -eq 0 ]; then
-            printf 'a release line carries an option: the gate step above is red, so no gate document is written\n' >&2
-          fi
+          capture check check --test-report "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml"
           # `if-no-files-found: error` on the upload only reds a COMPLETELY empty directory: one
-          # variant's document lost while its text gate passed would ship silently. The step knows
-          # how many documents it expects, so it checks instead of assuming.
-          expected=3
-          if [ "$releases" -gt 0 ]; then
-            expected=$((expected + releases))
-          elif [ "$variants_read" -eq 1 ] && [ "$rejected" -eq 0 ]; then
-            expected=$((expected + 1))
-          fi
+          # document lost while the check passed would ship silently. The step knows how many
+          # documents it expects (render, trace, audit and check), so it checks instead of assuming.
+          expected=4
           actual=0
           for document in req-views/*.json; do
             [ -f "$document" ] && actual=$((actual + 1))

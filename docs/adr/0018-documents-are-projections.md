@@ -168,6 +168,7 @@ skipped — the `.req/variants` grammar) is read by `scripts/check.sh`, which ru
 nothing, and prints `projections checked: N`. This repository's first instance is `docs/spec.md`,
 generated with no context (15 applying, 6 undecided). req itself never reads `.req/projections`: the
 list and its reader belong to the repository, like `.req/variants`.
+*Amended by ADR 0023: req reads `.req/projections` through `req check`.*
 
 **Deliberately not here.** `--format json` waits for workstream C — markdown is the only format, and
 the header names the generator so a JSON artefact can arrive without re-reading this decision.

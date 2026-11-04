@@ -808,9 +808,11 @@ fn the_help_pages_carry_the_projection_flags_and_classes() {
     }
 }
 
-/// R4: the gate actually runs the check for every pinned path. The oracle is `scripts/check.sh
-/// plan` — the same one `tests/baseline.rs` uses for the release-gate wiring — so deleting the
-/// step from the default run reddens here even though `render --check` itself still works.
+/// R4: the gate actually runs the committed-projection check. Since ADR 0023 that is one command,
+/// `req check`, which reads `.req/projections` itself (the shell loop this test used to pin is
+/// gone, and its list handling is tested where it now lives, in `tests/check.rs`). The oracle is
+/// `scripts/check.sh plan` — the same one `tests/baseline.rs` uses for the release-gate wiring — so
+/// deleting the step from the default run reddens here even though `req check` itself still works.
 #[cfg(unix)]
 #[test]
 fn the_gate_plans_the_committed_projection_check() {
@@ -833,23 +835,37 @@ fn the_gate_plans_the_committed_projection_check() {
         Some(3),
         "a plan executes nothing, so it is UNVERIFIABLE and never a pass:\n{stdout}"
     );
+    let lines: Vec<String> = stdout
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect();
     assert!(
-        stdout.contains("render --check docs/spec.md"),
-        "the default gate must check the pinned projection:\n{stdout}"
+        lines
+            .iter()
+            .any(|line| line
+                == "PLAN cargo run -q -- check --test-report target/nextest/ci/junit.xml"),
+        "the default gate must run `req check` — which is what checks the pinned projection:\n{stdout}"
     );
     assert!(
-        stdout.contains("projections planned: 1 (nothing executed)"),
-        "the step reports what it would check, and says nothing ran:\n{stdout}"
+        !stdout.contains("render --check"),
+        "the gate no longer re-derives the projection loop in shell; `req check` is the one \
+         implementation:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("projections planned"),
+        "a plan cannot count what only the command reads:\n{stdout}"
     );
 }
 
 /// A throwaway root holding a copy of `scripts/check.sh`, the repository's `.req/variants` (so the
-/// release-gate step is not the one failing), and a **fake toolchain whose `cargo` exits 0** — the
-/// same fixture shape `tests/baseline.rs` uses. Every `cargo …` step "passes", so whatever flips
-/// the banner is the branch under test; an invocation carrying `--format json` prints an empty
-/// document, because the gate's JSON smoke step parses one rather than echoing it. Without this,
-/// deleting either projection FAIL branch would leave the suite green: the release-gate lesson,
-/// applied to R4.
+/// file check is not the one failing), and a **fake toolchain whose `cargo` exits 0** — the same
+/// fixture shape `tests/baseline.rs` uses. Every `cargo …` step "passes", so whatever flips the
+/// banner is the branch under test; an invocation carrying `--format json` prints an empty
+/// document, because the gate's JSON smoke step parses one rather than echoing it. The `req check`
+/// invocation is the one the fixture scripts: it prints `CHECK_STUB_TEXT` and exits
+/// `CHECK_STUB_EXIT` (0 when unset), so the fixture can drive the gate's wiring of `check`'s exit
+/// for 0/1/3 without a second `cargo` invocation (the real binary is exercised by
+/// `tests/check.rs` and `tests/ci_template.rs`).
 #[cfg(unix)]
 struct ScriptFixture(PathBuf);
 
@@ -870,12 +886,11 @@ impl ScriptFixture {
             .expect("copies .req/variants");
         let bin = dir.join("home/.rustup/toolchains/fake/bin");
         fs::create_dir_all(&bin).expect("creates the fake toolchain");
-        // Every cargo step passes, except the projection check: its verdict is read from
-        // `PROJECTION_STUB_EXIT`, so the fixture can drive the step's wiring for 0/1/3 without a
-        // second `cargo` invocation (the real binary is exercised by the test beside this one).
         let stub = "#!/bin/sh\n\
                     case \"$*\" in\n\
-                      *\" render --check \"*) exit \"${PROJECTION_STUB_EXIT:-0}\" ;;\n\
+                      *\"-- check \"*)\n\
+                        [ -n \"${CHECK_STUB_TEXT:-}\" ] && printf '%s\\n' \"$CHECK_STUB_TEXT\"\n\
+                        exit \"${CHECK_STUB_EXIT:-0}\" ;;\n\
                       *\" --format json\") printf '{}\\n' ;;\n\
                     esac\n\
                     exit 0\n";
@@ -889,22 +904,10 @@ impl ScriptFixture {
         &self.0
     }
 
-    fn write(&self, relative: &str, text: &str) {
-        let path = self.path().join(relative);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("creates the fixture directory");
-        }
-        fs::write(path, text).expect("writes the fixture file");
-    }
-
     /// Run the copied script to its banner, with HOME and PATH the fixture's own: the fake
-    /// toolchain is what it resolves, and nothing ambient leaks in.
-    fn banner(&self) -> std::process::Output {
-        self.banner_with(None)
-    }
-
-    /// The same, with the stub `cargo`'s projection verdict set to `exit_code` (0 when `None`).
-    fn banner_with(&self, projection_exit: Option<&str>) -> std::process::Output {
+    /// toolchain is what it resolves, and nothing ambient leaks in. `check` is what the stub
+    /// `req check` prints and exits with (`None`: silent, exit 0).
+    fn banner(&self, check: Option<(&str, &str)>) -> std::process::Output {
         let bin = self.path().join("home/.rustup/toolchains/fake/bin");
         let mut command = Command::new("bash");
         command
@@ -916,8 +919,10 @@ impl ScriptFixture {
                 format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", bin.display()),
             )
             .env_remove("REQ_ROOT");
-        if let Some(code) = projection_exit {
-            command.env("PROJECTION_STUB_EXIT", code);
+        if let Some((text, exit)) = check {
+            command
+                .env("CHECK_STUB_TEXT", text)
+                .env("CHECK_STUB_EXIT", exit);
         }
         command.output().expect("runs the copied scripts/check.sh")
     }
@@ -939,113 +944,47 @@ fn banner_text(output: &std::process::Output) -> String {
     )
 }
 
-/// R4: a listed projection that no longer exists is a FAIL, and the healthy direction is a PASS
-/// with the count — so the failure is the branch's doing, not the fixture's.
+/// R4: the gate's status is `req check`'s status. A stale projection (`check` exit 1) or one the
+/// check cannot judge (3) must make the *gate* fail, not merely the command — and the healthy
+/// direction is a PASS that prints how much the command examined, so the failure is the wiring's
+/// doing and not the fixture's. The step lines are the stub's: the script counts what it is told.
 #[cfg(unix)]
 #[test]
-fn a_missing_listed_projection_fails_the_gate() {
-    let fixture = ScriptFixture::new("projection-missing");
-    fixture.write(".req/projections", "docs/spec.md\n");
-    let missing = fixture.banner();
-    let text = banner_text(&missing);
-    assert!(
-        text.contains("FAIL  .req/projections lists a projection that is missing: docs/spec.md"),
-        "a listed projection that vanished is silent decay, never skipped:\n{text}"
-    );
-    assert_eq!(missing.status.code(), Some(1), "the gate fails:\n{text}");
-    assert!(text.contains("GATE: FAIL"), "{text}");
-    // The reason is named once: the missing-file branch already reported it.
-    assert!(
-        !text.contains("pins no projection"),
-        "the empty-list reason is not also blamed for a missing path:\n{text}"
-    );
-
-    fixture.write("docs/spec.md", "");
-    let healthy = fixture.banner();
+fn a_check_that_does_not_pass_fails_the_gate() {
+    let fixture = ScriptFixture::new("check-status");
+    let healthy_lines = "[PASS] gate corpus_set=parity (exit 0)\n\
+                         [PASS] gate corpus_set=other (exit 0)\n\
+                         [PASS] render docs/spec.md (exit 0)\n\
+                         verdict: PASS — every declared step ran and passed";
+    let healthy = fixture.banner(Some((healthy_lines, "0")));
     let healthy_text = banner_text(&healthy);
     assert!(
-        healthy_text.contains("projections checked: 1"),
-        "the healthy list reports its count:\n{healthy_text}"
+        healthy_text.contains("variants gated: 2")
+            && healthy_text.contains("projections checked: 1"),
+        "the gate prints how much the command examined, read from its output:\n{healthy_text}"
     );
     assert!(healthy_text.contains("GATE: PASS"), "{healthy_text}");
     assert_eq!(healthy.status.code(), Some(0), "{healthy_text}");
 
-    // The wiring R4 is actually about: a projection that is stale (1) or one the check cannot
-    // judge (3) must make the *gate* fail, not merely the command. The stub `cargo` answers the
-    // configured verdict for the `render --check` invocation only.
-    for code in ["1", "3"] {
-        let failed = fixture.banner_with(Some(code));
+    // A defect (1) and an UNVERIFIABLE (3) both block; neither is folded to the other or to PASS.
+    for (code, step) in [
+        ("1", "[FAIL] render docs/spec.md (exit 1)"),
+        ("3", "[UNVERIFIABLE] render docs/spec.md (exit 3)"),
+    ] {
+        let failed = fixture.banner(Some((step, code)));
         let failed_text = banner_text(&failed);
         assert!(
-            failed_text.contains(&format!("render --check docs/spec.md (exit {code})")),
-            "the step must mark the check's exit {code} as a failure:\n{failed_text}"
+            failed_text.contains(&format!(
+                "FAIL  cargo run -q -- check --test-report target/nextest/ci/junit.xml (exit {code})"
+            )),
+            "the step must mark `req check`'s exit {code} as a failure:\n{failed_text}"
         );
         assert!(
             failed_text.contains("GATE: FAIL"),
-            "exit {code} from a pinned projection makes the gate red:\n{failed_text}"
+            "exit {code} from `req check` makes the gate red:\n{failed_text}"
         );
         assert_eq!(failed.status.code(), Some(1), "{failed_text}");
     }
-}
-
-/// R4: a pinned list that checks nothing is a FAIL, never a pass, and a line with more than one
-/// word is named rather than half-checked.
-#[cfg(unix)]
-#[test]
-fn a_projection_list_that_checks_nothing_fails_the_gate() {
-    let fixture = ScriptFixture::new("projection-empty");
-    fixture.write(".req/projections", "# nothing pinned yet\n\n");
-    let empty = fixture.banner();
-    let text = banner_text(&empty);
-    assert!(
-        text.contains("FAIL  .req/projections pins no projection"),
-        "a comment-only list examined nothing, and that is not a pass:\n{text}"
-    );
-    assert!(text.contains("GATE: FAIL"), "{text}");
-    assert_eq!(empty.status.code(), Some(1), "{text}");
-
-    fixture.write(".req/projections", "docs/spec.md docs/other.md\n");
-    let two_words = fixture.banner();
-    let two_words_text = banner_text(&two_words);
-    assert!(
-        two_words_text.contains("names more than one word"),
-        "a path with whitespace is named, not truncated to its first word:\n{two_words_text}"
-    );
-    assert!(two_words_text.contains("GATE: FAIL"), "{two_words_text}");
-    assert_eq!(two_words.status.code(), Some(1), "{two_words_text}");
-}
-
-/// R4: a pinned list that is **present but unusable** is not the tolerated "absent" state. A
-/// dangling symlink is the portable way to be in that state (a mode-000 file depends on the
-/// runner's uid): `-e` cannot see through it and `-r` is false, so a `[ -r ]`-only test would
-/// report "nothing pinned" about a file that is right there and leave the gate green.
-#[cfg(unix)]
-#[test]
-fn a_pinned_list_that_cannot_be_read_fails_the_gate() {
-    let fixture = ScriptFixture::new("projection-dangling");
-    let path = fixture.path().join(".req/projections");
-    std::os::unix::fs::symlink("no-such-target", &path).expect("creates the dangling link");
-    let out = fixture.banner();
-    let text = banner_text(&out);
-    assert!(
-        text.contains("FAIL  .req/projections is present but is not a readable regular file"),
-        "a pinned list that cannot be examined is a failure, not 'nothing pinned':\n{text}"
-    );
-    assert!(text.contains("GATE: FAIL"), "{text}");
-    assert_eq!(out.status.code(), Some(1), "{text}");
-
-    // A directory is the other shape of "present but unusable": `-r` alone accepts it, the loop's
-    // redirection then fails at the shell, and the step would blame "pins no projection".
-    let fixture = ScriptFixture::new("projection-directory");
-    std::fs::create_dir_all(fixture.path().join(".req/projections")).expect("makes a directory");
-    let out = fixture.banner();
-    let text = banner_text(&out);
-    assert!(
-        text.contains("FAIL  .req/projections is present but is not a readable regular file"),
-        "a directory is not a pinned list:\n{text}"
-    );
-    assert!(text.contains("GATE: FAIL"), "{text}");
-    assert_eq!(out.status.code(), Some(1), "{text}");
 }
 
 /// R4: this repository's own adoption — `docs/spec.md` is committed and current. A corpus

@@ -2523,8 +2523,7 @@ fn the_fast_run_skips_the_expensive_checks_and_never_reads_as_the_gate() {
         "PLAN cargo nextest run --profile ci",
         "PLAN cargo run -q -- canon",
         "PLAN cargo run -q -- bench",
-        "PLAN cargo run -q -- gate",
-        "PLAN cargo run -q -- render --check docs/spec.md",
+        "PLAN cargo run -q -- check --test-report target/nextest/ci/junit.xml",
     ] {
         assert!(
             fast_lines.iter().any(|line| line.starts_with(kept)),
@@ -2940,14 +2939,17 @@ fn a_fixture_removes_its_directory_on_drop() {
     );
 }
 
-/// The release gate over this repository's own corpus. `scripts/check.sh` must run `req gate`
-/// once per declared release: it was the one subcommand the gate never invoked, which is how
-/// six variant-scoped claims in `claims/` went unchecked while a bare `gate` printed PASS
-/// (`15 applying, 6 undecided`, measured). Pinned from the same plan output as the Baseline
-/// wiring above, so a refactor that drops the step fails here instead of passing silently.
+/// The release check over this repository's own corpus. `scripts/check.sh` must run `req check`
+/// (ADR 0023) — the one command that gates every declared release and checks every pinned
+/// projection: `req gate` was the one subcommand the gate never invoked, which is how six
+/// variant-scoped claims in `claims/` went unchecked while a bare `gate` printed PASS (`15
+/// applying, 6 undecided`, measured). Pinned from the same plan output as the Baseline wiring
+/// above, so a refactor that drops the step fails here instead of passing silently. What `check`
+/// does with each line is tested in `tests/check.rs`; that every declared line is complete is
+/// `tests/release_gate.rs`'s, through `req gate` directly.
 #[cfg(unix)]
 #[test]
-fn the_default_gate_run_gates_every_declared_release() {
+fn the_default_gate_run_runs_the_release_check() {
     let variants = common::variant_lines();
     assert!(
         !variants.is_empty(),
@@ -2960,32 +2962,25 @@ fn the_default_gate_run_gates_every_declared_release() {
         .lines()
         .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
         .collect();
-    for variant in &variants {
-        // The whole token sequence, not a normalized tail: `ends_with` accepts a *different* context
-        // whose trailing pairs happen to match, which is exactly the drift these tests exist to catch.
-        // Tokens are whitespace-insensitive, so a tab or a second space between pairs is fine.
-        let expected: Vec<&str> = variant.split_whitespace().collect();
-        let planned_gate = |line: &str| {
-            let words: Vec<&str> = line.split_whitespace().collect();
-            // The gate step carries the report the test run wrote: the evidence is part of the
-            // invocation, not a file the gate might find later.
-            words.starts_with(&[
-                "PLAN",
-                "cargo",
-                "run",
-                "-q",
-                "--",
-                "gate",
-                "--test-report",
-                "target/nextest/ci/junit.xml",
-            ]) && words.len() == 8 + expected.len()
-                && words[8..] == expected[..]
-        };
-        assert!(
-            planned.iter().any(|line| planned_gate(line)),
-            "the default run must gate the declared release `{variant}`:\n{stdout}"
-        );
-    }
+    // The whole token sequence, exactly: `req check` takes no narrowing flag and the gate must
+    // not grow one, and the report the test run wrote is part of the invocation.
+    let checks: Vec<&String> = planned
+        .iter()
+        .filter(|line| line.starts_with("PLAN cargo run -q -- check"))
+        .collect();
+    assert_eq!(
+        checks,
+        ["PLAN cargo run -q -- check --test-report target/nextest/ci/junit.xml"],
+        "the default run must run `req check` once, with the report:\n{stdout}"
+    );
+    // The loop is `req check`'s now: a per-variant `gate` in the plan would be a second
+    // implementation of it (the bare `gate --format json` smoke step is a different thing).
+    assert!(
+        !planned
+            .iter()
+            .any(|line| line.starts_with("PLAN cargo run -q -- gate --test-report")),
+        "the gate must not loop over `.req/variants` itself:\n{stdout}"
+    );
 }
 
 /// A throwaway root holding a copy of `scripts/check.sh` beside a **fake toolchain whose `cargo`
@@ -3020,6 +3015,11 @@ fn script_fixture(tag: &str) -> Fixture {
           mkdir -p target/nextest/ci\n\
           printf '<testsuites name=\"stub\" tests=\"0\" skipped=\"0\" failures=\"0\" errors=\"0\"></testsuites>\\n' > target/nextest/ci/junit.xml\n\
         fi\n\
+        case \"$*\" in\n\
+          *\"-- check \"*)\n\
+            [ -n \"${CHECK_STUB_TEXT:-}\" ] && printf '%s\\n' \"$CHECK_STUB_TEXT\"\n\
+            exit \"${CHECK_STUB_EXIT:-0}\" ;;\n\
+        esac\n\
         echo '{}'\n\
         exit 0\n";
     std::fs::write(bin.join("cargo"), stub).expect("writes the stub cargo");
@@ -3036,6 +3036,13 @@ fn script_fixture(tag: &str) -> Fixture {
 /// `ocr`, say) leaks into the run, so the fixture is the same tree on a laptop and in CI.
 #[cfg(unix)]
 fn script_banner(fixture: &Fixture) -> std::process::Output {
+    script_banner_with(fixture, &[])
+}
+
+/// The same, with extra environment for the stub `cargo`: `CHECK_STUB_TEXT` is what its
+/// `req check` invocation prints and `CHECK_STUB_EXIT` the status it exits with (silent, 0).
+#[cfg(unix)]
+fn script_banner_with(fixture: &Fixture, env: &[(&str, &str)]) -> std::process::Output {
     let bin = fixture.path().join("home/.rustup/toolchains/fake/bin");
     std::process::Command::new("bash")
         .arg(fixture.path().join("scripts/check.sh"))
@@ -3045,6 +3052,7 @@ fn script_banner(fixture: &Fixture) -> std::process::Output {
             "PATH",
             format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", bin.display()),
         )
+        .envs(env.iter().copied())
         .output()
         .expect("runs the copied scripts/check.sh")
 }
@@ -3105,27 +3113,42 @@ fn a_missing_variants_file_is_a_failure_not_a_skip() {
         !healthy_text.contains(".req/variants is missing"),
         "a healthy tree must not report a missing variants file:\n{healthy_text}"
     );
-    // The count comes from the data, not from a literal: `.req/variants` is data, and the `.req/**`
-    // review rule explicitly anticipates another line when a new claim needs one.
-    let declared = common::variant_lines().len();
+    // The loop over the declared releases is `req check`'s, not the script's (ADR 0023): the script
+    // runs the command once and carries its status, whatever the list holds.
+    assert_eq!(
+        healthy_text
+            .lines()
+            .filter(|line| line.starts_with("== cargo run -q -- check"))
+            .count(),
+        1,
+        "the release check runs once:\n{healthy_text}"
+    );
     assert_eq!(
         healthy_text
             .lines()
             .filter(|line| line.starts_with("== cargo run -q -- gate"))
             .count(),
-        declared,
-        "every declared release is gated ({declared} in .req/variants):\n{healthy_text}"
+        0,
+        "and the script does not loop over `.req/variants` itself:\n{healthy_text}"
     );
 
     // The other way the step could examine nothing: a file that is *there* and declares no release.
-    // Every line is a comment, so the loop iterates zero times — and a run that examined nothing must
-    // not report PASS.
+    // To `req check` that is the default variant, and it says so on its own line; here, where the
+    // list is tracked, nothing declared means no declared release was gated, and a run that
+    // examined nothing must not report PASS. The stub prints that line (and exits 0, so the
+    // script's own reading of it is the only thing that can fail the run).
     std::fs::write(
         fixture.path().join(".req/variants"),
         "# nothing declared yet\n",
     )
     .expect("writes a comment-only variants file");
-    let empty = script_banner(&fixture);
+    let empty = script_banner_with(
+        &fixture,
+        &[(
+            "CHECK_STUB_TEXT",
+            "[PASS] gate (.req/variants declares no release: the default variant) (exit 0)",
+        )],
+    );
     let empty_text = format!(
         "{}{}",
         String::from_utf8_lossy(&empty.stdout),
