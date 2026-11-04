@@ -637,15 +637,129 @@ fn a_stale_projection_is_exit_1() {
     );
 }
 
-/// (j) A listed path that does not exist is a vanished projection: exit 1, never a pass.
+/// (j) A listed path that does not exist is a vanished projection: exit 1, never a pass. This is
+/// the ONE deliberate departure from "a step's exit is the command's exit" (ADR 0023 §3-§4):
+/// `render --check` cannot judge a file it cannot read and answers 3, but a path the repository
+/// *lists* and that is gone is silent decay (ADR 0018), a defect. Both halves are asserted, so the
+/// exception cannot widen or disappear unnoticed.
 #[test]
 fn a_missing_projection_path_is_exit_1() {
     let s = with_projection("j-missing");
     s.projections("docs/spec.md\ndocs/gone.md\n");
+    assert_eq!(
+        s.req(&["render", "--check", "docs/gone.md"]).code,
+        3,
+        "setup: the standalone oracle cannot judge a missing file; the listing is what makes it a defect"
+    );
     let out = s.req(&["check"]);
     assert_eq!(out.code, 1, "{}", out.all());
     assert!(out.all().contains("missing"), "{}", out.all());
     assert!(out.stdout.contains("docs/gone.md"), "{}", out.stdout);
+}
+
+/// (j) A listed path that exists and is not a regular file (a directory, a FIFO) is a defect too,
+/// and a FIFO must never be opened: `render --check` would block on it forever.
+#[test]
+fn a_listed_projection_that_is_not_a_regular_file_is_exit_1_and_never_opened() {
+    let s = with_projection("j-fifo");
+    fs::create_dir_all(s.path().join("docs/a-directory")).expect("makes a directory");
+    let made = Command::new("mkfifo")
+        .arg(s.path().join("docs/a-fifo"))
+        .status();
+    let have_fifo = matches!(&made, Ok(status) if status.success());
+    s.projections(if have_fifo {
+        "docs/a-directory\ndocs/a-fifo\n"
+    } else {
+        "docs/a-directory\n"
+    });
+    let mut child = Command::new(req_bin())
+        .arg("check")
+        .current_dir(s.path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawns req");
+    let started = Instant::now();
+    let output = loop {
+        if child.try_wait().expect("polls the child").is_some() {
+            break child.wait_with_output().expect("collects the output");
+        }
+        if started.elapsed() > Duration::from_secs(20) {
+            let _ = child.kill();
+            panic!("`req check` blocked on a listed path that is not a regular file");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(output.status.code(), Some(1));
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("not a regular file"), "{text}");
+}
+
+/// (j) `.req/projections` that exists and cannot be read as a regular file (a directory, a dangling
+/// link) is exit 3 and says so; the variant steps still ran.
+#[test]
+fn a_projections_path_that_is_a_directory_or_a_dangling_link_is_exit_3() {
+    let s = Scratch::decided()("j-list-directory");
+    s.variants("deployment_mode=air_gapped\ndeployment_mode=connected\n");
+    fs::create_dir_all(s.path().join(".req/projections")).expect("makes a directory");
+    let out = s.req(&["check"]);
+    assert_eq!(out.code, 3, "{}", out.all());
+    assert!(out.all().contains(".req/projections"), "{}", out.all());
+    assert_eq!(
+        out.step_lines()
+            .iter()
+            .filter(|l| l.starts_with("[PASS] gate"))
+            .count(),
+        2
+    );
+
+    let s = Scratch::decided()("j-list-dangling");
+    s.variants("deployment_mode=air_gapped\ndeployment_mode=connected\n");
+    std::os::unix::fs::symlink("nowhere-at-all", s.path().join(".req/projections"))
+        .expect("makes a dangling link");
+    let out = s.req(&["check"]);
+    assert_eq!(out.code, 3, "{}", out.all());
+    assert!(out.all().contains(".req/projections"), "{}", out.all());
+}
+
+/// The JSON view says whether a projections list was pinned: false when the file is absent, true
+/// when it is present.
+#[test]
+fn the_json_view_says_whether_projections_were_pinned() {
+    let absent = Scratch::decided()("j-pinned-false");
+    absent.variants("deployment_mode=air_gapped\ndeployment_mode=connected\n");
+    let out = absent.req(&["check", "--format", "json"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert_eq!(
+        parse(&out.stdout)["projections_pinned"],
+        false,
+        "{}",
+        out.stdout
+    );
+
+    let present = with_projection("j-pinned-true");
+    let out = present.req(&["check", "--format", "json"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert_eq!(
+        parse(&out.stdout)["projections_pinned"],
+        true,
+        "{}",
+        out.stdout
+    );
+}
+
+/// The header counts every step the view prints, a `list` step included.
+#[test]
+fn the_header_counts_every_step_line() {
+    let s = Scratch::decided()("header-list");
+    fs::create_dir_all(s.path().join(".req/variants")).expect("makes a directory");
+    let out = s.req(&["check"]);
+    assert_eq!(out.code, 3, "{}", out.all());
+    let header = out.stdout.lines().next().unwrap_or_default();
+    assert!(
+        header.contains("1 list step(s)"),
+        "the header must account for the list step it prints below: {header}"
+    );
 }
 
 /// (j) A list that yields no path examined nothing: exit 1.

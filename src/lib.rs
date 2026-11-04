@@ -14,8 +14,9 @@ pub mod bench;
 pub mod build_identity;
 pub mod canon;
 // The release lists folded into one verdict (ADR 0023): reads `.req/variants` and
-// `.req/projections`, runs the gate and `render --check` code for each line, and applies the gate's
-// own fold. Nothing here computes an address or a policy.
+// `.req/projections`, runs the gate and `render --check` code for each line, and folds the exits
+// with the gate's ranking (restated in `check::fold`, pinned by a test over every combination — not
+// shared code). Nothing here computes an address or a policy.
 pub mod check;
 pub mod compare;
 pub mod decision;

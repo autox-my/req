@@ -36,7 +36,8 @@ const USAGE: &str = "usage: req check [--test-report <file>] [--format text|json
 const VARIANTS: &str = ".req/variants";
 const PROJECTIONS: &str = ".req/projections";
 
-/// The gate's fold over step exits: 1 if any step is a defect, else 3 if any cannot be confirmed,
+/// The fold over step exits, restated from `gate::exit_code` (which ranks policy outcomes, not step
+/// exits, so the two cannot share one function) and pinned by the every-combination test below: 1 if any step is a defect, else 3 if any cannot be confirmed,
 /// else 0. Every step exit is one of 0, 1, 3 (the caller normalises anything else to 1 before
 /// folding), so this is a ranking and not a sum: a defect outranks an open question, which outranks
 /// a pass (ADR 0015). An empty list folds to 0 only because it has nothing to fold; `req check`
@@ -329,17 +330,46 @@ fn variant_step(label: String, context: Context, root: &Path, evidence: TestEvid
 /// command is run from).
 fn projection_step(path: &str, root: &Path) -> Step {
     let full = root.join(path);
-    if !full.exists() {
-        return Step::new(
-            "render",
-            path.to_string(),
-            1,
-            vec![format!(
-                "missing: {path} is listed in {PROJECTIONS} but does not exist (a projection that \
-                 vanished is silent decay, ADR 0018)"
-            )],
-            None,
-        );
+    // The ONE departure from "a step's exit is the command's exit" (ADR 0023 §3-§4): a path the
+    // repository lists that is gone, or is not a regular file, is a defect (1), where
+    // `render --check` — which can only say it cannot read the file — answers 3. A listed
+    // projection that vanished is silent decay (ADR 0018). Nothing that is not a regular file is
+    // ever handed to the judgement: opening a FIFO with no writer blocks the gate forever.
+    match full.metadata() {
+        Ok(meta) if meta.is_file() => {}
+        Ok(_) => {
+            return Step::new(
+                "render",
+                path.to_string(),
+                1,
+                vec![format!(
+                    "not a regular file: {path} is listed in {PROJECTIONS} but is not a regular \
+                     file, so it cannot be a projection"
+                )],
+                None,
+            );
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Step::new(
+                "render",
+                path.to_string(),
+                1,
+                vec![format!(
+                    "missing: {path} is listed in {PROJECTIONS} but does not exist (a projection \
+                     that vanished is silent decay, ADR 0018)"
+                )],
+                None,
+            );
+        }
+        Err(error) => {
+            return Step::new(
+                "render",
+                path.to_string(),
+                3,
+                vec![format!("cannot examine {path}: {error}")],
+                None,
+            );
+        }
     }
     let judged = crate::view::check_render_projection(&full, root);
     let shown = full.display().to_string();
@@ -420,7 +450,15 @@ fn print_json(steps: &[Step], code: i32, projections_pinned: bool) {
 fn print_text(steps: &[Step], code: i32, projections_pinned: bool) {
     let variants = steps.iter().filter(|step| step.kind == "gate").count();
     let projections = steps.iter().filter(|step| step.kind == "render").count();
-    println!("# req check: {variants} variant step(s), {projections} projection(s)");
+    let lists = steps.iter().filter(|step| step.kind == "list").count();
+    if lists == 0 {
+        println!("# req check: {variants} variant step(s), {projections} projection(s)");
+    } else {
+        // A list that could not be read is a step too: the header agrees with the lines below it.
+        println!(
+            "# req check: {variants} variant step(s), {projections} projection(s), {lists} list step(s)"
+        );
+    }
     for step in steps {
         println!(
             "[{}] {} {} (exit {})",

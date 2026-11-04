@@ -349,7 +349,8 @@ Absence is not silence. No `.req/variants`, or one with no line in it, is the de
 a deleted list cannot turn green. A list that exists and cannot be read as a regular file (a
 directory, a dangling link, a FIFO, a mode-000 file) is 3, never \"absent\". No
 `.req/projections` checks no projection and says `projections: none pinned`; a listed path that
-does not exist is 1 (a projection that vanished is silent decay), and a present list that yields
+does not exist or is not a regular file is 1 (a projection that vanished is silent decay; this is the
+one step whose exit differs from `render --check`'s, which can only say 3), and a present list that yields
 no path is 1.
 
 `verdict: PASS` is printed only when every declared step ran and passed. There is no `--only`,
