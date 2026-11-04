@@ -337,7 +337,7 @@ repo-relative path per line, run as `req render --check <path>`. The grammar is 
 both: `#` starts a comment, an empty line is skipped, a trailing CR is stripped, a line is split
 on blanks with no pathname expansion (a `*` in a value is data), and a final line without a
 newline counts. A variants line is never an option, a word without `=` or an empty key; a
-projections line is exactly one path. Both lists are validated before anything runs: a
+projections line is exactly one repo-relative path (no absolute path, no `..`). Both lists are validated before anything runs: a
 malformed line is exit 2 naming `<file>:<line>`, and nothing was gated.
 
 A step's exit is the command's exit — the same code runs, no policy is copied and nothing is

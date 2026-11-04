@@ -486,6 +486,40 @@ fn a_malformed_variants_line_is_exit_2_and_nothing_runs() {
     }
 }
 
+/// (h) A projections line that leaves the corpus root — an absolute path, or any `..` component —
+/// is exit 2 naming the line, and nothing runs: the list is repository content, and an unchecked
+/// absolute path would make `req check` read a host file outside the repository.
+#[test]
+fn a_projections_path_that_leaves_the_root_is_exit_2_and_nothing_runs() {
+    for (name, line) in [
+        ("absolute", "/etc/hosts"),
+        ("parent", "../outside/spec.md"),
+        ("inner-parent", "docs/../../outside/spec.md"),
+    ] {
+        let s = Scratch::decided()(name);
+        s.variants("deployment_mode=air_gapped\ndeployment_mode=connected\n");
+        s.projections(&format!("docs/a.md\n{line}\n"));
+        let out = s.req(&["check"]);
+        assert_eq!(out.code, 2, "{name}: {}", out.all());
+        assert!(
+            out.stderr.contains(".req/projections:2")
+                && out.stderr.contains("leaves the corpus root"),
+            "{name}: {}",
+            out.stderr
+        );
+        assert!(!out.stdout.contains("[PASS]"), "{name}: {}", out.stdout);
+    }
+}
+
+/// (h) `./docs/spec.md` is a repo-relative path and stays legal.
+#[test]
+fn a_dot_slash_projections_path_is_still_a_path() {
+    let s = with_projection("h-dot-slash");
+    s.projections("./docs/spec.md\n");
+    let out = s.req(&["check"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+}
+
 /// (h) A projections line with two words is exit 2 naming the line, and the variants did not run.
 #[test]
 fn a_two_word_projections_line_is_exit_2_and_nothing_runs() {

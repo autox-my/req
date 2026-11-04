@@ -32,7 +32,8 @@ where it can be tested once.
 2. **The grammar is req's now, and unchanged.** It is the grammar both files already document and
    `scripts/check.sh` implements: `#` starts a comment, an empty line is skipped, a trailing CR is
    stripped, a line is split on whitespace with no pathname expansion, a final line without a newline
-   counts. A variants line is `key=value` words, never an option; a projections line is exactly one path.
+   counts. A variants line is `key=value` words, never an option; a projections line is exactly one path, relative to the corpus root (an absolute path or a `..`
+   component is malformed: the list is repository content and must not point outside it).
    `req check` adds **no** key, no section and no third file. What a line *means* stays what it meant:
    a complete release context for `req gate`, and a path for `req render --check`.
 3. **Absence is not silence.** No `.req/variants` declares the default variant — one bare `req gate` — and

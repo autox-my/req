@@ -207,6 +207,16 @@ fn parse_variants(text: &str) -> Result<Vec<VariantLine>, Vec<String>> {
     }
 }
 
+/// A repo-relative path stays under the corpus root: no root or drive prefix and no `..`. The list
+/// is repository content (a pull request can edit it), and `Path::join` replaces its base with an
+/// absolute path, so an unchecked line would make `req check` read a file outside the repository.
+fn stays_inside_the_root(path: &str) -> bool {
+    use std::path::Component;
+    Path::new(path)
+        .components()
+        .all(|part| matches!(part, Component::Normal(_) | Component::CurDir))
+}
+
 /// Validate and parse `.req/projections`: exactly one path per line (a path with whitespace would
 /// be silently truncated to its first word, so more than one word is named, not half-checked), and
 /// not option-shaped (`render --check` refuses a path that starts with `-`).
@@ -218,7 +228,13 @@ fn parse_projections(text: &str) -> Result<Vec<String>, Vec<String>> {
         let tokens = words(raw);
         match tokens.as_slice() {
             [] => {}
-            [path] if !path.starts_with('-') => paths.push((*path).to_string()),
+            [path] if !path.starts_with('-') && stays_inside_the_root(path) => {
+                paths.push((*path).to_string());
+            }
+            [path] if !path.starts_with('-') => errors.push(format!(
+                "{PROJECTIONS}:{number}: `{path}` leaves the corpus root: one repo-relative path \
+                 per line, never an absolute path and never a `..` component"
+            )),
             [path] => errors.push(format!(
                 "{PROJECTIONS}:{number}: `{path}` is option-shaped: one repo-relative path per \
                  line, and `render --check` does not take a path that starts with `-`"
