@@ -119,6 +119,18 @@ fn a_flagged_pin_fails_whether_contradicted_or_not_carried() {
     assert_eq!(results[0].checked, Some(1), "{results:?}");
 }
 
+/// The reason `checked` exists: a pass over a selection that pins nothing is told from a pass that
+/// held some. Zero is reported as `Some(0)` with the "zero pins" disclosure, not omitted.
+#[test]
+fn a_selection_with_no_pins_passes_and_says_it_checked_zero() {
+    let rows = vec![row("REQ-A", Applies::Yes, &[])];
+    let results = evaluate_claims(&rows, &Context::new());
+    assert_eq!(results[0].name, "pins_hold");
+    assert_eq!(results[0].outcome, Outcome::Pass, "{results:?}");
+    assert_eq!(results[0].checked, Some(0), "{results:?}");
+    assert!(results[0].detail.contains("zero pins"), "{results:?}");
+}
+
 #[test]
 fn a_defect_outranks_an_open_question() {
     let rows = vec![

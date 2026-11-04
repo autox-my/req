@@ -199,7 +199,8 @@ fn init_creates_a_working_corpus_in_the_current_directory() {
     }
 
     // The claim that landed is the authored fields of `req.claim/2` and nothing derived; the
-    // loader derives its parse and address, checked here against the golden and recomputed.
+    // loader derives its parse and address, checked here against the golden (the independent
+    // recomputation of the corpus' addresses is `tests/address_recompute.rs`).
     let claims = req::canon::load_claims(fx.path()).expect("the corpus `init` wrote loads");
     assert_eq!(claims.len(), 1, "one starter claim, not a seed set");
     let claim = &claims[0].claim;

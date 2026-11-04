@@ -1485,9 +1485,11 @@ pub fn parse_claim(text: &str) -> Result<crate::model::ClaimFile, String> {
                 "carries {}, removed in {current} (ADR 0022): the parse is derived from \
                  `statement` when the claim is loaded and nothing derived is stored. A removed \
                  `modality`, `subject`, `operator`, `value` or `unit` can be stated as a pin under \
-                 `pins:`; `conditions`, `exception`, `temporal`, `quantifier`, `attribute`, \
-                 `unstructured`, `canonical` and `address` have no pin: the statement must carry \
-                 them. `tools/migrate_claims.py` migrates a whole `req.claim/1` file",
+                 `pins:`. `conditions`, `unstructured`, `canonical` and `address` are derived: \
+                 the statement carries them. `exception`, `temporal`, `quantifier` and \
+                 `attribute` have no slot in the form at all: their words belong in `statement`, \
+                 and `req canon` lints any the parse refused to hold (`uncovered_content`). \
+                 `tools/migrate_claims.py` migrates a whole `req.claim/1` file",
                 removed.join(", "),
                 current = claim_schema()
             ));

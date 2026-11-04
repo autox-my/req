@@ -596,8 +596,9 @@ fn a_corpus_the_loader_rejects_is_unverifiable_and_nothing_is_drafted() {
         );
         out.assert_code(3, &format!("{name}: a corpus the loader rejects"));
         assert!(
-            !migrator || out.stderr.contains("tools/migrate_claims.py"),
-            "{name}: the message names the migration tool:\n{}",
+            out.stderr.contains("predates") == migrator,
+            "{name}: only an older schema is reported as predating the format (and the loader \
+             names the migration tool there):\n{}",
             out.stderr
         );
         assert!(

@@ -153,7 +153,8 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         (
             "req canon --verify",
             0,
-            "removed in req.claim/2 (ADR 0022): nothing derived is stored, so there is nothing to \
+            "removed in req.claim/2 (ADR 0022; the template must not even mention it, by design: \
+             the pin is on the words): nothing derived is stored, so there is nothing to \
              verify — a step still running it exits 2 and reds every adopter's CI; the pins it \
              gave way to are `req gate`'s `pins_hold`",
         ),

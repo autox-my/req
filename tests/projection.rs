@@ -89,8 +89,8 @@ impl Drop for NoCorpus {
     }
 }
 
-/// A two-claim corpus created by the real bootstrap (`req init`), so the fixture's claims carry
-/// derived fields the derivation wrote — never a hand-written address.
+/// A two-claim corpus created by the real bootstrap (`req init`): authored `req.claim/2` claims
+/// only — the parse and address are derived at load (ADR 0022), so nothing is hand-written.
 struct Corpus(PathBuf);
 
 impl Corpus {

@@ -73,6 +73,20 @@ REMOVED = (
 )
 # The comparators `req.claim/2` accepts in a pin (src/model.rs PIN_OPERATORS).
 PIN_OPERATORS = ("LT", "LE", "EQ", "GE", "GT", "NE")
+# Unit spellings T1.4 *rescales* into a different canonical symbol (`200 ms` parses to `0.2 s`,
+# `%` to a ratio, `C` to `K`): a pin written in one of them can never agree with the parse, so the
+# tool refuses to carry it over and asks for the bound in the canonical unit. (A copy of part of
+# src/canon.rs's `units()` table, enough to refuse; the parse stays the judge — run `req canon`.)
+RESCALED_UNITS = frozenset("""
+ms msec msecs millisecond milliseconds us microsecond microseconds ns nanosecond nanoseconds
+second seconds sec secs khz mhz hertz mm millimeter millimeters cm centimeter centimeters km
+kilometer kilometers meter meters metre metres kn kilonewton kilonewtons newton newtons ma
+milliamp milliamps amp amps ampere amperes mv millivolt millivolts volt volts kw kilowatt
+kilowatts watt watts kj kilojoule kilojoules joule joules kelvin kelvins c celsius % percent pct
+""".split())
+# A quantity-shaped authored `value` that is not a plain decimal (`1_000`, `200ms`, `1e3`): a
+# bound this tool cannot pin exactly, so it must not silently pin less than the author wrote.
+QUANTITY_LIKE = re.compile(r"^[+-]?\d[\d_.,]*([eE][+-]?\d+)?\s*[A-Za-z%]*$")
 TOP_KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):(\s|$)")
 DECIMAL = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)$")
 
@@ -221,6 +235,11 @@ def migrate_text(text):
     pins = []
     value, operator, unit = value_of("value"), value_of("operator"), value_of("unit")
     numeric = canonical_decimal(value) if value is not None else None
+    if numeric is None and value is not None and QUANTITY_LIKE.match(value):
+        raise Refused(
+            f"`value: {value}` is a quantity this tool cannot pin exactly (not a plain decimal): "
+            "state the pin by hand, in canonical SI, so the bound is still checked"
+        )
     if numeric is not None:
         pins.append(("value", numeric))
         if numeric != value:
@@ -237,6 +256,12 @@ def migrate_text(text):
             raise Refused(
                 f"`unit: {unit!r}` has leading or trailing space, which req.claim/2 refuses in "
                 "a pin: fix the unit by hand first"
+            )
+        if unit.lower() in RESCALED_UNITS:
+            raise Refused(
+                f"`unit: {unit}` is not the canonical unit T1.4 derives (it rescales the value "
+                "into another symbol): state the pin by hand as the canonical value and unit "
+                "(`200 ms` is `value: \"0.2\"`, `unit: s`)"
             )
         pins.append(("unit", unit))
 
@@ -492,7 +517,7 @@ def self_check():
     case("a unit other than none is a pin",
          migrate_text(with_unit)[0].endswith('pins:\n  value: "0.2"\n  operator: LE\n  unit: s\n'),
          migrate_text(with_unit)[0])
-    for unit, written in [("%", '"%"'), ("lb # force", '"lb # force"'), ("s", "s"),
+    for unit, written in [("lb/s", "lb/s"), ("lb # force", '"lb # force"'), ("s", "s"),
                           ("a: b", '"a: b"'), ("@x", '"@x"'), ("yes", '"yes"')]:
         text = V1_QUALITATIVE.replace("value: claim", 'value: "1"').replace(
             "unit: none", f'unit: "{unit}"')
@@ -505,6 +530,26 @@ def self_check():
          "schema: req.claim/2\n" in migrate_text(commented_schema)[0]
          and "schema: req.claim/1" not in migrate_text(commented_schema)[0],
          migrate_text(commented_schema)[0])
+    for refused_text, needle, why in [
+        ('unit: "ms"', "canonical unit", "a rescaled unit"),
+        ('unit: "%"', "canonical unit", "a percent unit"),
+        ('unit: "C"', "canonical unit", "a Celsius unit"),
+    ]:
+        text = V1_QUALITATIVE.replace("value: claim", 'value: "200"').replace(
+            "unit: none", refused_text)
+        try:
+            migrate_text(text)
+            case(f"{why} is refused", False, "not refused")
+        except Refused as error:
+            case(f"{why} is refused", needle in str(error), str(error))
+    for bad_value in ("1_000", "200ms", "1e3", "0.2s"):
+        text = V1_QUALITATIVE.replace("value: claim", f'value: "{bad_value}"')
+        try:
+            migrate_text(text)
+            case(f"a non-decimal quantity {bad_value!r} is refused", False, "not refused")
+        except Refused as error:
+            case(f"a non-decimal quantity {bad_value!r} is refused",
+                 "cannot pin exactly" in str(error), str(error))
     for unit in ("1", "1.0", "1e3", "0x1f"):
         text = V1_QUALITATIVE.replace("value: claim", 'value: "1"').replace(
             "unit: none", f'unit: "{unit}"')

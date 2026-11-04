@@ -69,8 +69,6 @@ fn unique_dir(name: &str) -> PathBuf {
     dir
 }
 
-/// A fixture corpus created by the real bootstrap (`req init`): authored `req.claim/2` claims,
-/// whose parse and address the loader derives — nothing derived is written (ADR 0022).
 /// `text.replace(old, new)` that fails, naming `old`, when the starter claim no longer contains
 /// it: a template edit must not turn a fixture's substitution into a silent no-op.
 fn replaced(text: String, old: &str, new: &str) -> String {
@@ -81,6 +79,8 @@ fn replaced(text: String, old: &str, new: &str) -> String {
     text.replace(old, new)
 }
 
+/// A fixture corpus created by the real bootstrap (`req init`): authored `req.claim/2` claims,
+/// whose parse and address the loader derives — nothing derived is written (ADR 0022).
 struct Corpus(PathBuf);
 
 impl Corpus {

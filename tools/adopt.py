@@ -600,8 +600,7 @@ def loader_check(binary, root, targets, texts):
         detail = (completed.stderr.strip() or completed.stdout.strip() or "no output")
         raise Unverifiable(
             f"the corpus plus these drafts does not load (`req canon` exited "
-            f"{completed.returncode}), so nothing was written. An older-schema corpus is "
-            f"migrated with tools/migrate_claims.py first.\n{detail}"
+            f"{completed.returncode}), so nothing was written. The loader says why:\n{detail}"
         )
 
 

@@ -354,12 +354,14 @@ fn a_side_declaring_a_format_this_build_cannot_establish_is_not_judged() {
 }
 
 /// A flagged pin never changes the classification, but `compare` reports it: the one visible
-/// consequence of a pin in this command. The claim pins `value: "0.2"` against a 500 ms statement
-/// (0.5 s derived), so the pin is a contradiction; the pair is still classified (exit 0).
+/// consequence of a pin in this command. The claim pins `modality: SHALL` (it agrees) and
+/// `value: "0.2"` against a 500 ms statement (0.5 s derived, so a contradiction): of two pins one
+/// is flagged, which is what tells "count the flagged ones" from "count every pin". The pair is
+/// still classified (exit 0).
 #[test]
 fn a_flagged_pin_is_reported_and_never_changes_the_classification() {
     let pinned = format!(
-        "{}pins:\n  value: \"0.2\"\n",
+        "{}pins:\n  modality: SHALL\n  value: \"0.2\"\n",
         claim_text("REQ-0001", &claim_schema())
             .replace(
                 "The req tool shall treat a single claim as the unit of requirements authorship,\n  review, and merge.",
@@ -372,7 +374,7 @@ fn a_flagged_pin_is_reported_and_never_changes_the_classification() {
     );
     // The pair differs in exactly the pin: the second side states the same claim without one.
     let unpinned = pinned
-        .replace("pins:\n  value: \"0.2\"\n", "")
+        .replace("pins:\n  modality: SHALL\n  value: \"0.2\"\n", "")
         .replace("REQ-0001", "REQ-0002");
     assert!(!unpinned.contains("pins:"), "{unpinned}");
     let f = Fixture::new("pin-flag-note")

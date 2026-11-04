@@ -369,7 +369,7 @@ derived_address() { # <claim id> — the address `req render` derives for it, no
   # the pipe on `req render` and fail the pipeline under `pipefail` (as `require_out` notes).
   # `req render` exits 3 when a claim is undecided (the case after the edit): the document is
   # still complete, so 0 and 3 are both fine here.
-  { req render --format json 2>/dev/null || [ $? -eq 3 ]; } | python3 -c '
+  { req render --format json || [ $? -eq 3 ]; } | python3 -c '
 import json, sys
 want = sys.argv[1]
 found = []

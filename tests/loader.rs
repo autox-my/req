@@ -501,6 +501,7 @@ fn the_older_direction_is_a_migration_candidate_at_the_loader() {
     // broken file and never a silent load. A format bump moves no address, so the remedy is to
     // migrate the file (`tools/migrate_claims.py`), not to reword the claim.
     // Every older format, so a later bump cannot quietly stop proving the earliest ones.
+    assert_eq!(classify_claim_schema(&claim_schema()), ClaimSchema::Current);
     for older_v in 0..req::canon::CLAIM_SCHEMA_V {
         let older = format!("{}{}", req::canon::CLAIM_SCHEMA_PREFIX, older_v);
         assert_eq!(
@@ -513,7 +514,6 @@ fn the_older_direction_is_a_migration_candidate_at_the_loader() {
             ClaimSchema::Current,
             "the same value against the build that wrote it is Current"
         );
-        assert_eq!(classify_claim_schema(&claim_schema()), ClaimSchema::Current);
 
         let f = Fixture::new("schema-older").claim(
             "REQ-0001.yml",

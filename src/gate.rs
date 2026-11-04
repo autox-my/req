@@ -409,9 +409,10 @@ pub fn evaluate_claims(rows: &[Row], context: &Context) -> Vec<PolicyResult> {
             .to_string()
     } else {
         format!(
-            "every pin of every applying claim agrees with the derived parse ({} pin(s), {held} \
-             held)",
-            held + failed.len()
+            "every pin of every applying claim must agree with the derived parse ({} pin(s), \
+             {held} held, {} flagged)",
+            held + failed.len(),
+            failed.len()
         )
     };
     let checked = held + failed.len();
