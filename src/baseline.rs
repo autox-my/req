@@ -1411,7 +1411,17 @@ fn write_manifest_atomically(target: &std::path::Path, bytes: &[u8]) -> std::io:
         .ok_or_else(|| std::io::Error::other("the path names no file"))?
         .to_string_lossy()
         .into_owned();
-    let staged = directory.join(format!(".{name}.req-staging-{}", std::process::id()));
+    // The name carries the clock as well as the pid: a run killed between `open` and `rename`
+    // leaves its staging file behind, and a recycled pid (or PID 1 in a container) must not make
+    // every later run collide with it.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let staged = directory.join(format!(
+        ".{name}.req-staging-{}-{nanos}",
+        std::process::id()
+    ));
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -1481,6 +1491,15 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                 }
                 None => return 2,
             },
+            // An option-shaped argument is a usage error, never a selection pair: `--out=file` would
+            // otherwise be read as the selection `--out == file`, print the manifest instead of
+            // writing it, and carry a bogus slot in the bytes a human signs, with exit 0.
+            other if other.starts_with('-') => {
+                eprintln!(
+                    "unrecognized option: {other} (flags take their value as the next argument)"
+                );
+                return 2;
+            }
             other => match other.split_once('=') {
                 Some((key, value)) if !key.is_empty() => {
                     context.insert(key.to_string(), value.to_string());

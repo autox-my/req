@@ -32,6 +32,7 @@ impl Scratch {
             std::process::id(),
             N.fetch_add(1, Ordering::SeqCst)
         ));
+        let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("creates the scratch dir");
         Scratch(dir)
     }
@@ -139,6 +140,11 @@ fn a_refused_emission_leaves_an_existing_file_untouched_and_creates_none() {
             "a refused emission is UNVERIFIABLE: {}",
             done.stderr
         );
+        assert!(
+            done.stderr.contains("decision log"),
+            "refused for the decision log, not for some other reason: {}",
+            done.stderr
+        );
     }
     assert_eq!(
         fs::read(&existing).expect("still there"),
@@ -204,4 +210,85 @@ fn an_unwritable_target_is_unverifiable_not_a_silent_success() {
     );
     assert_eq!(done.code, 3, "{}", done.stderr);
     assert!(!target.exists());
+}
+
+/// The primary use: a re-emit replaces a manifest already on disk, with exactly the plain bytes.
+#[test]
+fn out_replaces_an_existing_manifest_with_exactly_the_plain_emission() {
+    let plain = run(
+        repo(),
+        &["baseline", "--at", AT, "deployment_mode=air_gapped"],
+    );
+    assert_eq!(plain.code, 0, "{}", plain.stderr);
+    let scratch = Scratch::new("replace");
+    let target = scratch.0.join("air-gapped.json");
+    fs::write(&target, b"OLD SIGNED-OVER BYTES").expect("seeds the old manifest");
+    let done = run(
+        repo(),
+        &[
+            "baseline",
+            "--at",
+            AT,
+            "--out",
+            target.to_str().expect("utf-8"),
+            "deployment_mode=air_gapped",
+        ],
+    );
+    assert_eq!(done.code, 0, "{}", done.stderr);
+    assert_eq!(fs::read(&target).expect("replaced"), plain.stdout);
+}
+
+/// `--out=file` is not the flag: it must be a usage error, not a selection pair that prints the
+/// manifest with a bogus slot and exits 0.
+#[test]
+fn the_equals_spelling_is_a_usage_error_not_a_selection_pair() {
+    let scratch = Scratch::new("equals");
+    let target = scratch.0.join("m.json");
+    let spelled = format!("--out={}", target.to_str().expect("utf-8"));
+    let done = run(
+        repo(),
+        &[
+            "baseline",
+            "--at",
+            AT,
+            &spelled,
+            "deployment_mode=air_gapped",
+        ],
+    );
+    assert_eq!(done.code, 2, "{}", done.stderr);
+    assert!(
+        done.stdout.is_empty(),
+        "no manifest is printed for a usage error"
+    );
+    assert!(!target.exists());
+}
+
+/// The staging file is removed when the rename fails: the target is a directory, so the staged
+/// file is created and written and only the rename is refused.
+#[test]
+fn a_failed_rename_leaves_no_staging_file_behind() {
+    let scratch = Scratch::new("rename-fails");
+    let target = scratch.0.join("is-a-directory");
+    fs::create_dir(&target).expect("makes the directory");
+    let done = run(
+        repo(),
+        &[
+            "baseline",
+            "--at",
+            AT,
+            "--out",
+            target.to_str().expect("utf-8"),
+            "deployment_mode=air_gapped",
+        ],
+    );
+    assert_eq!(done.code, 3, "{}", done.stderr);
+    let names: Vec<String> = fs::read_dir(&scratch.0)
+        .expect("lists the dir")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["is-a-directory".to_string()],
+        "no staging file left: {names:?}"
+    );
 }

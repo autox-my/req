@@ -371,9 +371,10 @@ but not enforced. A newer envelope's dated revocation stays UNVERIFIABLE, while 
 own `revoked_at` cannot be read fails closed on every envelope. The signature check is a process boundary to a pinned verifier.
 
 exit: 0 emitted or VERIFIED, 1 FAIL (drift, a signature or authority that does not verify),
-3 UNVERIFIABLE (no verifier, an unknown key, no signature, a `rules_v` mismatch, or an absent
-decision log), 2 usage (emitting without `--at`, an unreadable timestamp, `--at` on the
-verification path).
+3 UNVERIFIABLE (no verifier, an unknown key, no signature, a `rules_v` mismatch, an absent
+decision log, or an `--out` target that cannot be written), 2 usage (emitting without `--at`, an
+unreadable timestamp, `--at` on the verification path, `--out` on the verification path or with no
+file, any other option-shaped argument such as `--out=file`).
 
 `docs/adopting.md` for the loop.";
 
