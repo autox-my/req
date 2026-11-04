@@ -3,7 +3,8 @@
 
 A starting point an adopter copies and adjusts, like `tools/adopt.py` — not a req subcommand.
 
-    python3 tools/migrate_claims.py [--write] [<claims dir or file> ...]   (default: claims/)
+    python3 tools/migrate_claims.py [--write] [--root <corpus>] [--no-verify] [<claims dir or file> ...]
+                                                                              (default: claims/)
     python3 tools/migrate_claims.py --self-check
 
 **Dry run by default**: it prints, per file, what it keeps, what it drops and the pins it would
@@ -33,13 +34,33 @@ top-level key blocks by indentation, and the few scalar slots the pins read are 
 plain or quoted scalars `req.claim/1` wrote. A file this tool cannot split is refused, never
 guessed at.
 
-Exit: 0 every file migrated (or would be, in a dry run), 1 a file was refused, 2 usage.
+**It proves its own output before it writes anything** (dry run and `--write` alike): the migrated
+files are put in a scratch copy of the corpus (`aliases/` only is copied from `--root`, default:
+the parent of the first path's `claims/`, else the current directory) and the real `req` on PATH
+is run over it. `req canon` must exit 0 (the loader accepted every file), and `req gate --format
+json` must report `pins_hold` as `pass` over every pin the tool created (a pin the parse
+contradicts, or a claim whose pins were not judged, is refused naming it). Either failure prints
+the loader's or the gate's own words, writes nothing and exits 1. With no `req` on PATH it cannot
+prove that and exits 3 (UNVERIFIABLE); `--no-verify` migrates without the check and says
+"NOT VERIFIED" on stdout and as its last line.
+
+The proof covers what this tool *changes*. An `applicability` selector is carried over verbatim
+(a test pins that), so whether a selector is well formed or can ever match is the input's property,
+not the migration's, and `req canon` does not judge it; check a variant with `req select`.
+
+Exit: 0 every file migrated (or would be, in a dry run), 1 a file was refused (by this tool, the
+loader or `pins_hold`), 2 usage, 3 `req` is not on PATH (or its answer cannot be read) so the
+output cannot be proven (`--no-verify` waives that).
 """
 
 import decimal
+import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 
 V1 = "req.claim/1"
 V2 = "req.claim/2"
@@ -326,7 +347,118 @@ def targets_of(paths):
     return found
 
 
-def run(paths, write):
+class Unverifiable(Exception):
+    """The proof could not be made (no usable `req`): exit 3, never a silent pass."""
+
+
+def count_pins(text):
+    """How many pins a migrated file declares: the indented lines under its column-0 `pins:`."""
+    count, inside = 0, False
+    for line in text.splitlines():
+        if TOP_KEY.match(line):
+            inside = line.startswith("pins:")
+        elif inside and line.startswith((" ", "\t")) and line.strip():
+            count += 1
+    return count
+
+
+def without_applicability(text):
+    """`text` with its `applicability` block emptied. A bare `req gate` leaves a claim carrying a
+    selector undecided and judges none of its pins (`pins_hold` passes over zero); a pin depends on
+    the statement alone, so the scratch copy the pins are judged in applies every claim."""
+    out = []
+    for key, lines in split_blocks(text):
+        if key == "applicability":
+            at = next(i for i, l in enumerate(lines) if TOP_KEY.match(l.rstrip("\r\n")))
+            out.extend(lines[:at] + ["applicability: []\n"])
+        else:
+            out.extend(lines)
+    return "".join(out)
+
+
+def run_req(binary, root, *args):
+    """`req --root <root> <args>` → (exit code, stdout, stderr). Raises Unverifiable."""
+    try:
+        done = subprocess.run([binary, "--root", root, *args], capture_output=True, text=True,
+                              check=False)
+    except OSError as why:
+        raise Unverifiable(f"cannot run `{binary}`: {why}") from why
+    return done.returncode, done.stdout, done.stderr
+
+
+def gate_document(stdout):
+    """The `req.gate/2` JSON document in `req gate --format json`'s stdout (a `corpus root:` line
+    may precede it), or None."""
+    start = stdout.find("{")
+    if start < 0:
+        return None
+    try:
+        return json.loads(stdout[start:])
+    except ValueError:
+        return None
+
+
+def default_root(paths):
+    """The corpus root: the parent of the first path's `claims/`, else the current directory."""
+    first = os.path.abspath(paths[0]) if paths else os.path.abspath("claims")
+    folder = first if os.path.isdir(first) else os.path.dirname(first)
+    if os.path.basename(folder) == "claims":
+        return os.path.dirname(folder)
+    return os.getcwd()
+
+
+def verify_output(binary, root, planned):
+    """Prove the migrated files load and their pins hold, in a scratch copy, before anything is
+    written. `root` contributes its `aliases/` only. Raises Refused (the loader or `pins_hold`
+    said no; the message carries their words) or Unverifiable (no usable answer)."""
+    names = [os.path.basename(path) for path, _ in planned]
+    if len(set(names)) != len(names):
+        raise Refused("two files share a name, which one scratch claims/ cannot hold: migrate "
+                      "them in separate runs")
+    with tempfile.TemporaryDirectory(prefix="req-migrate-") as scratch:
+        aliases = os.path.join(root, "aliases")
+        if os.path.isdir(aliases):
+            shutil.copytree(aliases, os.path.join(scratch, "aliases"))
+        claims = os.path.join(scratch, "claims")
+        os.makedirs(claims)
+
+        def put(name, text):
+            with open(os.path.join(claims, name), "w", encoding="utf-8", newline="") as handle:
+                handle.write(text)
+
+        for (path, migrated), name in zip(planned, names):
+            put(name, migrated)
+        code, out, err = run_req(binary, scratch, "canon")
+        if code != 0:
+            detail = (err.strip() + "\n" + out.strip()).strip() or "no output"
+            # Name the file the adopter has, not its scratch copy.
+            for (path, _), name in zip(planned, names):
+                detail = detail.replace(os.path.join(claims, name), path)
+            raise Refused(f"the migrated corpus does not load (`req canon` exited {code}); "
+                          f"the loader says:\n{detail}")
+        for (path, migrated), name in zip(planned, names):
+            put(name, without_applicability(migrated))
+        code, out, err = run_req(binary, scratch, "gate", "--format", "json")
+        document = gate_document(out)
+        policies = document.get("policies") if isinstance(document, dict) else None
+        policy = next((p for p in policies or [] if isinstance(p, dict)
+                       and p.get("policy") == "pins_hold"), None)
+        if policy is None:
+            raise Unverifiable(f"`req gate --format json` (exit {code}) gave no `pins_hold` "
+                               f"policy to read: {(err.strip() or out.strip() or 'no output')!r}")
+    if policy.get("outcome") != "pass":
+        details = "\n".join(f"  {d}" for d in policy.get("details") or []) or "  (no details)"
+        raise Refused(f"the migrated pins do not hold (`pins_hold` is {policy.get('outcome')!r}); "
+                      f"re-word the statement or fix the authored slot, never edit a pin to fit "
+                      f"the parse:\n{details}")
+    expected = sum(count_pins(migrated) for _, migrated in planned)
+    judged = policy.get("checked")
+    if not isinstance(judged, int) or judged < expected:
+        raise Refused(f"only {judged} of {expected} migrated pin(s) were judged by `pins_hold`, "
+                      "so the rest are unproven")
+
+
+def run(paths, write, root=None, verify=True):
     try:
         files = targets_of(paths)
     except Refused as why:
@@ -353,6 +485,26 @@ def run(paths, write):
     if refused:
         print(f"{refused} file(s) refused; nothing written", file=sys.stderr)
         return 1
+    note = ""
+    if verify:
+        binary = shutil.which("req")
+        if binary is None:
+            print("UNVERIFIABLE: `req` is not on PATH, so this tool cannot prove that the "
+                  "migrated files load and that their pins hold; nothing written. Put a `req` "
+                  "build on PATH (docs/adopting.md), or pass --no-verify to migrate without the "
+                  "proof (then run `req canon` and `req gate` yourself).", file=sys.stderr)
+            return 3
+        try:
+            verify_output(binary, root or default_root(paths), planned)
+        except Refused as why:
+            print(f"refused: {why}\nnothing written", file=sys.stderr)
+            return 1
+        except Unverifiable as why:
+            print(f"UNVERIFIABLE: {why}; nothing written", file=sys.stderr)
+            return 3
+    else:
+        note = " — NOT VERIFIED (--no-verify: the output was not run through `req`)"
+        print("NOT VERIFIED: --no-verify skipped the load check and the pins check")
     if write:
         done = 0
         for path, migrated in planned:
@@ -375,10 +527,10 @@ def run(paths, write):
                       file=sys.stderr)
                 return 1
             done += 1
-        print(f"migrated {len(planned)} file(s) to {V2}")
+        print(f"migrated {len(planned)} file(s) to {V2}{note}")
     else:
         print(f"dry run: {len(planned)} file(s) would be migrated to {V2}; nothing written "
-              "(add --write)")
+              f"(add --write){note}")
     return 0
 
 
@@ -610,7 +762,7 @@ def self_check():
     def drive(paths, write):
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = run(paths, write)
+            code = run(paths, write, verify=False)
         return code, out.getvalue(), err.getvalue()
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -654,6 +806,22 @@ def self_check():
         code, _, err = drive([os.path.join(tmp, "absent")], write=False)
         case("a missing path is refused with exit 1", code == 1, err)
 
+    case("count_pins counts the indented lines under pins:",
+         count_pins(V2_QUANTITY) == 2 and count_pins(migrate_text(V1_QUALITATIVE)[0]) == 0)
+    selector = without_applicability(V2_QUANTITY)
+    case("the scratch copy applies every claim and changes nothing else",
+         "applicability: []\n" in selector and "direction_gold_structural" not in selector
+         and selector.replace("applicability: []\n", "applicability:\n  - set == direction_gold_structural\n")
+         == V2_QUANTITY, selector)
+    with tempfile.TemporaryDirectory() as tmp:
+        os.makedirs(os.path.join(tmp, "claims"))
+        member = os.path.join(tmp, "claims", "REQ-0001.yml")
+        open(member, "w").close()
+        case("the default root is the parent of claims/",
+             default_root([os.path.join(tmp, "claims")]) == os.path.abspath(tmp)
+             and default_root([member]) == os.path.abspath(tmp)
+             and default_root([tmp]) == os.getcwd())
+
     long = "0." + "1" * 40
     case("a bound longer than 28 digits is pinned exactly, not rounded",
          canonical_decimal(long) == long, repr(canonical_decimal(long)))
@@ -673,20 +841,31 @@ def main(argv):
             return 2
         return self_check()
     write = False
+    verify = True
+    root = None
     paths = []
-    for arg in argv:
+    args = iter(argv)
+    for arg in args:
         if arg == "--write":
             write = True
+        elif arg == "--no-verify":
+            verify = False
+        elif arg == "--root":
+            root = next(args, None)
+            if not root or root.startswith("-") or not os.path.isdir(root):
+                print(f"usage: --root needs an existing corpus directory (got {root!r})",
+                      file=sys.stderr)
+                return 2
         elif arg in ("-h", "--help"):
             print(__doc__)
             return 0
         elif arg.startswith("-"):
-            print(f"usage: tools/migrate_claims.py [--write] [<path> ...]\nunknown flag: {arg}",
-                  file=sys.stderr)
+            print("usage: tools/migrate_claims.py [--write] [--root <corpus>] [--no-verify] "
+                  f"[<path> ...]\nunknown flag: {arg}", file=sys.stderr)
             return 2
         else:
             paths.append(arg)
-    return run(paths or ["claims"], write)
+    return run(paths or ["claims"], write, root=root, verify=verify)
 
 
 if __name__ == "__main__":
