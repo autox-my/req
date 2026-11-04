@@ -1,0 +1,21 @@
+schema: req.claim/2
+claim_id: REQ-0023
+statement: >-
+  The decision boundary shall be deliberately high-friction, demanding role,
+  meaning, and evidence there.
+applicability: []
+tests:
+  - "req::evidence::the_decision_boundary_is_not_frictionless"
+evidence: machine
+rationale:
+  source: docs/adr/0006-friction-zones.md
+  date: 2026-11-04
+  rejected_alternatives:
+    - uniform friction
+    - uniform ease
+  assumptions:
+    - deliberately qualitative, no measurable friction bound exists, and the lints
+      flag nothing here; that is accepted
+relations:
+  - type: refines
+    to: REQ-0004

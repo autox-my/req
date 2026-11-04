@@ -296,6 +296,18 @@ as `req gate` lets Fail outrank Unverifiable.
 
 #### Recorded runs (append-only)
 
+- **Dogfood split (M4-1), rules v6** — no rule moved; REQ-0007's second obligation was split
+  into the new REQ-0023 (owner ruling 2026-11-04) and REQ-0015's rationale assumption was
+  re-worded, so only manifest fields moved (**re-canonicalization candidates**, §5): REQ-0007
+  address ``7689bfe6d984`` → ``d5f74f33838e`` and ``tests_hash`` ``7c2829a1a0f8`` →
+  ``f632fd83e5bd`` (its ``rationale_hash`` and ``relations_hash`` did not move);
+  REQ-0015 ``rationale_hash`` ``b330399ee6ed`` → ``a52e24f7a684`` (its address and
+  ``tests_hash`` did not); REQ-0023 is new (address ``f33145e56369``). The other fifteen manifest
+  entries are byte-identical to the signed ones, and no Decision names REQ-0007's old
+  address (``DEC-0001`` ratifies REQ-0016). REQ-0007 is still derived unstructured; REQ-0023 is
+  derived *structured* (`SHALL` on the subject "the decision boundary", no lint). The corpus
+  is 22 claims. The Baseline is re-emitted unsigned and awaits the owner's signature.
+
 - **Rules v6** — the coverage invariant (T1.10) and the whole-span subject (T1.7). Two
   false merges found by hand in the repository's own corpus (REQ-0020, REQ-0004), which
   every corpus then passed; per corpus, never pooled:

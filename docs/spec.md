@@ -1,8 +1,8 @@
-<!-- req projection: generator=req render | rules_v=6 | selection=none | claims=16 | identity=sha256:0fa4dca9d893703430f7b3d0c02d855172264fce7a25c71b3b1d344638427f92 -->
+<!-- req projection: generator=req render | rules_v=6 | selection=none | claims=17 | identity=sha256:4135b45c704b995ef4a35c2b9d302b08d8579550c176bd2d8efbf925bcc585c5 -->
 # Selection: (no context: nothing is decided by the caller)
-applies 16, undecided 5, outside the selection 0 (an undecided claim is never reported as excluded)
+applies 17, undecided 5, outside the selection 0 (an undecided claim is never reported as excluded)
 
-## Applies (16)
+## Applies (17)
 - REQ-0001  f559f5a905e4  SHALL  The req tool shall treat a single claim as the unit of requirements authorship, review, and merge.
     selector: (none — applies to every variant)
 - REQ-0002  6e6ba2ec76ee  SHALL  The req tool shall record each acceptance or rejection of a change as a signed Decision carrying role, meaning, timestamp, and any dissent.
@@ -20,7 +20,7 @@ applies 16, undecided 5, outside the selection 0 (an undecided claim is never re
 - REQ-0006  94d043e0d3c6  SHALL  The req tool shall permit splitting a claim into derived claims without constraint.
     selector: (none — applies to every variant)
     -> derives-from REQ-0004
-- REQ-0007  7689bfe6d984  UNSTRUCTURED  Authoring shall be friction-free and the decision boundary shall be deliberately high-friction, demanding role, meaning, and evidence there.
+- REQ-0007  d5f74f33838e  UNSTRUCTURED  Authoring shall be friction-free.
     selector: (none — applies to every variant)
     -> refines REQ-0004
 - REQ-0013  170b4ba0205c  SHALL  The req tool shall deliver a non engineer author's edit as a Proposal inside an explicit Working set.
@@ -51,6 +51,9 @@ applies 16, undecided 5, outside the selection 0 (an undecided claim is never re
 - REQ-0022  01e9dc781ad7  SHALL  The req tool shall serialize each relation in exactly one claim file.
     selector: (none — applies to every variant)
     -> refines REQ-0020
+- REQ-0023  f33145e56369  SHALL  The decision boundary shall be deliberately high-friction, demanding role, meaning, and evidence there.
+    selector: (none — applies to every variant)
+    -> refines REQ-0004
 
 ## Undecided (5)
 - REQ-0008  29decbdac12b  SHALL  The benchmark harness shall report a false merge rate of exactly zero on the parity and adversarial mutation corpora.
