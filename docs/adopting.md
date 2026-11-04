@@ -750,6 +750,10 @@ window. Each step names its deciding line; the explanation is in the section it 
    a bug. Commit the document as a projection (*The document your project can commit*): `req render
    --out docs/spec.md`, and `req render --check docs/spec.md` is the alarm.
 
+To hand **one** of these steps to a coding agent in another project, fill in `examples/handoff-brief.md`: it
+names the step, the req rev to precheck with `req --version`, the input file, the exit code and line that
+mean done, and what the agent reports back. The agent finds the commands from `req --help`, not from you.
+
 ### What the agent may not do
 
 Paste the block in `examples/agents-snippet.md` into your project's own `AGENTS.md` — it is this list, cut
