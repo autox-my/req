@@ -507,6 +507,16 @@ else
   skip "python3 or tools/migrate_claims.py missing: cannot self-check the claim migrator"
 fi
 
+# The command-as-a-test-case adapter (tools/junit_case.py, ADR 0024 §3): its exit mapping, the
+# atomic report, the refusal of an unparsable report and the timeout/signal paths, run through the
+# real script in a temp dir. No network and no `req`, so `--fast` keeps it (its public-seam half is
+# `tests/junit_case.rs`). A missing python3 or script prints SKIP, never PASS.
+if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/junit_case.py" ] && command -v python3 >/dev/null 2>&1; }; then
+  run python3 "$PWD/tools/junit_case.py" --self-check
+else
+  skip "python3 or tools/junit_case.py missing: cannot self-check the command-as-a-test-case adapter"
+fi
+
 # The task-envelope validator's table (tools/orchestration/validate_envelope.py): the report
 # contract every delegated worker answers with (AGENTS.md, Orchestration). Pure, no filesystem
 # and no `req`, so `--fast` keeps it. A missing python3 or script prints SKIP, never PASS.

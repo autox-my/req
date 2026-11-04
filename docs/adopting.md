@@ -324,6 +324,61 @@ report-skipped = "ignored"
 this run, not kept beside it: one run, one truth. One gap, named rather than hidden: nextest does not
 run doctests, so a `#[doc]` example needs its own step.
 
+**pytest writes the report itself.** `pytest --junitxml=target/pytest/junit.xml` is read as it is
+(ADR 0024; tested against real pytest 9.2.0 output, `tests/fixtures/junit/`). The id is the report's
+`classname::name`: `tests.test_probe::test_passes`, `tests.test_probe::test_param[a b]` (a parametrized
+id keeps its brackets and spaces), `tests.test_probe.TestGroup::test_in_class` (a class method). Copy the
+id out of the report; do not retype it. Outcomes map as pytest means them: **passed** is passed;
+**failed**, a strict XPASS and a setup error are failed; `skip` and `xfail` are **skipped**, and a
+skipped test is not a pass. One shape is refused whole: a **collection error** (an import that fails
+while pytest gathers tests) is written with an empty `classname` and interrupts the run, so nothing
+else in that report is evidence — the message says so; fix the collection and rerun. Other producers
+are unpromised until a real report from them has been tested.
+
+**A command is a test case.** A shell check, a self-test or a script that exits 0 / 1 / 3 has no report
+of its own; `tools/junit_case.py` (stdlib Python 3, copy and adjust like `tools/adopt.py`; req still
+runs nothing) runs it and records one `<testcase>`:
+
+```bash
+# start a run: the first case begins a new report so no earlier row can answer for this one
+python3 tools/junit_case.py --fresh --report target/checks/junit.xml --classname checks --name health \
+  -- sh scripts/check-health.sh
+python3 tools/junit_case.py --report target/checks/junit.xml --classname checks --name audit \
+  --timeout 300 -- python3 scripts/audit_selftest.py
+req gate --test-report target/checks/junit.xml deployment_mode=air_gapped
+```
+
+with `tests: ["checks::health"]` in the claim it proves. The adapter exits with the command's own
+status, so wrapping a check never hides its failure, and it leaves the command's output alone. Exit 0
+is passed, **1 a failure**, **3 skipped** (`UNVERIFIABLE (exit 3)` in the case's message) and anything
+else — another status, a signal, a missing executable, a timeout — an error; re-running a case replaces
+its row, and a report it cannot parse is refused, never overwritten (`--fresh` starts over). The
+consequence of 3 → skipped is stated rather than hidden: a claim whose linked tests are all skipped is
+**FAIL, exit 1** in `tests_linked` (the table below), never a pass and not exit 3 — a check that says
+"cannot confirm" is a red the claim's owner must look at. Linking a claim to a wrapped check is a claim
+about evidence, reviewed like any link: it proves only what the script checks. `python3
+tools/junit_case.py --help` is the contract.
+
+**Several reports.** `--test-report` may be repeated, in `req gate` and in `req check` alike, and the
+gate judges the **union**:
+
+```bash
+req check --test-report target/nextest/ci/junit.xml --test-report target/pytest/junit.xml \
+          --test-report target/checks/junit.xml
+```
+
+A test id in two reports with the same outcome counts once; with different outcomes the evidence is
+unusable and the message names the id and both files. A report that cannot be read or parsed makes
+`tests_linked` UNVERIFIABLE **once**, naming that file — a test absent from the union might be in the
+one that failed to load, so the other reports do not get to answer for it. A union with no test case
+is "carries no test cases", as for one report. Ids from different stacks do not collide because their
+`classname`s differ. Each report is unsigned and the run unattested (ADR 0019 §8), as before.
+
+**`cargo test` is a named gap.** libtest writes no report and its JSON format is unstable. Two
+routes are supported: adopt nextest (above), or wrap the whole suite as **one** case,
+`python3 tools/junit_case.py --report target/checks/junit.xml --classname suite --name cargo_test --
+cargo test`, which links a claim to "the whole suite passed" and says nothing finer.
+
 The `tests_linked` policy answers four ways over the applying claims, and there is no fifth:
 
 | outcome | condition | fold |
@@ -562,7 +617,9 @@ green build over an unconfirmed release. The step keeps a copy of the output onl
 `verdict:` line in the job summary, and ends in `exit "$code"` with `code` taken from the command's
 own status. Its output says which step produced which exit, and `verdict: PASS` is printed only when
 **every declared step ran and passed** — there is no `--only` and no `--skip`, so a green `check` is
-never a green subset.
+never a green subset. If the project's tests write more than one report (nextest, pytest, the
+`tools/junit_case.py` adapter), repeat `--test-report` once per report on the `req check` line: the
+template below passes one, which stays valid for a single report.
 
 **Absent is not silent.** A repository with no `.req/variants` declares the default variant — one
 bare `req gate` — and `req check` says so on its own line; on a corpus carrying a selector that gate
