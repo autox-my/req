@@ -13,7 +13,7 @@ rationale:
   rejected_alternatives:
     - bidirectional Git bot (the rival Req proposal, its fatal Gap 3)
   assumptions:
-    - negation expressed via SHALL-NOT plus slots, not by prose
+    - negation is carried by the statement's "shall not", derived as SHALL-NOT, not by a double negative in prose
 relations:
   - type: refines
     to: REQ-0014

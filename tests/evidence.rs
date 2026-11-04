@@ -682,17 +682,34 @@ fn derived_claims_are_accepted_without_constraint() {
     assert_eq!(addresses.len(), 4, "each obligation keeps its own address");
 }
 
-/// REQ-0007 — *authoring is friction-free and the decision boundary is deliberately high-friction*,
-/// both halves in one measurement: one command boots a green corpus, and the same corpus refuses to
-/// pass until the variant it carries is decided.
+/// REQ-0007 — *authoring is friction-free*: one command boots a corpus, and the next accepts it
+/// green with no ceremony asked of the author (no Decision, no role, no evidence demanded).
+/// The boundary half was split out to REQ-0023 (owner ruling 2026-11-04); it is measured below.
 #[test]
-fn authoring_is_frictionless_and_the_decision_boundary_is_not() {
-    let scratch = Scratch::new("req-0007-boundary");
-    // Half one: one command, and the corpus is green (no authoring ceremony).
-    assert_eq!(run_here(scratch.path(), &["init"]).0, 0);
-    assert_eq!(run_here(scratch.path(), &["canon"]).0, 0);
+fn authoring_is_frictionless() {
+    let scratch = Scratch::new("req-0007-authoring");
+    let (init_code, _, init_err) = run_here(scratch.path(), &["init"]);
+    assert_eq!(init_code, 0, "one command boots a corpus: {init_err}");
+    let (canon_code, canon_out, canon_err) = run_here(scratch.path(), &["canon"]);
+    assert_eq!(canon_code, 0, "the booted corpus is green:\n{canon_out}");
+    let asked = format!("{canon_out}{canon_err}").to_lowercase();
+    for ceremony in ["decision", "role", "evidence"] {
+        assert!(
+            !asked.contains(ceremony),
+            "authoring must not be asked for a `{ceremony}`:\n{asked}"
+        );
+    }
+}
 
-    // Half two: an applicability the invocation does not decide is never treated as absent.
+/// REQ-0023 — *the decision boundary is deliberately high-friction*: the corpus refuses to pass
+/// until the variant it carries is decided. An applicability the invocation does not decide is
+/// never treated as absent.
+#[test]
+fn the_decision_boundary_is_not_frictionless() {
+    let scratch = Scratch::new("req-0023-boundary");
+    // Setup, not the claim under test: a booted starter corpus.
+    assert_eq!(run_here(scratch.path(), &["init"]).0, 0);
+
     let claim = scratch.read("claims/REQ-0001.yml");
     assert!(
         claim.contains("applicability: []"),
@@ -702,18 +719,17 @@ fn authoring_is_frictionless_and_the_decision_boundary_is_not() {
         !claim.contains("\ntests:"),
         "the starter carries no evidence link — this test authors one, as an adopter would"
     );
-    let link = "req::evidence::authoring_is_frictionless_and_the_decision_boundary_is_not";
+    let linked = "req::evidence::the_decision_boundary_is_not_frictionless";
     scratch.write(
         "claims/REQ-0001.yml",
         &claim
             .replace("applicability: []", "applicability: [\"runs >= 100\"]")
             .replace(
                 "relations: []\n",
-                &format!("relations: []\ntests:\n  - \"{link}\"\nevidence: machine\n"),
+                &format!("relations: []\ntests:\n  - \"{linked}\"\nevidence: machine\n"),
             ),
     );
 
-    let linked = "req::evidence::authoring_is_frictionless_and_the_decision_boundary_is_not";
     let report = write_report(scratch.path(), &[linked]);
     let report_arg = report.to_string_lossy().into_owned();
     let (undecided_code, undecided_out, _) =

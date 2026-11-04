@@ -70,7 +70,7 @@ Git-native storage is table stakes, not the moat.
 
 ## Status
 
-- **Tier-1 is built and measured.** `RULES_V 6`, 21 dogfood claims — req's own requirements,
+- **Tier-1 is built and measured.** `RULES_V 6`, 22 dogfood claims — req's own requirements,
   written in req's own format — and seven corpus families, including three of real
   requirements prose from other projects, pinned by commit. Zero false merges on all of them.
 - **Tier-2 is measured and deliberately conservative.** Five providers evaluated against a

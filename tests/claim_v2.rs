@@ -18,11 +18,19 @@ use std::path::{Path, PathBuf};
 /// The claims re-worded after the migration, and the address each now derives. The migration
 /// itself moved none; REQ-0017 was then re-worded on purpose, because its old statement (each
 /// claim file stores its canonical form and address) became false under `req.claim/2` — the CI
-/// review of M3 found it. The new value is the one the re-emitted Baseline carries.
-const RE_WORDED_AFTER_MIGRATION: &[(&str, &str)] = &[(
-    "REQ-0017",
-    "f0c1c332f895c8bf94534b133f65fa6866c8a145e83690dd8b252a79a67e784d",
-)];
+/// review of M3 found it. REQ-0007 was re-worded by M4-1 (the owner split off its decision-boundary
+/// half as REQ-0023, which is not in the recorded list). The new values are the ones the re-emitted
+/// Baseline carries.
+const RE_WORDED_AFTER_MIGRATION: &[(&str, &str)] = &[
+    (
+        "REQ-0007",
+        "d5f74f33838ed8d38007808350f74faba5d6f93600ff0bc354788f9b294b4d88",
+    ),
+    (
+        "REQ-0017",
+        "f0c1c332f895c8bf94534b133f65fa6866c8a145e83690dd8b252a79a67e784d",
+    ),
+];
 
 /// The 21 claims' `claim_id → address`, recorded at 3935d0b (rules v6) before anything was
 /// edited. A pure format change moves none of them: this list is the proof (ADR 0022), except

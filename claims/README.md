@@ -14,7 +14,7 @@ step 2 of [docs/design.md](../docs/design.md), executed with step 1 already on d
 | REQ-0004 | Proposals, never auto-merge | [ADR 0004](../docs/adr/0004-model-proposes-human-disposes.md) |
 | REQ-0005 | Merging requires human ratification | [ADR 0004](../docs/adr/0004-model-proposes-human-disposes.md) |
 | REQ-0006 | Splitting is always allowed | [ADR 0004](../docs/adr/0004-model-proposes-human-disposes.md) |
-| REQ-0007 | Authoring is friction-free; the decision boundary is not | [ADR 0006](../docs/adr/0006-friction-zones.md) — intentionally unstructured (see lint note) |
+| REQ-0007 | Authoring is friction-free | [ADR 0006](../docs/adr/0006-friction-zones.md) — intentionally unstructured (see lint note); the decision-boundary half was split out as REQ-0023 |
 | REQ-0008 | Benchmark false-merge rate = 0.0 (hard gate) | [canonical-hashing.md §6](../docs/canonical-hashing.md) |
 | REQ-0009 | Direction classification ≥ 0.95 | same |
 | REQ-0010 | False-split soft target ≤ 0.30 (SHOULD) | same |
@@ -29,6 +29,7 @@ step 2 of [docs/design.md](../docs/design.md), executed with step 1 already on d
 | REQ-0019 | Undecidable parses lint, never guess | [canonical-hashing.md](../docs/canonical-hashing.md) |
 | REQ-0020 | Relations stored once, on the outgoing side | [claim-format.md](../docs/claim-format.md) |
 | REQ-0021 | Never rewrite a claim or auto-merge (SHALL-NOT) | [ADR 0004](../docs/adr/0004-model-proposes-human-disposes.md) — split out of REQ-0004 when v2 flagged multi-obligation statements |
+| REQ-0023 | The decision boundary is deliberately high-friction | [ADR 0006](../docs/adr/0006-friction-zones.md) — split out of REQ-0007 (M4-1) |
 
 ## Reading a file
 
@@ -87,9 +88,14 @@ fully verified; 2 flags remained, both in REQ-0007.
 
 ## Notes you can see in the corpus
 
-- **REQ-0007 is derived unstructured** — "friction-free" and "deliberately
-  high-friction" are qualitative by nature; the rules derive that classification and emit
-  `untestable_qualifier`, which is correct, not a bug.
+- **REQ-0007 is derived unstructured** — "friction-free" is qualitative by nature; the rules
+  derive that classification and emit `untestable_qualifier`, which is correct, not a bug.
+- **REQ-0007 / REQ-0023 are one decision in two claims** (M4-1, owner ruling 2026-11-04) — the old
+  REQ-0007 carried two `shall`s (authoring friction-free; the decision boundary deliberately
+  high-friction), which the loader hid by deriving it unstructured. Each half is its own claim
+  with its own test. REQ-0023 derives *structured* (`SHALL` on the subject "the decision
+  boundary") with no lint: its qualitative words sit in the predicate and the rules do not
+  flag them. It is the owner's wording and was not re-worded either way.
 - **REQ-0004 / REQ-0021 are one decision in two claims** — v2 flags a statement with
   a second obligation, so the prohibition lives in its own claim (SHALL-NOT), as
   claim-format requires.

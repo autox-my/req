@@ -292,7 +292,7 @@ fn row<'a>(stdout: &'a str, id: &str) -> &'a str {
 /// The migration's pins hold on the committed corpus. The count is data, from the migration
 /// rule (`tools/migrate_claims.py`): a numeric authored `value` with the operator authored
 /// beside it, an operator other than `EQ`/none, a unit other than `none` — REQ-0008 (value, EQ),
-/// REQ-0009 (value, GE), REQ-0010 (value, LE), REQ-0022 (value, EQ) = 8 pins on 4 claims of 21.
+/// REQ-0009 (value, GE), REQ-0010 (value, LE), REQ-0022 (value, EQ) = 8 pins on 4 claims of 22.
 /// If a claim joins the corpus or a pin is added, it moves. The counted facts are asserted as
 /// fragments, so rewording the summary sentence does not look like a pin regression.
 #[test]
@@ -300,7 +300,7 @@ fn the_corpus_pins_hold_eight_pins_on_four_claims() {
     let out = run_at(&checkout(), &["canon"]);
     assert_eq!(out.code, 0, "canon exit code:\n{}", out.stderr);
     for fragment in [
-        "claims: 21",
+        "claims: 22",
         "1 unstructured",
         "pins: 8 on 4 claim(s)",
         "0 flagged",
@@ -311,8 +311,11 @@ fn the_corpus_pins_hold_eight_pins_on_four_claims() {
             out.stdout
         );
     }
-    // REQ-0007 is derived-unstructured, as it was authored-unstructured in req.claim/1.
+    // REQ-0007 is derived-unstructured, as it was authored-unstructured in req.claim/1. Its
+    // split-off half REQ-0023 (M4-1) is *not*: the tool derives `SHALL` on the subject "the
+    // decision boundary" and no lint. The spec predicted two unstructured; the measurement is one.
     assert!(row(&out.stdout, "REQ-0007").contains(" unstructured "));
+    assert!(row(&out.stdout, "REQ-0023").contains(" structured "));
     // REQ-0014's `exactly one commit` yields `1 / EQ`: shown as the parse, with no pin to hold
     // and no annotation category to hide it in.
     let stray = row(&out.stdout, "REQ-0014");

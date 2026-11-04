@@ -303,7 +303,9 @@ derives at rules v6 equal the ones the v1 files stored, and `baselines/air-gappe
 attests 17 of them, still verifies (REQ-0017 was then re-worded on purpose, see below, and the
 Baseline re-signed). The migration created eight pins on four claims — REQ-0008, REQ-0009,
 REQ-0010 and REQ-0022, each `value` and `operator` — all of which agree with the derived parse. REQ-0007 is derived
-unstructured, as it was authored unstructured. Rules v6's coverage invariant (hashing spec T1.10)
+unstructured, as it was authored unstructured. It was later split (M4-1, owner ruling 2026-11-04): its second
+obligation, the decision boundary, is its own claim REQ-0023, which derives structured; that makes 22 claims,
+1 of them unstructured. Rules v6's coverage invariant (hashing spec T1.10)
 refuses a structured parse that leaves a clause no slot holds, which is why the "exactly once" half
 of the old REQ-0020 is its own claim, REQ-0022 (one obligation per claim). REQ-0004 and REQ-0021
 state their obligation without the head "semantic layer", so their subject is the registered

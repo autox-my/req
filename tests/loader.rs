@@ -779,8 +779,9 @@ fn the_committed_corpus_loads_under_the_strict_loader() {
             "REQ-0001", "REQ-0002", "REQ-0003", "REQ-0004", "REQ-0005", "REQ-0006", "REQ-0007",
             "REQ-0008", "REQ-0009", "REQ-0010", "REQ-0012", "REQ-0013", "REQ-0014", "REQ-0015",
             "REQ-0016", "REQ-0017", "REQ-0018", "REQ-0019", "REQ-0020", "REQ-0021", "REQ-0022",
+            "REQ-0023",
         ],
-        "the committed corpus is REQ-0001..REQ-0022 less the retired REQ-0011 (ADR 0021), one claim per file"
+        "the committed corpus is REQ-0001..REQ-0023 less the retired REQ-0011 (ADR 0021), one claim per file"
     );
 }
 
