@@ -139,6 +139,8 @@ test leaves the claim pointing at an id the report no longer carries: the answer
 
 ### 6. The run: nextest for the artefact, not for speed
 
+*Amended by [ADR 0024](0024-test-evidence-is-a-set-of-reports.md) (§6): nextest is no longer the only producer of the report, and `--test-report` may be repeated.*
+
 `cargo test` cannot produce the report, so the suite runs under **nextest** with a reviewed
 `.config/nextest.toml`:
 
