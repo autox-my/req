@@ -1,7 +1,10 @@
-# One release per line: a `key=value ...` context for `req gate`. The reader is
-# `scripts/check.sh` (and any CI that runs it) — req itself knows nothing about this file, so the
-# format is the reader's: `#` starts a comment, and a line that is empty after stripping it is
-# skipped.
+# One release per line: a `key=value ...` context for `req gate`. `req check` reads this file
+# (ADR 0023) — `scripts/check.sh` and any CI that runs it call `req check`, so req owns the
+# grammar: `#` starts a comment, a line that is empty after stripping it is skipped, a trailing CR
+# is stripped, a line is split on whitespace with no pathname expansion, and a final line without
+# a newline counts. A line is `key=value` words, never an option. This file is tracked here, so
+# `scripts/check.sh` also treats its absence as a FAIL (to `req check` an absent list is the
+# default variant, exit 3 on a corpus carrying a selector).
 #
 # Each line is a **complete** release context, and two are declared because `corpus_set` takes two
 # mutually exclusive values: no single line can apply both REQ-0008 (parity and adversarial) and

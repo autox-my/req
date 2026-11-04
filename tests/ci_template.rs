@@ -159,16 +159,52 @@ fn the_ci_snippet_has_one_text_in_three_places() {
              gave way to are `req gate`'s `pins_hold`",
         ),
         (
+            "if req check --test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\" > \"$out\" 2>&1; then",
+            1,
+            "the release step IS `req check` (ADR 0023): one command, the report it reads, its \
+             output to a file, and no pipe — a pipe would report the last command's status, and \
+             an exit 3 would go green",
+        ),
+        (
+            "exit \"$code\"",
+            1,
+            "the step's status is `req check`'s own status: the step ends in the code it captured, \
+             so an UNVERIFIABLE (3) is a red step and never a green one",
+        ),
+        (
+            "else\n            code=$?\n          fi",
+            1,
+            "the status is captured from the `if` condition itself (`$?` in the `else` branch is \
+             the condition's status), not from a later command that would overwrite it",
+        ),
+        // The shell this step used to carry, now req's (ADR 0023): each of these coming back
+        // means a copy re-implements the loop or the fold, which `req check` exists to prevent.
+        (
             "[ -r .req/variants ]",
-            2,
-            "the readability assertion, in the gate step and again in the artifact step: a failed \
-             input redirection does not stop `set -e`, so every declared variant would be skipped \
-             and the step would go green",
+            0,
+            "the readability assertion belongs to `req check` now (an unreadable list is exit 3 \
+             there, tested once); a copy that asserts it again is re-implementing the reader",
         ),
         (
             "exit $rc",
-            1,
-            "the sticky exit fold: a swallowed non-zero is a green gate over a red run",
+            0,
+            "the sticky exit fold belongs to `req check` now (`fold` in src/check.rs)",
+        ),
+        (
+            "read -r -a",
+            0,
+            "a shell loop over the release list: the list grammar is `req check`'s now",
+        ),
+        (
+            "done < .req/variants",
+            0,
+            "a shell loop over `.req/variants`: `req check` reads it, validated before anything \
+             runs",
+        ),
+        (
+            "variants_read",
+            0,
+            "the old artifact step's list bookkeeping: there is one `req check` document now",
         ),
         (
             "the deploy key the private install needs, when the runner has none",
@@ -197,22 +233,17 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         ("capture trace trace", 1, "the traceability document"),
         ("capture audit audit", 1, "the audit packet document"),
         (
-            "capture \"gate-${releases}\" gate --test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\" \"${release[@]}\" < /dev/null",
+            "capture check check --test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\"",
             1,
-            "the per-variant gate document, with the `/dev/null` stdin the loop comment calls \
-             load-bearing (a `req` that read stdin would shorten the release list and end green)",
+            "the ONE `req.check/1` document (the folded verdict and every step's `req.gate/2`), \
+             reading the same report as the check step: without it the document says \
+             `unverifiable` beside a green check",
         ),
         (
             "does not declare [profile.ci], [profile.ci.junit] and path",
             1,
             "the template verifies the nextest profile it depends on instead of assuming it: an \
              adopter's own config without the profile makes the gate read a missing report",
-        ),
-        (
-            "capture gate gate --test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\" < /dev/null",
-            1,
-            "the default-variant JSON capture reads the same report as the gate step: without it the \
-             document says `unverifiable` beside a green gate",
         ),
         (
             "cargo nextest run --profile ci",
@@ -234,17 +265,15 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         ),
         (
             "--test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\"",
-            3,
-            "the gate step and **both** JSON captures (per-variant and default-variant) read the same \
-             artefact: a document captured without it was the review's finding — `unverifiable` \
-             beside a green gate",
+            2,
+            "the check step and the `req.check/1` capture read the same artefact: a document \
+             captured without it was the review's finding — `unverifiable` beside a green check",
         ),
         (
-            "[ \"$variants_read\" -eq 1 ]",
-            2,
-            "the bare gate document is written only for a variants file this step actually read: a \
-             missing or unreadable one is the gate step's red, and `gate.json` must not say \
-             `pass` beside it",
+            "expected=4",
+            1,
+            "the view set is render, trace, audit and check: the step knows how many documents it \
+             expects, so a lost one is red",
         ),
         (
             "if: always()",
@@ -269,7 +298,7 @@ fn the_ci_snippet_has_one_text_in_three_places() {
             "incomplete view set",
             1,
             "a PARTIAL document set must be red: `if-no-files-found` only notices a completely \
-             empty directory, so one lost variant document would ship silently",
+             empty directory, so one lost document would ship silently",
         ),
         (
             "export PATH=\"$HOME/.local/bin:$PATH\"",
@@ -290,17 +319,10 @@ fn the_ci_snippet_has_one_text_in_three_places() {
              every later job on a self-hosted runner",
         ),
         (
-            "RUNNER_TEMP",
+            "RUNNER_TEMP:-$HOME}/req_deploy_key",
             3,
             "the key lives in the per-job temp dir (written, offered to the install, removed), not \
              in a path that survives the job",
-        ),
-        (
-            "release line carries an option",
-            3,
-            "a release line is a `key=value` context, never an option: `req gate --help` exits 0 \
-             having gated nothing, so an option-shaped line would leave the gate step green and \
-             the capture would move help text into the artifact",
         ),
         (
             "req_deploy_key",
@@ -313,12 +335,6 @@ fn the_ci_snippet_has_one_text_in_three_places() {
             1,
             "only that key is offered to the private host — never the runner's default identity",
         ),
-        (
-            "[ \"$rejected\" -eq 0 ]",
-            3,
-            "a variants file whose every line was rejected is not the default variant: no bare \
-             `gate.json` is written beside the gate step's red",
-        ),
     ] {
         let found = printed.matches(fragment).count();
         assert!(
@@ -327,4 +343,398 @@ fn the_ci_snippet_has_one_text_in_three_places() {
              — {why}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// The release step is `req check` (ADR 0023): unpiped, unmasked, and the fold is not re-derived
+// ---------------------------------------------------------------------------
+
+/// The step blocks of the snippet: `(name line, body)` per `- name:` item, the body being every
+/// following line up to the next item at the same indent. Positional, so a step cannot be read
+/// out of a comment that merely mentions it.
+fn the_steps(snippet: &str) -> Vec<(String, String)> {
+    let lines: Vec<&str> = snippet.lines().collect();
+    let mut steps = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        if line.trim_start().starts_with("- name:") || line.trim_start().starts_with("- uses:") {
+            let indent = line.len() - line.trim_start().len();
+            let mut j = i + 1;
+            while j < lines.len() {
+                let next = lines[j];
+                let next_indent = next.len() - next.trim_start().len();
+                let comment = next.trim_start().starts_with('#');
+                // The next list item, or a comment block that introduces it, ends this step.
+                if !next.trim().is_empty()
+                    && next_indent <= indent
+                    && (comment || next.trim_start().starts_with("- "))
+                {
+                    break;
+                }
+                j += 1;
+            }
+            steps.push((line.trim().to_string(), lines[i..j].join("\n")));
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    steps
+}
+
+/// The one step that runs `req check`, whole (its keys and its `run:` body).
+fn the_check_step(snippet: &str) -> String {
+    let found: Vec<String> = the_steps(snippet)
+        .into_iter()
+        .filter(|(_, body)| body.contains("if req check --test-report"))
+        .map(|(_, body)| body)
+        .collect();
+    assert_eq!(
+        found.len(),
+        1,
+        "exactly one step runs `req check` (the release verdict); found {}:\n{snippet}",
+        found.len()
+    );
+    found.into_iter().next().unwrap_or_default()
+}
+
+/// The shell body (`run: |`) of the step that contains `anchor`, dedented — the bytes an
+/// adopter's runner hands to bash.
+fn the_script_containing(snippet: &str, anchor: &str) -> String {
+    let lines: Vec<&str> = snippet.lines().collect();
+    let anchor_at = lines
+        .iter()
+        .position(|line| line.contains(anchor))
+        .unwrap_or_else(|| panic!("the snippet has no line containing {anchor:?}"));
+    let at = lines[..anchor_at]
+        .iter()
+        .rposition(|line| line.trim() == "run: |")
+        .expect("the anchor lives inside a `run: |` block");
+    let run_indent = lines[at].len() - lines[at].trim_start().len();
+    let mut body: Vec<&str> = Vec::new();
+    for line in &lines[at + 1..] {
+        let blank = line.trim().is_empty();
+        let indent = line.len() - line.trim_start().len();
+        if !blank && indent <= run_indent {
+            break;
+        }
+        body.push(line);
+    }
+    let dedent = body
+        .iter()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.len() - line.trim_start().len())
+        .min()
+        .expect("the run block has a body");
+    let mut script = String::new();
+    for line in body {
+        if line.len() > dedent {
+            script.push_str(&line[dedent..]);
+        }
+        script.push('\n');
+    }
+    script
+}
+
+/// The `req check` step's status is `req check`'s status. Each assertion is a way an exit 3 (or
+/// an exit 1) turns into a green step: a pipe reports the last command, `|| true` and `continue-on-error`
+/// discard it, `set +e` and a trailing command overwrite it. The probe below *runs* the step; this
+/// pins the shape so the cheaper mutations fail here first, by name.
+#[test]
+fn the_check_step_is_unpiped_and_unmasked() {
+    let snippet = req::init::CI_SNIPPET;
+    let step = the_check_step(snippet);
+
+    let command: Vec<&str> = step
+        .lines()
+        .filter(|line| line.trim_start().starts_with("if req check --test-report"))
+        .collect();
+    assert_eq!(command.len(), 1, "one `req check` command line:\n{step}");
+    for masked in ["|", "tee", "true", "&&", ";;"] {
+        let line = command[0].trim().trim_end_matches("; then");
+        assert!(
+            !line.contains(masked),
+            "the `req check` line must not carry {masked:?} — its status is the step's:\n{line}"
+        );
+    }
+    for masked in [
+        "continue-on-error",
+        "|| true",
+        "set +e",
+        "pipefail",
+        "exit 0",
+        ":-0}",
+    ] {
+        assert!(
+            !step.contains(masked),
+            "the check step must not carry {masked:?}: it would turn a red into a green:\n{step}"
+        );
+    }
+
+    let script = the_script_containing(snippet, "if req check --test-report");
+    let last = script
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or_default();
+    assert_eq!(
+        last, "exit \"$code\"",
+        "the step's last command is `exit \"$code\"` — nothing after `req check` may set the status"
+    );
+    assert!(
+        script.contains("else\n  code=$?\nfi"),
+        "`code` is `req check`'s own status, taken from the `if` condition:\n{script}"
+    );
+    assert!(
+        !script
+            .lines()
+            .any(|line| line.trim_start().starts_with("code=")
+                && !line.contains("code=0")
+                && !line.contains("code=$?")),
+        "`code` is assigned only 0 (the command passed) or `$?` (its status):\n{script}"
+    );
+
+    // No `if:` on this step: a skipped release check is a green build that checked nothing.
+    assert!(
+        !step
+            .lines()
+            .any(|line| line.trim_start().starts_with("if:")),
+        "the check step runs on every run; an `if:` could skip the release verdict:\n{step}"
+    );
+
+    // The stale report is removed *before* the check reads it, and under `if: always()`.
+    let steps = the_steps(snippet);
+    let position = |needle: &str| {
+        steps
+            .iter()
+            .position(|(_, body)| body.contains(needle))
+            .unwrap_or_else(|| panic!("no step contains {needle:?}"))
+    };
+    let invalidate = position("rm -f \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\"");
+    assert!(
+        steps[invalidate].1.contains("if: always()"),
+        "the stale-report invalidation runs on a red build too:\n{}",
+        steps[invalidate].1
+    );
+    assert!(
+        invalidate < position("if req check --test-report"),
+        "the stale report is invalidated before `req check` reads it"
+    );
+    assert!(
+        position("cargo nextest run --profile ci") < position("if req check --test-report"),
+        "the suite that writes the report runs before the check that reads it"
+    );
+}
+
+/// The shell this template used to carry — the loop over `.req/variants`, the `read -a` split, the
+/// sticky `rc`, the per-line option check — is `req check` now (ADR 0023, tested once in Rust).
+/// A copy that grows it back is the drift the command removed. Only *code* lines count: a comment
+/// may name the files.
+#[test]
+fn no_copy_reimplements_the_loop_or_the_fold() {
+    let doc = read_reporting(&repo_root().join("docs/adopting.md"), "adopting doc");
+    let example = read_reporting(
+        &repo_root().join("examples/github-workflows/req.yml"),
+        "copy-ready example",
+    );
+    for (name, text) in [
+        ("req init's printed snippet", req::init::CI_SNIPPET),
+        (
+            "docs/adopting.md's ```yaml block",
+            the_ci_yaml_block(&doc, "docs/adopting.md"),
+        ),
+        ("examples/github-workflows/req.yml", example.as_str()),
+    ] {
+        for line in text.lines() {
+            if line.trim_start().starts_with('#') {
+                continue;
+            }
+            for forbidden in [
+                ".req/variants",
+                ".req/projections",
+                "req gate",
+                "gate --test-report",
+                "read -r -a",
+                "read -a",
+                "rc=",
+                "IFS=",
+                "while ",
+            ] {
+                assert!(
+                    !line.contains(forbidden),
+                    "{name} carries {forbidden:?} in code — the loop and the fold are `req check`'s, \
+                     not a shell's:\n{line}"
+                );
+            }
+        }
+    }
+}
+
+/// The directory a probe corpus lives in: `req init`, the starter claim replaced by one that
+/// applies only in `deployment_mode=air_gapped`, so `.req/variants` decides what the gate can say.
+struct Probe(PathBuf);
+
+impl Probe {
+    fn new(name: &str, pinned_value: &str) -> Self {
+        let dir =
+            std::env::temp_dir().join(format!("req-ci-template-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("creates the probe dir");
+        let init = std::process::Command::new(env!("CARGO_BIN_EXE_req"))
+            .arg("init")
+            .current_dir(&dir)
+            .output()
+            .expect("runs req init");
+        assert_eq!(init.status.code(), Some(0), "req init must succeed");
+        std::fs::remove_file(dir.join("claims/REQ-0001.yml")).expect("removes the starter claim");
+        std::fs::write(
+            dir.join("claims/REQ-0001.yml"),
+            format!(
+                "schema: req.claim/2\n\
+                 claim_id: REQ-0001\n\
+                 statement: \"The REQ-0001 service shall respond to a health check within 200 ms.\"\n\
+                 applicability:\n  - deployment_mode == air_gapped\n\
+                 relations: []\n\
+                 evidence: process\n\
+                 rationale:\n  source: docs/requirements.md\n  date: 2026-11-04\n  rejected_alternatives: []\n  assumptions: []\n\
+                 pins:\n  operator: LE\n  value: \"{pinned_value}\"\n  unit: s\n"
+            ),
+        )
+        .expect("writes the probe claim");
+        Probe(dir)
+    }
+
+    fn variants(&self, text: &str) {
+        std::fs::create_dir_all(self.0.join(".req")).expect("makes .req/");
+        std::fs::write(self.0.join(".req/variants"), text).expect("writes .req/variants");
+    }
+
+    /// Run the template's `req check` step, as a runner would (`bash -c <the step's script>`),
+    /// with the freshly built `req` first on PATH. Returns the exit code, the combined output and
+    /// the job summary the step wrote.
+    fn run_step(&self, with_req: bool) -> (Option<i32>, String, String) {
+        let script = the_script_containing(req::init::CI_SNIPPET, "if req check --test-report");
+        let summary = self.0.join("step-summary.md");
+        let _ = std::fs::remove_file(&summary);
+        let bin_dir = Path::new(env!("CARGO_BIN_EXE_req"))
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_default();
+        // Without `req` the PATH is the system's alone: the ambient one may carry an installed
+        // `req`, and "not found" must be the case under test, not whatever the machine has.
+        let path = if with_req {
+            format!(
+                "{}:{}",
+                bin_dir.display(),
+                std::env::var("PATH").unwrap_or_default()
+            )
+        } else {
+            "/usr/bin:/bin".to_string()
+        };
+        let out = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(script)
+            .current_dir(&self.0)
+            .env("PATH", path)
+            .env("RUNNER_TEMP", &self.0)
+            .env("FORGEJO_STEP_SUMMARY", &summary)
+            .env_remove("GITHUB_STEP_SUMMARY")
+            .env_remove("CARGO_TARGET_DIR")
+            .env_remove("REQ_ROOT")
+            .output()
+            .expect("runs the check step");
+        (
+            out.status.code(),
+            format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            ),
+            std::fs::read_to_string(&summary).unwrap_or_default(),
+        )
+    }
+}
+
+impl Drop for Probe {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// The probe that matters: the template's own `req check` command line, run for real against
+/// corpora whose verdict is known, must make the **step** exit with that verdict — 3 included.
+/// A step that turned an UNVERIFIABLE into success (a pipe, `|| true`, a trailing command) would
+/// pass every shape pin above and fail here.
+#[cfg(unix)]
+#[test]
+fn the_check_step_exits_with_req_checks_exit() {
+    // 3: the variants line leaves the claim's selector undecided — the case the old template's
+    // sticky-`rc` shell existed to keep from going green.
+    let undecided = Probe::new("undecided", "0.2");
+    undecided.variants("field=value\n");
+    let (code, text, summary) = undecided.run_step(true);
+    assert_eq!(
+        code,
+        Some(3),
+        "an undecided release is UNVERIFIABLE, and the step is red:\n{text}"
+    );
+    assert!(text.contains("verdict: UNVERIFIABLE"), "{text}");
+    assert!(
+        !text.contains("verdict: PASS") && !summary.contains("PASS"),
+        "a non-PASS verdict never prints PASS, in the log or the summary:\n{text}\n{summary}"
+    );
+    assert!(
+        summary.contains("| 3 | UNVERIFIABLE"),
+        "the job summary names the exit and the verdict:\n{summary}"
+    );
+
+    // 1: a pin the statement does not hold fails the gate.
+    let defect = Probe::new("defect", "0.9");
+    defect.variants("deployment_mode=air_gapped\n");
+    let (code, text, _) = defect.run_step(true);
+    assert_eq!(code, Some(1), "a failing gate is exit 1:\n{text}");
+
+    // FAIL outranks UNVERIFIABLE through the step, in either order.
+    for lines in [
+        "deployment_mode=air_gapped\nfield=value\n",
+        "field=value\ndeployment_mode=air_gapped\n",
+    ] {
+        let both = Probe::new("both", "0.9");
+        both.variants(lines);
+        let (code, text, _) = both.run_step(true);
+        assert_eq!(
+            code,
+            Some(1),
+            "FAIL outranks UNVERIFIABLE ({lines:?}):\n{text}"
+        );
+    }
+
+    // 2: a malformed list is a usage-class error and nothing was gated.
+    let malformed = Probe::new("malformed", "0.2");
+    malformed.variants("--help\n");
+    let (code, text, _) = malformed.run_step(true);
+    assert_eq!(
+        code,
+        Some(2),
+        "an option-shaped release line is exit 2:\n{text}"
+    );
+    assert!(!text.contains("[PASS]"), "nothing ran:\n{text}");
+
+    // 0: every declared step ran and passed.
+    let healthy = Probe::new("healthy", "0.2");
+    healthy.variants("deployment_mode=air_gapped\n");
+    let (code, text, summary) = healthy.run_step(true);
+    assert_eq!(code, Some(0), "a passing release is a green step:\n{text}");
+    assert!(text.contains("verdict: PASS"), "{text}");
+    assert!(summary.contains("| 0 | PASS"), "{summary}");
+
+    // `req` not installed: the step is red (127), never a quiet success.
+    let missing = Probe::new("missing-req", "0.2");
+    missing.variants("deployment_mode=air_gapped\n");
+    let (code, text, _) = missing.run_step(false);
+    assert!(
+        matches!(code, Some(c) if c != 0),
+        "a runner without `req` must not report success:\n{text}"
+    );
 }

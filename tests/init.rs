@@ -863,52 +863,53 @@ fn the_adoption_doc_carries_the_verified_install_form_and_the_ci_gate() {
         "the scp-style URL is the form that fails, and the doc must not offer it"
     );
 
-    // The gate step's fail-closed assertion: an absent **or unreadable** `.req/variants` must
-    // be red, because a failed input redirection does not stop a `set -e` script.
+    // The release step is `req check` (ADR 0023): the page names the command, the file it reads
+    // and the bug URL; the loop that used to be shell is req's, not the page's.
     for required in [
-        "[ -r .req/variants ]",
-        "req gate",
+        "if req check --test-report",
+        "req check",
         ".req/variants",
         "https://git.xantu-barb.ts.net/fdx/req/issues",
     ] {
         assert!(
             doc.contains(required),
-            "docs/adopting.md must carry the CI gate and the bug URL ({required:?} missing)"
+            "docs/adopting.md must carry the CI release step and the bug URL ({required:?} missing)"
         );
     }
 }
 
 // ---------------------------------------------------------------------------
-// The CI gate step: executed, not just compared with the doc
+// The CI steps: executed, not just compared with the doc
 // ---------------------------------------------------------------------------
+//
+// The snippet's shell is two small programs since ADR 0023: the release step runs `req check` and
+// exits with its status, and the JSON-views step captures four documents. The loop over
+// `.req/variants`, the fold and the list grammar are `req check`'s and are tested in
+// `tests/check.rs`; what is left here is what the shell still owns — that the step's status IS the
+// command's, that the summary is written, and that a view that wrote nothing leaves no file.
 
-/// The shell body of the CI gate step, extracted from the snippet `req init` prints — the same
+/// The shell body of the release step, extracted from the snippet `req init` prints — the same
 /// bytes an adopter's runner executes. Extracted rather than duplicated: a third copy would be
-/// free to drift, and the point of this test is to run *the* snippet.
+/// free to drift, and the point of these tests is to run *the* snippet.
 #[cfg(unix)]
-fn gate_script() -> String {
-    // Anchored on the loop's own `gate` call, not on the `done < .req/variants` line: the
-    // JSON-views step now closes a loop the same way, so that line is no longer unique. A
-    // behaviour-preserving rename of the loop variable still must not break the extractor.
-    run_block_containing("gate \"${release[@]}\" < /dev/null")
+fn check_script() -> String {
+    run_block_containing("if req check --test-report")
 }
 
 /// The shell body of the CI **JSON-views** step, extracted by the same positional rule: the
-/// anchor is the per-variant capture line (the step's own logic), and the opener is the nearest
-/// `run: |` above it. A separate test from the gate step's, because the two steps are separate
+/// anchor is the `req.check/1` capture (the step's own logic), and the opener is the nearest
+/// `run: |` above it. A separate test from the release step's, because the two steps are separate
 /// shell programs and one running says nothing about the other.
 #[cfg(unix)]
 fn artifact_script() -> String {
-    run_block_containing(
-        "capture \"gate-${releases}\" gate --test-report \"${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml\" \"${release[@]}\"",
-    )
+    run_block_containing("capture check check --test-report")
 }
 
 /// The shell body of the `run: |` block in the snippet `req init` prints that contains `anchor`.
 #[cfg(unix)]
 fn run_block_containing(anchor: &str) -> String {
     let lines: Vec<&str> = req::init::CI_SNIPPET.lines().collect();
-    // The snippet has several `run: |` blocks (deploy key, install, tests, gate, JSON views).
+    // The snippet has several `run: |` blocks (deploy key, install, tests, check, JSON views).
     // The block asked for is the one containing the anchor, and the opener is the nearest
     // `run: |` above it — positional, not "the first" or "the last".
     let anchor_at = lines
@@ -945,93 +946,19 @@ fn run_block_containing(anchor: &str) -> String {
     script
 }
 
-/// Write `.req/variants` with exactly `text`, so a test can control whether the last line is
-/// newline-terminated.
+/// Write `.req/variants` with exactly `text`.
 #[cfg(unix)]
 fn write_variants(fx: &Fixture, text: &str) {
     std::fs::create_dir_all(fx.join(".req")).expect("creates .req/");
     std::fs::write(fx.join(".req/variants"), text).expect("writes .req/variants");
 }
 
-/// Run the extracted CI step in `fx`; return its exit code and the job summary it wrote.
+/// The environment a runner gives the release step: the binary directory first on PATH, the
+/// job-summary file, and a `RUNNER_TEMP` of the fixture's own (the step writes its capture there).
 #[cfg(unix)]
-fn run_gate_step(fx: &Fixture, script: &str) -> (i32, String) {
+fn run_release_step(fx: &Fixture, script: &str, bin_dir: &Path) -> (i32, String, String) {
     let summary = fx.join("step-summary.md");
-    // The step appends its rows; a fresh run must not read the previous case's.
-    let _ = std::fs::remove_file(&summary);
-    let bin_dir = req_bin()
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_default();
-    let path = format!(
-        "{}:{}",
-        bin_dir.display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
-    let out = Command::new("bash")
-        .arg("-c")
-        .arg(script)
-        .current_dir(fx.path())
-        .env("PATH", path)
-        .env("FORGEJO_STEP_SUMMARY", &summary)
-        .env_remove("REQ_ROOT")
-        .output()
-        .expect("runs the CI gate step");
-    let code = out.status.code().unwrap_or(-1);
-    let rows = std::fs::read_to_string(&summary).unwrap_or_default();
-    let text = format!(
-        "{rows}{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-    (code, text)
-}
-
-/// Run the extracted CI step with a **stub `req`**: a script that answers the codes it is given, in
-/// order. The loop's aggregation is shell logic, and a real corpus cannot produce every ordering
-/// (a FAIL and an UNVERIFIABLE in the order that used to mask the FAIL), so the stub is what makes
-/// the precedence observable.
-#[cfg(unix)]
-fn run_gate_step_with_codes(fx: &Fixture, script: &str, codes: &[i32]) -> (i32, String) {
-    let bin = fx.join("stub-bin");
-    std::fs::create_dir_all(&bin).expect("creates the stub bin directory");
-    let queue = fx.join("stub-codes");
-    std::fs::write(
-        &queue,
-        codes
-            .iter()
-            .map(|c| c.to_string())
-            .collect::<Vec<_>>()
-            .join("\n"),
-    )
-    .expect("writes the stub's answers");
-    // The path is interpolated into generated shell, so it must be shell-escaped for a path
-    // containing a single quote as well as a space: `'''` closes, escapes and reopens the quote.
-    let queue_sh = queue.display().to_string().replace('\'', r"'\''");
-    // Pop the next code; when the queue is empty, answer 0.
-    std::fs::write(
-        bin.join("req"),
-        format!(
-            "#!/bin/sh\n\
-             queue='{queue}'\n\
-             # Consume stdin the way any command might. The step must hand `req` its own\n\
-             # stdin: a gate that read the loop's file would silently shorten the release list.\n\
-             cat >/dev/null 2>&1 || true\n\
-             code=0\n\
-             if [ -s \"$queue\" ]; then\n\
-               code=$(head -1 \"$queue\")\n\
-               tail -n +2 \"$queue\" > \"$queue.tmp\" && mv \"$queue.tmp\" \"$queue\"\n\
-             fi\n\
-             echo \"verdict: stub $code\"\n\
-             exit $code\n",
-            queue = queue_sh
-        ),
-    )
-    .expect("writes the stub req");
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(bin.join("req"), std::fs::Permissions::from_mode(0o755))
-        .expect("makes the stub executable");
-    let summary = fx.join("step-summary.md");
+    // The step appends to the summary; a fresh run must not read the previous case's.
     let _ = std::fs::remove_file(&summary);
     let out = Command::new("bash")
         .arg("-c")
@@ -1041,293 +968,37 @@ fn run_gate_step_with_codes(fx: &Fixture, script: &str, codes: &[i32]) -> (i32, 
             "PATH",
             format!(
                 "{}:{}",
-                bin.display(),
+                bin_dir.display(),
                 std::env::var("PATH").unwrap_or_default()
             ),
         )
         .env("FORGEJO_STEP_SUMMARY", &summary)
+        .env("RUNNER_TEMP", fx.path())
+        .env_remove("GITHUB_STEP_SUMMARY")
+        .env_remove("CARGO_TARGET_DIR")
         .env_remove("REQ_ROOT")
         .output()
-        .expect("runs the CI gate step");
-    let rows = std::fs::read_to_string(&summary).unwrap_or_default();
+        .expect("runs the CI release step");
     (
         out.status.code().unwrap_or(-1),
-        format!("{rows}{}", String::from_utf8_lossy(&out.stderr)),
+        std::fs::read_to_string(&summary).unwrap_or_default(),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        ),
     )
 }
 
-/// The summary rows the step wrote, one per `gate()` call.
+/// A **stub `req`** that records its argv and answers `code`, printing `emit` (a text, or nothing)
+/// on stdout. The stub lives in `<fx>/stub-bin`, and every path interpolated into the generated
+/// shell is escaped for a single quote as well as a space (`'''` closes, escapes and reopens it).
 #[cfg(unix)]
-fn summary_rows(text: &str) -> Vec<&str> {
-    text.lines()
-        .filter(|line| line.starts_with("| `"))
-        .collect()
-}
-
-/// The CI step's loop is load-bearing for every adopter, and until this test nothing executed it:
-/// the snippet was only pinned to `docs/adopting.md`, which cannot catch a broken loop. Four
-/// behaviours decide whether the step protects a release or lies about it:
-/// a comment-only file falls back to the default variant; a declared line is gated *instead*, and
-/// its non-zero exit propagates — even when it is the file's unterminated last line; blank and
-/// comment lines never become a bare run; and an absent file is red.
-#[cfg(unix)]
-#[test]
-fn the_ci_gate_step_script_behaves_as_an_adopter_needs() {
-    let script = gate_script();
-    assert!(
-        script.contains("done < .req/variants"),
-        "the snippet still loops over .req/variants:\n{script}"
-    );
-    assert!(
-        script.contains("[ -r .req/variants ]"),
-        "and still fails closed on an absent or unreadable file:\n{script}"
-    );
-
-    // A corpus, exactly as `req init` leaves it.
-    let fx = Fixture::new("ci-gate-step");
-    let init = run_at(fx.path(), &["init"]);
-    assert_eq!(init.code, 0, "{}{}", init.stdout, init.stderr);
-
-    // (1) A comment-only file declares no release, so the bare invocation is the gate.
-    write_variants(&fx, "# nothing declared yet\n");
-    let (code, text) = run_gate_step(&fx, &script);
-    assert_eq!(
-        code, 3,
-        "a comment-only file falls back to the default variant, and a corpus with no evidence \
-         is UNVERIFIABLE (the excerpt names the missing report): {text}"
-    );
-    assert_eq!(summary_rows(&text).len(), 1, "exactly one gate run: {text}");
-    assert!(
-        text.contains("`<none>`"),
-        "the bare run is labelled: {text}"
-    );
-
-    // (2) A declared line is gated *instead*, and its exit propagates — here as the file's last
-    // line with **no trailing newline**, which `read` reports as non-zero while assigning it.
-    write_variants(&fx, "deployment_mode=air_gapped");
-    let (code, text) = run_gate_step(&fx, &script);
-    assert_eq!(
-        code, 3,
-        "the declared line is gated and its refusal is the step's: {text}"
-    );
-    assert_eq!(
-        summary_rows(&text).len(),
-        1,
-        "the loop is the gate; the bare fallback must not also run: {text}"
-    );
-    assert!(text.contains("deployment_mode=air_gapped"), "{text}");
-
-    // (2b) A CRLF checkout must not leave a `\r` on the value: `read -a` does not split on carriage
-    // return, so without the strip the gate would receive `deployment_mode=air_gapped\r`, refuse it
-    // for the wrong reason, and write the CR into the job summary where nobody reads it.
-    write_variants(&fx, "deployment_mode=air_gapped\r\n");
-    let (code, text) = run_gate_step(&fx, &script);
-    assert_eq!(
-        code, 3,
-        "the declared line is gated on a CRLF file too: {text}"
-    );
-    assert!(
-        !text.contains('\r'),
-        "no carriage return reaches the gate or the summary: {text:?}"
-    );
-    assert!(text.contains("deployment_mode=air_gapped"), "{text}");
-
-    // (2c) More than one declared line: the loop must gate **each** of them. Every other case
-    // writes one line, so a stray `break` (or a body that ran once) would pass them all.
-    write_variants(&fx, "deployment_mode=air_gapped\nruns=5\n");
-    let (code, text) = run_gate_step(&fx, &script);
-    assert_eq!(code, 3, "both declared lines are gated: {text}");
-    let rows = summary_rows(&text);
-    assert_eq!(rows.len(), 2, "one row per declared line: {text}");
-    assert!(rows[0].contains("deployment_mode=air_gapped"), "{text}");
-    assert!(
-        rows[1].contains("runs=5"),
-        "the second line is gated too: {text}"
-    );
-
-    // (2d) Precedence across lines: a FAIL on one line must not be masked by an UNVERIFIABLE on a
-    // later one. `rc` used to keep the *last* non-zero code, which reported 3 beside a real 1 — the
-    // asymmetry the whole project keeps, inverted by the step adopters run.
-    for (codes, expected, why) in [
-        (
-            vec![1, 3],
-            1,
-            "a later UNVERIFIABLE must not mask an earlier FAIL",
-        ),
-        (vec![3, 1], 1, "and the order must not matter"),
-        (vec![3, 3], 3, "all undecided is still UNVERIFIABLE"),
-        (
-            vec![0, 3],
-            3,
-            "a pass beside an undecided line is UNVERIFIABLE",
-        ),
-        (vec![0, 0], 0, "all green is green"),
-        // Anything non-zero that is not 1 or 3 must still fail the step: a usage error (2) or a
-        // missing binary (127) reported as success is worse than the masked FAIL this rule fixed.
-        (vec![2], 2, "a usage error is propagated"),
-        (vec![127], 127, "a missing binary is propagated"),
-        (vec![1, 2], 1, "and FAIL still outranks it"),
-        (vec![2, 1], 1, "in either order"),
-        (
-            vec![0, 2],
-            2,
-            "a pass beside a usage error is the usage error",
-        ),
-        // Among non-FAIL codes the rule is the **first** failure, not the last: a missing
-        // binary (127) followed by an UNVERIFIABLE (3) used to report 3, which reads as a
-        // corpus question when the tool never ran.
-        (
-            vec![127, 3],
-            127,
-            "a missing binary is not reported as UNVERIFIABLE",
-        ),
-        (vec![3, 2], 3, "the first non-FAIL failure is reported"),
-        (vec![2, 3], 2, "in either order"),
-        (vec![3, 0], 3, "a later pass does not clear it"),
-    ] {
-        write_variants(&fx, "deployment_mode=air_gapped\nruns=5\n");
-        let (code, text) = run_gate_step_with_codes(&fx, &script, &codes);
-        assert_eq!(code, expected, "{why} ({codes:?}): {text}");
-        assert_eq!(
-            summary_rows(&text).len(),
-            2,
-            "one row per line ({codes:?}): {text}"
-        );
-    }
-
-    // (3) Blank and comment-only lines are skipped, never turned into a bare run. The bare
-    // variant is UNVERIFIABLE here for the same honest reason as case (1): the fresh corpus has
-    // no evidence yet, so the step is red and names the policy it could not exercise.
-    write_variants(&fx, "\n   \n# a comment\n\n");
-    let (code, text) = run_gate_step(&fx, &script);
-    assert_eq!(code, 3, "{text}");
-    assert_eq!(summary_rows(&text).len(), 1, "one run: {text}");
-    assert!(
-        text.contains("`<none>`"),
-        "still the default variant: {text}"
-    );
-
-    // (4) An absent variants file is a failure, not a silently green step.
-    std::fs::remove_file(fx.join(".req/variants")).expect("removes the variants file");
-    let (code, text) = run_gate_step(&fx, &script);
-    assert_eq!(code, 1, "an absent variants file is red: {text}");
-}
-
-/// A file that exists but cannot be read is not a file the step can gate: the redirection at
-/// `done <` fails, the loop never runs, and the fallback would gate the bare variant instead of
-/// the declared releases. `[ -f ]` proves existence, not readability — `[ -r ]` is the assertion.
-#[cfg(unix)]
-#[test]
-fn an_unreadable_variants_file_is_red_not_a_fallback_to_the_bare_gate() {
-    use std::os::unix::fs::PermissionsExt;
-
-    let script = gate_script();
-    let fx = Fixture::new("ci-gate-step-unreadable");
-    let init = run_at(fx.path(), &["init"]);
-    assert_eq!(init.code, 0, "{}{}", init.stdout, init.stderr);
-    write_variants(&fx, "deployment_mode=air_gapped\n");
-    let path = fx.join(".req/variants");
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000))
-        .expect("makes the variants file unreadable");
-    // `access()` grants R_OK to uid 0 even on a 0o000 regular file, so a root container would
-    // pass the guard and fail this test for an environment reason rather than a product one.
-    // Probe the effect of the chmod and say NOT EXERCISED, as the abort test does.
-    if std::fs::File::open(&path).is_ok() {
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
-            .expect("restores the variants file");
-        eprintln!(
-            "NOT EXERCISED: mode 0o000 is still readable here (running as root?) — the \
-             unreadable-variants guard was not exercised"
-        );
-        return;
-    }
-    let (code, text) = run_gate_step(&fx, &script);
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
-        .expect("restores the variants file so the fixture can be removed");
-    assert_eq!(
-        code, 1,
-        "an unreadable variants file is red, never a green bare fallback: {text}"
-    );
-    assert!(
-        text.contains("missing, unreadable, or not a regular file .req/variants"),
-        "the step says which file and why: {text}"
-    );
-}
-
-/// `[ -r ]` alone passes for a readable **directory**: the redirection then fails, the loop never
-/// runs and the fallback gates the bare variant — the same false green the assertion exists to
-/// prevent. Both halves (`-f` and `-r`) are asserted.
-#[cfg(unix)]
-#[test]
-fn a_directory_at_the_variants_path_is_red() {
-    let script = gate_script();
-    let fx = Fixture::new("ci-gate-step-variants-dir");
-    let init = run_at(fx.path(), &["init"]);
-    assert_eq!(init.code, 0, "{}{}", init.stdout, init.stderr);
-    std::fs::create_dir_all(fx.join(".req/variants")).expect("creates a directory at the path");
-    let (code, text) = run_gate_step(&fx, &script);
-    assert_eq!(code, 1, "a directory is not a release list: {text}");
-    assert!(
-        text.contains("not a regular file"),
-        "the step says what the path is: {text}"
-    );
-}
-
-/// The generated stub interpolates the queue path into shell; a fixture (or `TMPDIR`) whose path
-/// contains a space must survive it. This test's fixture name carries one on purpose — and the
-/// path is asserted to carry it, so a later normalisation of fixture names cannot turn this test
-/// into a green no-op.
-#[cfg(unix)]
-#[test]
-fn the_stub_survives_a_fixture_path_with_a_space() {
-    let script = gate_script();
-    let fx = Fixture::new("ci gate step spaced");
-    assert!(
-        fx.path().to_string_lossy().contains(' '),
-        "the fixture name must reach the path, or this test checks nothing: {}",
-        fx.path().display()
-    );
-    write_variants(&fx, "deployment_mode=air_gapped\n");
-    let (code, text) = run_gate_step_with_codes(&fx, &script, &[3]);
-    assert_eq!(code, 3, "one row, and its refusal is the step's: {text}");
-    assert_eq!(summary_rows(&text).len(), 1, "one gate run: {text}");
-}
-
-/// The same pin for the escaping branch: a path carrying a single quote must not close the quote
-/// in the generated stub. No other fixture (or `TMPDIR`) carries one, so without this the
-/// `'\''` in `run_gate_step_with_codes` would be unpinned.
-#[cfg(unix)]
-#[test]
-fn the_stub_survives_a_fixture_path_with_a_single_quote() {
-    let script = gate_script();
-    let fx = Fixture::new("ci gate step 'quoted'");
-    assert!(
-        fx.path().to_string_lossy().contains('\''),
-        "the fixture name must reach the path: {}",
-        fx.path().display()
-    );
-    write_variants(&fx, "deployment_mode=air_gapped\n");
-    let (code, text) = run_gate_step_with_codes(&fx, &script, &[3]);
-    assert_eq!(code, 3, "one row, and its refusal is the step's: {text}");
-    assert_eq!(summary_rows(&text).len(), 1, "one gate run: {text}");
-}
-
-/// Run the extracted JSON-views step against a stub `req` that records its argv and answers
-/// `emit` on stdout with `code`. Returns the step's exit code, its combined output, and the argv
-/// of every `req` call in order.
-#[cfg(unix)]
-fn run_artifact_step(
-    fx: &Fixture,
-    script: &str,
-    emit: Option<&str>,
-    code: i32,
-) -> (i32, String, Vec<String>) {
+fn stub_req(fx: &Fixture, emit: Option<&str>, code: i32) -> (PathBuf, PathBuf) {
     let bin = fx.join("stub-bin");
     std::fs::create_dir_all(&bin).expect("creates the stub bin directory");
     let argv_log = fx.join("stub-argv");
     let _ = std::fs::remove_file(&argv_log);
-    // The path is interpolated into generated shell, so it must be shell-escaped for a path
-    // containing a single quote as well as a space: `'''` closes, escapes and reopens the quote.
     let argv_sh = argv_log.display().to_string().replace('\'', r"'\''");
     let out_sh = match emit {
         Some(text) => format!("printf '%s\\n' '{}'", text.replace('\'', r"'\''")),
@@ -1338,8 +1009,6 @@ fn run_artifact_step(
         format!(
             "#!/bin/sh\n\
              printf '%s\\n' \"$*\" >> '{argv}'\n\
-             # Consume stdin the way any command might; the step hands `req` its own stdin.\n\
-             cat >/dev/null 2>&1 || true\n\
              {out}\n\
              exit {code}\n",
             argv = argv_sh,
@@ -1351,35 +1020,123 @@ fn run_artifact_step(
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(bin.join("req"), std::fs::Permissions::from_mode(0o755))
         .expect("makes the stub executable");
-    let out = Command::new("bash")
-        .arg("-c")
-        .arg(script)
-        .current_dir(fx.path())
-        .env(
-            "PATH",
-            format!(
-                "{}:{}",
-                bin.display(),
-                std::env::var("PATH").unwrap_or_default()
-            ),
-        )
-        .env_remove("REQ_ROOT")
-        .output()
-        .expect("runs the JSON-views step");
-    let argv = std::fs::read_to_string(&argv_log)
+    (bin, argv_log)
+}
+
+/// What the stub was called with, one entry per call.
+#[cfg(unix)]
+fn argv_of(log: &Path) -> Vec<String> {
+    std::fs::read_to_string(log)
         .unwrap_or_default()
         .lines()
         .map(str::to_string)
-        .collect();
-    (
-        out.status.code().unwrap_or(-1),
-        format!(
-            "{}{}",
-            String::from_utf8_lossy(&out.stdout),
-            String::from_utf8_lossy(&out.stderr)
-        ),
-        argv,
-    )
+        .collect()
+}
+
+/// The release step's status is `req check`'s, whatever it is. The aggregation lives in `req`, so
+/// the shell's whole job is to not disturb the code: 0 stays 0, and 1, 2, 3 — and a code req does
+/// not define at all — come out as they went in. The stub makes every code observable; the real
+/// binary is exercised in `tests/ci_template.rs`.
+#[cfg(unix)]
+#[test]
+fn the_release_step_exits_with_the_checks_exit_whatever_it_is() {
+    let script = check_script();
+    for code in [0, 1, 2, 3, 4, 127] {
+        let fx = Fixture::new("ci-release-step-codes");
+        let (bin, argv) = stub_req(&fx, Some(&format!("verdict: stub {code}")), code);
+        let (got, summary, text) = run_release_step(&fx, &script, &bin);
+        assert_eq!(
+            got, code,
+            "the step must exit {code} as `req check` did:\n{summary}{text}"
+        );
+        assert_eq!(
+            argv_of(&argv),
+            ["check --test-report target/nextest/ci/junit.xml"],
+            "exactly one `req check`, handed the report and nothing narrowing the steps"
+        );
+        assert!(
+            summary.contains(&format!("| {code} | stub {code} |")),
+            "the summary names the exit and the verdict line:\n{summary}"
+        );
+        assert!(
+            text.contains(&format!("verdict: stub {code}")),
+            "the command's own output reaches the log:\n{text}"
+        );
+    }
+
+    // A req that prints no `verdict:` line is named, not summarised as a pass.
+    let fx = Fixture::new("ci-release-step-no-verdict");
+    let (bin, _) = stub_req(&fx, None, 3);
+    let (got, summary, _) = run_release_step(&fx, &script, &bin);
+    assert_eq!(got, 3);
+    assert!(summary.contains("| 3 | no verdict line |"), "{summary}");
+}
+
+/// The generated stub interpolates the fixture path into shell, and so does the step (it writes
+/// its capture under `RUNNER_TEMP`): a path with a space, and one with a single quote, must
+/// survive both. The fixture names carry the character on purpose — and the path is asserted to
+/// carry it, so a later normalisation of fixture names cannot turn these into green no-ops.
+#[cfg(unix)]
+#[test]
+fn the_release_step_survives_a_fixture_path_with_a_space_or_a_quote() {
+    let script = check_script();
+    for (name, needle) in [
+        ("ci release step spaced", ' '),
+        ("ci release step 'quoted'", '\''),
+    ] {
+        let fx = Fixture::new(name);
+        assert!(
+            fx.path().to_string_lossy().contains(needle),
+            "the fixture name must reach the path, or this test checks nothing: {}",
+            fx.path().display()
+        );
+        let (bin, _) = stub_req(&fx, Some("verdict: stub 3"), 3);
+        let (got, summary, text) = run_release_step(&fx, &script, &bin);
+        assert_eq!(got, 3, "the refusal is the step's:\n{summary}{text}");
+        assert!(summary.contains("| 3 | stub 3 |"), "one row:\n{summary}");
+    }
+}
+
+/// The real binary through the real step, on the two list shapes the old shell had to special-case
+/// and `req check` now owns: a comment-only list is the default variant and says so, and a
+/// directory at the path is a pinned list that became unusable — both end as 3 on a corpus with no
+/// report, never as a green step.
+#[cfg(unix)]
+#[test]
+fn the_release_step_runs_the_real_check_against_a_fresh_corpus() {
+    let script = check_script();
+    let bin_dir = req_bin()
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
+
+    let fx = Fixture::new("ci-release-step-real");
+    let init = run_at(fx.path(), &["init"]);
+    assert_eq!(init.code, 0, "{}{}", init.stdout, init.stderr);
+
+    write_variants(&fx, "# nothing declared yet\n");
+    let (code, summary, text) = run_release_step(&fx, &script, &bin_dir);
+    assert_eq!(
+        code, 3,
+        "a comment-only list is the default variant, and a corpus with no report is \
+         UNVERIFIABLE:\n{summary}{text}"
+    );
+    assert!(
+        text.contains("(.req/variants declares no release: the default variant)"),
+        "the default variant is said, not implied:\n{text}"
+    );
+    assert!(
+        !text.contains("verdict: PASS") && !summary.contains("PASS"),
+        "an UNVERIFIABLE run never prints PASS:\n{summary}{text}"
+    );
+
+    std::fs::remove_file(fx.join(".req/variants")).expect("removes the list");
+    std::fs::create_dir_all(fx.join(".req/variants")).expect("a directory at the path");
+    let (code, _, text) = run_release_step(&fx, &script, &bin_dir);
+    assert_eq!(
+        code, 3,
+        "a directory is not a release list, and not 'absent':\n{text}"
+    );
 }
 
 /// The files under `req-views/`, sorted — a capture that wrote nothing must leave nothing, and a
@@ -1395,59 +1152,77 @@ fn view_files(fx: &Fixture) -> Vec<String> {
     names
 }
 
-/// The JSON-views step is the pack's new surface, and the only part of the snippet with real
-/// shell logic that nothing executed: `gate_script` runs the *gate* step, and the byte/pin checks
-/// cannot tell a working `capture` from a broken one. Five behaviours decide whether an agent
-/// reads a verdict or a fabrication:
+/// Run the extracted JSON-views step against a stub `req` that records its argv and answers `emit`
+/// on stdout with `code`. Returns the step's exit code, its combined output, and the argv of every
+/// `req` call in order.
+#[cfg(unix)]
+fn run_artifact_step(fx: &Fixture, emit: Option<&str>, code: i32) -> (i32, String, Vec<String>) {
+    let (bin, argv_log) = stub_req(fx, emit, code);
+    let out = Command::new("bash")
+        .arg("-c")
+        .arg(artifact_script())
+        .current_dir(fx.path())
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                bin.display(),
+                std::env::var("PATH").unwrap_or_default()
+            ),
+        )
+        .env_remove("CARGO_TARGET_DIR")
+        .env_remove("REQ_ROOT")
+        .output()
+        .expect("runs the JSON-views step");
+    (
+        out.status.code().unwrap_or(-1),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        ),
+        argv_of(&argv_log),
+    )
+}
+
+/// The JSON-views step is the part of the snippet with real shell logic that nothing else
+/// executes: the byte/pin checks cannot tell a working `capture` from a broken one. Three
+/// behaviours decide whether an agent reads a verdict or a fabrication:
 ///
-/// 1. every declared release gets its own document, the flag reaches `req` *after* the variant
-///    args (or `gate` would gate nothing), and no `.tmp` survives;
-/// 2. a non-zero command that DID write a document keeps it — the `-s` gate is about bytes,
-///    never a proxy for the exit class;
-/// 3. a command that fails **without writing a document** (the unreadable-corpus shape) leaves
-///    no file at all, and neither does a zero-exit command with empty stdout;
-/// 4. an absent `.req/variants`, or a file whose only line is option-shaped, is the gate step's
-///    red: the views are kept and no bare `gate.json` that could read `pass` is written.
+/// 1. four documents (render, trace, audit and the ONE `req.check/1`), the flag reaches `req`
+///    *after* the command's own args, and no `.tmp` survives;
+/// 2. a non-zero command that DID write a document keeps it — the `-s` gate is about bytes, never
+///    a proxy for the exit class (a document is complete even when its verdict is open);
+/// 3. a command that fails **without writing a document** (the unreadable-corpus shape) leaves no
+///    file at all, and neither does a zero-exit command with empty stdout — and the step knows
+///    how many documents it expects, so the *set* is red.
 #[cfg(unix)]
 #[test]
-fn the_json_views_step_captures_documents_and_never_fabricates_a_gate() {
-    let script = artifact_script();
-
+fn the_json_views_step_captures_four_documents_and_never_fabricates_one() {
     let fx = Fixture::new("ci-json-views");
-    write_variants(&fx, "deployment_mode=air_gapped\nfield=value\n");
-    let (code, text, argv) = run_artifact_step(&fx, &script, Some("{\"verdict\":\"pass\"}"), 0);
+    let (code, text, argv) = run_artifact_step(&fx, Some("{\"verdict\":\"pass\"}"), 0);
     assert_eq!(code, 0, "{text}");
     assert_eq!(
         view_files(&fx),
-        [
-            "audit.json",
-            "gate-1.json",
-            "gate-2.json",
-            "render.json",
-            "trace.json"
-        ],
-        "two declared releases write two gate documents, not one overwritten twice:\n{text}"
+        ["audit.json", "check.json", "render.json", "trace.json"],
+        "one document per view, and ONE for the whole release check:\n{text}"
     );
-    let expected = [
-        "render --format json",
-        "trace --format json",
-        "audit --format json",
-        "gate --test-report target/nextest/ci/junit.xml deployment_mode=air_gapped --format json",
-        "gate --test-report target/nextest/ci/junit.xml field=value --format json",
-    ];
     assert_eq!(
         argv.iter().map(String::as_str).collect::<Vec<_>>(),
-        expected,
-        "`--format json` must come after the variant args, or `gate` selects nothing"
+        [
+            "render --format json",
+            "trace --format json",
+            "audit --format json",
+            "check --test-report target/nextest/ci/junit.xml --format json",
+        ],
+        "`--format json` must come after the command's own args, and `check` reads the report"
     );
 
     let fx = Fixture::new("ci-json-views-open-verdict");
-    write_variants(&fx, "deployment_mode=air_gapped\n");
-    let (code, text, _) =
-        run_artifact_step(&fx, &script, Some("{\"verdict\":\"unverifiable\"}"), 3);
+    let (code, text, _) = run_artifact_step(&fx, Some("{\"verdict\":\"unverifiable\"}"), 3);
     assert_eq!(code, 0, "{text}");
     assert!(
-        fx.join("req-views/gate-1.json").is_file(),
+        fx.join("req-views/check.json").is_file(),
         "a document written under a non-zero exit is complete and must be kept:\n{text}"
     );
 
@@ -1456,8 +1231,7 @@ fn the_json_views_step_captures_documents_and_never_fabricates_a_gate() {
     // upload's `if-no-files-found` would only notice a completely empty directory.
     for (name, code_in) in [("ci-json-views-empty", 3), ("ci-json-views-empty-zero", 0)] {
         let fx = Fixture::new(name);
-        write_variants(&fx, "deployment_mode=air_gapped\n");
-        let (code, text, _) = run_artifact_step(&fx, &script, None, code_in);
+        let (code, text, _) = run_artifact_step(&fx, None, code_in);
         assert_eq!(
             code, 1,
             "{name}: a missing document set is red, whatever the exit class:\n{text}"
@@ -1470,51 +1244,4 @@ fn the_json_views_step_captures_documents_and_never_fabricates_a_gate() {
         assert!(text.contains("NO DOCUMENT"), "{text}");
         assert!(text.contains("incomplete view set"), "{text}");
     }
-
-    for (name, variants) in [
-        ("ci-json-views-no-variants", None),
-        ("ci-json-views-option-line", Some("--help\n")),
-    ] {
-        let fx = Fixture::new(name);
-        if let Some(text) = variants {
-            write_variants(&fx, text);
-        }
-        let (code, text, argv) = run_artifact_step(&fx, &script, Some("{\"verdict\":\"pass\"}"), 0);
-        assert_eq!(code, 0, "{text}");
-        assert_eq!(
-            view_files(&fx),
-            ["audit.json", "render.json", "trace.json"],
-            "{name}: the views are kept, and no gate document is fabricated:\n{text}"
-        );
-        assert!(
-            !argv.iter().any(|call| call.starts_with("gate ")),
-            "{name}: the gate must not be captured beside a red gate step: {argv:?}"
-        );
-    }
-}
-
-/// A release line is a `key=value` context, never an option. `req gate --help` exits 0 having
-/// gated nothing (a help flag wins wherever it appears in argv), so an option-shaped line would
-/// leave the gate step green with no release examined — the false green the whole step exists to
-/// prevent. The loop must reject it before it becomes a gate invocation.
-#[cfg(unix)]
-#[test]
-fn an_option_shaped_release_line_is_red_not_a_green_no_op() {
-    let script = gate_script();
-    let fx = Fixture::new("ci gate option line");
-    write_variants(&fx, "--help\n");
-    let (code, text) = run_gate_step(&fx, &script);
-    assert_eq!(code, 1, "an option-shaped line must be red:\n{text}");
-    assert!(
-        text.contains("release line carries an option"),
-        "the refusal must name the line:\n{text}"
-    );
-    // A file whose only line was rejected declared something and it was malformed: that is not
-    // the "no variants" state, so the bare default is not its fallback. The sticky `rc` keeps
-    // the step red.
-    assert_eq!(
-        summary_rows(&text).len(),
-        0,
-        "nothing was gated, and no bare default was run as a fallback:\n{text}"
-    );
 }

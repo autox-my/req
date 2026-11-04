@@ -1,8 +1,8 @@
 # Committed projections (ADR 0018): one repo-relative path per line, `#` comments, blank lines
-# skipped — the sibling of `.req/variants`, and read by `scripts/check.sh` because req knows
-# nothing about this file.
+# skipped — the sibling of `.req/variants`, and read by `req check` (ADR 0023; an absolute path or a
+# `..` component is a malformed line, exit 2).
 #
-# A **projection** is a document generated from the corpus: `scripts/check.sh` runs
+# A **projection** is a document generated from the corpus: `req check` runs the equivalent of
 # `req render --check <path>` for every path here, and the answer is the file's verdict:
 #
 #   exit 0  current — byte-identical to a fresh projection of this corpus
@@ -10,7 +10,8 @@
 #   exit 3  the check cannot judge — no header, another build's rules_v, an unreproducible
 #           selection, another command's projection, or the corpus cannot be read
 #
-# A listed path that is missing is a FAIL: a projection that vanished is silent decay. The list is
+# A listed path that is missing (or not a regular file) is a FAIL (exit 1, where `render --check`
+# alone says 3): a projection that vanished is silent decay. The list is
 # deliberately small (ADR 0018 §4) — a projection is committed where it is a **deliverable**, not as
 # a cache of every view, and adding a path here is a decision, not an edit.
 #
