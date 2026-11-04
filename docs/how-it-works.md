@@ -30,6 +30,10 @@ flowchart TD
     X --> X2["2 usage"]
 ```
 
+The views at the end of the pipeline are `req canon`, `req select`, `req render`, `req trace`,
+`req impact`, `req compare`, `req gate`, `req baseline`, `req audit` and `req decision`; the one process
+boundary is `req propose`.
+
 The exit contract is tri-state everywhere (PASS / FAIL / UNVERIFIABLE) plus usage. `canon` is diagnostics
 and exits 0 on a flagged pin; the check that gates a pin is `gate` (`pins_hold`).
 

@@ -25,43 +25,81 @@ fn read(rel: &str) -> String {
         .unwrap_or_else(|error| panic!("{} cannot be read: {error}", path.display()))
 }
 
+/// `python3` as an absolute path, resolved before the child's `PATH` is rewritten, so a missing
+/// interpreter is a named environment problem and not a failing check.
+fn python3() -> PathBuf {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    for dir in std::env::split_paths(&path) {
+        let candidate = dir.join("python3");
+        if candidate.is_file() {
+            return candidate;
+        }
+    }
+    panic!("python3 is required for tools/overview/build.py - install it first");
+}
+
 #[test]
 fn the_overview_page_is_current_with_the_tool() {
+    let interpreter = python3();
     let mut entries = vec![req_bin().parent().expect("a parent dir").to_path_buf()];
     entries.extend(std::env::split_paths(
         &std::env::var_os("PATH").unwrap_or_default(),
     ));
     let path = std::env::join_paths(entries).expect("valid PATH");
-    let output = Command::new("python3")
+    let output = Command::new(interpreter)
         .args(["tools/overview/build.py", "--check", "docs/overview.html"])
         .current_dir(root())
         .env("PATH", path)
         .env_remove("REQ_ROOT")
         .output()
         .expect("runs tools/overview/build.py");
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "docs/overview.html is stale or its scenario broke (regenerate with `python3 \
-         tools/overview/build.py --out docs/overview.html`):\n{}{}",
+    let said = format!(
+        "{}{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    match output.status.code() {
+        Some(0) => {}
+        Some(3) => panic!("UNVERIFIABLE, not stale: the generator found no `req` on PATH:\n{said}"),
+        Some(1) => panic!(
+            "docs/overview.html is stale or its scenario broke (regenerate with `python3 \
+             tools/overview/build.py --out docs/overview.html`):\n{said}"
+        ),
+        other => panic!("tools/overview/build.py ended abnormally ({other:?}):\n{said}"),
+    }
 }
 
+/// The page's hand-written prose is the only place an invented metric can come from. Outside the
+/// generated terminal blocks it may carry no percentage, no multiplier and none of the words a
+/// performance claim needs; the numbers it does carry (200 ms, 500 ms) are the scenario's own.
 #[test]
 fn the_overview_page_carries_no_invented_metric() {
     let page = read("docs/overview.html");
+    let mut prose = String::new();
+    let mut rest = page.as_str();
+    while let Some(open) = rest.find("<pre") {
+        prose.push_str(&rest[..open]);
+        let close = rest[open..].find("</pre>").expect("a <pre> closes");
+        rest = &rest[open + close + "</pre>".len()..];
+    }
+    prose.push_str(rest);
+    let prose = prose.replace("&nbsp;", " ").to_lowercase();
     for forbidden in [
-        "% faster",
-        "x faster",
-        "hours saved",
-        "time saved",
-        "reduction in",
+        "%",
+        "\u{d7}",
+        "faster",
+        "slower",
+        "saved",
+        "saves",
+        "less toil",
+        "cuts ",
+        "reduc",
+        "roi",
+        "productiv",
     ] {
         assert!(
-            !page.to_lowercase().contains(forbidden),
-            "the page must not assert a metric the tool did not print: `{forbidden}`"
+            !prose.contains(forbidden),
+            "the page must not assert a metric the tool did not print: found `{forbidden}`"
         );
     }
     assert!(
@@ -70,25 +108,46 @@ fn the_overview_page_carries_no_invented_metric() {
     );
 }
 
+/// The set of `req <command>` code spans the doc opens (flags and placeholders are skipped).
+fn named_commands(text: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    for (at, _) in text.match_indices("`req ") {
+        let word: String = text[at + 5..]
+            .chars()
+            .take_while(char::is_ascii_lowercase)
+            .collect();
+        if !word.is_empty() && !found.contains(&word) {
+            found.push(word);
+        }
+    }
+    found
+}
+
 #[test]
 fn how_it_works_names_only_commands_and_files_that_exist() {
     let text = read("docs/how-it-works.md");
-    let mut commands: Vec<String> = Vec::new();
-    for word in [
+    let commands = named_commands(&text);
+    for expected in [
         "canon", "select", "render", "trace", "impact", "compare", "gate", "baseline", "audit",
         "decision", "propose",
     ] {
-        assert!(text.contains(word), "the doc should mention `{word}`");
-        commands.push(word.to_string());
+        assert!(
+            commands.iter().any(|c| c == expected),
+            "the doc must name `req {expected}` as a code span (found {commands:?})"
+        );
     }
-    for command in commands {
+    for command in &commands {
         let status = Command::new(req_bin())
             .args([command.as_str(), "--help"])
             .env_remove("REQ_ROOT")
             .output()
             .expect("runs req")
             .status;
-        assert_eq!(status.code(), Some(0), "`req {command} --help` must exit 0");
+        assert_eq!(
+            status.code(),
+            Some(0),
+            "`req {command} --help` must exit 0: the doc names it"
+        );
     }
     for referenced in [
         "docs/overview.html",
