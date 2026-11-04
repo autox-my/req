@@ -275,6 +275,10 @@ fn the_direction_gold_set_meets_its_accuracy_target() {
         "a dangerous direction confusion is the analogue of a false merge: {:?}",
         evaluation.dangerous
     );
+    // Only `as_conversions` is expected on these ratios, deliberately: clippy does not report
+    // `float_arithmetic` inside test code, and an `#[expect(clippy::float_arithmetic)]` here is itself
+    // an error ("this lint expectation is unfulfilled", checked under `-D warnings`). The same
+    // division in `src/bench.rs` is outside test code and does need both.
     #[expect(
         clippy::as_conversions,
         reason = "a test's own ratio over corpus counts; the counts are far below 2^53, so the cast is exact"
