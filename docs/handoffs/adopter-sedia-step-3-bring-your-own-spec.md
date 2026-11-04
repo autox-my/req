@@ -14,16 +14,20 @@ REQ PIN     1e5fa60. Precheck, before any other command: `req --version` must sh
             claim_schema req.claim/2, rules_v 6 and built from 1e5fa60. If it does not, stop and
             report what it shows. Do not install, rebuild or work around it. (The human installs it:
             docs/adopting.md § Install req.)
-INPUT       docs/capabilities.md. Its nine claims are the rows of the "## The claims" table, ids
-            REQ-0001 .. REQ-0009, statement in the second column.
-DONE WHEN   `req canon` exits 0 and its last line begins `claims: 9 (`; claims/REQ-0001.yml ..
-            claims/REQ-0009.yml exist and each one's claim_id equals the id in its table row.
+INPUT       docs/capabilities.md at sedia main 7de5136 (PR #107) or later: `git pull --ff-only` first and
+            say which commit you worked from. At 7de5136 it holds FIFTEEN claims: the rows of the first
+            table under "## The claims", ids REQ-0001 .. REQ-0015, statement in the second column.
+            The file has a second table (`was | is now`, ADR-0021's split record): it is NOT claims.
+            Count the claim rows yourself; if the count is not 15, report it before drafting.
+DONE WHEN   `req canon` exits 0 and its last line begins `claims: <N> (` where N is the number of claim rows
+            you counted (15 at 7de5136); claims/REQ-0001.yml .. claims/REQ-<N>.yml exist and each
+            one's claim_id equals the id in its table row.
 MAY NOT     the prohibitions in examples/agents-snippet.md (req's repo). In particular: no `pins:`
             (a human pins a bound after reading the parse), no edit of a statement to make its parse
             nicer, no `req gate`, no Baseline. An exit 3 is not a pass: report it.
 COMMANDS    `req --help` lists them; `req <command> --help` is the contract and its `exit:` line.
 REPORT      every req command you ran, its exit code, its first and last output line; the dry run of
-            the extractor in full; any exit 3 verbatim; the 9 id->statement pairs as drafted; then
+            the extractor in full; any exit 3 verbatim; every id->statement pair as drafted (15 at 7de5136); then
             stop. Do not start the next step.
 ```
 
@@ -35,10 +39,11 @@ These are the points where sedia differs from `docs/adopting.md`'s example. Each
 1. **The source is a table, and `tools/adopt.py` has no table convention.** It reads `bullets` and
    `req-lines` only. `adopting.md` says to copy the tool out of req's checkout at the pinned rev and adjust
    it: copy it to sedia's `tools/adopt.py` and add a third convention (for example `table`: each row
-   under `## The claims` whose first cell is `**REQ-<nnnn>**`; the statement is the second cell). Follow
+   under `## The claims` whose first cell is `**REQ-<nnnn>**`; the statement is the second cell). The `was | is now` table that follows it is under the same heading and its first cells
+   are not `**REQ-<nnnn>**`: the convention must draft nothing from it, and a fixture should pin that. Follow
    sedia's TDD rule (`AGENTS.md`): write the failing fixture test first, with an independent oracle (the
-   nine rows counted by hand), and mutation-check it. Do not edit req's copy.
-2. **Keep sedia's ids.** sedia's documents cite REQ-0001 .. REQ-0009, and `adopt.py` ignores source ids
+   the claim rows counted by hand, 15 at 7de5136), and mutation-check it. Do not edit req's copy.
+2. **Keep sedia's ids.** sedia's documents cite REQ-0001 .. REQ-0015, and `adopt.py` ignores source ids
    and allocates the next free `REQ-NNNN`. `req init` writes a **starter claim `claims/REQ-0001.yml`** (a
    placeholder about a health check; its rationale source is `docs/requirements.md`, which sedia does not
    have). Delete that one file after `req init` (keep `claims/README.md` and `aliases/subjects.yml`), so
@@ -49,19 +54,19 @@ These are the points where sedia differs from `docs/adopting.md`'s example. Each
 3. **Strip the markup, keep the words.** A cell like `The copilot **shall read** every submitted
    document before judging it.` becomes `The copilot shall read every submitted document before judging
    it.` Remove only `**` and the surrounding table pipes and spaces; do not paraphrase, shorten or fix
-   wording (REQ-0006's four sources and REQ-0009's two halves stay as written). The statement is the
+   wording (REQ-0006's four sources and REQ-0015's disclosure obligation stay as written). The statement is the
    source of truth and its parse is derived, so the wording is the human's.
 4. **The columns `shape` and `status` are not part of the claim.** They are provenance for the human; do
    not copy them into the claim file. The rationale source is `docs/capabilities.md#L<n>` (the tool
    records the line) and the date is the commit date of that file or the explicit `--date` you are given.
    Statuses of "not implemented" or "partly" are expected and are not a defect at this step.
-5. **Run a dry run first** and put it in the report; `--write` only if the dry run shows nine drafts, no
-   skips you cannot explain, and ids 0001..0009. The tool never overwrites and refuses a document already
+5. **Run a dry run first** and put it in the report; `--write` only if the dry run shows exactly the claim rows you
+   counted as drafts (15 at 7de5136), no skips you cannot explain, and ids 0001..0015. The tool never overwrites and refuses a document already
    drafted.
 
 ## After the report (the human's, not the agent's)
 
-Read the nine derived parses in `req canon`'s output. Where a statement derives something the author did
+Read the derived parses (one per claim) in `req canon`'s output. Where a statement derives something the author did
 not mean, re-word the statement. Where a bound is load-bearing (REQ-0006's four sources, for example) add
 a pin deliberately, and never edit a pin to fit a parse. Giving each claim a test link, a first
 `req gate`, and a Baseline are separate later steps; sedia's own document defers the Baseline until
