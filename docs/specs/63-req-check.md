@@ -39,8 +39,8 @@ exit, unrun loop after a failed redirect, last release line dropped). The fold i
      report is loaded once and shared.
    - **Projection steps:** absent `.req/projections` → print `projections: none pinned (.req/projections
      absent; nothing to check)`, no step. Present: unreadable or not a regular file → exit 3; zero paths →
-     exit 1 (`pins no projection: nothing was checked`); a path that does not exist → that step is exit 1
-     (`missing`); otherwise the step's exit is exactly `req render --check <path>`'s, by calling the code
+     exit 1 (`pins no projection: nothing was checked`); a path that does not exist, or exists and is not a regular file (never open a FIFO) → that step is
+     exit 1 (`missing` / `not a regular file` — the ADR 0023 §4 exception: `render --check` answers 3 there); otherwise the step's exit is exactly `req render --check <path>`'s, by calling the code
      `render --check` calls.
    - **Fold:** FAIL outranks UNVERIFIABLE outranks PASS over all steps. Implement it as one small pure
      function over step exits (`fold(&[i32]) -> i32`) with a unit test of every combination of 0/1/3 for
@@ -67,7 +67,7 @@ exit, unrun loop after a failed redirect, last release line dropped). The fold i
    comments, blank lines, CRLF, a final line without a newline, a tab-separated line, a `*` in a value
    (not globbed) — each decided as `scripts/check.sh` decides it; (h) an option-shaped variants line and a
    token without `=` → 2, nothing gated (the output holds no `[PASS]` line); a two-word projections line →
-   2; (i) `.req/variants` is a directory / a dangling symlink → 3; (j) projections: absent → `none
+   2; (i) `.req/variants` is a directory / a dangling symlink → 3; (j) projections: absent (JSON `projections_pinned` false) → `none
    pinned`; a stale file → 1; a missing path → 1; a comment-only list → 1; a `trace` projection listed →
    3 (as `render --check` answers); (k) `--format json` is `req.check/1`, its verdict and the process exit
    agree, and a gate step embeds a document equal to the one `req gate --format json` prints for that

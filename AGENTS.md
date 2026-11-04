@@ -74,6 +74,7 @@ surprises you. Run as `cargo run -q -- <command>`.
 | `render`, `trace` | the spec view, the traceability matrix (projections; `--out` / `--check`) |
 | `impact <id>` | what depends on a claim, nearest first |
 | `gate` | may this selection ship (six policies, tri-state) |
+| `check` | may this repository ship: every declared variant and projection, folded (ADR 0023) |
 | `baseline` | the manifest a human signs; verify one (req never signs) |
 | `audit` | the audit packet: coverage, provenance, undecided |
 | `decision` | the decision log and its hash chain |

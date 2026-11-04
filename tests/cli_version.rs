@@ -326,8 +326,8 @@ fn bare_req_and_unknown_arguments_stay_usage_errors() {
 /// the tool advertises. It exists because two tests need a concrete list (the mutation
 /// `init` case is outside the table, and a loop that ran zero times would pass silently).
 const ALL_COMMANDS: &[&str] = &[
-    "audit", "baseline", "bench", "canon", "compare", "decision", "gate", "impact", "init",
-    "propose", "render", "select", "trace",
+    "audit", "baseline", "bench", "canon", "check", "compare", "decision", "gate", "impact",
+    "init", "propose", "render", "select", "trace",
 ];
 
 /// The page `<command> --help` prints, or a failure that names the command and its output.
@@ -973,6 +973,21 @@ const MOVED_CONTRACTS: &[(&str, &[&str])] = &[
             "signer-asserted",
             "`valid_from` is recorded but not enforced",
             "fails closed on every envelope",
+        ],
+    ),
+    (
+        "check",
+        &[
+            "ONE verdict",
+            "A step's exit is the command's exit",
+            "a defect (1) outranks",
+            "Absence is not silence",
+            "a deleted list cannot turn green",
+            "validated before anything runs",
+            "no `--only`",
+            "no flag that narrows",
+            "`req.check/1`",
+            "2 usage or a malformed list",
         ],
     ),
     ("audit", &["nothing is ratified"]),

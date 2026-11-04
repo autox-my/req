@@ -497,10 +497,10 @@ pub fn exit_code(results: &[PolicyResult], undecided: usize) -> i32 {
 /// One policy, as the JSON document carries it. `details` is the offenders list: the claims that
 /// decided the outcome, never the policy's prose description.
 #[derive(Serialize)]
-struct PolicyDocument<'a> {
-    policy: &'a str,
-    outcome: &'a str,
-    details: &'a [String],
+struct PolicyDocument {
+    policy: &'static str,
+    outcome: &'static str,
+    details: Vec<String>,
     /// `pins_hold` only: the number of pins judged. Absent for every other policy.
     #[serde(skip_serializing_if = "Option::is_none")]
     checked: Option<usize>,
@@ -517,24 +517,27 @@ struct UndecidedDocument {
 /// the undecided claims. The
 /// verdict is computed from the same `exit_code` the command returns, so the document and the
 /// process cannot disagree.
+///
+/// Owned, so an evaluation can hand it to a caller that embeds it (`req check`, ADR 0023 §6) after
+/// the rows it was built from are gone.
 #[derive(Serialize)]
-struct GateDocument<'a> {
+pub struct GateDocument {
     schema: &'static str,
     generator: &'static str,
     rules_v: u32,
-    selection: &'a Context,
+    selection: Context,
     verdict: &'static str,
-    policies: Vec<PolicyDocument<'a>>,
+    policies: Vec<PolicyDocument>,
     /// Claims whose evidence is an explicit process declaration (ADR 0019), sorted. They pass as
     /// declared and are named here so a consumer cannot mistake the machine count for the whole
     /// answer.
-    process_evidenced: &'a [String],
+    process_evidenced: Vec<String>,
     undecided: Vec<UndecidedDocument>,
 }
 
 /// The word for a verdict code: one mapping, used for the document only — the text report keeps
 /// its own longer explanation.
-fn verdict_word(code: i32) -> &'static str {
+pub(crate) fn verdict_word(code: i32) -> &'static str {
     match code {
         0 => "pass",
         1 => "fail",
@@ -635,23 +638,60 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     let loaded_report = test_report
         .as_deref()
         .map(|path| crate::junit::Report::load(std::path::Path::new(path)));
-    let evidence = match &loaded_report {
-        None => TestEvidence::Absent,
-        Some(Err(reason)) => TestEvidence::Unreadable(reason),
-        Some(Ok(report)) => TestEvidence::Report(report),
-    };
-    let rows = match crate::view::load_rows(&context, root) {
-        Ok(rows) => rows,
+    let evidence = report_evidence(&loaded_report);
+    let evaluation = match evaluate_selection(context, root, evidence) {
+        Ok(evaluation) => evaluation,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
             return 3;
         }
     };
-    let applying = rows.iter().filter(|r| r.applies == Applies::Yes).count();
-    let undecided: Vec<&str> = rows
+    if format == Format::Json {
+        println!("{}", format::document(&evaluation.document));
+        return evaluation.code;
+    }
+    print_text(&evaluation);
+    evaluation.code
+}
+
+/// The evidence a loaded (or never requested) test report supplies to `tests_linked`: one mapping,
+/// shared by `req gate` and `req check`, so the two cannot read a report differently.
+pub fn report_evidence(loaded: &Option<Result<crate::junit::Report, String>>) -> TestEvidence<'_> {
+    match loaded {
+        None => TestEvidence::Absent,
+        Some(Err(reason)) => TestEvidence::Unreadable(reason),
+        Some(Ok(report)) => TestEvidence::Report(report),
+    }
+}
+
+/// Everything one gate invocation decided, computed without printing: the single evaluation `req
+/// gate` renders and `req check` folds (ADR 0023 §4 — a step is this code, never a copy of it).
+pub struct Evaluation {
+    pub context: Context,
+    pub rows: Vec<Row>,
+    pub results: Vec<PolicyResult>,
+    /// The folded exit, from [`exit_code`]: 0, 1 or 3.
+    pub code: i32,
+    /// The claims the invocation left undecided, in corpus order.
+    pub undecided: Vec<String>,
+    /// The process-evidenced claims, sorted and deduplicated.
+    pub process_evidenced: Vec<String>,
+    /// The `req.gate/2` document, built once from the same results the code was folded from.
+    pub document: GateDocument,
+}
+
+/// Select over the corpus, evaluate every policy and fold the exit. `Err` is a corpus that will
+/// not load — the caller owns how that is reported (`gate` prints it and exits 3).
+pub fn evaluate_selection(
+    context: Context,
+    root: &std::path::Path,
+    evidence: TestEvidence<'_>,
+) -> Result<Evaluation, String> {
+    let rows = crate::view::load_rows(&context, root)?;
+    let undecided: Vec<String> = rows
         .iter()
         .filter(|r| r.applies == Applies::Unknown)
-        .map(|r| r.claim_id.as_str())
+        .map(|r| r.claim_id.clone())
         .collect();
     // Evaluated once, before either rendering: the verdict is the same fold in both, and the
     // exit code is returned from it in both.
@@ -665,30 +705,48 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         .collect();
     process_evidenced.sort();
     process_evidenced.dedup();
-    if format == Format::Json {
-        let document = GateDocument {
-            schema: SCHEMA_GATE,
-            generator: "gate",
-            rules_v: RULES_V,
-            selection: &context,
-            verdict: verdict_word(code),
-            policies: results
-                .iter()
-                .map(|result| PolicyDocument {
-                    policy: result.name,
-                    outcome: result.outcome.as_json(),
-                    details: &result.offenders,
-                    checked: result.checked,
-                })
-                .collect(),
-            // A process declaration is an answer, so it is not an offender; it is still a fact a
-            // consumer must see, and it is named rather than only counted (ADR 0019).
-            process_evidenced: &process_evidenced,
-            undecided: undecided_document(&rows, &context),
-        };
-        println!("{}", format::document(&document));
-        return code;
-    }
+    let document = GateDocument {
+        schema: SCHEMA_GATE,
+        generator: "gate",
+        rules_v: RULES_V,
+        selection: context.clone(),
+        verdict: verdict_word(code),
+        policies: results
+            .iter()
+            .map(|result| PolicyDocument {
+                policy: result.name,
+                outcome: result.outcome.as_json(),
+                details: result.offenders.clone(),
+                checked: result.checked,
+            })
+            .collect(),
+        // A process declaration is an answer, so it is not an offender; it is still a fact a
+        // consumer must see, and it is named rather than only counted (ADR 0019).
+        process_evidenced: process_evidenced.clone(),
+        undecided: undecided_document(&rows, &context),
+    };
+    Ok(Evaluation {
+        context,
+        rows,
+        results,
+        code,
+        undecided,
+        process_evidenced,
+        document,
+    })
+}
+
+/// The text rendering of one evaluation — the bytes `req gate` has always printed.
+fn print_text(evaluation: &Evaluation) {
+    let Evaluation {
+        rows,
+        results,
+        code,
+        undecided,
+        process_evidenced,
+        ..
+    } = evaluation;
+    let applying = rows.iter().filter(|r| r.applies == Applies::Yes).count();
     println!(
         "# Release gate: {applying} applying claim(s), {} undecided \
          (an undecided claim is never treated as absent)",
@@ -766,7 +824,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             );
         }
     }
-    for result in &results {
+    for result in results {
         println!("\n[{}] {}", result.outcome.as_str(), result.name);
         println!("  {}", result.detail);
         for offender in &result.offenders {
@@ -789,11 +847,10 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     }
     println!(
         "\nverdict: {}",
-        match code {
+        match *code {
             0 => "PASS — every policy settled in the affirmative, and every claim was decided",
             1 => "FAIL — a defect in a claim this variant includes",
             _ => "UNVERIFIABLE — nothing is wrong, but something cannot be confirmed",
         }
     );
-    code
 }

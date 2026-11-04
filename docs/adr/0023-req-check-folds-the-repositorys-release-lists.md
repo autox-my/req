@@ -32,7 +32,8 @@ where it can be tested once.
 2. **The grammar is req's now, and unchanged.** It is the grammar both files already document and
    `scripts/check.sh` implements: `#` starts a comment, an empty line is skipped, a trailing CR is
    stripped, a line is split on whitespace with no pathname expansion, a final line without a newline
-   counts. A variants line is `key=value` words, never an option; a projections line is exactly one path.
+   counts. A variants line is `key=value` words, never an option; a projections line is exactly one path, relative to the corpus root (an absolute path or a `..`
+   component is malformed: the list is repository content and must not point outside it).
    `req check` adds **no** key, no section and no third file. What a line *means* stays what it meant:
    a complete release context for `req gate`, and a path for `req render --check`.
 3. **Absence is not silence.** No `.req/variants` declares the default variant — one bare `req gate` — and
@@ -45,7 +46,9 @@ where it can be tested once.
    path is exit 1.
 4. **A step's exit is the command's exit.** A variant step exits exactly as `req gate --test-report <file>
    <line>` would, and a projection step exactly as `req render --check <path>` would; `check` calls the
-   same code, it does not re-implement a policy or shell out. Its text and JSON say which step produced
+   same code, it does not re-implement a policy or shell out. **One stated exception:** a listed projection
+   path that does not exist or is not a regular file is exit 1 (§3), where `render --check` can only say it
+   cannot read the file (3). The listing is what makes its absence a defect, and a FIFO is never opened. Its text and JSON say which step produced
    which exit; the folded exit never hides one.
 5. **Its green is a release PASS only because every step ran.** `req check` prints `verdict: PASS` only
    when every declared step ran and passed, and it never prints PASS for a subset: there is no

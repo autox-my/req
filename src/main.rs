@@ -12,6 +12,9 @@
 //!   req [--root <dir>] impact <claim-id>   — what depends on that claim, transitively
 //!   req [--root <dir>] gate [--format text|json] k=v [...]
 //!                                          — may this selection ship? (policies over applying claims)
+//!   req [--root <dir>] check [--test-report F] [--format text|json]
+//!                                          — may this repository ship? every declared variant and
+//!                                            projection, folded into one verdict (ADR 0023)
 //!   req [--root <dir>] propose <a.yml> <b.yml> [--provider-cmd <cmd>]
 //!                                          — one pair put to a provider: an unratified proposal
 //!   req [--root <dir>] baseline --at <ts> [--out F] — emit the canonical manifest a human signs (ADR 0016)
@@ -39,8 +42,8 @@
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
 use req::{
-    audit, baseline, bench, canon, compare, decision, gate, impact, init, propose, root, select,
-    view,
+    audit, baseline, bench, canon, check, compare, decision, gate, impact, init, propose, root,
+    select, view,
 };
 use std::path::Path;
 use std::process::exit;
@@ -56,6 +59,8 @@ usage: req [--root <dir>] <command> [args]
   compare <a.yml> <b.yml>         what kind of change is this between two claims?
   select | render | trace | gate k=v [...]
                                   the variant projections and the release gate
+  check [--test-report <file>]    may this repository ship: every declared variant and projection,
+                                  folded into one verdict (ADR 0023)
   impact <claim-id>               what depends on that claim, transitively
   init                            create a corpus in the current directory (no root lookup)
   propose <a.yml> <b.yml>         one pair put to a provider: an unratified proposal (ADR 0021)
@@ -319,6 +324,49 @@ with the remedy; 2 usage. Fail outranks Unverifiable, and an undecided claim out
 
 `docs/adopting.md` for the loop.";
 
+const CHECK_HELP: &str = "\
+usage: req check [--test-report <file>] [--format text|json]
+
+May this repository ship? Reads the two release lists beside the corpus — `.req/variants` and
+`.req/projections` — runs one step per line and folds them into ONE verdict, so an adopter's
+gate is this command and not a shell loop that has to get the fold right.
+
+`.req/variants`: one complete release context per line, `key=value` words, run as `req gate
+--test-report <file> <line>`; the test report is read once and shared. `.req/projections`: one
+repo-relative path per line, run as `req render --check <path>`. The grammar is the same for
+both: `#` starts a comment, an empty line is skipped, a trailing CR is stripped, a line is split
+on blanks with no pathname expansion (a `*` in a value is data), and a final line without a
+newline counts. A variants line is never an option, a word without `=` or an empty key; a
+projections line is exactly one repo-relative path (no absolute path, no `..`). Both lists are validated before anything runs: a
+malformed line is exit 2 naming `<file>:<line>`, and nothing was gated.
+
+A step's exit is the command's exit — the same code runs, no policy is copied and nothing is
+shelled out — and the output says which step produced which exit. The fold is the gate's:
+a defect (1) outranks something that cannot be confirmed (3), which outranks a pass (0).
+
+Absence is not silence. No `.req/variants`, or one with no line in it, is the default variant
+(one bare gate) and says so on its own line; on a corpus carrying a selector that gate is 3, so
+a deleted list cannot turn green. A list that exists and cannot be read as a regular file (a
+directory, a dangling link, a FIFO, a mode-000 file) is 3, never \"absent\". No
+`.req/projections` checks no projection and says `projections: none pinned`; a listed path that
+does not exist or is not a regular file is 1 (a projection that vanished is silent decay; this is the
+one step whose exit differs from `render --check`'s, which can only say 3), and a present list that yields
+no path is 1.
+
+`verdict: PASS` is printed only when every declared step ran and passed. There is no `--only`,
+no `--skip` and no flag that narrows what is examined. `--format json` prints one `req.check/1`
+document on stdout — the folded verdict and, per step, its kind, its line or path, its exit and,
+for a gate step, the whole `req.gate/2` document — with the same fold and the same exit as the
+text.
+
+exit: 0 every declared step ran and passed; 1 a defect in any step (a gate that fails, a stale or
+missing projection, a list that pins nothing); 3 UNVERIFIABLE (a step that cannot be confirmed —
+an undecided claim, a missing test report, a list that exists and cannot be read, a projection
+`render --check` cannot judge); 2 usage or a malformed list, decided before any step runs.
+Fail outranks Unverifiable.
+
+`docs/adopting.md` for the loop.";
+
 const IMPACT_HELP: &str = "\
 usage: req impact <claim-id> [key=value ...]
 
@@ -479,6 +527,11 @@ const COMMANDS: &[Command] = &[
         name: "gate",
         run: |args, corpus| gate::run(args, corpus),
         help: GATE_HELP,
+    },
+    Command {
+        name: "check",
+        run: |args, corpus| check::run(args, corpus),
+        help: CHECK_HELP,
     },
     Command {
         name: "propose",
