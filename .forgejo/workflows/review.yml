@@ -167,6 +167,14 @@ jobs:
             # The gate blocks only critical/high, so the price is reviewer attention on sharper-but-noisier
             # mediums/lows — plus the risk of a spurious blocking finding. If a clean diff ever produces a
             # critical/high, suspect this line first.
+            # **`--max-tools 150`: measured, not assumed.** Two of the seven reviews of PR #91 ended
+            # `partial` (a check that fails with no finding to read). The run manifest named why: the
+            # largest files (src/model.rs, src/lib.rs, src/init.rs, tools/adopt.py) each hit
+            # "reached the maximum tool-request rounds without finishing" (classification `budget`),
+            # not the time budget (the runs took 750-870s of the 15-20 minutes allowed). The CLI's
+            # per-file default is its template's (minimum 50); 150 gives a big file room to finish.
+            # `--timeout 30` is raised with it, since more rounds can take more time. If a review is
+            # still `partial`, read `coverage.failed` in the session's `session_end` record (AGENTS.md).
             # .forgejo diffs are reviewed in this job (the rule file's trust-material checklist applies); the bench exclusions are for generated corpora reviewed through their generator.
             if ocr review \
                  --from origin/main \
@@ -176,7 +184,8 @@ jobs:
                  --rule "$RULE" \
                  --effort low \
                  --no-filter \
-                 --timeout 20 \
+                 --max-tools 150 \
+                 --timeout 30 \
                  --exclude 'bench/corpus/**,bench/results/**'; then
               exit 0
             fi

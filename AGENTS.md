@@ -104,7 +104,10 @@ runner, CT 114 (`lxc-ci`) on Proxmox host `pve`, as user `forgejo-runner`, one s
 (`pct exec 114 -- …`): ask before assuming it, **read only**, and never open `~forgejo-runner/.npmrc` or the
 runner's config (tokens). A session's first line names the commit (`"diffTo":"<sha>"`); read each
 `review_item_done` record's `comments` (`severity`, `path`, `start_line`, `content`) with `python3` run through
-`pct exec`; `session_end` carries `llm_failures` and `run_manifest.terminal_state` (an incomplete review fails).
+`pct exec`; `session_end` carries `llm_failures` and `run_manifest.terminal_state` (an incomplete review fails). A
+`partial` one names its failed files in `run_manifest.coverage.failed` with a `classification` (`budget`
+= a file hit the per-file tool-round cap, `--max-tools` in `review.yml`) and a `reason`; that, and not
+a finding, is why a check can be red with nothing to fix.
 
 ## Where things live
 - `README.md` front page (consistent with this file); `CONTEXT.md` glossary; `docs/adopting.md` the one adopter page,
