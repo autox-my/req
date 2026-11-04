@@ -212,10 +212,14 @@ bytes a signature covers — and **req never signs**: the signature is the human
 reach would prove nothing (ADR 0010). A manifest with no valid signature over it is *not yet a Baseline*,
 and verification says so.
 
+Use `--out <file>`, not a shell redirect (`> file`): the shell truncates the target before `req` runs, so a
+refusal (an older `req`, an absent decision log) leaves an empty file that `minisign -Sm` will sign without complaint.
+`--out` writes a temp file and renames it, so a refusal leaves whatever was there, and exits non-zero.
+
 ```bash
-req baseline --at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > baselines/release.json
-                                                # the timestamp is YOUR assertion; the manifest goes to
-                                                # stdout, and the resolved `corpus root:` line to stderr
+req baseline --at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --out baselines/release.json
+                                                # the timestamp is YOUR assertion; the file is written only
+                                                # once the manifest is complete
 minisign -Sm baselines/release.json             # signs it; prompts for the secret key's passphrase
 req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not yet a Baseline" before
 ```
