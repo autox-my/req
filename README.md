@@ -42,6 +42,7 @@ identity ([ADR 0020](docs/adr/0020-the-address-is-a-meaning-fingerprint.md), acc
 | `req init` | start a corpus here — a starter claim whose pins hold, its registry, and the authoring README |
 | `req canon` | what each claim's statement derives, and whether each of its pins holds |
 | `req bench` | does the fingerprint hold — zero false merges over the corpora; exit non-zero and the build is red |
+| `req diff` | what changed in meaning between two revisions — each claim's class and flags, and an opt-in exit 1 for a pull request |
 | `req select` | which claims apply in a variant — selectors, not branches — with UNKNOWN as a first-class answer |
 | `req render`, `req trace` | the compiled spec view, and the traceability matrix with every edge named |
 | `req impact`, `req gate` | what a change touches, nearest first, and the release policies |

@@ -1,0 +1,195 @@
+# req diff on a pull request (ADR 0026): what changed in MEANING between the base branch and this
+# change -- which obligations were added, removed, weakened, tightened or reshaped, whether a pin was
+# edited or a linked test dropped -- as a description, never a verdict. Copy this file to
+# `.github/workflows/req-diff.yml` (GitHub) or `.forgejo/workflows/req-diff.yml` (Forgejo). It sits
+# beside req.yml (the release check, `req check`); it replaces nothing in it.
+#
+# `--fail-on` names the movements that block a merge. Nothing blocks by default; the set below is
+# the recommended start, and an unlisted class is still printed. `weakened` is a prompt for a human
+# to read the change, not a rejection by req. The direction quality is `req compare`'s.
+#
+# The base revision must be in the checkout: `fetch-depth: 0` below is required, because with a
+# shallow clone `origin/<base>` is missing and `req diff` is exit 3 (UNVERIFIABLE), never a quiet
+# empty report. `git` must be on the runner. Nothing is fetched by req.
+name: req-diff
+on:
+  pull_request:
+jobs:
+  meaning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The install (ADR 0025): a prebuilt, checksummed binary, pinned in THIS file. Edit the three
+      # pin lines at the top of the script below -- the rev and the SHA-256 of each target's tarball;
+      # take them from the `.sha256` assets of the release the first time, and this file is the
+      # authority from then on -- and set the `REQ_RELEASE_TOKEN` secret to a token that can read the
+      # release host. The token replaces the SSH key and the toolchain for req, not the need for a
+      # credential. A refusal (wrong hash, unknown rev, wrong binary) fails this step and nothing
+      # falls back to a source build; req's own claim operations need no network.
+      - name: req, installed from the prebuilt binary pinned below
+        env:
+          REQ_RELEASE_TOKEN: ${{ secrets.REQ_RELEASE_TOKEN }}
+        run: |
+          REV='<placeholder: the rev of the release you pin, e.g. abc1234 -- fill in after the first release>'
+          SHA256_x86_64_unknown_linux_gnu='<placeholder: 64 hex digits from the release asset req-REV-x86_64-unknown-linux-gnu.tar.gz.sha256>'
+          SHA256_aarch64_apple_darwin='<placeholder: 64 hex digits from the release asset req-REV-aarch64-apple-darwin.tar.gz.sha256>'
+          set -eu
+
+          # Every refusal goes through here: one line naming the cause, and the rule that there is no fallback.
+          fail() {
+            printf 'install-req: %s\n' "$*" >&2
+            printf 'install-req: refused. There is no automatic fallback to a source install (docs/adopting.md).\n' >&2
+            exit 1
+          }
+
+          # The target comes first: a platform that cannot be installed cannot be fixed by a pin.
+          platform=$(uname -sm)
+          case $platform in
+            'Linux x86_64')
+              target=x86_64-unknown-linux-gnu
+              pin=${SHA256_x86_64_unknown_linux_gnu:-}
+              ;;
+            'Darwin arm64')
+              target=aarch64-apple-darwin
+              pin=${SHA256_aarch64_apple_darwin:-}
+              ;;
+            *)
+              fail "unsupported platform: $platform (supported: Linux x86_64, Darwin arm64)"
+              ;;
+          esac
+
+          # A placeholder, a typo or an empty pin is a refusal before any request is made.
+          case $REV in
+            '' | *[!0-9a-f]*) fail "the pin table has no usable REV (a bare lower-case hex SHA of 7 to 40 digits); fill it in from the release" ;;
+          esac
+          if [ "${#REV}" -lt 7 ] || [ "${#REV}" -gt 40 ]; then
+            fail "the pin table has no usable REV (a bare lower-case hex SHA of 7 to 40 digits); fill it in from the release"
+          fi
+          if [ -z "$pin" ]; then
+            fail "no pin for target $target: fill in its SHA-256 in the pin table, or install on a supported machine"
+          fi
+          case $pin in
+            *[!0-9a-f]*) fail "the pin table's SHA-256 for $target is not 64 lower-case hex digits; fill it in from the release's .sha256 asset" ;;
+          esac
+          if [ "${#pin}" -ne 64 ]; then
+            fail "the pin table's SHA-256 for $target is not 64 lower-case hex digits; fill it in from the release's .sha256 asset"
+          fi
+
+          if [ -z "${REQ_RELEASE_TOKEN:-}" ]; then
+            fail "REQ_RELEASE_TOKEN is not set: set it (a CI secret) to a token with read access to the release host"
+          fi
+          for tool in curl tar; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              fail "$tool is required and was not found on PATH"
+            fi
+          done
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha_tool=sha256sum
+          elif command -v shasum >/dev/null 2>&1; then
+            sha_tool=shasum
+          else
+            fail "a SHA-256 tool (sha256sum or shasum) is required and was not found on PATH"
+          fi
+
+          dir=${REQ_INSTALL_DIR:-$HOME/.local/bin}
+          mkdir -p "$dir"
+          # Staged inside the install directory: the same filesystem (the final move is a rename) and a
+          # place that is known to allow execution. Removed on every exit, so a refusal leaves nothing.
+          stage=$(mktemp -d "$dir/.req-install.XXXXXX")
+          trap 'rm -rf "$stage"' EXIT
+
+          base=${install_base:-https://git.xantu-barb.ts.net/fdx/req/releases/download}
+          proto=${install_proto:-=https}
+          asset=req-$REV-$target.tar.gz
+          url=$base/rev-$REV/$asset
+
+          # The header is built by the shell builtin `printf` and read by curl from stdin: the token is
+          # never in an argument list (`ps`), and nothing here is traced.
+          status=0
+          code=$(printf 'Authorization: token %s\n' "$REQ_RELEASE_TOKEN" |
+            curl --proto "$proto" --tlsv1.2 -fsSL -H @- -o "$stage/$asset" -w '%{http_code}' "$url") || status=$?
+          case $code in
+            2??)
+              if [ "$status" -ne 0 ]; then
+                fail "download failed (curl exit $status) for $url"
+              fi
+              ;;
+            401 | 403)
+              fail "HTTP $code for $url: the host refused the token; check that REQ_RELEASE_TOKEN is valid and can read the release"
+              ;;
+            404)
+              fail "HTTP 404 for $url: there is no release rev-$REV for $target, or the token cannot see it (a private host answers 404 for both); check REV and REQ_RELEASE_TOKEN"
+              ;;
+            *)
+              fail "HTTP $code (curl exit $status) for $url"
+              ;;
+          esac
+
+          # Verified against the PIN above, never against a checksum fetched from the release.
+          sha_ok() {
+            if [ "$sha_tool" = sha256sum ]; then
+              printf '%s  %s\n' "$pin" "$asset" | (cd "$stage" && sha256sum -c -) >/dev/null 2>&1
+            else
+              printf '%s  %s\n' "$pin" "$asset" | (cd "$stage" && shasum -a 256 -c -) >/dev/null 2>&1
+            fi
+          }
+          if ! sha_ok; then
+            fail "SHA-256 mismatch: $asset does not match the SHA-256 pinned for $target"
+          fi
+
+          # One member, `req`, a regular file, at the archive root: no prefix, no second member, no `..`,
+          # no absolute path, no link. Checked from the listing, before anything is extracted.
+          members=$(tar -tzf "$stage/$asset" 2>/dev/null) || members='(unreadable archive)'
+          kind=$(tar -tvzf "$stage/$asset" 2>/dev/null | cut -c1) || kind='?'
+          if [ "$members" != req ] || [ "$kind" != - ]; then
+            fail "$asset must hold exactly one member named req, a regular file at the archive root"
+          fi
+          mkdir "$stage/unpacked"
+          tar -xzf "$stage/$asset" -C "$stage/unpacked"
+          chmod 0755 "$stage/unpacked/req"
+
+          # The binary is run from the staging directory and installed only if it is the pinned rev.
+          version=0
+          out=$("$stage/unpacked/req" --version 2>&1) || version=$?
+          if [ "$version" -ne 0 ]; then
+            fail "the downloaded req does not run (exit $version): $(printf '%s' "$out" | head -c 300 | LC_ALL=C tr -c '[:print:]' '?')"
+          fi
+          built=$(printf '%s\n' "$out" | sed -n 's/^ *built from  *\([^ ]*\) *$/\1/p')
+          if [ "$built" != "$REV" ]; then
+            fail "the downloaded req reports built from '${built:-(no such line)}', not the pinned $REV"
+          fi
+
+          mv -f "$stage/unpacked/req" "$dir/req"
+          printf 'installed %s\n' "$dir/req"
+          printf '%s\n' "$out" | sed -n -e '/^ *rules_v /p' -e '/^ *built from /p'
+      - name: put the installed req on PATH for the steps that follow
+        run: echo "${REQ_INSTALL_DIR:-$HOME/.local/bin}" >> "$GITHUB_PATH"
+
+      # The report is captured to a file by a plain redirect (a pipe would replace req's exit status
+      # with the pipe's last command), printed to the log, and written to the job summary from that
+      # copy. The step's exit is `req diff`'s own: 0 the report was produced, 1 a named class or
+      # flag is present, 3 it could not be produced, 2 a usage error. There is no `|| true`, no
+      # `continue-on-error`, and nothing after the `if` can change the status.
+      - name: what changed in meaning between the base branch and this change
+        run: |
+          set -u
+          out=$(mktemp)
+          if req diff --base "origin/${{ github.base_ref }}" --fail-on weakened,removed,pins-changed,tests-lost > "$out"; then
+            code=0
+          else
+            code=$?
+          fi
+          cat "$out"
+          {
+            echo '### req diff'
+            echo '```'
+            cat "$out"
+            echo '```'
+            echo "exit status: $code"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"

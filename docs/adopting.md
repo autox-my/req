@@ -847,6 +847,88 @@ passes through; a view that wrote nothing leaves no file and the step goes **red
 many documents it expects), and `tests/check.rs` holds the fold and the list grammar. Confirm the table
 renders on your first pull request; if it does not, the step is still correct, it just loses the summary.
 
+## On a pull request
+
+`req check` (the CI section) answers *may this repository ship*. It does not answer the question a
+reviewer has on a pull request: **across this change, which obligations moved, in which direction, and did
+anything get quietly weaker?** That is `req diff`, and it is a description of a change, not a verdict on it
+(ADR 0026). It never prints PASS or FAIL; whether a movement is acceptable is the owner's decision.
+
+```text
+req diff --base origin/main --fail-on weakened,removed,pins-changed,tests-lost
+```
+
+`--base` is a git revision; `--head` is a git revision, or the working tree when absent (an uncommitted
+edit is read). Claims are matched by `claim_id`, and each id on either side gets one **class**. A claim
+that is identical on both sides is counted, not listed.
+
+| class | meaning |
+| --- | --- |
+| `added`, `removed` | the id exists on one side only |
+| `weakened` | the meaning moved so that strictly more complies: modality weakening, numeric loosening, scope widening |
+| `tightened` | the reverse: modality strengthening, numeric tightening, scope narrowing |
+| `reshaped` | a different obligation, not a stronger or weaker one (polarity flip, scope divergence, unrelated subject or predicate): read it |
+| `not-judged` | the meaning changed but one side has no structured form, so no direction is claimed |
+| `reworded` | the statement text changed and the meaning fingerprint did not |
+| `metadata` | only fields outside identity changed: relations, rationale, tests, evidence, pins |
+
+Beside its class a claim carries **flags**:
+
+| flag | meaning |
+| --- | --- |
+| `pins-changed` | the authored `pins:` differ, compared structurally. An edited pin is how a flagged parse gets silenced, so it is worth a look in its own right |
+| `pin-flagged` | a pin on the **head** side disagrees with the parse. A pin that already disagreed at base and is otherwise unchanged is not listed |
+| `tests-lost`, `tests-added` | a linked test id present on one side only |
+| `same-address-as <id>` | an `added` claim has the meaning fingerprint of a `removed` one: a candidate renumber, reported as a candidate and never inferred as a rename (both stay `added` and `removed`) |
+
+A line is `<class> <claim_id> [<direction>] [flags…]`, sorted by claim id; the direction word is the one
+`req compare` prints. From a real run, where a claim went from SHALL to SHOULD and its bound from 200 ms to
+300 ms:
+
+```text
+# req diff: HEAD~1 (28c74120701e) -> HEAD (6f0e62468662)
+registry: unchanged
+weakened REQ-0001 modality_weakening pin-flagged
+counts: added 0, removed 0, weakened 1, tightened 0, reshaped 0, not-judged 0, reworded 0, metadata 0, unchanged 0
+fail-on: weakened,removed,pins-changed,tests-lost — 1 triggered
+```
+
+**`--fail-on` decides what blocks a merge.** Its value is a comma-separated subset of `weakened`, `removed`,
+`reshaped`, `not-judged`, `pins-changed`, `pin-flagged`, `tests-lost`; any other spelling, or an empty list, is
+exit 2. Nothing is on by default, and an unlisted class is still printed. A reasonable first set is
+`weakened,removed,pins-changed,tests-lost`: the movements a team most often wants a second pair of eyes on.
+Widen it (`reshaped`, `not-judged`, `pin-flagged`) once the reports have been read for a while, or narrow it;
+a class that does not occur is never a failure. `--format json` prints one `req.diff/1` document with the same
+classes.
+
+The exit is **0** when the report was produced, whatever it lists; **1** only with `--fail-on`, when a named
+class or flag is present; **3** when it cannot be produced (UNVERIFIABLE); **2** for a usage error. Read the
+exit before the output: a report that could not be produced is never an empty one.
+
+What to keep in mind when reading it:
+
+- **`weakened` is a prompt for a human, not a rejection.** Loosening a requirement is sometimes the right
+  decision. The point is that it is made on purpose, by someone who read it, and not discovered later in a
+  YAML hunk. req never merges, ratifies or approves.
+- **The direction is exactly as good as `req compare`'s.** The classifier is Tier-1 structure (modality,
+  comparator and bound, scope). A pair it cannot read is `not-judged`, not a quiet "changed"; a pair it
+  reads wrongly is a `req compare` defect, and the place to report it.
+- **A registry change is reported once, at the top** (`registry: changed`). An edit to `aliases/subjects.yml`
+  can move many addresses at once; read the claims below it in that light, because they are not many edited
+  statements. Each side is derived under **that side's own registry** and this binary's rules.
+- **It needs `git`, and the base revision in the checkout.** req runs the local `git` binary as a process
+  boundary, with its `GIT_*` redirections and its user and system configuration removed, and reads only
+  `claims/` and `aliases/` as blobs, without checking anything out. Nothing is fetched and no hook runs. On a
+  runner this means `fetch-depth: 0` on the checkout: with a shallow clone `origin/<base>` is not there, and
+  `req diff` is exit 3 (the revision does not resolve). The corpus must be inside a git work tree.
+
+`examples/github-workflows/req-diff.yml` is the copy-ready workflow: on `pull_request`, a checkout with
+`fetch-depth: 0`, the same prebuilt install as the CI section's (the pin table is the one thing you edit),
+then `req diff --base "origin/${{ github.base_ref }}"` with the starting set above. It is a separate file
+from `req.yml` and runs beside it. The command is unpiped and unmasked, so its exit is the step's; its
+output is also written to the job summary from a captured copy. Posting a comment, labelling the pull
+request or reading a forge's API is a CI step's job, not req's.
+
 ## The coverage rule
 
 `req gate` checks the **applying claims of its invocation**. A claim the invocation leaves
