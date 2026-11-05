@@ -192,6 +192,73 @@ from it. Exit **0** drafted (dry or written), **1** a definite problem, **2** us
 date the tool will not borrow), **3** the document, the corpus, the subject registry or `req`
 cannot be read — no `claims/` means run `req init` first.
 
+### From a Sphinx-Needs `needs.json`
+
+If the requirements already live in a Sphinx-Needs project, its export is the source and nothing needs
+retyping. `tools/needs_import.py` (a sibling of `adopt.py`, python3 standard library only, also a
+**starting point to copy and adjust**, not a `req` command; ADR 0027) reads the export and writes the same
+legal drafts: the statement, its provenance, empty `applicability` and `relations`, nothing derived, no pin.
+
+```bash
+# from the corpus root, with needs_import.py copied into your project
+python3 tools/needs_import.py --from needs.json --origin <where the export came from> \
+    --type <your requirement type> --type <another> --date YYYY-MM-DD           # dry run
+python3 tools/needs_import.py ...the same arguments... --write                  # the drafts
+req canon                # exit 0 — the parse each draft derives
+```
+
+**Name your types.** `--type` is required and repeatable, and there is no default list: the type names
+are your project's own (one export's `feat_req` is another's `sysreq`), and an export also holds
+documents, architecture and test runs that are not requirements. A need of a type you did not name is
+not ignored — the report counts it, by type. A `--type` the file does not have is exit **1** and the
+message lists the types it does have, so a typo cannot select nothing quietly. `--status` (repeatable)
+narrows the selection further; the rest count as not selected.
+
+**The statement is the need's `content` when that is one plain paragraph** — its lines trimmed and joined
+with one space. Anything else is skipped and named, by the first reason that applies:
+
+| reason | when |
+| --- | --- |
+| `external` | `is_external` is true: the export does not own the need |
+| `no content` | `content` is absent, null or blank |
+| `rst directive` | a line of the content starts with `..` |
+| `multi-paragraph` | a blank line inside the content: whether the second paragraph is part of the obligation or a note is a person's decision |
+| `rst role` | an inline `:role:` followed by a backtick |
+
+The reader does not strip markup and does not cut a need down to its first paragraph; a skipped need is
+a need for a person to look at, not one the tool rewrote.
+
+**The need's id is the provenance and req allocates the claim id.** Each draft's `rationale.source` is
+`<origin>#<need id>` (`--origin` is the URL or path the export was retrieved from; the document name and
+line go in the draft's header comment). A need already drafted from the same origin is refused (exit
+**1**, nothing written), so re-running does not duplicate; the same file under a different `--origin` is
+a different provenance. Two needs with the same text — the same sentence at two levels — are two drafts,
+and `req render` shows them with one address: that is for you to read, not for the tool to merge.
+
+**Not carried, and the report says so.** The status, tags, safety and security levels, `reqtype` and every
+other field are not written (a source status is not a ratification; applicability is authored), and
+neither are the typed links: `relations` stays `[]`, because a relation names a claim id that does not
+exist yet and the kind of relation is a judgement. The `not carried` line lists the fields it saw on the
+drafted needs and counts the drafted needs that had typed links, naming the fields. The link types are the
+ones the export declares (`needs_schema`, a field whose `field_type` is `links` or `backlinks`), and the line
+says "declared by needs_schema"; an export without one (an older Sphinx-Needs) is read by inference (a list of
+ids that is `links`, ends in `_back`, or has a `<name>_back` partner field in the file) and the line says
+"inferred". Every other field is listed too, so nothing is hidden.
+
+**The report adds up.** It ends with one line accounting for every need in the file, counted from the
+`needs` mapping itself (an export's own `needs_amount` is never trusted):
+
+```text
+needs N = drafted D + skipped S + not selected M (by type: ...)
+```
+
+The drafts are proposals (ADR 0004), exactly like the ones `adopt.py` writes: read the parse `req canon`
+shows, re-word what does not parse as meant, and pin a load-bearing bound. `--date` is required (the
+retrieval date of the export; an export has no trustworthy one, and the tool never reads the clock). A dry run is the
+default. Exit **0** drafted, **1** a definite problem (nothing drafted, an unknown type, already drafted),
+**2** usage, **3** the export, the corpus or `req` cannot be read honestly (not JSON, no `versions`, several
+versions and no `current_version` — pass `--version-key` — or a corpus the loader rejects).
+
 ## The document your project can commit
 
 A `spec.md` is usually a second source of truth: it drifts, and a "generated, do not edit" comment

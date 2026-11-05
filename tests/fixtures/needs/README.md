@@ -1,7 +1,8 @@
 # Sphinx-Needs `needs.json` fixtures (issue #124, ADR 0027)
 
 Test data for `tools/needs_import.py`. Each file is a **trimmed excerpt of a real export**: the top-level
-keys and the `versions.<v>.creator` object are kept, the `needs` mapping is cut down to the needs named
+keys, the `versions.<v>.creator` object and the `versions.<v>.needs_schema` object (the export's own
+declaration of its link types) are kept, the `needs` mapping is cut down to the needs named
 below, and **each kept need is byte-for-byte the object the export published** (key order and values
 untouched). Nothing was rewritten to suit a test. `needs_amount` and the other count keys are not kept,
 because they would no longer be true of an excerpt; the reader must not depend on them.

@@ -127,7 +127,7 @@ a finding, is why a check can be red with nothing to fix.
   emits and verifies, never signs (`minisign -Sm`). In CI the trust anchor is taken from `origin/main`, not the
   PR; rotation is two PRs (add the new key beside the old and re-sign; revoke the old only after both merge).
 - `.req/variants` this repo's release list; `.req/projections` pinned projections; `.config/nextest.toml`; `tools/`
-  (`adopt.py` the extractor: copy and adjust; `ocr/` the pinned review CLI; `review/`; `orchestration/`);
+  (`adopt.py` the extractor and `needs_import.py` its Sphinx-Needs sibling: copy and adjust; `ocr/` the pinned review CLI; `review/`; `orchestration/`);
   `review/rule.json` the review rules; `experiments/tier2/` the Tier-2 research crate (ADR 0021), nothing in it gates
   a release; `docs/specs/`, `docs/handoffs/` orchestration; `.scratch/` gitignored, never a deliverable.
 
