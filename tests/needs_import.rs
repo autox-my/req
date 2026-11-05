@@ -267,6 +267,19 @@ fn fixture_json(name: &str) -> Value {
 
 // --- the oracle: computed here, from the fixture JSON --------------------------------------------
 
+/// The link field names the export declares: `needs_schema.properties.<name>.field_type` is
+/// `links` or `backlinks`.
+fn declared_links(export: &Value) -> std::collections::BTreeSet<String> {
+    let current = export["current_version"].as_str().expect("current_version");
+    export["versions"][current]["needs_schema"]["properties"]
+        .as_object()
+        .expect("the excerpt carries its needs_schema")
+        .iter()
+        .filter(|(_, prop)| matches!(prop["field_type"].as_str(), Some("links" | "backlinks")))
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
 fn needs_of(export: &Value) -> &Map<String, Value> {
     let current = export["current_version"].as_str().expect("current_version");
     export["versions"][current]["needs"]
@@ -1206,16 +1219,31 @@ fn status_tags_safety_security_reqtype_and_links_are_in_no_claim_and_the_report_
     for name in ["status", "tags", "safety", "security", "reqtype"] {
         assert!(line.contains(name), "`not carried` names {name}: {line}");
     }
-    // ... and counts the drafted needs that had typed links, naming the link fields. Read off the
-    // excerpt: a link type is a field with a `_back` partner somewhere in the file, here
-    // `derived_from`/`derived_from_back`; four of the five drafted needs have one of them.
+    // ... and counts the drafted needs that had typed links, naming the link fields. The oracle
+    // reads the export's own declaration (`needs_schema`, `field_type` links/backlinks), not the
+    // script's reading of it: `satisfied_by` has no `_back` partner in the file and is still a link.
+    let declared = declared_links(&export);
+    assert!(
+        declared.contains("satisfied_by") && declared.contains("derived_from"),
+        "the excerpt declares its link types: {declared:?}"
+    );
+    let mut named: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let with_links = report
         .drafts
         .iter()
         .filter(|d| {
-            let need = &needs[&d.need];
-            need.get("derived_from").is_some_and(|v| !v.is_null())
-                || need.get("derived_from_back").is_some_and(|v| !v.is_null())
+            let found: Vec<&String> = needs[&d.need]
+                .as_object()
+                .expect("a need is an object")
+                .iter()
+                .filter(|(key, value)| {
+                    declared.contains(key.as_str())
+                        && value.as_array().is_some_and(|items| !items.is_empty())
+                })
+                .map(|(key, _)| key)
+                .collect();
+            named.extend(found.iter().map(|key| (*key).clone()));
+            !found.is_empty()
         })
         .count();
     assert_eq!(
@@ -1230,13 +1258,16 @@ fn status_tags_safety_security_reqtype_and_links_are_in_no_claim_and_the_report_
         )),
         "`not carried` counts the drafted needs with links: {line}"
     );
+    for name in &named {
+        assert!(
+            line.contains(name.as_str()),
+            "and names the link field {name}: {line}"
+        );
+    }
     assert!(
-        line.contains("derived_from") && line.contains("derived_from_back"),
-        "and names the link fields: {line}"
-    );
-    assert!(
-        line.contains("satisfied_by"),
-        "a field it did not classify is still named, never dropped: {line}"
+        line.contains("satisfied_by") && line.contains("declared by needs_schema"),
+        "a one-way link type is a link because the export declares it, and the report says where it \
+         learned that: {line}"
     );
 
     // The demo: `implements` has its `_back` partner in the file; `links_back` is on a need that is not drafted.
@@ -1247,6 +1278,27 @@ fn status_tags_safety_security_reqtype_and_links_are_in_no_claim_and_the_report_
         demo_line.contains("2 of 2 drafted needs") && demo_line.contains("implements"),
         "{demo_line}"
     );
+}
+
+#[test]
+fn without_a_needs_schema_the_links_are_inferred_and_the_report_says_so() {
+    // A copy of the excerpt with `needs_schema` removed (an older Sphinx-Needs): the fallback reads
+    // `_back` partners, so `satisfied_by` (one-way) is no longer named as a link, and the report
+    // says the reading is inferred.
+    let mut export = fixture_json(SCORE);
+    let current = export["current_version"]
+        .as_str()
+        .expect("version")
+        .to_string();
+    export["versions"][&current]
+        .as_object_mut()
+        .expect("a version is an object")
+        .remove("needs_schema");
+    let fx = Fixture::with_export("req-needs-no-schema", &export.to_string());
+    let report = parse_report(&import(fx.path(), &base(&SCORE_TYPES)).stdout);
+    let line = report.not_carried.expect("a `not carried` line");
+    assert!(line.contains("inferred: no needs_schema"), "{line}");
+    assert!(line.contains("derived_from"), "{line}");
 }
 
 // --- (j) --status -----------------------------------------------------------------------------------------------------------

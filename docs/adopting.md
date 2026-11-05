@@ -239,9 +239,11 @@ and `req render` shows them with one address: that is for you to read, not for t
 other field are not written (a source status is not a ratification; applicability is authored), and
 neither are the typed links: `relations` stays `[]`, because a relation names a claim id that does not
 exist yet and the kind of relation is a judgement. The `not carried` line lists the fields it saw on the
-drafted needs and counts the drafted needs that had typed links, naming the fields. An export does not
-declare its link types, so the tool infers them (a list of ids that is `links`, ends in `_back`, or has a
-`<name>_back` partner field in the file); every other field is listed too, so nothing is hidden.
+drafted needs and counts the drafted needs that had typed links, naming the fields. The link types are the
+ones the export declares (`needs_schema`, a field whose `field_type` is `links` or `backlinks`), and the line
+says "declared by needs_schema"; an export without one (an older Sphinx-Needs) is read by inference (a list of
+ids that is `links`, ends in `_back`, or has a `<name>_back` partner field in the file) and the line says
+"inferred". Every other field is listed too, so nothing is hidden.
 
 **The report adds up.** It ends with one line accounting for every need in the file, counted from the
 `needs` mapping itself (an export's own `needs_amount` is never trusted):

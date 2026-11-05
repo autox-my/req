@@ -132,10 +132,12 @@ written), so a second run over the same export does not duplicate; the same file
 --origin is a different provenance and is allowed. A partial overlap is refused too.
 
 not carried, and said so in the report: status, tags, safety, security, reqtype, every other
-field, and the typed links. A needs.json does not declare its link types, so the report infers
-them: a non-empty list of strings that is `links`, ends in `_back`, or has a `<name>_back`
-partner field somewhere in the file. Every other field is listed under "fields", so nothing is
-hidden; `relations` stays `[]`.
+field, and the typed links. The link types are the ones the export declares: a field whose
+`versions.<v>.needs_schema.properties.<name>.field_type` is `links` or `backlinks` (the report says
+"declared by needs_schema"). An export with no `needs_schema` (an older Sphinx-Needs) falls back to
+inference, and the report says "inferred": a non-empty list of strings that is `links`, ends in
+`_back`, or has a `<name>_back` partner field somewhere in the file. Every other field is listed
+under "fields", so nothing is hidden; `relations` stays `[]`.
 
 --date is the rationale date (the retrieval date of the export) and is required. It is never
 borrowed from the clock or from a commit.
@@ -233,13 +235,35 @@ def is_link_value(value):
     return isinstance(value, list) and bool(value) and all(isinstance(item, str) for item in value)
 
 
-def link_fields_of(need, all_keys):
+def declared_link_fields(export, version):
+    """The link field names `versions.<version>.needs_schema` declares, or None if it declares none.
+
+    Sphinx-Needs (>= 5) writes a JSON schema whose `properties.<name>.field_type` is `links` for a
+    link type and `backlinks` for its partner. None (no schema, or one of another shape) means
+    the caller must infer.
+    """
+    entry = export.get("versions", {}).get(version)
+    schema = entry.get("needs_schema") if isinstance(entry, dict) else None
+    properties = schema.get("properties") if isinstance(schema, dict) else None
+    if not isinstance(properties, dict):
+        return None
+    return frozenset(
+        name
+        for name, prop in properties.items()
+        if isinstance(prop, dict) and prop.get("field_type") in ("links", "backlinks")
+    )
+
+
+def link_fields_of(need, all_keys, declared=None):
     """The names of the typed-link fields on one need.
 
-    A `needs.json` does not declare its link types, so this is inferred, and the report says so:
-    a non-empty list of strings that is `links`, ends in `_back`, or has a `<name>_back` partner
-    field on some need in the file (Sphinx-Needs creates the partner for every link type).
+    With `declared` (from `needs_schema`) a link field is a declared one holding a non-empty list
+    of strings. Without it, it is inferred, and the report says so: a non-empty list of strings
+    that is `links`, ends in `_back`, or has a `<name>_back` partner field on some need in the
+    file (Sphinx-Needs creates the partner for every link type).
     """
+    if declared is not None:
+        return sorted(key for key, value in need.items() if key in declared and is_link_value(value))
     return sorted(
         key
         for key, value in need.items()
@@ -253,7 +277,7 @@ def meaningful(value):
     return value is not None and value is not False and value != "" and value != [] and value != {}
 
 
-def not_carried(drafted, all_keys):
+def not_carried(drafted, all_keys, declared=None):
     """`(fields, link_names, with_links)` over the drafted needs.
 
     `fields` are the names of the fields set on at least one drafted need, other than the ones
@@ -262,7 +286,7 @@ def not_carried(drafted, all_keys):
     """
     fields, links, with_links = set(), set(), 0
     for need in drafted:
-        mine = link_fields_of(need, all_keys)
+        mine = link_fields_of(need, all_keys, declared)
         if mine:
             with_links += 1
         links.update(mine)
@@ -853,16 +877,19 @@ def run(args):
         written = write_claims([target for _claim_id, target in targets], texts)
 
     all_keys = {key for need in needs.values() for key in need}
-    fields, link_names, with_links = not_carried([need for _id, need, _s in drafts], all_keys)
+    declared = declared_link_fields(export, version)
+    fields, link_names, with_links = not_carried(
+        [need for _id, need, _s in drafts], all_keys, declared
+    )
     report(args, corpus, label, version, drafts, skips, targets, written, rules_v,
-           (fields, link_names, with_links), recon)
+           (fields, link_names, with_links, declared is not None), recon)
     return 0
 
 
 def report(args, corpus, label, version, drafts, skips, targets, written, rules_v, carried, recon):
     """Print what was drafted, what was skipped and why, what was not carried, and what was
     written — ending with the line that adds up."""
-    fields, link_names, with_links = carried
+    fields, link_names, with_links, from_schema = carried
     print(f"export: {label} (version {version})")
     print(f"origin: {args.origin}")
     print(f"date: {args.date} (--date)")
@@ -877,7 +904,8 @@ def report(args, corpus, label, version, drafts, skips, targets, written, rules_
         print(line)
     print()
     shown = ", ".join(fields) if fields else "none"
-    carried_links = f" ({', '.join(link_names)})" if link_names else ""
+    how = "declared by needs_schema" if from_schema else "inferred: no needs_schema"
+    carried_links = f" ({', '.join(link_names)}; {how})" if link_names else f" ({how})"
     print(
         f"not carried: {shown}; typed links on {with_links} of {len(drafts)} drafted needs"
         f"{carried_links} — `relations` stays []"
@@ -1021,9 +1049,31 @@ def self_check():
             [],
         ),
         (
-            "links: a field with no partner is a plain field, not a link",
+            "links: with no needs_schema, a field with no partner is a plain field",
             link_fields_of({"satisfied_by": ["X"]}, {"satisfied_by"}),
             [],
+        ),
+        (
+            "links: a field the schema declares is a link without a partner in the file",
+            link_fields_of({"satisfied_by": ["X"], "tags": ["web"]}, {"satisfied_by"}, frozenset({"satisfied_by"})),
+            ["satisfied_by"],
+        ),
+        (
+            "links: a field the schema does not declare is not a link, whatever its name",
+            link_fields_of({"links": ["X"]}, {"links"}, frozenset()),
+            [],
+        ),
+        (
+            "links: declared names come from field_type links/backlinks",
+            sorted(declared_link_fields({"versions": {"1": {"needs_schema": {"properties": {
+                "satisfied_by": {"field_type": "links"}, "satisfied_by_back": {"field_type": "backlinks"},
+                "tags": {"field_type": "core"}}}}}}, "1")),
+            ["satisfied_by", "satisfied_by_back"],
+        ),
+        (
+            "links: no needs_schema declares nothing (None, so the caller infers)",
+            declared_link_fields({"versions": {"1": {"needs": {}}}}, "1"),
+            None,
         ),
         (
             "not carried: fields exclude what the draft uses and the typed links",
