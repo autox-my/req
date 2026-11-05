@@ -52,7 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      REPO_URL: https://git.xantu-barb.ts.net/fdx/req.git
+      # The runner's own server URL (see release.yml): the tailnet name does not resolve on this runner.
+      REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
     steps:
       - name: only main's tooling runs with the read token
         run: |
@@ -155,6 +156,19 @@ jobs:
             fi
           done
           export REQ_INSTALL_DIR="$dir/bin"
+          # The public host is not reachable from this runner, so the script is pointed at the runner's
+          # own server URL through its two documented overrides. The script, its checks and its pin are
+          # the ones an adopter runs; only the route differs (a LAN hop, so the download figure is the
+          # LAN's, not TLS over the tailnet, and the runbook says so beside the number).
+          export REQ_RELEASE_BASE="${GITHUB_SERVER_URL%/}/${GITHUB_REPOSITORY}/releases/download"
+          case $GITHUB_SERVER_URL in
+            https://*) export REQ_CURL_PROTO='=https' ;;
+            http://*) export REQ_CURL_PROTO='=http' ;;
+            *)
+              echo "::error::the runner's server URL is neither http nor https: $GITHUB_SERVER_URL"
+              exit 1
+              ;;
+          esac
           start="$(date +%s%3N)"
           bash "$dir/install-req.sh"
           end="$(date +%s%3N)"
@@ -178,7 +192,7 @@ jobs:
           export CARGO_HOME="$dir/cargo-home"
           auth="$(printf 'x-access-token:%s' "$REQ_RELEASE_TOKEN" | base64 | tr -d '\n')"
           export GIT_CONFIG_COUNT=1
-          export GIT_CONFIG_KEY_0="http.https://git.xantu-barb.ts.net/.extraheader"
+          export GIT_CONFIG_KEY_0="http.${GITHUB_SERVER_URL%/}/.extraheader"
           export GIT_CONFIG_VALUE_0="Authorization: Basic $auth"
           start="$(date +%s%3N)"
           git clone --quiet --no-checkout "$REPO_URL" "$dir/src"
