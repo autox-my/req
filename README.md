@@ -1,16 +1,19 @@
 # req
 
-A semantic, git-native requirements engine.
+A git-native requirements engine that tells you when a requirement's meaning changed, and in which direction.
 
 **Requirements are decisions, not documents.** In req the unit of work is a *claim*: one
 claim per file in git, written in a small, reviewable format. A claim's identity is its
 `claim_id` — not its path and not its history, and not its wording. Its *meaning fingerprint* is
 a content address over its *canonical meaning*: a deterministic pipeline parses the statement,
 normalises it against a subject registry, and hashes the result — every time the claim is loaded,
-so a claim file stores what its author wrote and nothing derived (`req.claim/2`, ADR 0022). Two
-claims with the same fingerprint are candidates for one requirement, however differently they are worded — req never
-merges them; a human ratifies. Two claims that differ in a bound, an actor, or a modality are
-different requirements, however similar their prose.
+so a claim file stores what its author wrote and nothing derived (`req.claim/2`, ADR 0022). A rewording
+that the canonicalizer's rules cover keeps its address; an edit to a bound, an actor, or a modality gets a
+new one, however similar the prose. What the fingerprint is *for* is drift and direction: between two
+revisions, which requirements changed in meaning, and whether each change loosened or tightened the
+obligation. It does not collapse independent paraphrase (see the probe under Status), so it is not a
+duplicate finder. Two claims that do share an address are candidates for one requirement; req never merges
+them, and a human ratifies.
 
 The spec, the traceability matrix, and the audit packet are compiled views over a signed
 baseline. Nobody edits them by hand; they are regenerated, and their freshness is verified
@@ -60,9 +63,11 @@ the one command that resolves no root: it *creates* one.
 
 ## The two differentiators
 
-1. **Semantic fingerprinting.** A content address over canonical *meaning*: a rewording keeps its
-   address, and an edit that changes an obligation gets a new one (the claim keeps its `claim_id`) — with the direction of the
-   change classified, so a weakening is never reported as no change.
+1. **Drift and direction.** A content address over canonical *meaning*: an edit that changes an
+   obligation gets a new address (the claim keeps its `claim_id`), with the direction of the change
+   classified, so a weakening is never reported as no change. `req diff` puts that on a pull request:
+   between two revisions, each claim added, removed, weakened, tightened or reshaped, as a description
+   for a human to read, never a verdict.
 2. **Variability as selectors.** A variant is a query over one model of claims, not a branch
    or a fork: variants compose, applicability is computed per context, and a claim a context
    cannot decide is surfaced rather than dropped.
@@ -108,6 +113,10 @@ record in `docs/design.md`, and the decisions in `docs/adr/`.
 
 How it works: `docs/how-it-works.md` (diagrams, for engineers) and `docs/overview.html` (one page for
 non-developers, generated from the real tool by `tools/overview/build.py`, never hand-edited).
+
+Existing requirements need not be retyped: `tools/adopt.py` (markdown lists) and `tools/needs_import.py`
+(a Sphinx-Needs `needs.json`) draft claims from them, copy-and-adjust scripts whose drafts are proposals
+for a human to ratify (`docs/adopting.md`).
 
 Adopting req in a project — as a human or as an agent — starts at `docs/adopting.md` (its
 "For an agent" section is the five-minute path): the CI snippet is `examples/github-workflows/req.yml`,

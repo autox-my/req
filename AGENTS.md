@@ -1,5 +1,5 @@
 # AGENTS.md — req
-req: the semantic, git-native requirements engine. A **claim** is the unit of work; one claim per file in
+req: the git-native requirements engine for meaning drift and its direction. A **claim** is the unit of work; one claim per file in
 git. Identity is the `claim_id`; the address is a content-addressed *meaning fingerprint* over canonical
 meaning (ADR 0020). Specs, traceability matrices and audit packets are compiled views over a signed
 baseline. The bet, stated so it can fail: deterministic Tier-1 canonicalization yields **zero false
@@ -54,8 +54,9 @@ its `req <cmd> --help` page, the adopter's loop is `docs/adopting.md`; this file
   transport, not identity or merge (0002); variants are **selectors**, not branches (0003); the model **proposes**,
   a human disposes (0004); authority is a signed **Decision** (0005); friction at the decision boundary, none in
   authoring (0006); fingerprints collapse only on meaning-preserving rules (0007); core Rust, porcelain TS later (0009).
-- **Git-native storage is table stakes, not the moat**; the differentiators are semantic fingerprinting and
-  variability selectors. Never claim the bet is validated on seed evidence.
+- **Git-native storage is table stakes, not the moat**; the differentiators are the meaning fingerprint as a
+  drift-and-direction signal (not a paraphrase collapser, README "Status") and variability selectors. Never claim the
+  bet is validated on seed evidence.
 
 ## Commands
 Contracts live on `req <command> --help` (usage, the `exit:` line; works with no corpus); the loop is
