@@ -1,0 +1,1276 @@
+#!/usr/bin/env python3
+"""tools/needs_import.py — draft req claims from a Sphinx-Needs `needs.json` (issue #124, ADR 0027).
+
+An adopter on Sphinx-Needs already has its requirements as `needs` objects: a stable id, a
+title, a body (`content`), a status and typed links. This script reads the export and writes
+the same legal `req.claim/2` drafts `tools/adopt.py` writes — the statement, its provenance,
+empty `applicability` and `relations`, nothing derived and no pin (ADR 0022). The drafts are
+proposals (ADR 0004); a source status is not a ratification, so no status is carried.
+
+It is a sibling of `tools/adopt.py`, not a client of it: the corpus reader, the id allocation
+and the claim template are copied, and adopters **copy and adjust** this file (the mapping is
+per project). It is deliberately not a req subcommand.
+
+What it decides, and what it refuses to guess:
+
+  types      the caller names the need types to read (`--type`, required, repeatable). There is
+             no default list: the type names are the project's own (`feat_req` in one export is
+             `sysreq` in another). A need of a type that is not named is counted, by type, in
+             the report — never silently ignored.
+  statement  the need's `content`, only when it is one plain paragraph: its lines trimmed and
+             joined with one space. Anything else is skipped and NAMED with its reason —
+             `external`, `no content`, `rst directive`, `multi-paragraph`, `rst role` — in that
+             order, the first that applies. The reader does not strip markup or cut a need down
+             to make it fit: whether a second paragraph is part of the obligation or a note is
+             a human decision.
+  claim id   req allocates it (the next free REQ-NNNN). The source's need id is ignored for the
+             claim id and kept as provenance: `rationale.source` is `<origin>#<need id>`, where
+             `<origin>` is what the caller passes as `--origin` (the URL or path the export came
+             from). A need already drafted from the same origin is refused.
+  date       `--date`, required. An export has no trustworthy date, and a date is authored.
+  links      typed links name need ids, and a claim's `relations` name claim ids that do not
+             exist until req allocates them. They are not carried; the report counts the drafted
+             needs that had them and names the fields.
+
+The output accounts for every need in the file and ends with one line that must add up:
+
+  needs N = drafted D + skipped S + not selected M (by type: ...)
+
+Exit codes, the same three-state discipline as req (ADR 0027 section 7):
+
+  0  drafted (dry run, or written with --write)
+  1  a definite problem — nothing drafted, a named type the file does not have, or a need
+     already drafted from this origin; nothing was written
+  2  usage — a missing or malformed argument, a bad date
+  3  UNVERIFIABLE — the export, the corpus, the subject registry or `req` cannot be read
+     honestly (not JSON, no `versions`, several versions and no `current_version`, a corpus the
+     loader rejects, a `req` judging another claim schema)
+
+Nothing derived is ever written, and no pin is guessed.
+"""
+import argparse
+import datetime
+import json
+import os
+import pathlib
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+# --- conventions (the whole mapping) ---------------------------------------
+
+# The reasons a selected need is not drafted, in the order they are checked.
+REASONS = ("external", "no content", "rst directive", "multi-paragraph", "rst role")
+
+# An inline reStructuredText role: `:name:` immediately followed by a backtick.
+ROLE_RE = re.compile(r":[A-Za-z][A-Za-z0-9_.+-]*:`")
+
+# Fields the report does not list as "not carried": the content is the statement, the id is the
+# provenance, and the document name and line are the header comment.
+USED_FIELDS = ("content", "id", "docname", "lineno")
+
+# A claim file's declared id, and every source line, read without a YAML parser: the corpus
+# contract puts the id at the top level, and `yaml_serde` refuses a file without it.
+CLAIM_ID_RE = re.compile(r"^claim_id:[ \t]*(?P<value>\S.*?)[ \t]*$", re.MULTILINE)
+CLAIM_SOURCE_RE = re.compile(r"^[ \t]+source:[ \t]*(?P<value>.+?)[ \t]*$", re.MULTILINE)
+REGISTRY_VERSION_RE = re.compile(r"^version:[ \t]*(?P<value>\d+)[ \t]*$", re.MULTILINE)
+
+VERSION_RULES_RE = re.compile(r"^[ \t]*rules_v[ \t]+(?P<value>\d+)[ \t]*$", re.MULTILINE)
+VERSION_SCHEMA_RE = re.compile(r"^[ \t]*claim_schema[ \t]+(?P<value>\S+)[ \t]*$", re.MULTILINE)
+CLAIM_SCHEMA_RE = re.compile(r"^req\.claim/\d+$")
+# The one schema `CLAIM_TEMPLATE` writes; a binary reporting another cannot load the draft.
+DRAFT_SCHEMA = "req.claim/2"
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+CLAIMS_DIR = "claims"
+REGISTRY_PATH = "aliases/subjects.yml"
+REQ_BINARY = "req"
+
+# The draft claim, byte for byte: a fixed template, not a serialized mapping (python3's standard
+# library has no YAML writer, and a serializer's diff is unreadable). It is a `req.claim/2`
+# claim: the authored fields only, nothing derived and no pin (ADR 0022). The header comment
+# names the export and the place in the source the need came from; it carries no source field.
+CLAIM_TEMPLATE = """\
+# A draft claim, drafted from the Sphinx-Needs export {export} ({location}). The need's id is kept
+# in rationale.source. Nothing derived is stored: `req canon` shows the parse this statement
+# derives. A draft is a proposal (ADR 0004): edit the statement, add the applicability and
+# relations it needs, and pin a load-bearing bound under `pins:` if it has one.
+schema: {schema}
+claim_id: {claim_id}
+statement: {statement}
+applicability: []
+rationale:
+  source: {quoted_source}
+  date: {date}
+  rejected_alternatives: []
+  assumptions: []
+relations: []
+"""
+
+HELP_EPILOG = """\
+what is drafted, and what is named instead (no heuristics, no model):
+  --type     the need types to read; required, repeatable, no default. A type the file does not
+             have is exit 1 and the message lists the types it does have. Needs of other types
+             are not selected: counted by type, never silently dropped.
+  --status   optional, repeatable: only needs with one of these statuses are considered; the
+             rest count as not selected. The status itself is never written to a claim.
+
+  A selected need becomes a draft only when its `content` is one plain paragraph (lines trimmed,
+  joined with one space). Otherwise it is skipped and named, by the first reason that applies:
+    external         is_external is true: the export does not own it
+    no content       `content` is absent, null or blank
+    rst directive    a line starts with `..`
+    multi-paragraph  a blank line inside the trimmed content
+    rst role         an inline `:role:` followed by a backtick
+  The reader does not strip markup, and it does not cut a need down to its first paragraph.
+
+provenance: each draft's rationale.source is `<origin>#<need id>`; req allocates the claim id.
+A selected, draftable need already drafted from the same origin is refused (exit 1, nothing
+written), so a second run over the same export does not duplicate; the same file under another
+--origin is a different provenance and is allowed. A partial overlap is refused too.
+
+not carried, and said so in the report: status, tags, safety, security, reqtype, every other
+field, and the typed links. A needs.json does not declare its link types, so the report infers
+them: a non-empty list of strings that is `links`, ends in `_back`, or has a `<name>_back`
+partner field somewhere in the file. Every other field is listed under "fields", so nothing is
+hidden; `relations` stays `[]`.
+
+--date is the rationale date (the retrieval date of the export) and is required. It is never
+borrowed from the clock or from a commit.
+
+The corpus root is --root, else $REQ_ROOT, else the working directory — never an ancestor: this
+tool writes claims, so a run inside a subdirectory must not draft into a parent you never
+named. A relative --from is resolved against that root.
+
+dry run is the default; --write writes. The report ends with one line that adds up:
+  needs N = drafted D + skipped S + not selected M (by type: ...)
+`needs_amount` and the other count keys of an export are never trusted: N is the size of the
+needs mapping that was read.
+
+exit: 0 drafted (dry run, or written) · 1 a definite problem, nothing written (nothing
+drafted, a --type the file does not have, or a need already drafted from this origin) ·
+2 usage · 3 the export, the corpus, the subject registry or `req` cannot be read.
+
+This script is a starting point to COPY and adjust for your project — it is not a req
+subcommand.
+"""
+
+
+class Unverifiable(Exception):
+    """A question this run could not settle (exit 3)."""
+
+
+class Problem(Exception):
+    """A definite finding (exit 1)."""
+
+
+class Usage(Exception):
+    """A malformed invocation (exit 2)."""
+
+
+# --- the pure half (--self-check table-drives all of it) --------------------
+
+
+def one_line(text):
+    """`text` as one printable line: control characters and every line break become a space.
+
+    A need id, a document name or a path is *text* in a report line or a comment, not YAML; a
+    newline (legal in a JSON string) would end the comment and inject a line into the draft.
+    """
+    cleaned = "".join(
+        " " if ord(char) < 0x20 or 0x7F <= ord(char) <= 0x9F else char for char in str(text)
+    )
+    return " ".join(cleaned.split())
+
+
+def paragraphs_ok(lines):
+    """Whether `lines` (the trimmed content, split on newlines) hold no blank line."""
+    return all(line.strip() for line in lines)
+
+
+def classify(need_id, need, types, statuses):
+    """`(kind, payload)` for one need.
+
+    kind `not selected`: payload is the need's type name (`(none)` when it has none).
+    kind `skip`:         payload is the first reason in `REASONS` that applies.
+    kind `draft`:        payload is the statement.
+    A need is selected by type (and by status when `--status` was given); the reasons below are
+    checked in the order of `REASONS`. A `content` that is neither text nor null is not a
+    question this tool can settle: Unverifiable, naming the need.
+    """
+    raw_type = need.get("type")
+    type_name = raw_type if isinstance(raw_type, str) and raw_type else "(none)"
+    status = need.get("status")
+    if type_name not in types or (statuses and not (isinstance(status, str) and status in statuses)):
+        return "not selected", type_name
+    if need.get("is_external") is True:
+        return "skip", "external"
+    content = need.get("content")
+    if content is not None and not isinstance(content, str):
+        raise Unverifiable(
+            f"need {one_line(need_id)}: `content` is not text ({type(content).__name__}), so "
+            "whether it is a statement cannot be judged"
+        )
+    # reStructuredText counts a newline as a line break, and nothing else: `splitlines` would
+    # also split on form feeds and U+2028, and join them with a space.
+    trimmed = (content or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not trimmed:
+        return "skip", "no content"
+    lines = trimmed.split("\n")
+    if any(line.strip().startswith("..") for line in lines):
+        return "skip", "rst directive"
+    if not paragraphs_ok(lines):
+        return "skip", "multi-paragraph"
+    if ROLE_RE.search(trimmed):
+        return "skip", "rst role"
+    return "draft", " ".join(line.strip() for line in lines)
+
+
+def is_link_value(value):
+    """A typed link's value: a non-empty list of strings."""
+    return isinstance(value, list) and bool(value) and all(isinstance(item, str) for item in value)
+
+
+def link_fields_of(need, all_keys):
+    """The names of the typed-link fields on one need.
+
+    A `needs.json` does not declare its link types, so this is inferred, and the report says so:
+    a non-empty list of strings that is `links`, ends in `_back`, or has a `<name>_back` partner
+    field on some need in the file (Sphinx-Needs creates the partner for every link type).
+    """
+    return sorted(
+        key
+        for key, value in need.items()
+        if is_link_value(value)
+        and (key == "links" or key.endswith("_back") or f"{key}_back" in all_keys)
+    )
+
+
+def meaningful(value):
+    """Whether a field holds something: not null, empty, or false."""
+    return value is not None and value is not False and value != "" and value != [] and value != {}
+
+
+def not_carried(drafted, all_keys):
+    """`(fields, link_names, with_links)` over the drafted needs.
+
+    `fields` are the names of the fields set on at least one drafted need, other than the ones
+    the draft uses and the typed links; `link_names` the typed-link fields; `with_links` how many
+    drafted needs have at least one.
+    """
+    fields, links, with_links = set(), set(), 0
+    for need in drafted:
+        mine = link_fields_of(need, all_keys)
+        if mine:
+            with_links += 1
+        links.update(mine)
+        for key, value in need.items():
+            if key not in USED_FIELDS and key not in mine and meaningful(value):
+                fields.add(key)
+    return sorted(fields), sorted(links), with_links
+
+
+def breakdown(counts):
+    """`type n, type n` in type order."""
+    return ", ".join(f"{name} {counts[name]}" for name in sorted(counts))
+
+
+def reconcile_line(total, drafted, skipped, not_selected):
+    """The report's last line: the file's needs and where each went."""
+    selected_out = sum(not_selected.values())
+    line = f"needs {total} = drafted {drafted} + skipped {skipped} + not selected {selected_out}"
+    if not_selected:
+        line += f" (by type: {breakdown(not_selected)})"
+    return line
+
+
+def select_version(export, requested):
+    """`(version key, needs mapping)` from a parsed export, or Unverifiable naming what is wrong."""
+    if not isinstance(export, dict):
+        raise Unverifiable(
+            "the file is JSON but not an object — a Sphinx-Needs export is an object with a "
+            "`versions` mapping"
+        )
+    versions = export.get("versions")
+    if not isinstance(versions, dict):
+        raise Unverifiable(
+            "the file has no `versions` mapping — this is not a needs.json export "
+            "(Sphinx-Needs writes `versions.<version>.needs`)"
+        )
+    if not versions:
+        raise Unverifiable("`versions` is empty: there is no version to read")
+    names = ", ".join(repr(name) for name in versions)
+    key = requested
+    if key is None:
+        current = export.get("current_version")
+        if current is None:
+            if len(versions) != 1:
+                raise Unverifiable(
+                    f"the file holds several versions ({names}) and no `current_version`: pass "
+                    "--version-key <version>"
+                )
+            key = next(iter(versions))
+        elif isinstance(current, str):
+            key = current
+        else:
+            raise Unverifiable(f"`current_version` is not text: {current!r}")
+    if key not in versions:
+        raise Unverifiable(f"version {key!r} is not in the file; it has: {names}")
+    entry = versions[key]
+    needs = entry.get("needs") if isinstance(entry, dict) else None
+    if not isinstance(needs, dict):
+        raise Unverifiable(f"`versions.{key}.needs` is not a mapping of need id to need")
+    for need_id, need in needs.items():
+        if not isinstance(need, dict):
+            raise Unverifiable(f"need {one_line(need_id)} is not an object")
+    return key, needs
+
+
+def no_duplicate_keys(pairs):
+    """`json` object hook: a repeated key would silently drop a need, so it is refused."""
+    seen = {}
+    for key, value in pairs:
+        if key in seen:
+            raise ValueError(f"the key {key!r} appears twice in one object")
+        seen[key] = value
+    return seen
+
+
+def claim_number_from_name(name):
+    """The claim number a file name carries, or None.
+
+    Mirrors the corpus loader's gate (`src/canon.rs::looks_like_claim_stem`): a leading dot is
+    not part of the stem, and the number is the stem's — `REQ-0008.yml`, `.REQ-0008` and
+    `REQ-0008.yml.disabled` all name claim 8.
+    """
+    visible = name.lstrip(".")
+    stem = visible.split(".", 1)[0]
+    match = re.fullmatch(r"REQ-(\d+)", stem, re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
+def is_claim_candidate(name):
+    """Whether a `claims/` entry is claim-shaped — the loader's gate, for the same reason."""
+    lowered = name.lower()
+    return (
+        lowered.endswith(".yml")
+        or lowered.endswith(".yaml")
+        or claim_number_from_name(name) is not None
+    )
+
+
+def next_claim_number(used):
+    """The next free claim number: one after the highest in use, or 1.
+
+    `max + 1` rather than "the first gap": a gap is a claim that was deleted deliberately, and
+    handing its id to a different requirement would make history read as if the same claim had
+    changed meaning.
+    """
+    return max(used) + 1 if used else 1
+
+
+def number_or_none(value):
+    """A declared claim id's number, or None when it is not a `REQ-<n>` shape."""
+    match = re.fullmatch(r"REQ-(\d+)", value, re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
+def parse_version(text):
+    """`(rules_v, claim_schema)` from `req --version`, or None."""
+    rules = VERSION_RULES_RE.search(text)
+    schema = VERSION_SCHEMA_RE.search(text)
+    if rules is None or schema is None:
+        return None
+    value = schema.group("value")
+    if not CLAIM_SCHEMA_RE.match(value):
+        return None
+    return int(rules.group("value")), value
+
+
+def valid_date(text):
+    """Whether `text` is a real `YYYY-MM-DD` calendar date."""
+    if not DATE_RE.match(text):
+        return False
+    try:
+        datetime.date.fromisoformat(text)
+    except ValueError:
+        return False
+    return True
+
+
+def yaml_quote(text):
+    """A YAML double-quoted scalar, for every freely-authored value.
+
+    Quotes and backslashes alone are not enough: a control character (a NUL pasted in from a
+    table, a C1 control from a Windows-sourced paste) would produce a file the loader cannot
+    parse while the tool still reported success. A backslash-x escape is YAML's own form for
+    those, and the loader parses it back to the same character.
+    """
+    out = []
+    for char in text:
+        if char == "\\":
+            out.append("\\\\")
+        elif char == '"':
+            out.append('\\"')
+        elif char == "\n":
+            out.append("\\n")
+        elif char == "\t":
+            out.append("\\t")
+        elif char == "\r":
+            out.append("\\r")
+        elif ord(char) < 0x20 or 0x7F <= ord(char) <= 0x9F:
+            out.append(f"\\x{ord(char):02x}")
+        else:
+            out.append(char)
+    return '"' + "".join(out) + '"'
+
+
+_SIMPLE_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "0": "\0", "/": "/", " ": " ", '"': '"', "\\": "\\"}
+
+
+def unquote_scalar(value):
+    """The text of a stored YAML scalar: double-quoted (what `yaml_quote` writes), single-quoted
+    or plain. A trailing comment after the closing quote is ignored.
+
+    Used to compare a stored `rationale.source` with the one a draft would write, so it reads
+    back what `yaml_quote` wrote exactly and is lenient about the rest.
+    """
+    text = value.strip()
+    if text.startswith('"'):
+        out, index = [], 1
+        while index < len(text):
+            char = text[index]
+            if char == '"':
+                break
+            if char == "\\" and index + 1 < len(text):
+                index += 1
+                code = text[index]
+                width = {"x": 2, "u": 4, "U": 8}.get(code)
+                digits = text[index + 1 : index + 1 + width] if width else ""
+                if width and len(digits) == width:
+                    try:
+                        out.append(chr(int(digits, 16)))
+                        index += width + 1
+                        continue
+                    except (ValueError, OverflowError):
+                        pass
+                out.append(_SIMPLE_ESCAPES.get(code, code))
+            else:
+                out.append(char)
+            index += 1
+        return "".join(out)
+    if text.startswith("'"):
+        out, index = [], 1
+        while index < len(text):
+            char = text[index]
+            if char == "'":
+                if text[index + 1 : index + 2] == "'":
+                    out.append("'")
+                    index += 2
+                    continue
+                break
+            out.append(char)
+            index += 1
+        return "".join(out)
+    return text.split(" #", 1)[0].rstrip()
+
+
+def render_claim(export, location, statement, source, date, claim_id, schema):
+    """One draft claim file's exact bytes."""
+    return CLAIM_TEMPLATE.format(
+        export=one_line(export),
+        location=one_line(location),
+        schema=schema,
+        claim_id=claim_id,
+        statement=yaml_quote(statement),
+        quoted_source=yaml_quote(source),
+        date=date,
+    )
+
+
+def location_of(need):
+    """`<docname>:<lineno>` for a need, `?` for a part the export does not give."""
+    docname = need.get("docname")
+    lineno = need.get("lineno")
+    name = one_line(docname) if isinstance(docname, str) and docname.strip() else "?"
+    line = lineno if isinstance(lineno, int) and not isinstance(lineno, bool) else "?"
+    return f"{name}:{line}"
+
+
+# --- the filesystem half ----------------------------------------------------
+
+
+class Corpus:
+    """What the importer needs to know about the corpus it drafts into."""
+
+    def __init__(self, root, used, sources, registry_v):
+        self.root = root
+        self.used = used
+        self.sources = sources  # claim id -> set of the `source:` values it records
+        self.registry_v = registry_v
+
+
+def resolve_root(flag):
+    """`--root`, else `REQ_ROOT`, else the working directory — never an ancestor.
+
+    req's own walk-up (ADR 0012) is deliberately not copied: this tool writes claims, so a run
+    inside a subdirectory must not put drafts in a parent the caller never named. The chosen
+    root is printed in the report.
+    """
+    chosen = flag or os.environ.get("REQ_ROOT") or "."
+    root = pathlib.Path(chosen).expanduser()
+    if not root.is_dir():
+        raise Unverifiable(f"the corpus root is not a directory: {root}")
+    return root.resolve()
+
+
+def read_corpus(root):
+    """Read the claim ids in use, the provenance already recorded, and the registry version."""
+    claims_dir = root / CLAIMS_DIR
+    if not claims_dir.is_dir():
+        raise Unverifiable(
+            f"no corpus at {root}: {CLAIMS_DIR}/ is not there — run `req init` here first, "
+            "or pass --root <dir>"
+        )
+
+    used = set()
+    sources = {}
+    for entry in sorted(claims_dir.iterdir(), key=lambda path: path.name):
+        # A directory (or a link to one) is refused *before* the name filter: `claims/` is flat,
+        # and the loader refuses the corpus, so the run must not report drafts it wrote into a
+        # corpus that is already red.
+        if entry.is_dir():
+            raise Unverifiable(
+                f"{entry}: `{CLAIMS_DIR}/` is flat, one claim per file — a directory here is an "
+                "error, not a place a claim can live"
+            )
+        if not is_claim_candidate(entry.name):
+            continue
+        if not entry.is_file() or entry.is_symlink():
+            raise Unverifiable(
+                f"{entry}: a claim file must be a regular file — `claims/` is flat, one claim "
+                "per file"
+            )
+        try:
+            text = entry.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as error:
+            raise Unverifiable(f"cannot read {entry}: {error}") from error
+        match = CLAIM_ID_RE.search(text)
+        if match is None:
+            raise Unverifiable(
+                f"{entry}: no `claim_id:` line — this corpus cannot be read as a corpus; "
+                "`req canon` names the defect"
+            )
+        claim_id = match.group("value").strip()
+        # Both numbers are reserved: the declared id is what the claim is, and the file name is
+        # where the next draft would land.
+        declared = number_or_none(claim_id)
+        if declared is not None:
+            used.add(declared)
+        named = claim_number_from_name(entry.name)
+        if named is not None:
+            used.add(named)
+        sources[claim_id] = {
+            unquote_scalar(found.group("value")) for found in CLAIM_SOURCE_RE.finditer(text)
+        }
+
+    registry = root / REGISTRY_PATH
+    try:
+        registry_text = registry.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise Unverifiable(
+            f"cannot read the subject registry ({registry}): {error} — run `req init` here "
+            "first"
+        ) from error
+    version = REGISTRY_VERSION_RE.search(registry_text)
+    if version is None:
+        raise Unverifiable(
+            f"{registry}: no `version:` line — the registry cannot be read, so the parse the "
+            "drafts derive could not be named"
+        )
+    return Corpus(root, used, sources, int(version.group("value")))
+
+
+def req_binary():
+    """The `req` on PATH — the binary whose judgement this tool defers to."""
+    binary = shutil.which(REQ_BINARY)
+    if binary is None:
+        raise Unverifiable(
+            "`req` is not on PATH — install it at a pinned rev (docs/adopting.md), because a "
+            "draft's claim schema comes from the binary that will judge it"
+        )
+    return binary
+
+
+def loader_check(binary, root, targets, texts):
+    """Run the corpus plus the drafts through the real loader (`req canon`) before anything is
+    written, in a scratch copy of the corpus, and raise Unverifiable if it does not load.
+
+    The loader is the only judge of a claim file: a template that drifted from the format would
+    be written and reported as drafted all the same. The same run is what turns an older-schema
+    corpus away (its message names tools/migrate_claims.py).
+    """
+    with tempfile.TemporaryDirectory(prefix="req-needs-") as scratch:
+        copy = pathlib.Path(scratch)
+        for name in (CLAIMS_DIR, "aliases"):
+            if (root / name).is_dir():
+                shutil.copytree(root / name, copy / name)
+        (copy / CLAIMS_DIR).mkdir(exist_ok=True)
+        for (_claim_id, target), text in zip(targets, texts):
+            (copy / CLAIMS_DIR / target.name).write_text(text, encoding="utf-8")
+        try:
+            completed = subprocess.run(
+                [binary, "--root", str(copy), "canon"],
+                capture_output=True, text=True, check=False,
+            )
+        except OSError as error:
+            raise Unverifiable(f"cannot run `{binary} canon`: {error}") from error
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip() or "no output"
+        raise Unverifiable(
+            f"the corpus plus these drafts does not load (`req canon` exited "
+            f"{completed.returncode}), so nothing was written. The loader says why:\n{detail}"
+        )
+
+
+def read_axes():
+    """`(rules_v, claim_schema)` from the `req` on PATH — the schema a draft declares, and the
+    rules version its parse is derived under (reported)."""
+    binary = req_binary()
+    try:
+        completed = subprocess.run(
+            [binary, "--version"], capture_output=True, text=True, check=False
+        )
+    except OSError as error:
+        raise Unverifiable(f"cannot run `{binary} --version`: {error}") from error
+    if completed.returncode != 0:
+        raise Unverifiable(
+            f"`{binary} --version` exited {completed.returncode}: "
+            f"{completed.stderr.strip() or 'no output'}"
+        )
+    axes = parse_version(completed.stdout)
+    if axes is None:
+        raise Unverifiable(
+            f"`{binary} --version` does not name `rules_v` and `claim_schema` — a build "
+            "older than the claim format this tool writes cannot be drafted against"
+        )
+    if axes[1] != DRAFT_SCHEMA:
+        raise Unverifiable(
+            f"`{binary}` reports claim_schema {axes[1]}, but this tool drafts {DRAFT_SCHEMA} "
+            "claims: a draft under another schema would not load — use a matching req build or "
+            "the matching copy of this tool"
+        )
+    return axes
+
+
+def relative(root, path):
+    """A path as the report shows it: root-relative when it is under the root."""
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
+def write_claims(targets, texts):
+    """Write every target exclusively, or write nothing at all.
+
+    `x` mode, not a check-then-write: the pre-flight in `run` covers the ordinary case, so a
+    path that appears in between (a concurrent run) is refused by the write itself rather than
+    overwritten. What this run did write is removed on failure.
+    """
+    written = []
+    try:
+        for target, text in zip(targets, texts):
+            try:
+                handle = open(target, "x", encoding="utf-8")
+            except FileExistsError as error:
+                raise Problem(
+                    f"refusing to write {target}: it already exists — a claim file is never "
+                    "overwritten"
+                ) from error
+            # Remembered *before* the write: a failure part-way leaves a partial file, and a
+            # cleanup that only knows completed writes would leave it behind.
+            written.append(target)
+            with handle:
+                handle.write(text)
+    except OSError as error:
+        remove_written(written)
+        raise Unverifiable(f"cannot write {error.filename or 'the claims'}: {error}") from error
+    except Problem:
+        remove_written(written)
+        raise
+    return written
+
+
+def remove_written(written):
+    """Best-effort removal, reported — never swallowed."""
+    leftovers = []
+    for path in written:
+        try:
+            path.unlink()
+        except OSError as error:
+            leftovers.append(f"{path}: {error}")
+    if leftovers:
+        print(
+            "[UNVERIFIABLE] could not remove what a failed run wrote — remove it by hand:\n  "
+            + "\n  ".join(leftovers),
+            file=sys.stderr,
+        )
+
+
+# --- the driver -------------------------------------------------------------
+
+
+def load_export(path, label):
+    """The parsed export at `path`, or Unverifiable."""
+    try:
+        text = path.read_bytes().decode("utf-8-sig")
+    except (OSError, UnicodeDecodeError) as error:
+        raise Unverifiable(f"cannot read the export {label}: {error}") from error
+    try:
+        return json.loads(text, object_pairs_hook=no_duplicate_keys)
+    except ValueError as error:
+        raise Unverifiable(f"{label} is not JSON a reader can trust: {error}") from error
+
+
+def sort_needs(needs, types, statuses):
+    """Classify every need, in file order: `(drafts, skips, not_selected)`.
+
+    `drafts` is `[(need id, need, statement)]`, `skips` is `[(need id, reason)]`, and
+    `not_selected` maps a type name to its count.
+    """
+    drafts, skips, not_selected = [], [], {}
+    for need_id, need in needs.items():
+        kind, payload = classify(need_id, need, types, statuses)
+        if kind == "draft":
+            drafts.append((need_id, need, payload))
+        elif kind == "skip":
+            skips.append((need_id, payload))
+        else:
+            not_selected[payload] = not_selected.get(payload, 0) + 1
+    return drafts, skips, not_selected
+
+
+def type_counts(needs):
+    """The need types a version holds, with counts, in type order."""
+    counts = {}
+    for need in needs.values():
+        raw = need.get("type")
+        name = raw if isinstance(raw, str) and raw else "(none)"
+        counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def skip_lines(skips):
+    return [f"skip {one_line(need_id)}  {reason}" for need_id, reason in skips]
+
+
+def run(args):
+    """Draft, report, and (with --write) write. Returns the exit code."""
+    corpus = read_corpus(resolve_root(args.root))
+
+    # The export is resolved against the **corpus root**, not the working directory, like the
+    # sibling `adopt.py`: one basis for reading and for the name the report gives.
+    document = pathlib.Path(args.document).expanduser()
+    if not document.is_absolute():
+        document = corpus.root / document
+    document = pathlib.Path(os.path.normpath(str(document)))
+    label = relative(corpus.root, document)
+
+    export = load_export(document, args.document)
+    version, needs = select_version(export, args.version_key)
+
+    present = type_counts(needs)
+    missing = [name for name in args.type if name not in present]
+    if missing:
+        have = ", ".join(f"{name} ({present[name]})" for name in sorted(present)) or "none"
+        raise Problem(
+            f"--type names a type {label} does not have: {', '.join(missing)}\n"
+            f"  the file has: {have}\n"
+            "  there is no default type list: name the types your project uses for requirements"
+        )
+
+    drafts, skips, not_selected = sort_needs(needs, args.type, args.status)
+    total = len(needs)
+    recon = reconcile_line(total, len(drafts), len(skips), not_selected)
+
+    if not drafts:
+        # The skipped needs are named even here: the finding is that nothing was drafted, and
+        # *why* each selected need was skipped is its remedy.
+        lines = "".join(f"\n  {line}" for line in skip_lines(skips))
+        raise Problem(f"nothing drafted from {label} (version {version}){lines}\n  {recon}")
+
+    # A need already drafted from this origin is refused before anything else: the drafts are in
+    # the corpus, and drafting them again would duplicate claims. Only a selected, draftable need
+    # counts — a skipped one was never a draft.
+    clashes = []
+    for need_id, _need, _statement in drafts:
+        wanted = f"{args.origin}#{need_id}"
+        owners = sorted(
+            claim_id for claim_id, stored in corpus.sources.items() if wanted in stored
+        )
+        if owners:
+            clashes.append(f"  {one_line(need_id)}  ({', '.join(owners)})")
+    if clashes:
+        raise Problem(
+            f"refusing to draft: {len(clashes)} need(s) in {label} are already drafted from "
+            f"this origin ({args.origin}):\n" + "\n".join(clashes) + "\n"
+            "  edit those claims, or delete them deliberately, before drafting from this origin "
+            "again — or pass the --origin the export was retrieved from this time"
+        )
+
+    rules_v, schema = read_axes()
+
+    number = next_claim_number(corpus.used)
+    targets, texts = [], []
+    for offset, (need_id, need, statement) in enumerate(drafts):
+        claim_id = f"REQ-{number + offset:04d}"
+        targets.append((claim_id, corpus.root / CLAIMS_DIR / f"{claim_id}.yml"))
+        texts.append(
+            render_claim(
+                export=label,
+                location=location_of(need),
+                statement=statement,
+                source=f"{args.origin}#{need_id}",
+                date=args.date,
+                claim_id=claim_id,
+                schema=schema,
+            )
+        )
+
+    loader_check(req_binary(), corpus.root, targets, texts)
+
+    written = []
+    if args.write:
+        for _claim_id, target in targets:
+            if target.exists() or target.is_symlink():
+                raise Problem(
+                    f"refusing to write {target}: it already exists — a claim file is never "
+                    "overwritten"
+                )
+        written = write_claims([target for _claim_id, target in targets], texts)
+
+    all_keys = {key for need in needs.values() for key in need}
+    fields, link_names, with_links = not_carried([need for _id, need, _s in drafts], all_keys)
+    report(args, corpus, label, version, drafts, skips, targets, written, rules_v,
+           (fields, link_names, with_links), recon)
+    return 0
+
+
+def report(args, corpus, label, version, drafts, skips, targets, written, rules_v, carried, recon):
+    """Print what was drafted, what was skipped and why, what was not carried, and what was
+    written — ending with the line that adds up."""
+    fields, link_names, with_links = carried
+    print(f"export: {label} (version {version})")
+    print(f"origin: {args.origin}")
+    print(f"date: {args.date} (--date)")
+    print(f"root: {corpus.root}")
+    print(f"req: rules_v {rules_v}, registry {corpus.registry_v}")
+    print(f"types: {', '.join(args.type)}" + (f"; statuses: {', '.join(args.status)}" if args.status else ""))
+    print()
+    for (need_id, need, statement), (claim_id, _target) in zip(drafts, targets):
+        print(f"draft {claim_id}  {one_line(need_id)}  {location_of(need)}")
+        print(f"    statement: {statement}")
+    for line in skip_lines(skips):
+        print(line)
+    print()
+    shown = ", ".join(fields) if fields else "none"
+    carried_links = f" ({', '.join(link_names)})" if link_names else ""
+    print(
+        f"not carried: {shown}; typed links on {with_links} of {len(drafts)} drafted needs"
+        f"{carried_links} — `relations` stays []"
+    )
+    print(
+        "note: the source need ids are ignored for the claim_id (req allocates it) and kept as "
+        "provenance in rationale.source"
+    )
+    print(
+        "next: `req canon` shows the parse each draft derives (nothing derived is stored); a "
+        "draft is a proposal — edit it, add its applicability and relations, pin a load-bearing "
+        "bound under `pins:`"
+    )
+    if written:
+        names = ", ".join(relative(corpus.root, target) for target in written)
+        print(f"wrote: {len(written)} claim(s) — {names}")
+    else:
+        print("dry run: nothing written — pass --write to write them")
+    print(recon)
+
+
+def field(text, prefix):
+    """The first line of `text` starting with `prefix`, trimmed — a field, not a substring."""
+    for line in text.splitlines():
+        if line.startswith(prefix):
+            return line.strip()
+    return None
+
+
+def self_check():
+    """Table-drive the pure half. No filesystem, no corpus, no `req`, no export.
+
+    Every row is a fact the conventions promise: what is selected, which reason a need is
+    skipped for and in what order, how the statement is joined, what the report counts, and what
+    a draft carries. The filesystem half is exercised by `tests/needs_import.rs`.
+    """
+    types = ("req",)
+
+    def judged(content, **more):
+        need = {"type": "req", "content": content}
+        need.update(more)
+        return classify("N", need, types, ())
+
+    draft = render_claim(
+        export="needs.json",
+        location="docs/a:12",
+        statement='The tool shall print "a: b" and a back\\slash.',
+        source="https://example.test/needs.json#N_1",
+        date="2026-11-05",
+        claim_id="REQ-0016",
+        schema="req.claim/2",
+    )
+    keys = {"derived_from", "derived_from_back", "tags", "links", "links_back", "satisfied_by"}
+    rows = [
+        ("select: a named type is selected", judged("Ok.")[0], "draft"),
+        (
+            "select: a type that is not named is not selected, under its type",
+            classify("N", {"type": "doc", "content": "x"}, types, ()),
+            ("not selected", "doc"),
+        ),
+        (
+            "select: a need with no type is counted under (none)",
+            classify("N", {"content": "x"}, types, ()),
+            ("not selected", "(none)"),
+        ),
+        (
+            "select: --status keeps only the named statuses",
+            classify("N", {"type": "req", "status": "open", "content": "x"}, types, ("valid",)),
+            ("not selected", "req"),
+        ),
+        (
+            "select: a null status never matches --status",
+            classify("N", {"type": "req", "status": None, "content": "x"}, types, ("valid",)),
+            ("not selected", "req"),
+        ),
+        (
+            "select: a matching status is selected",
+            classify("N", {"type": "req", "status": "valid", "content": "x"}, types, ("valid",))[0],
+            "draft",
+        ),
+        ("statement: wrapped lines are trimmed and joined with one space",
+         judged("  first line,\n   second line.  \n"), ("draft", "first line, second line.")),
+        ("statement: CRLF line breaks are line breaks", judged("a\r\nb"), ("draft", "a b")),
+        ("skip: an external need", judged("Ok.", is_external=True), ("skip", "external")),
+        ("skip: external is checked before content", judged("", is_external=True), ("skip", "external")),
+        ("skip: is_external false is not external", judged("Ok.", is_external=False)[0], "draft"),
+        ("skip: an empty content", judged(""), ("skip", "no content")),
+        ("skip: a blank content", judged(" \n\t "), ("skip", "no content")),
+        ("skip: a null content", judged(None), ("skip", "no content")),
+        (
+            "skip: an absent content",
+            classify("N", {"type": "req"}, types, ()),
+            ("skip", "no content"),
+        ),
+        ("skip: a directive", judged(".. note::\n   body"), ("skip", "rst directive")),
+        ("skip: an indented directive line", judged("Text.\n   .. image:: x"), ("skip", "rst directive")),
+        (
+            "skip: a directive is named before the blank line that follows it",
+            judged(".. code-block:: text\n\n   x"),
+            ("skip", "rst directive"),
+        ),
+        ("skip: a blank line inside is a second paragraph", judged("One.\n\nTwo."), ("skip", "multi-paragraph")),
+        (
+            "skip: a whitespace-only line inside is a blank line",
+            judged("One.\n  \nTwo."),
+            ("skip", "multi-paragraph"),
+        ),
+        (
+            "skip: multi-paragraph is named before a role",
+            judged("One.\n\nSee :ref:`x`."),
+            ("skip", "multi-paragraph"),
+        ),
+        ("skip: an inline role", judged("See :need:`X_1` here."), ("skip", "rst role")),
+        ("skip: a domain role", judged("Call :py:func:`run`."), ("skip", "rst role")),
+        (
+            "skip: a backtick that follows no role is plain text",
+            judged("Write to the `log` file: and `more`.")[0],
+            "draft",
+        ),
+        ("skip: a colon before a space is not a role", judged("Note: `x` is quoted.")[0], "draft"),
+        ("skip: the order is the documented one", REASONS, (
+            "external", "no content", "rst directive", "multi-paragraph", "rst role")),
+        (
+            "text: a trimmed ellipsis is not a statement (a line starting `..`)",
+            judged("...and so on.")[0:2],
+            ("skip", "rst directive"),
+        ),
+        (
+            "links: a field with a _back partner is a link",
+            link_fields_of({"derived_from": ["A[version==1]"], "tags": ["x"]}, keys),
+            ["derived_from"],
+        ),
+        (
+            "links: a _back field and `links` are links, tags are not",
+            link_fields_of({"derived_from_back": ["B"], "links": ["C"], "tags": ["t"]}, keys),
+            ["derived_from_back", "links"],
+        ),
+        (
+            "links: an empty list is no link",
+            link_fields_of({"derived_from": [], "links": None}, keys),
+            [],
+        ),
+        (
+            "links: a field with no partner is a plain field, not a link",
+            link_fields_of({"satisfied_by": ["X"]}, {"satisfied_by"}),
+            [],
+        ),
+        (
+            "not carried: fields exclude what the draft uses and the typed links",
+            not_carried(
+                [{"content": "x", "id": "N", "docname": "d", "lineno": 3, "status": "valid",
+                  "tags": None, "safety": "QM", "derived_from": ["A"], "is_external": False}],
+                keys,
+            ),
+            (["safety", "status"], ["derived_from"], 1),
+        ),
+        (
+            "reconcile: the line adds up and breaks the remainder down by type",
+            reconcile_line(10, 5, 3, {"document": 1, "arch": 1}),
+            "needs 10 = drafted 5 + skipped 3 + not selected 2 (by type: arch 1, document 1)",
+        ),
+        (
+            "reconcile: nothing not selected has no breakdown",
+            reconcile_line(2, 1, 1, {}),
+            "needs 2 = drafted 1 + skipped 1 + not selected 0",
+        ),
+        (
+            "version: one version and no current_version is that version",
+            select_version({"versions": {"1.0": {"needs": {}}}}, None),
+            ("1.0", {}),
+        ),
+        (
+            "version: --version-key picks among several",
+            select_version({"versions": {"1": {"needs": {}}, "2": {"needs": {"A": {}}}}}, "2")[0],
+            "2",
+        ),
+        (
+            "version: current_version is the default",
+            select_version({"current_version": "2", "versions": {"1": {"needs": {}}, "2": {"needs": {}}}}, None)[0],
+            "2",
+        ),
+        ("ids: claim 8 from a file name", claim_number_from_name("REQ-0008.yml"), 8),
+        ("ids: a leading dot is not part of the stem", claim_number_from_name(".REQ-0008"), 8),
+        ("ids: an unrelated name has no number", claim_number_from_name("notes.yml"), None),
+        ("ids: the README is not a claim", is_claim_candidate("README.md"), False),
+        ("next: an empty corpus starts at 1", next_claim_number(set()), 1),
+        ("next: one past the highest, not the first gap", next_claim_number({1, 3}), 4),
+        (
+            "version: the two axes are read from the binary's output",
+            parse_version("req 0.1.0\n  rules_v            5\n  claim_schema       req.claim/2\n"),
+            (5, "req.claim/2"),
+        ),
+        (
+            "version: a build that does not name the axes cannot be drafted against",
+            parse_version("req 0.1.0\n  built from         deadbee\n"),
+            None,
+        ),
+        ("date: a real date is usable", valid_date("2026-10-21"), True),
+        ("date: a day that does not exist is not", valid_date("2026-02-30"), False),
+        ("date: a timestamp is not a date", valid_date("2026-10-21T00:00:00Z"), False),
+        ("draft: a control character is escaped", yaml_quote("a\x00b"), '"a\\x00b"'),
+        (
+            "draft: a quoted source reads back as written",
+            unquote_scalar(yaml_quote('o"r\\i\ngin\x07 #N')),
+            'o"r\\i\ngin\x07 #N',
+        ),
+        ("draft: a single-quoted source reads back", unquote_scalar("'it''s #1'"), "it's #1"),
+        ("draft: a plain source loses a trailing comment", unquote_scalar("abc#N  # why"), "abc#N"),
+        (
+            "draft: nothing derived and no source field in the file",
+            [
+                key
+                for key in (
+                    "modality", "subject", "attribute", "operator", "value", "unit",
+                    "conditions", "exception", "temporal", "quantifier", "unstructured",
+                    "canonical", "address", "pins",
+                )
+                if field(draft, f"{key}:") is not None
+            ],
+            [],
+        ),
+        (
+            "draft: the authored fields are all there, empty where unknown",
+            [field(draft, f"{key}:") for key in ("applicability", "relations")],
+            ["applicability: []", "relations: []"],
+        ),
+        (
+            "draft: the provenance is the origin and the need id",
+            field(draft, "  source: "),
+            'source: "https://example.test/needs.json#N_1"',
+        ),
+        (
+            "draft: the statement's quotes and backslashes are escaped",
+            field(draft, "statement: "),
+            'statement: "The tool shall print \\"a: b\\" and a back\\\\slash."',
+        ),
+        (
+            "draft: the header names the export and the place in it",
+            "needs.json (docs/a:12)" in draft,
+            True,
+        ),
+        (
+            "report: a location without a name or line says `?`",
+            location_of({}),
+            "?:?",
+        ),
+        ("report: a location is docname:lineno", location_of({"docname": "d/x", "lineno": 7}), "d/x:7"),
+        ("report: a newline in a name cannot end a line", one_line("a\nb\x00c"), "a b c"),
+        (
+            "export: a repeated key is refused, not silently dropped",
+            _refuses(lambda: json.loads('{"a": 1, "a": 2}', object_pairs_hook=no_duplicate_keys)),
+            True,
+        ),
+        (
+            "export: no versions mapping is unverifiable",
+            _refuses(lambda: select_version({"needs": {}}, None)),
+            True,
+        ),
+        (
+            "export: several versions and no current_version is unverifiable",
+            _refuses(lambda: select_version({"versions": {"1": {"needs": {}}, "2": {"needs": {}}}}, None)),
+            True,
+        ),
+        (
+            "export: content that is not text is unverifiable",
+            _refuses(lambda: classify("N", {"type": "req", "content": ["x"]}, types, ())),
+            True,
+        ),
+    ]
+
+    failures = 0
+    for label, got, want in rows:
+        ok = got == want
+        failures += 0 if ok else 1
+        print(f"  {'ok  ' if ok else 'FAIL'} {label:<62} {got!r}")
+    print(f"needs_import --self-check: {len(rows)} case(s), {failures} failure(s)")
+    return 1 if failures else 0
+
+
+def _refuses(call):
+    """Whether `call()` raises the refusal this tool turns into a clean exit."""
+    try:
+        call()
+    except (Unverifiable, ValueError):
+        return True
+    return False
+
+
+# --- arguments --------------------------------------------------------------
+
+
+def value_arg(text):
+    """A value that is not a flag: one beginning with `-` is a usage error, not a value."""
+    if text.startswith("-"):
+        raise argparse.ArgumentTypeError(f"{text!r} begins with `-`; a value was expected")
+    return text
+
+
+def named_arg(text):
+    """A non-blank value that is not a flag."""
+    value_arg(text)
+    if not text.strip():
+        raise argparse.ArgumentTypeError("the value is empty")
+    return text
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(
+        prog="tools/needs_import.py",
+        description=(
+            "Draft req claims from a Sphinx-Needs needs.json: one `req.claim/2` claim per plain "
+            "requirement, with the need id in its provenance, and nothing derived."
+        ),
+        epilog=HELP_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        "--from", dest="document", required=True, type=value_arg, metavar="<needs.json>",
+        help="the export to read; a relative path is resolved against the corpus root",
+    )
+    parser.add_argument(
+        "--origin", required=True, type=named_arg, metavar="<url-or-path>",
+        help="where the export was retrieved from; recorded as `<origin>#<need id>` in each draft",
+    )
+    parser.add_argument(
+        "--type", action="append", required=True, type=named_arg, metavar="<type>",
+        help="a need type to read (required, repeatable, no default)",
+    )
+    parser.add_argument(
+        "--status", action="append", default=[], type=named_arg, metavar="<status>",
+        help="only needs with one of these statuses are considered (repeatable)",
+    )
+    parser.add_argument(
+        "--date", required=True, type=value_arg, metavar="YYYY-MM-DD",
+        help="the rationale date (the export's retrieval date); never invented",
+    )
+    parser.add_argument(
+        "--version-key", type=named_arg, metavar="<version>",
+        help="the version of the export to read (default: its current_version)",
+    )
+    parser.add_argument(
+        "--root", type=value_arg, metavar="<dir>",
+        help="the corpus root (default: $REQ_ROOT, else the working directory)",
+    )
+    parser.add_argument("--write", action="store_true", help="write the drafts (the default is a dry run)")
+    parser.add_argument(
+        "--self-check", action="store_true",
+        help="table-drive the pure half; read no export, no corpus, no `req`",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv):
+    # `--self-check` stands alone: it must work before a corpus exists and without `req`, so it
+    # is answered before the required arguments are demanded of it. Any other argument beside
+    # it is a usage error, not a quiet run of two things at once.
+    if "--self-check" in argv:
+        if len(argv) != 1:
+            print(
+                "usage: tools/needs_import.py --self-check takes no other arguments",
+                file=sys.stderr,
+            )
+            return 2
+        return self_check()
+
+    args = parse_args(argv)
+    args.type = list(dict.fromkeys(args.type))
+    args.status = list(dict.fromkeys(args.status))
+    if not valid_date(args.date):
+        print(
+            f"usage: --date must be a calendar date in YYYY-MM-DD form, not {args.date!r}",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        return run(args)
+    except Usage as error:
+        print(f"usage: {error}", file=sys.stderr)
+        return 2
+    except Problem as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    except Unverifiable as error:
+        print(f"[UNVERIFIABLE] {error}", file=sys.stderr)
+        return 3
+    except Exception as error:  # noqa: BLE001 - an unexpected failure is not a verdict
+        # A crash is not "a definite problem" about the export: the tri-state answer to a
+        # question this run could not settle is UNVERIFIABLE, never a FAIL the caller reads as
+        # their input's fault.
+        print(f"[UNVERIFIABLE] internal error: {error!r}", file=sys.stderr)
+        return 3
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
