@@ -101,9 +101,24 @@ adopter's job once and check that `req --version` reports `built from <REV>`.
 
 ## Measured
 
-Empty until the owner dispatches `.forgejo/workflows/install-timing.yml` (inputs `rev` and `sha256`, the two
-values of a released rev's Linux `pin:` line) and the orchestrator copies the two `INSTALL` lines it prints,
-and the run's URL, in here. No document gets a timing from anywhere else, and nothing is estimated.
+From `.forgejo/workflows/install-timing.yml`, dispatched from `main` for the release `rev-a8fcd2a`
+(https://git.xantu-barb.ts.net/fdx/req/actions/runs/740), on the CI runner (the Linux container of this setup):
+
+```text
+INSTALL source: 36s
+INSTALL prebuilt: 0s
+```
+
+Read these with their limits:
+
+- **The compile is cheap.** req has six direct dependencies, so a cold source install (empty `CARGO_HOME`,
+  registry index and crates fetched, then compiled) took about half a minute here. Unlike nextest's eight
+  minutes (ADR 0019), the saving from the prebuilt binary is **not mainly the compile**: it is the Rust toolchain
+  and the SSH deploy key a project would otherwise need only for req.
+- **The toolchain is outside both figures.** `rustup toolchain install` ran before either measurement; a runner
+  with no Rust pays that on top of the source figure, and it was not measured.
+- **`0s` means under a second.** The readings are milliseconds, printed in whole seconds.
+- **One run.** Not an average; no variance is claimed.
 
 Both workflows reach Forgejo through the runner's own server URL (the one its checkout uses, a LAN address on
 this setup), because the runner has no tailnet DNS and cannot resolve the public host name. So the download
