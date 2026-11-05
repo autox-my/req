@@ -51,7 +51,10 @@ jobs:
     timeout-minutes: 45
     env:
       # Where releases are read from (examples/install-req.sh) is where they are written.
-      FORGEJO_API: https://git.xantu-barb.ts.net/api/v1/repos/fdx/req
+      # The URL THIS RUNNER reaches Forgejo at (its own server URL: the one checkout uses), not the
+      # public tailnet name: the runner is a LAN container with no tailnet DNS, so
+      # https://git.xantu-barb.ts.net does not resolve there (first dispatch: "Could not resolve host").
+      FORGEJO_API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
     steps:
       - name: checkout, with the history the rev is resolved in
         uses: actions/checkout@v4
@@ -241,9 +244,21 @@ jobs:
           trap 'rm -rf "$work"' EXIT
 
           # The token travels as a header curl reads from stdin: never in an argument list, never printed.
+          # The scheme is the server URL's, and only http or https is accepted. On a runner whose server
+          # URL is a LAN `http://` address the token crosses that LAN hop in clear, exactly as the
+          # checkout's credentials do; the published bytes are verified by the adopter's pin, not by
+          # this transport (ADR 0025 §3).
+          case $FORGEJO_API in
+            https://*) proto='=https' ;;
+            http://*) proto='=http' ;;
+            *)
+              echo "::error::the runner's server URL is neither http nor https: $FORGEJO_API"
+              exit 1
+              ;;
+          esac
           api() {
             printf 'Authorization: token %s\n' "$RELEASE_TOKEN" |
-              curl --proto '=https' --tlsv1.2 -sS -H @- "$@"
+              curl --proto "$proto" --tlsv1.2 -sS -H @- "$@"
           }
           say_body() { head -c 300 "$1" | LC_ALL=C tr -c '[:print:]\n' '?'; echo; }
           release_id() {

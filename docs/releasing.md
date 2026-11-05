@@ -105,6 +105,11 @@ Empty until the owner dispatches `.forgejo/workflows/install-timing.yml` (inputs
 values of a released rev's Linux `pin:` line) and the orchestrator copies the two `INSTALL` lines it prints,
 and the run's URL, in here. No document gets a timing from anywhere else, and nothing is estimated.
 
+Both workflows reach Forgejo through the runner's own server URL (the one its checkout uses, a LAN address on
+this setup), because the runner has no tailnet DNS and cannot resolve the public host name. So the download
+the timing measures is a LAN hop, not TLS over the tailnet: say so beside the number, and read the prebuilt
+figure as a lower bound for an adopter's remote runner.
+
 ## Tokens
 
 | where | scope | for |

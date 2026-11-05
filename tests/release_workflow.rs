@@ -199,6 +199,24 @@ fn the_release_builds_with_the_script_that_proves_the_binary() {
         "--out",
         "the script is told where the assets go",
     );
+    forbid(
+        RELEASE,
+        &text,
+        "git.xantu-barb.ts.net",
+        "the public tailnet name does not resolve on the runner: the API base is the runner's server URL",
+    );
+    require(
+        RELEASE,
+        &text,
+        "curl --proto \"$proto\" --tlsv1.2",
+        "the TLS floor survives the parameterised scheme (the token travels in this request)",
+    );
+    require(
+        RELEASE,
+        &text,
+        "${{ github.server_url }}/api/v1/repos/${{ github.repository }}",
+        "the API base is the URL this runner reaches Forgejo at",
+    );
     require(
         RELEASE,
         &text,
@@ -477,10 +495,32 @@ fn the_timing_measures_both_installs_and_prints_two_lines() {
         "${{ secrets.REQ_RELEASE_TOKEN }}",
         "the prebuilt install reads its token from REQ_RELEASE_TOKEN, as an adopter's CI does",
     );
-    // The install script's two test-only overrides are for tests; a measurement that set one would
-    // not be measuring what an adopter runs.
-    forbid(TIMING, &text, "REQ_RELEASE_BASE", "a test-only override");
-    forbid(TIMING, &text, "REQ_CURL_PROTO", "a test-only override");
+    // The runner cannot resolve the public host, so the timing points the script at the runner's own
+    // server URL through the two overrides; but only ever at that URL, never at a literal host.
+    require(
+        TIMING,
+        &text,
+        "REQ_RELEASE_BASE=\"${GITHUB_SERVER_URL%/}/${GITHUB_REPOSITORY}/releases/download\"",
+        "the override is derived from the runner's own server URL, not typed",
+    );
+    require(
+        TIMING,
+        &text,
+        "http://*) export REQ_CURL_PROTO='=http' ;;",
+        "the plain-http arm of the protocol override is derived from the server URL's scheme, never typed",
+    );
+    require(
+        TIMING,
+        &text,
+        "https://*) export REQ_CURL_PROTO='=https' ;;",
+        "the https arm keeps the https-only protocol",
+    );
+    forbid(
+        TIMING,
+        &text,
+        "git.xantu-barb.ts.net",
+        "the public tailnet name does not resolve on the runner: use the server URL",
+    );
 }
 
 #[test]

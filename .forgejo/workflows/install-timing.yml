@@ -28,10 +28,15 @@
 #   - The source install starts from an empty CARGO_HOME, so it also pays for fetching the registry
 #     index and every crate. A warm cache on a long-lived runner would make it faster; that is what
 #     the cold figure is not, and the runbook says so beside the number.
-#   - It fetches over https with the read token. The documented source install uses an SSH deploy
-#     key (docs/adopting.md); the transport differs, the compile is the same compile.
+#   - It fetches over the runner's own server URL with the read token, which is not the public https
+#     host (the runner has no tailnet DNS). On a LAN `http://` server URL the instance-wide
+#     `read:repository` token crosses that hop in clear, as the checkout's credentials do. The
+#     documented source install uses an SSH deploy key (docs/adopting.md); the transport differs, the
+#     compile is the same compile.
 #   - The prebuilt install runs the real script from this checkout with only its pin table filled in
-#     (REV and the Linux hash); the script's test-only overrides are never set.
+#     (REV and the Linux hash) and its two documented overrides (REQ_RELEASE_BASE, REQ_CURL_PROTO)
+#     set from the runner's server URL: this harness is the one shipped YAML that sets them, and only
+#     to reach that URL.
 
 name: Install timing
 
@@ -52,7 +57,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      REPO_URL: https://git.xantu-barb.ts.net/fdx/req.git
+      # The runner's own server URL (see release.yml): the tailnet name does not resolve on this runner.
+      REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
     steps:
       - name: only main's tooling runs with the read token
         run: |
@@ -155,6 +161,19 @@ jobs:
             fi
           done
           export REQ_INSTALL_DIR="$dir/bin"
+          # The public host is not reachable from this runner, so the script is pointed at the runner's
+          # own server URL through its two documented overrides. The script, its checks and its pin are
+          # the ones an adopter runs; only the route differs (a LAN hop, so the download figure is the
+          # LAN's, not TLS over the tailnet, and the runbook says so beside the number).
+          export REQ_RELEASE_BASE="${GITHUB_SERVER_URL%/}/${GITHUB_REPOSITORY}/releases/download"
+          case $GITHUB_SERVER_URL in
+            https://*) export REQ_CURL_PROTO='=https' ;;
+            http://*) export REQ_CURL_PROTO='=http' ;;
+            *)
+              echo "::error::the runner's server URL is neither http nor https: $GITHUB_SERVER_URL"
+              exit 1
+              ;;
+          esac
           start="$(date +%s%3N)"
           bash "$dir/install-req.sh"
           end="$(date +%s%3N)"
@@ -178,7 +197,7 @@ jobs:
           export CARGO_HOME="$dir/cargo-home"
           auth="$(printf 'x-access-token:%s' "$REQ_RELEASE_TOKEN" | base64 | tr -d '\n')"
           export GIT_CONFIG_COUNT=1
-          export GIT_CONFIG_KEY_0="http.https://git.xantu-barb.ts.net/.extraheader"
+          export GIT_CONFIG_KEY_0="http.${GITHUB_SERVER_URL%/}/.extraheader"
           export GIT_CONFIG_VALUE_0="Authorization: Basic $auth"
           start="$(date +%s%3N)"
           git clone --quiet --no-checkout "$REPO_URL" "$dir/src"

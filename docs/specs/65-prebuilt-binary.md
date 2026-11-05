@@ -87,7 +87,7 @@ release. No `src/` change anywhere in this issue.
      member or an absolute/`..` path is a refusal) before extracting; install `req` mode 0755 into
      `${REQ_INSTALL_DIR:-$HOME/.local/bin}`; run it: `req --version` must exit 0 and its `built from` must equal
      `REV` exactly. Print the two `--version` lines that decide the binary (`rules_v`, `built from`).
-   - Two test-only overrides, documented in the script header and **never set by any shipped YAML**:
+   - Two test-only overrides, documented in the script header and **never set by any adopter-facing YAML** (the 65-3 timing harness sets them, to reach the runner's own server URL):
      `REQ_RELEASE_BASE` and `REQ_CURL_PROTO` (default `=https`).
 2. **The template and the docs.**
    - `examples/github-workflows/req.yml`, `docs/adopting.md`'s `## CI` block and `req::init::CI_SNIPPET`:
