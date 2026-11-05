@@ -1,0 +1,268 @@
+{
+  "current_version": "0.1",
+  "project": "S-CORE",
+  "project_url": "https://eclipse-score.github.io/score",
+  "versions": {
+    "0.1": {
+      "creator": {
+        "program": "sphinx_needs",
+        "version": "8.5.0"
+      },
+      "needs": {
+        "stkh_req__ai_platform__agent_execution": {
+          "content": "The SW-platform shall execute AI-based agents with defined scheduling and resource budgets per criticality domain.",
+          "derived_from_back": [
+            "feat_req__ai_platform__agent_execution"
+          ],
+          "docname": "requirements/stakeholder/index",
+          "external_css": "external_link",
+          "id": "stkh_req__ai_platform__agent_execution",
+          "lineno": 1177,
+          "rationale": "AI-based agents share compute resources with vehicle functions of higher criticality and therefore need bounded and predictable resource usage.",
+          "reqtype": "Non-Functional",
+          "safety": "QM",
+          "section_name": "AI SW-platform",
+          "sections": [
+            "AI SW-platform",
+            "Stakeholder Requirements"
+          ],
+          "security": "NO",
+          "status": "valid",
+          "tags": [
+            "artificial_intelligence"
+          ],
+          "title": "Deterministic AI Agent Execution",
+          "type": "stkh_req",
+          "type_name": "Stakeholder Requirement",
+          "valid_from": "v2.0.0",
+          "version": 1
+        },
+        "feat_req__ai_platform__agent_execution": {
+          "content": "The platform shall schedule AI workloads via the existing execution management mechanisms with configurable resource budgets per criticality domain.",
+          "derived_from": [
+            "stkh_req__ai_platform__agent_execution[version==1]"
+          ],
+          "docname": "features/ai_platform/requirements/index",
+          "external_css": "external_link",
+          "id": "feat_req__ai_platform__agent_execution",
+          "lineno": 108,
+          "reqtype": "Non-Functional",
+          "safety": "QM",
+          "satisfied_by": [
+            "feat__ai_platform[version==1]"
+          ],
+          "section_name": "AI Platform Requirements",
+          "sections": [
+            "AI Platform Requirements"
+          ],
+          "security": "NO",
+          "status": "valid",
+          "title": "AI Agent Resource Budgets",
+          "type": "feat_req",
+          "type_name": "Feature Requirement",
+          "valid_from": "v2.0.0",
+          "version": 1
+        },
+        "comp_req__feo__act_alloc_error": {
+          "content": "During initialization (i.e. in the startup function of an activity), activities shall check for resource allocation\nand report an error to the executor in case of failure.",
+          "derived_from": [
+            "feat_req__feo__act_alloc_error[version==1]"
+          ],
+          "docname": "modules/feo/feo/docs/requirements/component_requirements",
+          "external_css": "external_link",
+          "id": "comp_req__feo__act_alloc_error",
+          "is_modified": true,
+          "lineno": 362,
+          "modifications": 1,
+          "reqtype": "Functional",
+          "safety": "ASIL_B",
+          "satisfied_by": [
+            "comp__feo_main[version==1]"
+          ],
+          "section_name": "Error Handling for S-CORE v0.5",
+          "sections": [
+            "Error Handling for S-CORE v0.5"
+          ],
+          "security": "YES",
+          "status": "valid",
+          "tags": [
+            "component_feo"
+          ],
+          "title": "Activity resource allocation error",
+          "type": "comp_req",
+          "type_name": "Component Requirement",
+          "version": 1
+        },
+        "aou_req__communication__1": {
+          "content": "It shall be ensured that enough memory is configured for shared memory instances,\nin order that LoLa can perform all necessary allocations (e.g. push-back on a Vector).",
+          "docname": "modules/communication/docs/requirements/aou_req",
+          "external_css": "external_link",
+          "id": "aou_req__communication__1",
+          "is_modified": true,
+          "lineno": 26,
+          "modifications": 1,
+          "reqtype": "Non-Functional",
+          "safety": "ASIL_B",
+          "section_name": "Assumptions of Use",
+          "sections": [
+            "Assumptions of Use"
+          ],
+          "security": "NO",
+          "status": "valid",
+          "tags": [
+            "communication"
+          ],
+          "title": "Monotonic Semi-Dynamic Memory Allocation",
+          "type": "aou_req",
+          "type_name": "Assumption of Use Requirement",
+          "version": 1
+        },
+        "aou_req__os__nonroot": {
+          "content": "No process running on the SW-platform shall request root privileges.\n\nNote: The root privilege is dangerous for security and safety as it destroys process isolation.",
+          "docname": "modules/os/docs/requirements/aou_req",
+          "external_css": "external_link",
+          "id": "aou_req__os__nonroot",
+          "is_modified": true,
+          "lineno": 26,
+          "modifications": 1,
+          "reqtype": "Functional",
+          "safety": "ASIL_B",
+          "section_name": "Generic Assumptions of Use",
+          "sections": [
+            "Generic Assumptions of Use"
+          ],
+          "security": "YES",
+          "status": "valid",
+          "tags": [
+            "operating_system"
+          ],
+          "title": "No Root Privileges",
+          "type": "aou_req",
+          "type_name": "Assumption of Use Requirement",
+          "version": 1
+        },
+        "aou_req__feo__on_target_crates": {
+          "content": "Only the following crates of the FEO module shall be used to build code that runs on\ntargets in release builds.\n\n- feo\n- feo-cpp-build\n- feo-cpp-macros\n- feo-time",
+          "docname": "modules/feo/docs/manual/safety_manual",
+          "external_css": "external_link",
+          "id": "aou_req__feo__on_target_crates",
+          "lineno": 50,
+          "reqtype": "Functional",
+          "safety": "ASIL_B",
+          "section_name": "Assumptions on the Environment",
+          "sections": [
+            "Assumptions on the Environment",
+            "Assumptions of Use",
+            "FEO Module Safety Manual"
+          ],
+          "security": "YES",
+          "status": "invalid",
+          "title": "on_target_crates",
+          "type": "aou_req",
+          "type_name": "Assumption of Use Requirement",
+          "version": 1
+        },
+        "stkh_req__dependability__firewall": {
+          "docname": "requirements/stakeholder/index",
+          "external_css": "external_link",
+          "id": "stkh_req__dependability__firewall",
+          "lineno": 590,
+          "rationale": "tbd",
+          "reqtype": "Functional",
+          "safety": "QM",
+          "section_name": "Security",
+          "sections": [
+            "Security",
+            "Dependability",
+            "Stakeholder Requirements"
+          ],
+          "security": "YES",
+          "status": "valid",
+          "title": "Firewall",
+          "type": "stkh_req",
+          "type_name": "Stakeholder Requirement",
+          "valid_from": "v1.0.0",
+          "version": 1
+        },
+        "mod_view_sta__os__os": {
+          "arch": {
+            "diagram": "{{ draw_module(need(), needs) }}"
+          },
+          "belongs_to": [
+            "mod__os[version==1]"
+          ],
+          "content": "The module \"OS\" is not a part of the S-CORE SW-Platform, but it is a crucial external SW element.\nIts components are modelled in S-CORE to be able to describe dependencies of S-CORE features to this external component.\nAs it is external to S-CORE, the (folder/file) structure of the documentation may be different from the other modules.\nIts main content is the operating system environment (sometimes also already called a \"SW platform\").\nBut also other SW components are modelled as a part of it as these are often provided by the \"OS\" supplier.\nOne example of these \"other\" SW components are the C/C++ libs which may come from a processor manufacturer instead.\nS-CORE expects to support integration of more than one operating system, so these may be seen already in this module view,\nas different components. Requirements on this OS integration are documented in :need:`doc__os_requirements`.\n\n.. needarch::\n   :scale: 50\n   :align: center\n\n   {{ draw_module(need(), needs) }}",
+          "docname": "modules/os/docs/index",
+          "external_css": "external_link",
+          "id": "mod_view_sta__os__os",
+          "includes": [
+            "comp__os_autosd",
+            "comp__os_libc",
+            "comp__os_libcpp",
+            "comp__os_message_passing"
+          ],
+          "lineno": 33,
+          "title": "OS (external)",
+          "type": "mod_view_sta",
+          "type_name": "Module Architecture Static View",
+          "version": 1
+        },
+        "feat_req__feo__act_alloc_error": {
+          "content": "During initialization (i.e. in the startup function of an activity), activities shall check for resource allocation\nand report an error to the executor in case of failure.",
+          "derived_from": [
+            "stkh_req__dependability__availability[version==1]",
+            "stkh_req__dependability__safe_startup_reset[version==1]",
+            "stkh_req__execution_model__processes[version==1]"
+          ],
+          "derived_from_back": [
+            "comp_req__feo__act_alloc_error"
+          ],
+          "docname": "features/feo/requirements/index",
+          "external_css": "external_link",
+          "id": "feat_req__feo__act_alloc_error",
+          "lineno": 315,
+          "reqtype": "Functional",
+          "safety": "ASIL_B",
+          "satisfied_by": [
+            "feat__feo[version==1]"
+          ],
+          "section_name": "Error Handling for S-CORE v0.5",
+          "sections": [
+            "Error Handling for S-CORE v0.5",
+            "FEO Requirements"
+          ],
+          "security": "YES",
+          "status": "valid",
+          "title": "Activity resource allocation error",
+          "type": "feat_req",
+          "type_name": "Feature Requirement",
+          "valid_from": "v2.0.0",
+          "version": 1
+        },
+        "doc__ai_platform": {
+          "docname": "features/ai_platform/index",
+          "external_css": "external_link",
+          "id": "doc__ai_platform",
+          "lineno": 20,
+          "realizes": [
+            "wp__feat_request[version==1]"
+          ],
+          "safety": "ASIL_B",
+          "section_name": "AI Platform",
+          "sections": [
+            "AI Platform"
+          ],
+          "security": "NO",
+          "status": "draft",
+          "tags": [
+            "feature_request"
+          ],
+          "title": "AI Platform",
+          "type": "document",
+          "type_name": "Generic Document",
+          "version": 1
+        }
+      }
+    }
+  }
+}
