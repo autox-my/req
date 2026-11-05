@@ -909,7 +909,7 @@ fn artifact_script() -> String {
 #[cfg(unix)]
 fn run_block_containing(anchor: &str) -> String {
     let lines: Vec<&str> = req::init::CI_SNIPPET.lines().collect();
-    // The snippet has several `run: |` blocks (deploy key, install, tests, check, JSON views).
+    // The snippet has several `run: |` blocks (install, PATH, tests, check, JSON views).
     // The block asked for is the one containing the anchor, and the opener is the nearest
     // `run: |` above it — positional, not "the first" or "the last".
     let anchor_at = lines
