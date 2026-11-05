@@ -83,7 +83,7 @@ Three things make it work, and each one is a failure without it:
 
 ### After either install
 
-Put `$HOME/.local/bin` on `PATH` (a fresh shell does not have it, and without it the next
+Put the directory the binary went to (`$HOME/.local/bin`, or `$REQ_INSTALL_DIR` if you set it) on `PATH` (a fresh shell does not have it, and without it the next
 step's `req init` is `command not found`) and run `req --version` (exit 0). Two of its lines decide what
 the binary is: **`rules_v`** makes a stored address current — an address is derived under a rules
 version, so a verdict is not reproducible, and a Baseline not comparable, under another one — and
@@ -617,7 +617,7 @@ jobs:
           printf 'installed %s\n' "$dir/req"
           printf '%s\n' "$out" | sed -n -e '/^ *rules_v /p' -e '/^ *built from /p'
       - name: put the installed req on PATH for the steps that follow
-        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        run: echo "${REQ_INSTALL_DIR:-$HOME/.local/bin}" >> "$GITHUB_PATH"
       # The tests that prove the claims (ADR 0019). This template is Rust and uses nextest because
       # it writes the JUnit/XUnit document `req gate --test-report` reads; on another stack, run
       # your own test command and point `--test-report` at the report it writes. A claim with no
@@ -759,8 +759,8 @@ host (*Install req*). The token is the one credential the install needs; it repl
 key and the Rust toolchain for *req*, not the need for a credential, and it is sent as a header read
 from stdin, never on a command line and never printed. Every refusal — a wrong hash, an unknown rev,
 a binary that is not the pinned rev — fails the step: it is not `continue-on-error`, not followed by
-`|| true`, and does not fall back to a source build. The second step adds `$HOME/.local/bin` to the
-runner's `PATH` through `$GITHUB_PATH`, which applies to *later* steps only (the install runs its own
+`|| true`, and does not fall back to a source build. The second step adds the install directory (`${REQ_INSTALL_DIR:-$HOME/.local/bin}`, the one the install
+used) to the runner's `PATH` through `$GITHUB_PATH`, which applies to *later* steps only (the install runs its own
 binary by path). The deploy key and the step that removed it are gone: they existed only for the
 source install, which stays documented under *Install req* for a project that wants it. req's own
 claim operations need no network (REQ-0012).

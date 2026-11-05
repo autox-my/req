@@ -153,7 +153,7 @@ jobs:
           printf 'installed %s\n' "$dir/req"
           printf '%s\n' "$out" | sed -n -e '/^ *rules_v /p' -e '/^ *built from /p'
       - name: put the installed req on PATH for the steps that follow
-        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        run: echo "${REQ_INSTALL_DIR:-$HOME/.local/bin}" >> "$GITHUB_PATH"
       # The tests that prove the claims (ADR 0019). This template is Rust and uses nextest because
       # it writes the JUnit/XUnit document `req gate --test-report` reads; on another stack, run
       # your own test command and point `--test-report` at the report it writes. A claim with no

@@ -252,9 +252,9 @@ fn the_ci_snippet_has_one_text_in_three_places() {
             "the Authorization header is read from stdin: the token is never an argument `ps` shows",
         ),
         (
-            ">> \"$GITHUB_PATH\"",
+            "echo \"${REQ_INSTALL_DIR:-$HOME/.local/bin}\" >> \"$GITHUB_PATH\"",
             1,
-            "the installed binary reaches the later steps through the runner's PATH file",
+            "the PATH step adds the directory the install used (REQ_INSTALL_DIR, else ~/.local/bin), not a hardcoded one",
         ),
         // What the old source install carried and the new one must not: the deploy key, the ssh
         // options, the compile, and the two test-only overrides of the install script.
