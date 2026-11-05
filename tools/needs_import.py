@@ -446,6 +446,9 @@ def yaml_quote(text):
             out.append("\\r")
         elif ord(char) < 0x20 or 0x7F <= ord(char) <= 0x9F:
             out.append(f"\\x{ord(char):02x}")
+        elif char in "\u2028\u2029":
+            # The YAML loader counts these as line breaks and folds them; the escape keeps the character.
+            out.append(f"\\u{ord(char):04x}")
         else:
             out.append(char)
     return '"' + "".join(out) + '"'
@@ -1129,6 +1132,7 @@ def self_check():
         ("date: a day that does not exist is not", valid_date("2026-02-30"), False),
         ("date: a timestamp is not a date", valid_date("2026-10-21T00:00:00Z"), False),
         ("draft: a control character is escaped", yaml_quote("a\x00b"), '"a\\x00b"'),
+        ("draft: U+2028 is escaped, not left as a YAML line break", yaml_quote("a\u2028b"), '"a\\u2028b"'),
         (
             "draft: a quoted source reads back as written",
             unquote_scalar(yaml_quote('o"r\\i\ngin\x07 #N')),
