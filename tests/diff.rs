@@ -705,6 +705,54 @@ fn an_edited_registry_is_reported_once_at_the_top() {
     assert!(listed(&run.stdout).is_empty(), "{}", run.stdout);
 }
 
+#[test]
+fn a_registry_edit_that_makes_a_pin_disagree_lists_the_claim_pin_flagged() {
+    // The claim file is byte-identical on both sides. The head registry moves the alias the
+    // statement's subject resolved through, so the head parse no longer agrees with the pinned
+    // subject: an unchanged-looking claim that a CI gate on `pin-flagged` must still see.
+    let pinned = "pins:\n  subject: SYSTEM\n";
+    let repo = Repo::new("registry-pin");
+    repo.write("aliases/subjects.yml", REGISTRY);
+    repo.claim_full("REQ-0001", SHALL_200, &[], pinned);
+    repo.commit("base");
+    repo.write(
+        "aliases/subjects.yml",
+        &REGISTRY.replace("      - the system\n", "      - the unit\n"),
+    );
+    repo.commit("head");
+    let run = diff(
+        &repo,
+        &[
+            "--base",
+            "base",
+            "--head",
+            "head",
+            "--fail-on",
+            "pin-flagged",
+        ],
+    );
+    assert!(
+        has_word(&run, "REQ-0001", "pin-flagged"),
+        "{}{}",
+        run.stdout,
+        run.stderr
+    );
+    assert_eq!(run.code, 1, "{}{}", run.stdout, run.stderr);
+
+    // A disagreement that was already there on both sides is not a change and is not listed.
+    let before = Repo::new("registry-pin-same");
+    before.write(
+        "aliases/subjects.yml",
+        &REGISTRY.replace("      - the system\n", "      - the unit\n"),
+    );
+    before.claim_full("REQ-0001", SHALL_200, &[], pinned);
+    before.commit("base");
+    before.claim_full("REQ-0002", "The system shall stay up.", &[], "");
+    before.commit("head");
+    let run = diff(&before, &["--base", "base", "--head", "head"]);
+    assert!(!has_word(&run, "REQ-0001", "pin-flagged"), "{}", run.stdout);
+}
+
 // (k) ------------------------------------------------------------------------------------------
 
 #[test]

@@ -706,9 +706,12 @@ fn classify_pair(base: &LoadedClaim, head: &LoadedClaim) -> Entry {
             let direction = compare::compare(&base.derived.form, &head.derived.form);
             (Class::of_direction(direction), Some(direction))
         }
-    } else if metadata_differs(base, head) {
+    } else if metadata_differs(base, head) || (flagged(head) && !flagged(base)) {
         // Same statement and applicability: the claim's own text did not move, so a different
-        // address here is the registry's doing and is reported once, at the top.
+        // address here is the registry's doing and is reported once, at the top. A pin that
+        // *newly* disagrees with the head parse (a registry edit can do it with the claim file
+        // byte-identical) is a change a `--fail-on pin-flagged` gate must see; a disagreement
+        // present on both sides is not a change and stays unlisted.
         (Class::Metadata, None)
     } else {
         (Class::Unchanged, None)
