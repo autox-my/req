@@ -562,11 +562,10 @@ fn the_runbook_exists_and_names_both_scripts_and_both_workflows() {
 }
 
 #[test]
-fn the_measured_section_holds_no_number_until_the_owner_dispatches_the_timing() {
+fn the_measured_section_holds_the_two_install_lines_the_workflow_prints() {
     // No child writes a timing into a document (the spec): the orchestrator copies the two `INSTALL`
-    // lines and the run URL after the owner dispatches `install-timing.yml`. Until then the section
-    // is an instruction, and an instruction here has no number in it: no word starting with a digit
-    // ("42s", "7", "1.5"). A digit inside a name (`sha256`) is not a number.
+    // lines and the run URL from a dispatched `install-timing.yml`. The section therefore carries
+    // exactly those two lines in the shape the workflow prints, and the run they came from.
     let text = read(RUNBOOK);
     let start = text
         .find("\n## Measured")
@@ -574,14 +573,22 @@ fn the_measured_section_holds_no_number_until_the_owner_dispatches_the_timing() 
         + 1;
     let rest = &text[start..];
     let section = &rest[..rest[3..].find("\n## ").map_or(rest.len(), |at| at + 3)];
-    let numeric = section
-        .split(|c: char| c.is_whitespace() || "`'\"(),:;<>[]".contains(c))
-        .find(|word| word.starts_with(|c: char| c.is_ascii_digit()));
+    for label in ["INSTALL source: ", "INSTALL prebuilt: "] {
+        let line = section
+            .lines()
+            .find(|line| line.starts_with(label))
+            .unwrap_or_else(|| {
+                panic!("the Measured section has no `{label}<n>s` line:\n{section}")
+            });
+        let figure = line[label.len()..].strip_suffix('s').unwrap_or("");
+        assert!(
+            !figure.is_empty() && figure.chars().all(|c| c.is_ascii_digit()),
+            "`{line}` is not in the shape the workflow prints (`{label}<n>s`)"
+        );
+    }
     assert!(
-        numeric.is_none(),
-        "the Measured section must hold no number until the timing has been dispatched and copied \
-         (found `{}`):\n{section}",
-        numeric.unwrap_or("")
+        section.contains("/actions/runs/"),
+        "the Measured section names the run the figures came from:\n{section}"
     );
 }
 
