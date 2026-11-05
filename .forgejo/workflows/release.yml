@@ -1,0 +1,348 @@
+# Release: build, prove and publish the Linux tarball of one rev of req (ADR 0025).
+#
+# Dispatch-only, on purpose. A release is cut when the owner asks (ADR 0025 §5), never because a
+# commit landed, a pull request opened or a clock struck; so the only trigger is `workflow_dispatch`
+# and tests/release_workflow.rs fails on any other. Dispatch it from `main` (Actions, Release, Run
+# workflow): the workflow file and scripts/build-release.sh are taken from the dispatched ref, and
+# the rev to release is the input.
+#
+# What it does and what it will not do:
+#
+#   1. Resolves the input to a full SHA and refuses a rev that is not an ancestor of origin/main.
+#      scripts/build-release.sh proves the Baseline with the trust anchor of the rev it builds, so a
+#      rev that is not on main could carry its own key; the same boundary ci.yml draws (its trust
+#      anchor comes from origin/main) is drawn here by the rev itself.
+#   2. Gives the runner the same prerequisites ci.yml verifies, with the same checks: a C linker,
+#      minisign (the Baseline proof has no SKIP) and rustup with the toolchain the rev pins.
+#   3. Runs scripts/build-release.sh. The script, not this file, builds from a clean copy of the rev
+#      with `--locked`, proves `built from` is the bare rev, `baseline --verify` is [VERIFIED] and
+#      the FMR gate passes, and only then writes the three assets. Nothing is built or packed here.
+#   4. Creates the release `rev-<REV>` if it is absent and uploads the three assets with the Forgejo
+#      API. **An asset name that already exists on the release is an error, never a replacement**:
+#      a checksum that has been pinned in an adopter's repository must stay true. The upload uses
+#      POST only (no PUT, PATCH or DELETE exists in this file), looks before it writes and counts
+#      afterwards. The tarball goes last, so a visible tarball means the other two are there; if a
+#      run dies before it, nothing is pinnable yet, and docs/releasing.md says what to clear.
+#
+# No `continue-on-error` and no `|| true` anywhere: a failed step fails the release.
+#
+# Configuration (Settings, then Actions):
+#   Secret  RELEASE_TOKEN  a token with `write:repository`, the owner's to provision. It is sent as an
+#                          `Authorization` header that curl reads from stdin (`-H @-`), so it is never
+#                          in an argument list, and nothing here is traced or echoed.
+#
+# The macOS tarball is not built here: it is the same script on the owner's machine (docs/releasing.md).
+# The runner is Linux, so the glibc floor of the Linux tarball is this runner's; the script records it
+# in the `.build-info` asset.
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      rev:
+        description: "The commit to release: a SHA, a short SHA or a ref that resolves to a commit on main"
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Where releases are read from (examples/install-req.sh) is where they are written.
+      FORGEJO_API: https://git.xantu-barb.ts.net/api/v1/repos/fdx/req
+    steps:
+      - name: checkout, with the history the rev is resolved in
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: the tooling is main's, and the rev to release is resolved and on main
+        env:
+          REV_INPUT: ${{ github.event.inputs.rev }}
+        run: |
+          set -euo pipefail
+          # This job runs the checked-out scripts/build-release.sh and the checked-out workflow, so
+          # the ref it was dispatched from decides which code proves the binary. Only main's does;
+          # a dispatch from any other branch would run that branch's proofs (or none).
+          if [ "${GITHUB_REF:-}" != refs/heads/main ]; then
+            echo "::error::dispatched from '${GITHUB_REF:-}'; dispatch Release from main only (the proofs are main's script, ADR 0025 §2)"
+            exit 1
+          fi
+          if [ -z "${REV_INPUT:-}" ]; then
+            echo "::error::the rev input is empty"
+            exit 1
+          fi
+          # The input is a name, never a command: anything outside a ref's alphabet is refused
+          # before it reaches git.
+          case $REV_INPUT in
+            *[!0-9A-Za-z._/-]* | -*)
+              echo "::error::the rev input is not a SHA or a ref name"
+              exit 1
+              ;;
+          esac
+          full="$(git rev-parse --verify --quiet "${REV_INPUT}^{commit}")" || {
+            echo "::error::cannot resolve '$REV_INPUT' to a commit in this checkout"
+            exit 1
+          }
+          if ! git cat-file -e origin/main 2>/dev/null; then
+            echo "::error::origin/main is not in this checkout, so 'the rev is on main' cannot be checked — fail closed"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$full" origin/main; then
+            echo "::error::$full is not an ancestor of origin/main; only a rev on main is released"
+            exit 1
+          fi
+          # The toolchain the rev pins, so the next step installs the one the build will ask for.
+          channel="$(git show "$full:rust-toolchain.toml" | sed -n 's/^channel *= *"\([^"]*\)".*/\1/p')"
+          case $channel in
+            '' | *[!0-9A-Za-z._-]*)
+              echo "::error::$full has no usable channel in rust-toolchain.toml"
+              exit 1
+              ;;
+          esac
+          echo "releasing $full (toolchain $channel)"
+          echo "REL_FULL=$full" >> "$GITHUB_ENV"
+          echo "REL_CHANNEL=$channel" >> "$GITHUB_ENV"
+
+      - name: the C toolchain the build scripts link against
+        run: |
+          set -eu
+          # A rustup toolchain is not sufficient: crates with build scripts (proc-macro2, quote,
+          # serde_core, generic-array) need a linker. Same check, same reason, as ci.yml.
+          if ! command -v cc >/dev/null 2>&1; then
+            echo "::error::no C linker on this runner, so every Rust build script will fail to link"
+            echo "On a Debian-ish host: sudo apt-get update && sudo apt-get install -y build-essential"
+            exit 1
+          fi
+          cc --version | head -1
+
+      - name: minisign, the verifier the Baseline proof needs
+        run: |
+          set -eu
+          # scripts/build-release.sh answers exit 3 (UNVERIFIABLE) without it, and the Baseline proof
+          # has no SKIP. Verify the effect here so a runner that lost it fails naming the reason.
+          if ! command -v minisign >/dev/null 2>&1; then
+            echo "::error::minisign is not installed, so the Baseline proof cannot verify"
+            echo "On a Debian-ish host: sudo apt-get update && sudo apt-get install -y minisign"
+            exit 1
+          fi
+          minisign -v
+
+      - name: python3, which reads the API's answers
+        run: |
+          set -eu
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "::error::python3 is not installed, so the release API's answers cannot be read"
+            exit 1
+          fi
+          python3 --version
+
+      - name: rustup and the toolchain the rev pins
+        run: |
+          set -eu
+          export RUSTUP_HOME="$HOME/.rustup"
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --profile minimal --default-toolchain none
+            . "$HOME/.cargo/env"
+          fi
+          # Minimal: the build needs neither rustfmt nor clippy (they are the gate's, not the release's).
+          rustup toolchain install "$REL_CHANNEL" --profile minimal
+          rustup run "$REL_CHANNEL" cargo --version
+          # Publish the toolchain to LATER steps: a runner does not carry one step's `export` forward.
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "RUSTUP_HOME=$HOME/.rustup" >> "$GITHUB_ENV"
+
+      - name: build, prove and bundle with scripts/build-release.sh
+        run: |
+          set -eu
+          if [ -z "${REL_FULL:-}" ]; then
+            echo "::error::REL_FULL is not set — the runner did not carry $GITHUB_ENV to this step"
+            exit 1
+          fi
+          out="$RUNNER_TEMP/release-out"
+          # A directory of this job's own, so the script's "refuse an existing name" rule is not
+          # tripped by a previous job on a persistent runner.
+          rm -rf "$out"
+          # Exit 0 released; 1 a check failed; 2 usage or environment; 3 UNVERIFIABLE (no minisign).
+          # Any non-zero fails this step, and the script has then written nothing.
+          bash scripts/build-release.sh --rev "$REL_FULL" --out "$out"
+          echo "RELEASE_OUT=$out" >> "$GITHUB_ENV"
+
+      - name: publish the release rev-REV, refusing to replace any asset
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RELEASE_TOKEN:-}" ]; then
+            echo "::error::RELEASE_TOKEN is not set (Settings, Actions, Secrets): a token with write:repository"
+            exit 1
+          fi
+          if [ -z "${RELEASE_OUT:-}" ] || [ ! -d "$RELEASE_OUT" ]; then
+            echo "::error::RELEASE_OUT is not set or is not a directory — the build step did not hand over its assets"
+            exit 1
+          fi
+
+          target=x86_64-unknown-linux-gnu
+          set -- "$RELEASE_OUT"/req-*-"$target".tar.gz
+          if [ $# -ne 1 ] || [ ! -f "$1" ]; then
+            echo "::error::expected exactly one req-<REV>-$target.tar.gz in $RELEASE_OUT"
+            exit 1
+          fi
+          tarball="$(basename "$1")"
+          rev="${tarball#req-}"
+          rev="${rev%-"$target".tar.gz}"
+          case $rev in
+            '' | *[!0-9a-f]*)
+              echo "::error::'$rev' is not a bare SHA; a release is named after the rev the binary reports"
+              exit 1
+              ;;
+          esac
+          if [ "${#rev}" -lt 7 ] || [ "${#rev}" -gt 40 ]; then
+            echo "::error::'$rev' is not 7 to 40 hex digits"
+            exit 1
+          fi
+          tag="rev-$rev"
+          # The tarball goes last: a visible tarball means the other two assets are already there.
+          names="req-$rev-$target.build-info req-$rev-$target.tar.gz.sha256 $tarball"
+          for name in $names; do
+            if [ ! -f "$RELEASE_OUT/$name" ]; then
+              echo "::error::the build step did not write $name"
+              exit 1
+            fi
+          done
+          full="$(sed -n 's/^sha=//p' "$RELEASE_OUT/req-$rev-$target.build-info")"
+          case $full in
+            '' | *[!0-9a-f]*)
+              echo "::error::the build-info has no usable full SHA"
+              exit 1
+              ;;
+          esac
+
+          # What is published is what was checked, and this is decided BEFORE the first write (a wrong
+          # release cannot be repaired afterwards: no asset is ever replaced or deleted): the rev the
+          # script built is the rev this job resolved and required to be on main, and the tag's short
+          # rev is that commit's prefix, whatever the script's output says.
+          if [ "$full" != "$REL_FULL" ]; then
+            echo "::error::the build-info names $full, not the resolved $REL_FULL; refusing to publish"
+            exit 1
+          fi
+          case $full in
+            "$rev"*) ;;
+            *)
+              echo "::error::the tag rev '$rev' is not a prefix of $full; refusing to publish"
+              exit 1
+              ;;
+          esac
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+
+          # The token travels as a header curl reads from stdin: never in an argument list, never printed.
+          api() {
+            printf 'Authorization: token %s\n' "$RELEASE_TOKEN" |
+              curl --proto '=https' --tlsv1.2 -sS -H @- "$@"
+          }
+          say_body() { head -c 300 "$1" | LC_ALL=C tr -c '[:print:]\n' '?'; echo; }
+          release_id() {
+            python3 -I -c 'import json, sys; print(int(json.load(sys.stdin)["id"]))' < "$1"
+          }
+
+          code="$(api -o "$work/release.json" -w '%{http_code}' "$FORGEJO_API/releases/tags/$tag")" || {
+            echo "::error::cannot reach $FORGEJO_API"
+            exit 1
+          }
+          case $code in
+            200)
+              id="$(release_id "$work/release.json")"
+              # An asset uploaded into a draft is invisible to adopters, which would break "a visible
+              # tarball means the other two are there".
+              if python3 -I -c 'import json, sys; sys.exit(1 if json.load(sys.stdin).get("draft") else 0)' < "$work/release.json"; then
+                :
+              else
+                echo "::error::release $tag exists as a draft; publish or delete it by hand first (this workflow never edits a release)"
+                exit 1
+              fi
+              echo "release $tag exists (id $id)"
+              ;;
+            404)
+              body="$(printf '{"tag_name":"%s","target_commitish":"%s","name":"%s","body":"Prebuilt req for the pinned rev %s (ADR 0025). Pin the .sha256 of the tarball in your own repository.","draft":false,"prerelease":false}' "$tag" "$full" "$tag" "$rev")"
+              code="$(api -o "$work/release.json" -w '%{http_code}' -X POST \
+                -H 'Content-Type: application/json' -d "$body" "$FORGEJO_API/releases")" || {
+                echo "::error::cannot reach $FORGEJO_API"
+                exit 1
+              }
+              if [ "$code" != 201 ]; then
+                echo "::error::creating the release $tag answered HTTP $code (a token without write:repository answers 403 or 404)"
+                say_body "$work/release.json"
+                exit 1
+              fi
+              id="$(release_id "$work/release.json")"
+              echo "created release $tag (id $id)"
+              ;;
+            *)
+              echo "::error::looking up the release $tag answered HTTP $code (a wrong token answers 401 or 404)"
+              say_body "$work/release.json"
+              exit 1
+              ;;
+          esac
+
+          list_assets() {
+            code="$(api -o "$work/assets.json" -w '%{http_code}' "$FORGEJO_API/releases/$id/assets")" || {
+              echo "::error::cannot reach $FORGEJO_API" >&2
+              exit 1
+            }
+            if [ "$code" != 200 ]; then
+              echo "::error::listing the assets of release $tag answered HTTP $code" >&2
+              say_body "$work/assets.json" >&2
+              exit 1
+            fi
+            python3 -I -c 'import json, sys; print("\n".join(a["name"] for a in json.load(sys.stdin)))' < "$work/assets.json"
+          }
+
+          # How many times a name is in the listing. `grep -c` reads the whole listing (no early exit, so
+          # no SIGPIPE under pipefail) and exits 1 on zero matches, which is an answer here, not a fault.
+          times_listed() {
+            n="$(printf '%s\n' "$existing" | grep -Fxc -- "$1")" || n=0
+            echo "$n"
+          }
+
+          # Look before writing. An asset name that is already on the release is an error, for all
+          # three names, before the first byte is uploaded.
+          existing="$(list_assets)"
+          for name in $names; do
+            if [ "$(times_listed "$name")" != 0 ]; then
+              echo "::error::$name already exists on release $tag — refusing to replace it (a checksum that has been pinned must stay true; ADR 0025 §5)"
+              exit 1
+            fi
+          done
+
+          for name in $names; do
+            code="$(api -o "$work/upload.json" -w '%{http_code}' -X POST \
+              -F "attachment=@$RELEASE_OUT/$name" "$FORGEJO_API/releases/$id/assets?name=$name")" || {
+              echo "::error::cannot reach $FORGEJO_API"
+              exit 1
+            }
+            if [ "$code" != 201 ]; then
+              echo "::error::uploading $name answered HTTP $code"
+              say_body "$work/upload.json"
+              exit 1
+            fi
+            echo "uploaded $name"
+          done
+
+          # And count afterwards: each name exactly once. A concurrent run that raced this one shows up here.
+          existing="$(list_assets)"
+          for name in $names; do
+            n="$(times_listed "$name")"
+            if [ "$n" != 1 ]; then
+              echo "::error::$name is on release $tag $n times after the upload; expected exactly once"
+              exit 1
+            fi
+          done
+
+          sum="$(cut -d' ' -f1 "$RELEASE_OUT/req-$rev-$target.tar.gz.sha256")"
+          echo "released $tag"
+          echo "pin (Linux): REV=$rev SHA256=$sum TARGET=$target"
