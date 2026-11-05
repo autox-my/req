@@ -20,6 +20,9 @@ pub mod canon;
 pub mod check;
 pub mod compare;
 pub mod decision;
+// What changed in meaning between two revisions of a corpus (ADR 0026): joins the loader, the
+// direction classifier and the pin verdicts across two git revisions, and describes — never judges.
+pub mod diff;
 // Internal plumbing: every caller is in-crate (canon, decision, bench, model), and the raw
 // encoder is not the surface a re-implementation reads — the audit-surface contract is
 // `model::relations_digest` / `rationale_digest` and ADR 0013's formula.
