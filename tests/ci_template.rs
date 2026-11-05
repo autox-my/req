@@ -206,22 +206,98 @@ fn the_ci_snippet_has_one_text_in_three_places() {
             0,
             "the old artifact step's list bookkeeping: there is one `req check` document now",
         ),
+        // The install (ADR 0025, #65): the prebuilt, checksummed binary, pinned in the adopter's own file.
         (
-            "the deploy key the private install needs, when the runner has none",
+            "req, installed from the prebuilt binary pinned below",
             1,
-            "the credential the private install needs: a copy-ready file that cannot reach req's \
-             host on a fresh runner is not copy-ready",
+            "the install step by name: the pinned rev and the pinned SHA-256 per target are the \
+             adopter's authority (ADR 0025 §3), and the step that checks them is this one",
         ),
         (
-            "secrets.REQ_DEPLOY_KEY",
+            "secrets.REQ_RELEASE_TOKEN",
             1,
-            "the key comes from a secret and is skippable, so a runner that already has access is \
-             not forced to carry one",
+            "the read token for the private host comes from a secret, in this step's `env:` and \
+             nowhere on a command line: it replaces the SSH key, not the need for a credential",
         ),
         (
-            "REQ_DEPLOY_KEY is not set",
+            "REQ_RELEASE_TOKEN is not set",
             1,
-            "the skip is announced: a silent step would make a keyless runner look provisioned",
+            "a missing token is named, and exits non-zero: a silent skip would make a tokenless \
+             runner look provisioned",
+        ),
+        (
+            "SHA-256 mismatch",
+            1,
+            "the tarball is verified against the PIN: a mismatch is a named, non-zero refusal",
+        ),
+        (
+            "exactly one member",
+            1,
+            "the archive is checked to hold exactly one member, `req`, before anything is extracted",
+        ),
+        (
+            "no automatic fallback",
+            1,
+            "the refusal says there is no fallback to the source install: falling back on a \
+             mismatch would hide the event the check exists to surface (ADR 0025 §4)",
+        ),
+        (
+            "--tlsv1.2",
+            1,
+            "the download is https-only, TLS 1.2 or later (ADR 0025 §6)",
+        ),
+        (
+            "-H @-",
+            1,
+            "the Authorization header is read from stdin: the token is never an argument `ps` shows",
+        ),
+        (
+            "echo \"${REQ_INSTALL_DIR:-$HOME/.local/bin}\" >> \"$GITHUB_PATH\"",
+            1,
+            "the PATH step adds the directory the install used (REQ_INSTALL_DIR, else ~/.local/bin), not a hardcoded one",
+        ),
+        // What the old source install carried and the new one must not: the deploy key, the ssh
+        // options, the compile, and the two test-only overrides of the install script.
+        (
+            "REQ_DEPLOY_KEY",
+            0,
+            "the SSH deploy key was for req's source install only; the token replaces it",
+        ),
+        (
+            "req_deploy_key",
+            0,
+            "no key file is written, so there is nothing to remove under `if: always()`",
+        ),
+        (
+            "IdentitiesOnly",
+            0,
+            "no ssh identity is offered to anything",
+        ),
+        ("umask 077", 0, "no secret is written to a file"),
+        (
+            "cargo install --git",
+            0,
+            "req is not compiled from source in the template (that path stays in docs/adopting.md)",
+        ),
+        (
+            "--rev <PIN>",
+            0,
+            "the source install's pin grammar is not in the CI template",
+        ),
+        (
+            "REQ_RELEASE_BASE",
+            0,
+            "a test-only override of the install script: no shipped YAML sets it",
+        ),
+        (
+            "REQ_CURL_PROTO",
+            0,
+            "a test-only override of the install script: no shipped YAML sets it",
+        ),
+        (
+            "set -x",
+            0,
+            "a trace would print the header the token rides in",
         ),
         (
             "req \"$@\" --format json",
@@ -277,10 +353,10 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         ),
         (
             "if: always()",
-            5,
+            4,
             "every step that must run on a red build: the invalidation of a stale report (before the \
              run, so a skipped step cannot leave yesterday's), the capture and the upload — plus the \
-             two comments that name the property",
+             comment that names the property",
         ),
         (
             "if-no-files-found: error",
@@ -299,41 +375,6 @@ fn the_ci_snippet_has_one_text_in_three_places() {
             1,
             "a PARTIAL document set must be red: `if-no-files-found` only notices a completely \
              empty directory, so one lost document would ship silently",
-        ),
-        (
-            "export PATH=\"$HOME/.local/bin:$PATH\"",
-            1,
-            "`$GITHUB_PATH` applies to later steps only; this step's own `req --version` needs the \
-             installed binary on PATH now, or the copy-ready file is red on its first run",
-        ),
-        (
-            "umask 077",
-            2,
-            "the key is never briefly world-readable — and the reason says so, so a later edit \
-             that drops the umask is visible",
-        ),
-        (
-            "remove the deploy key this job wrote",
-            1,
-            "the key is removed under `if: always()`: a private key left in `$HOME` is readable by \
-             every later job on a self-hosted runner",
-        ),
-        (
-            "RUNNER_TEMP:-$HOME}/req_deploy_key",
-            3,
-            "the key lives in the per-job temp dir (written, offered to the install, removed), not \
-             in a path that survives the job",
-        ),
-        (
-            "req_deploy_key",
-            3,
-            "the deploy key gets a path of its own: overwriting `$HOME/.ssh/id_ed25519` would take \
-             a self-hosted runner's identity away from every other job",
-        ),
-        (
-            "IdentitiesOnly=yes",
-            1,
-            "only that key is offered to the private host — never the runner's default identity",
         ),
     ] {
         let found = printed.matches(fragment).count();
@@ -569,6 +610,235 @@ fn no_copy_reimplements_the_loop_or_the_fold() {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// The install step (ADR 0025, #65): `examples/install-req.sh`'s body, verbatim, in all three copies
+// ---------------------------------------------------------------------------
+
+/// The step's name: how the three copies, and this test, find it.
+const INSTALL_STEP_NAME: &str = "req, installed from the prebuilt binary pinned below";
+/// The script's own lines that no CI copy carries: its documentation and the two test-only
+/// overrides. Everything outside them is the step's body, byte for byte.
+const NOT_COPIED_BEGIN: &str = "# >>> not copied into the CI step";
+const NOT_COPIED_END: &str = "# <<< end of the part not copied into the CI step";
+
+/// The script as the CI step carries it: no shebang (a `run:` block has its own shell) and none of
+/// the lines between the two markers. The markers are the contract; a script without them has
+/// nothing to compare.
+fn install_script_as_ci_body(script: &str) -> String {
+    let mut body = String::new();
+    let mut skipping = false;
+    let mut closed = false;
+    for (index, line) in script.lines().enumerate() {
+        if index == 0 && line.starts_with("#!") {
+            continue;
+        }
+        if line.starts_with(NOT_COPIED_BEGIN) {
+            skipping = true;
+        }
+        if !skipping {
+            body.push_str(line);
+            body.push('\n');
+        }
+        if skipping && line.starts_with(NOT_COPIED_END) {
+            skipping = false;
+            closed = true;
+        }
+    }
+    assert!(
+        closed && !skipping,
+        "examples/install-req.sh must delimit the part CI does not carry with {NOT_COPIED_BEGIN:?} \
+         and {NOT_COPIED_END:?}"
+    );
+    body
+}
+
+/// The three copies of the snippet, named, for the checks that apply to each.
+fn the_three_copies() -> Vec<(&'static str, String)> {
+    let doc = read_reporting(&repo_root().join("docs/adopting.md"), "adopting doc");
+    let example = read_reporting(
+        &repo_root().join("examples/github-workflows/req.yml"),
+        "copy-ready example",
+    );
+    vec![
+        (
+            "req init's printed snippet",
+            req::init::CI_SNIPPET.to_string(),
+        ),
+        (
+            "docs/adopting.md's ```yaml block",
+            the_ci_yaml_block(&doc, "docs/adopting.md").to_string(),
+        ),
+        ("examples/github-workflows/req.yml", example),
+    ]
+}
+
+/// The install step is the install script — not a paraphrase of it. An adopter reviews one file
+/// (`examples/install-req.sh`, which the tests in `tests/install_req.rs` run against a server) and
+/// the step is that file; a step that drifted from it would be untested shell.
+#[test]
+fn the_install_step_is_the_install_scripts_body_verbatim() {
+    let script = read_reporting(
+        &repo_root().join("examples/install-req.sh"),
+        "install script",
+    );
+    let expected = install_script_as_ci_body(&script);
+    for (name, copy) in the_three_copies() {
+        let body = the_script_containing(&copy, "SHA256_x86_64_unknown_linux_gnu=");
+        assert_same_bytes(
+            &body,
+            &format!("{name}'s install step"),
+            &expected,
+            "examples/install-req.sh (shebang and the not-copied block removed)",
+        );
+    }
+}
+
+/// The install step fails the job when the install fails. Every way a red turns green is named:
+/// the step-level switch, the shell's `|| true`, a pipe into `tee` (whose status replaces the
+/// command's), a conditional that skips the step, and a shell that does not stop on error.
+#[test]
+fn the_install_step_cannot_mask_a_failure_and_takes_its_token_from_a_secret() {
+    for (name, copy) in the_three_copies() {
+        let steps = the_steps(&copy);
+        let found: Vec<&(String, String)> = steps
+            .iter()
+            .filter(|(line, _)| line.contains(INSTALL_STEP_NAME))
+            .collect();
+        assert_eq!(
+            found.len(),
+            1,
+            "{name}: exactly one install step, named {INSTALL_STEP_NAME:?}"
+        );
+        let step = &found[0].1;
+        for masked in [
+            "continue-on-error",
+            "|| true",
+            "||true",
+            "| tee",
+            "|tee",
+            "tee ",
+            "set +e",
+            "pipefail",
+            "exit 0",
+        ] {
+            assert!(
+                !step.contains(masked),
+                "{name}: the install step must not carry {masked:?} — it would turn a failed or \
+                 refused install into a green step:\n{step}"
+            );
+        }
+        assert!(
+            !step
+                .lines()
+                .any(|line| line.trim_start().starts_with("if:")),
+            "{name}: the install step runs on every run; an `if:` could skip it:\n{step}"
+        );
+        assert!(
+            step.contains("REQ_RELEASE_TOKEN: ${{ secrets.REQ_RELEASE_TOKEN }}"),
+            "{name}: the token comes from the REQ_RELEASE_TOKEN secret, in the step's `env:`:\n{step}"
+        );
+        assert!(
+            step.lines().any(|line| line.trim() == "set -eu"),
+            "{name}: the install step's shell stops on the first error and on an unset variable"
+        );
+    }
+}
+
+/// No copy compiles req, offers an ssh identity, or knows the install script's test-only
+/// overrides. These are the old step's words and the new script's test hooks; neither belongs in
+/// what an adopter copies.
+#[test]
+fn no_copy_installs_req_from_source_or_knows_the_test_overrides() {
+    for (name, copy) in the_three_copies() {
+        for forbidden in [
+            "cargo install --git",
+            "cargo install --path",
+            "REQ_RELEASE_BASE",
+            "REQ_CURL_PROTO",
+            "REQ_DEPLOY_KEY",
+            "GIT_SSH_COMMAND",
+            "CARGO_NET_GIT_FETCH_WITH_CLI",
+            "ssh://",
+        ] {
+            assert!(
+                !copy.contains(forbidden),
+                "{name} carries {forbidden:?} — the CI install is the prebuilt, checksummed binary \
+                 (ADR 0025); the source install is documented in docs/adopting.md, not copied"
+            );
+        }
+    }
+}
+
+/// Order is the property: req is installed before any step runs it, and the PATH step sits
+/// between the install and the first use.
+#[test]
+fn the_install_comes_before_every_step_that_runs_req() {
+    for (name, copy) in the_three_copies() {
+        let steps = the_steps(&copy);
+        let position = |needle: &str| {
+            steps
+                .iter()
+                .position(|(_, body)| body.contains(needle))
+                .unwrap_or_else(|| panic!("{name}: no step contains {needle:?}"))
+        };
+        let install = position(INSTALL_STEP_NAME);
+        let on_path = position(">> \"$GITHUB_PATH\"");
+        assert!(install < on_path, "{name}: PATH is set after the install");
+        assert!(
+            on_path < position("if req check --test-report"),
+            "{name}: `req` is on PATH before the release check runs it"
+        );
+        assert!(
+            on_path < position("capture check check --test-report"),
+            "{name}: `req` is on PATH before the JSON views run it"
+        );
+    }
+}
+
+/// The adopting page leads with the prebuilt install and says what it does not do. The existing
+/// `cargo install` form stays — as "from source" and "air-gapped" — and `tests/init.rs` pins its
+/// words; this pins the order and the honesty (a token replaces the key, there is no fallback).
+#[test]
+fn the_adoption_doc_leads_with_the_prebuilt_install_and_says_what_it_does_not_do() {
+    let doc = read_reporting(&repo_root().join("docs/adopting.md"), "adopting doc");
+    let start = doc
+        .find("\n## Install req\n")
+        .expect("docs/adopting.md has an `## Install req` section");
+    let rest = &doc[start + 1..];
+    let section = &rest[..rest[3..].find("\n## ").map_or(rest.len(), |end| end + 3)];
+    let at = |needle: &str| {
+        section.find(needle).unwrap_or_else(|| {
+            panic!("docs/adopting.md § Install req must say {needle:?}:\n{section}")
+        })
+    };
+    assert!(
+        at("examples/install-req.sh") < at("cargo install"),
+        "the prebuilt install comes first; the source install is the second way"
+    );
+    for needle in [
+        "REQ_RELEASE_TOKEN",
+        "read:repository",
+        "curl",
+        "tar",
+        "SHA-256",
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "trust on first use",
+        "no automatic fallback",
+        "from source",
+        "Air-gapped",
+        "replaces the SSH key and the toolchain",
+        "not the need for a credential",
+    ] {
+        at(needle);
+    }
+    // The pin table's placeholders are named as placeholders, not presented as values.
+    assert!(
+        section.contains("placeholder"),
+        "the pin table's placeholders are named as such:\n{section}"
+    );
 }
 
 /// The directory a probe corpus lives in: `req init`, the starter claim replaced by one that

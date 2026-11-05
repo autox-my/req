@@ -12,8 +12,55 @@ a build of the revision that introduced it.
 
 ## Install req
 
-req is deliberately unpublished (`publish = false`), so **the rev is the provenance**: install it
-at a pinned commit, never from a version number.
+req is deliberately unpublished (`publish = false`), so **the rev is the provenance**: you pin a
+commit, never a version number. Two ways honour that: a **prebuilt, checksummed binary** for the
+rev (the default, below) and a **build from source** at the rev ([From source](#from-source)).
+
+### Prebuilt
+
+`examples/install-req.sh` (copy it out of req's checkout at the rev you pin) downloads the release
+`rev-<REV>` for your machine, verifies the tarball against a SHA-256 *you* pin, and installs nothing
+that is not that rev. It needs `curl`, `tar`, a SHA-256 tool (`sha256sum` or `shasum`) and a read
+token for req's host in `REQ_RELEASE_TOKEN`. The targets are `x86_64-unknown-linux-gnu` (Linux
+x86_64; the release's `.build-info` states the glibc it was built against) and `aarch64-apple-darwin`
+(Darwin arm64); any other machine is a non-zero exit that says so.
+
+```bash
+REQ_RELEASE_TOKEN=<a token with read:repository on req's host> bash install-req.sh
+```
+
+Its first three lines are the **pin table**, the only thing you edit:
+
+```bash
+REV=<rev>
+SHA256_x86_64_unknown_linux_gnu=<64 hex digits>
+SHA256_aarch64_apple_darwin=<64 hex digits>
+```
+
+The file ships with **placeholders** in the table, and a placeholder, an empty pin or a malformed one
+is a refusal before any request is made. Take the values from the release's `.sha256` assets the first
+time — **trust on first use of the maintainer's release**, stated as such — and from then on the pin
+in your repository is the authority: the install never reads the release's own checksum, because a
+checksum fetched from the place that could be tampered with proves transfer, never authenticity.
+
+After the download it verifies the tarball against the pin, checks the archive holds exactly one
+member `req` before extracting anything, runs the binary, and requires `req --version` to exit 0
+with `built from` equal to `REV`; only then does it install `req` (mode 0755) into
+`${REQ_INSTALL_DIR:-$HOME/.local/bin}` and print the two lines that decide the binary, `rules_v` and
+`built from`. Every refusal is a non-zero exit naming its cause — an unsupported platform, a missing
+token or pin, a download that is not HTTP 2xx (an unknown rev is a 404; a wrong token on this private
+host is a 401 or a 404), a hash that differs from the pin, an archive that is not exactly `req`, a
+binary that does not run, a `built from` that is not `REV` — and there is **no automatic fallback**
+to the source install: falling back on a mismatch would hide the very event the check exists to
+surface. Choosing the source install is a separate act of yours.
+
+The token replaces the SSH key and the toolchain for *req*, not the need for a credential: the host
+is private, so the download carries a token in an `Authorization` header (read from stdin, never on a
+command line, never printed). Keep it in a CI secret, not in the repository. This path was
+exercised against a local server by `tests/install_req.rs`; it has not yet been run against a
+published release, and the rev and hashes it pins exist only after the owner cuts one.
+
+### From source
 
 ```bash
 GIT_SSH_COMMAND="ssh -o ControlMaster=no -o ControlPath=none -o StrictHostKeyChecking=accept-new" \
@@ -34,7 +81,9 @@ Three things make it work, and each one is a failure without it:
 | `CARGO_NET_GIT_FETCH_WITH_CLI=true` | libgit2 ignores `GIT_SSH_COMMAND` and insists on `known_hosts`; with the git CLI fetcher, the ssh options above apply |
 | `--rev <PIN> --locked` | without `--rev` there is no provenance to name; `--locked` installs the committed `Cargo.lock`, which is part of the identity path |
 
-After the install, put `$HOME/.local/bin` on `PATH` (a fresh shell does not have it, and without it the next
+### After either install
+
+Put the directory the binary went to (`$HOME/.local/bin`, or `$REQ_INSTALL_DIR` if you set it) on `PATH` (a fresh shell does not have it, and without it the next
 step's `req init` is `command not found`) and run `req --version` (exit 0). Two of its lines decide what
 the binary is: **`rules_v`** makes a stored address current — an address is derived under a rules
 version, so a verdict is not reproducible, and a Baseline not comparable, under another one — and
@@ -42,7 +91,9 @@ version, so a verdict is not reproducible, and a Baseline not comparable, under 
 were modified, so the binary is not the commit it names. This is the **only networked step**; everything
 below runs offline against the corpus (REQ-0012).
 
-**Air-gapped:** clone req once at the rev you want and install from the clone —
+### Air-gapped
+
+Clone req once at the rev you want and install from the clone —
 `cargo install --path . --locked`. req's core has no network dependency and providers are a local
 process boundary (REQ-0012), so a corpus, a gate and a Baseline verification all work offline.
 
@@ -422,42 +473,151 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      # The install fetches from req's **private** host, so the runner needs read access to it.
-      # Set the `REQ_DEPLOY_KEY` secret to a key with read access (this step installs it); skip the
-      # step when the runner already has one (a self-hosted runner), or install from a clone
-      # instead (`cargo install --path . --locked`). req's own claim operations need no network.
-      - name: the deploy key the private install needs, when the runner has none
+      # The install (ADR 0025): a prebuilt, checksummed binary, pinned in THIS file. Edit the three
+      # pin lines at the top of the script below -- the rev and the SHA-256 of each target's tarball;
+      # take them from the `.sha256` assets of the release the first time, and this file is the
+      # authority from then on -- and set the `REQ_RELEASE_TOKEN` secret to a token that can read the
+      # release host. The token replaces the SSH key and the toolchain for req, not the need for a
+      # credential. A refusal (wrong hash, unknown rev, wrong binary) fails this step and nothing
+      # falls back to a source build; req's own claim operations need no network.
+      - name: req, installed from the prebuilt binary pinned below
         env:
-          REQ_DEPLOY_KEY: ${{ secrets.REQ_DEPLOY_KEY }}
+          REQ_RELEASE_TOKEN: ${{ secrets.REQ_RELEASE_TOKEN }}
         run: |
+          REV='<placeholder: the rev of the release you pin, e.g. abc1234 -- fill in after the first release>'
+          SHA256_x86_64_unknown_linux_gnu='<placeholder: 64 hex digits from the release asset req-REV-x86_64-unknown-linux-gnu.tar.gz.sha256>'
+          SHA256_aarch64_apple_darwin='<placeholder: 64 hex digits from the release asset req-REV-aarch64-apple-darwin.tar.gz.sha256>'
           set -eu
-          if [ -z "${REQ_DEPLOY_KEY:-}" ]; then
-            echo "REQ_DEPLOY_KEY is not set — assuming the runner already has read access"
-            exit 0
+
+          # Every refusal goes through here: one line naming the cause, and the rule that there is no fallback.
+          fail() {
+            printf 'install-req: %s\n' "$*" >&2
+            printf 'install-req: refused. There is no automatic fallback to a source install (docs/adopting.md).\n' >&2
+            exit 1
+          }
+
+          # The target comes first: a platform that cannot be installed cannot be fixed by a pin.
+          platform=$(uname -sm)
+          case $platform in
+            'Linux x86_64')
+              target=x86_64-unknown-linux-gnu
+              pin=${SHA256_x86_64_unknown_linux_gnu:-}
+              ;;
+            'Darwin arm64')
+              target=aarch64-apple-darwin
+              pin=${SHA256_aarch64_apple_darwin:-}
+              ;;
+            *)
+              fail "unsupported platform: $platform (supported: Linux x86_64, Darwin arm64)"
+              ;;
+          esac
+
+          # A placeholder, a typo or an empty pin is a refusal before any request is made.
+          case $REV in
+            '' | *[!0-9a-f]*) fail "the pin table has no usable REV (a bare lower-case hex SHA of 7 to 40 digits); fill it in from the release" ;;
+          esac
+          if [ "${#REV}" -lt 7 ] || [ "${#REV}" -gt 40 ]; then
+            fail "the pin table has no usable REV (a bare lower-case hex SHA of 7 to 40 digits); fill it in from the release"
           fi
-          # Per job, and removed by the cleanup step at the end: a key under `$HOME` survives on
-          # a self-hosted runner, where the next job (an untrusted pull request included) could
-          # read it. `umask 077` means the file is never briefly world-readable.
-          umask 077
-          printf '%s\n' "$REQ_DEPLOY_KEY" > "${RUNNER_TEMP:-$HOME}/req_deploy_key"
-      - name: req, installed at a pinned rev
-        run: |
-          set -eu
-          # The install reaches a private host. A key from `REQ_DEPLOY_KEY` (written by the step
-          # above to a path of its own) is offered with `IdentitiesOnly`, so a self-hosted
-          # runner's default identity is neither overwritten nor offered to this host by accident.
-          ssh_command="ssh -o ControlMaster=no -o ControlPath=none -o StrictHostKeyChecking=accept-new"
-          req_key="${RUNNER_TEMP:-$HOME}/req_deploy_key"
-          if [ -f "$req_key" ]; then
-            ssh_command="ssh -i $req_key -o IdentitiesOnly=yes $ssh_command"
+          if [ -z "$pin" ]; then
+            fail "no pin for target $target: fill in its SHA-256 in the pin table, or install on a supported machine"
           fi
-          CARGO_NET_GIT_FETCH_WITH_CLI=true GIT_SSH_COMMAND="$ssh_command" cargo install \
-            --git ssh://git@git.xantu-barb.ts.net/fdx/req.git \
-            --rev <PIN> --root "$HOME/.local" --locked
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          # `$GITHUB_PATH` applies to *later* steps only; this step's own PATH is unchanged.
-          export PATH="$HOME/.local/bin:$PATH"
-          req --version
+          case $pin in
+            *[!0-9a-f]*) fail "the pin table's SHA-256 for $target is not 64 lower-case hex digits; fill it in from the release's .sha256 asset" ;;
+          esac
+          if [ "${#pin}" -ne 64 ]; then
+            fail "the pin table's SHA-256 for $target is not 64 lower-case hex digits; fill it in from the release's .sha256 asset"
+          fi
+
+          if [ -z "${REQ_RELEASE_TOKEN:-}" ]; then
+            fail "REQ_RELEASE_TOKEN is not set: set it (a CI secret) to a token with read access to the release host"
+          fi
+          for tool in curl tar; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              fail "$tool is required and was not found on PATH"
+            fi
+          done
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha_tool=sha256sum
+          elif command -v shasum >/dev/null 2>&1; then
+            sha_tool=shasum
+          else
+            fail "a SHA-256 tool (sha256sum or shasum) is required and was not found on PATH"
+          fi
+
+          dir=${REQ_INSTALL_DIR:-$HOME/.local/bin}
+          mkdir -p "$dir"
+          # Staged inside the install directory: the same filesystem (the final move is a rename) and a
+          # place that is known to allow execution. Removed on every exit, so a refusal leaves nothing.
+          stage=$(mktemp -d "$dir/.req-install.XXXXXX")
+          trap 'rm -rf "$stage"' EXIT
+
+          base=${install_base:-https://git.xantu-barb.ts.net/fdx/req/releases/download}
+          proto=${install_proto:-=https}
+          asset=req-$REV-$target.tar.gz
+          url=$base/rev-$REV/$asset
+
+          # The header is built by the shell builtin `printf` and read by curl from stdin: the token is
+          # never in an argument list (`ps`), and nothing here is traced.
+          status=0
+          code=$(printf 'Authorization: token %s\n' "$REQ_RELEASE_TOKEN" |
+            curl --proto "$proto" --tlsv1.2 -fsSL -H @- -o "$stage/$asset" -w '%{http_code}' "$url") || status=$?
+          case $code in
+            2??)
+              if [ "$status" -ne 0 ]; then
+                fail "download failed (curl exit $status) for $url"
+              fi
+              ;;
+            401 | 403)
+              fail "HTTP $code for $url: the host refused the token; check that REQ_RELEASE_TOKEN is valid and can read the release"
+              ;;
+            404)
+              fail "HTTP 404 for $url: there is no release rev-$REV for $target, or the token cannot see it (a private host answers 404 for both); check REV and REQ_RELEASE_TOKEN"
+              ;;
+            *)
+              fail "HTTP $code (curl exit $status) for $url"
+              ;;
+          esac
+
+          # Verified against the PIN above, never against a checksum fetched from the release.
+          sha_ok() {
+            if [ "$sha_tool" = sha256sum ]; then
+              printf '%s  %s\n' "$pin" "$asset" | (cd "$stage" && sha256sum -c -) >/dev/null 2>&1
+            else
+              printf '%s  %s\n' "$pin" "$asset" | (cd "$stage" && shasum -a 256 -c -) >/dev/null 2>&1
+            fi
+          }
+          if ! sha_ok; then
+            fail "SHA-256 mismatch: $asset does not match the SHA-256 pinned for $target"
+          fi
+
+          # One member, `req`, a regular file, at the archive root: no prefix, no second member, no `..`,
+          # no absolute path, no link. Checked from the listing, before anything is extracted.
+          members=$(tar -tzf "$stage/$asset" 2>/dev/null) || members='(unreadable archive)'
+          kind=$(tar -tvzf "$stage/$asset" 2>/dev/null | cut -c1) || kind='?'
+          if [ "$members" != req ] || [ "$kind" != - ]; then
+            fail "$asset must hold exactly one member named req, a regular file at the archive root"
+          fi
+          mkdir "$stage/unpacked"
+          tar -xzf "$stage/$asset" -C "$stage/unpacked"
+          chmod 0755 "$stage/unpacked/req"
+
+          # The binary is run from the staging directory and installed only if it is the pinned rev.
+          version=0
+          out=$("$stage/unpacked/req" --version 2>&1) || version=$?
+          if [ "$version" -ne 0 ]; then
+            fail "the downloaded req does not run (exit $version): $(printf '%s' "$out" | head -c 300 | LC_ALL=C tr -c '[:print:]' '?')"
+          fi
+          built=$(printf '%s\n' "$out" | sed -n 's/^ *built from  *\([^ ]*\) *$/\1/p')
+          if [ "$built" != "$REV" ]; then
+            fail "the downloaded req reports built from '${built:-(no such line)}', not the pinned $REV"
+          fi
+
+          mv -f "$stage/unpacked/req" "$dir/req"
+          printf 'installed %s\n' "$dir/req"
+          printf '%s\n' "$out" | sed -n -e '/^ *rules_v /p' -e '/^ *built from /p'
+      - name: put the installed req on PATH for the steps that follow
+        run: echo "${REQ_INSTALL_DIR:-$HOME/.local/bin}" >> "$GITHUB_PATH"
       # The tests that prove the claims (ADR 0019). This template is Rust and uses nextest because
       # it writes the JUnit/XUnit document `req gate --test-report` reads; on another stack, run
       # your own test command and point `--test-report` at the report it writes. A claim with no
@@ -589,21 +749,21 @@ jobs:
           name: req-views
           path: req-views/
           if-no-files-found: error
-      - name: remove the deploy key this job wrote
-        if: always()
-        run: rm -f "${RUNNER_TEMP:-$HOME}/req_deploy_key"
 ```
 
-**The install reaches req's private host.** The first step writes a read-only key from the
-`REQ_DEPLOY_KEY` secret to **`$RUNNER_TEMP/req_deploy_key`** — per job, never `$HOME`, and created
-under `umask 077` — and skips itself (with a message) when the secret is unset, the case of a runner
-that already has read access. The install offers that key with `IdentitiesOnly=yes`, never the
-runner's own identity, and the last step removes it under `if: always()`: a private key left on a
-self-hosted runner is readable by every later job, an untrusted pull request included. With neither
-a secret nor runner access, install from a clone instead (`cargo install --path . --locked`): req's
-own claim operations need no network (REQ-0012), so only the install is affected. The install step
-also exports `PATH="$HOME/.local/bin:$PATH"` — `$GITHUB_PATH` applies to later steps only, so
-without it that step's own `req --version` would be `command not found`.
+**The install is the prebuilt binary, pinned in this file.** The first step is
+`examples/install-req.sh`'s body verbatim (a test keeps the three copies and the script identical),
+pin table first: edit the rev and the SHA-256 of each target's tarball, which ship as placeholders
+that fail closed, and set the `REQ_RELEASE_TOKEN` secret to a token with `read:repository` on req's
+host (*Install req*). The token is the one credential the install needs; it replaces the SSH deploy
+key and the Rust toolchain for *req*, not the need for a credential, and it is sent as a header read
+from stdin, never on a command line and never printed. Every refusal — a wrong hash, an unknown rev,
+a binary that is not the pinned rev — fails the step: it is not `continue-on-error`, not followed by
+`|| true`, and does not fall back to a source build. The second step adds the install directory (`${REQ_INSTALL_DIR:-$HOME/.local/bin}`, the one the install
+used) to the runner's `PATH` through `$GITHUB_PATH`, which applies to *later* steps only (the install runs its own
+binary by path). The deploy key and the step that removed it are gone: they existed only for the
+source install, which stays documented under *Install req* for a project that wants it. req's own
+claim operations need no network (REQ-0012).
 
 **The release step is one command: `req check`.** It reads the two lists beside the corpus —
 `.req/variants` (one complete release per line) and `.req/projections` (one committed document path
@@ -723,7 +883,8 @@ prose. The script does not install req — the install is the adopter's step and
 window. Each step names its deciding line; the explanation is in the section it points at.
 
 1. **Install at a pinned rev** (*Install req*). Exit **0**, `req --version` printing `rules_v` and
-   `built from`; `<PIN>` is read with `git rev-parse --short origin/main`, never copied out of a document.
+   `built from` equal to the rev you pinned; for the source install `<PIN>` is read with
+   `git rev-parse --short origin/main`, never copied out of a document.
 2. **Start the corpus** (*Start a corpus*): `req init`, exit **0**, first line `Wrote a working, verified
    corpus in the current directory:`, exactly three files. Confirm with `req canon` → exit **0**, last line
    beginning `claims: 1 (0 unstructured); pins: 3 on 1 claim(s), 0 flagged`. Its refusals are on
