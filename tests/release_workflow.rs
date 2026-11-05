@@ -322,6 +322,8 @@ fn the_upload_cannot_overwrite_an_asset() {
         "each name exactly once after the upload",
     );
     for token in [
+        "|| :",
+        "set -ex",
         "--request=",
         "|| exit 0",
         "set -x",
@@ -426,6 +428,18 @@ fn the_timing_measures_both_installs_and_prints_two_lines() {
         &text,
         "cargo install --path",
         "the source install is one of the two things measured (after the authenticated clone)",
+    );
+    require(
+        TIMING,
+        &text,
+        "!= refs/heads/main",
+        "the read token goes only to main's install script, the one an adopter gets",
+    );
+    require(
+        TIMING,
+        &text,
+        "[ -z \"$built\" ]",
+        "an unestablished identity prints no figure: an empty `built from` must not match every rev",
     );
     require(
         TIMING,

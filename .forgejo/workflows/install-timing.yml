@@ -54,6 +54,16 @@ jobs:
     env:
       REPO_URL: https://git.xantu-barb.ts.net/fdx/req.git
     steps:
+      - name: only main's tooling runs with the read token
+        run: |
+          set -eu
+          # This job hands the instance-wide read token to examples/install-req.sh of the checked-out
+          # ref; the figure is meaningful only for the script an adopter actually gets.
+          if [ "${GITHUB_REF:-}" != refs/heads/main ]; then
+            echo "::error::dispatched from '${GITHUB_REF:-}'; dispatch Install timing from main only"
+            exit 1
+          fi
+
       - name: checkout
         uses: actions/checkout@v4
 
@@ -184,7 +194,15 @@ jobs:
           (cd "$dir/src" && rustup run "$REQ_CHANNEL" cargo install --path . --root "$dir/root" --locked)
           end="$(date +%s%3N)"
           # The number is printed only for a binary that says it is the measured rev.
-          built="$("$dir/root/bin/req" --version | sed -n 's/^ *built from  *\([^ ]*\) *$/\1/p')"
+          version_out="$("$dir/root/bin/req" --version)" || {
+            echo "::error::the installed req does not run; no figure printed"
+            exit 1
+          }
+          built="$(printf '%s\n' "$version_out" | sed -n 's/^ *built from  *\([^ ]*\) *$/\1/p')"
+          if [ -z "$built" ]; then
+            echo "::error::req --version has no 'built from' line; its identity is unestablished, no figure printed"
+            exit 1
+          fi
           case $REQ_REV in
             "$built"*) ;;
             *)

@@ -200,6 +200,10 @@ jobs:
               exit 1
               ;;
           esac
+          if [ "${#rev}" -lt 7 ] || [ "${#rev}" -gt 40 ]; then
+            echo "::error::'$rev' is not 7 to 40 hex digits"
+            exit 1
+          fi
           tag="rev-$rev"
           # The tarball goes last: a visible tarball means the other two assets are already there.
           names="req-$rev-$target.build-info req-$rev-$target.tar.gz.sha256 $tarball"
@@ -213,6 +217,22 @@ jobs:
           case $full in
             '' | *[!0-9a-f]*)
               echo "::error::the build-info has no usable full SHA"
+              exit 1
+              ;;
+          esac
+
+          # What is published is what was checked, and this is decided BEFORE the first write (a wrong
+          # release cannot be repaired afterwards: no asset is ever replaced or deleted): the rev the
+          # script built is the rev this job resolved and required to be on main, and the tag's short
+          # rev is that commit's prefix, whatever the script's output says.
+          if [ "$full" != "$REL_FULL" ]; then
+            echo "::error::the build-info names $full, not the resolved $REL_FULL; refusing to publish"
+            exit 1
+          fi
+          case $full in
+            "$rev"*) ;;
+            *)
+              echo "::error::the tag rev '$rev' is not a prefix of $full; refusing to publish"
               exit 1
               ;;
           esac
@@ -237,6 +257,14 @@ jobs:
           case $code in
             200)
               id="$(release_id "$work/release.json")"
+              # An asset uploaded into a draft is invisible to adopters, which would break "a visible
+              # tarball means the other two are there".
+              if python3 -I -c 'import json, sys; sys.exit(1 if json.load(sys.stdin).get("draft") else 0)' < "$work/release.json"; then
+                :
+              else
+                echo "::error::release $tag exists as a draft; publish or delete it by hand first (this workflow never edits a release)"
+                exit 1
+              fi
               echo "release $tag exists (id $id)"
               ;;
             404)
@@ -314,13 +342,6 @@ jobs:
               exit 1
             fi
           done
-
-          # What is published is what was checked: the rev the script built is the rev this job
-          # resolved and required to be on main, whatever the script's output says.
-          if [ "$full" != "$REL_FULL" ]; then
-            echo "::error::the build-info names $full, not the resolved $REL_FULL; refusing to publish"
-            exit 1
-          fi
 
           sum="$(cut -d' ' -f1 "$RELEASE_OUT/req-$rev-$target.tar.gz.sha256")"
           echo "released $tag"
