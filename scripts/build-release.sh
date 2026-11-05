@@ -142,6 +142,15 @@ if [ -n "$bin" ]; then
 fi
 
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+# The clean copy is the commit's bytes and nothing else: no user or system git configuration (an
+# `autocrlf`, a filter or a hook would rewrite files before the proofs run) and no template
+# directory. And the proofs must look at the clean copy's corpus, never at a REQ_ROOT the caller
+# happens to have exported: `req` resolves its corpus from REQ_ROOT before the working directory.
+unset GIT_TEMPLATE_DIR GIT_CONFIG GIT_CONFIG_COUNT REQ_ROOT
+GIT_CONFIG_GLOBAL=/dev/null
+GIT_CONFIG_SYSTEM=/dev/null
+GIT_CONFIG_NOSYSTEM=1
+export GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_CONFIG_NOSYSTEM
 
 git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || die 2 "--repo is not a git repository: $repo"
 full=$(git -C "$repo" rev-parse --verify --quiet "$rev^{commit}") ||
@@ -167,7 +176,7 @@ command -v minisign >/dev/null 2>&1 ||
 work=$(mktemp -d "${TMPDIR:-/tmp}/req-release.XXXXXX") || die 1 'cannot make a temporary directory'
 src=$work/src
 say "clean copy of $full"
-git clone --quiet --no-checkout --no-hardlinks "$repo" "$src" >"$work/git.log" 2>&1 ||
+git clone --quiet --no-checkout --no-hardlinks --template= "$repo" "$src" >"$work/git.log" 2>&1 ||
   { show 'git clone' "$work/git.log"; die 1 "git clone of $repo failed"; }
 # The clone holds the branches and tags; this adds every other ref, so a rev that is only on a
 # remote-tracking branch resolves too.
@@ -308,7 +317,10 @@ if [ ! -d "$out" ]; then
 fi
 publish() {
   cp "$work/$1" "$out/.req-$1$tmp_suffix" || die 1 "cannot write into $out"
-  mv "$out/.req-$1$tmp_suffix" "$out/$1" || die 1 "cannot move $1 into place"
+  # A hard link fails if the name exists, where `mv` would replace it: two runs racing for the same
+  # --out cannot both succeed, and neither can replace an asset whose checksum was already printed.
+  ln "$out/.req-$1$tmp_suffix" "$out/$1" || die 1 "cannot link $1 into place (it may have just been written by another run)"
+  rm -f "$out/.req-$1$tmp_suffix"
 }
 publish "$tarball"
 made_tar=$out/$tarball

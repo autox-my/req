@@ -55,7 +55,7 @@ case "${1:-}" in
     exit 0
     ;;
   baseline)
-    log "baseline cwd=$(pwd -P)"
+    log "baseline req_root=${REQ_ROOT:-} cwd=$(pwd -P)"
     if [ "${2:-}" != "--verify" ] || [ "${3:-}" != "baselines/air-gapped.json" ] || [ $# -ne 3 ]; then
       echo "stub: wrong baseline invocation: $*" >&2; exit 64
     fi
@@ -72,7 +72,7 @@ case "${1:-}" in
     esac
     ;;
   bench)
-    log "bench cwd=$(pwd -P)"
+    log "bench req_root=${REQ_ROOT:-} cwd=$(pwd -P)"
     if [ $# -ne 1 ]; then echo "stub: wrong bench invocation: $*" >&2; exit 64; fi
     if ! tree_is_the_clean_copy; then echo "stub saw a tree that is not the committed one" >&2; exit 1; fi
     case "${STUB_BENCH:-pass}" in
@@ -524,6 +524,46 @@ fn the_checks_run_with_the_clean_copy_as_the_working_directory() {
     );
 }
 
+#[test]
+fn an_exported_req_root_cannot_move_the_proofs_off_the_clean_copy() {
+    // `req` resolves its corpus from REQ_ROOT before the working directory, so a caller's export
+    // would make both proofs judge (and `bench` write into) some other checkout.
+    let world = World::standard("req-root");
+    let elsewhere = world.root.join("elsewhere");
+    fs::create_dir_all(&elsewhere).expect("creates the other root");
+    let elsewhere = elsewhere.to_string_lossy().into_owned();
+    let run = world.release(&[world.built_from(), ("REQ_ROOT", &elsewhere)]);
+    assert_eq!(run.code, Some(0), "stderr: {}", run.stderr);
+    let log = fs::read_to_string(&world.stub_log).expect("the stub logged its environment");
+    let roots: Vec<&str> = log
+        .lines()
+        .filter_map(|line| line.split_once("req_root=").map(|(_, rest)| rest))
+        .map(|rest| rest.split(" cwd=").next().unwrap_or(rest))
+        .collect();
+    assert_eq!(roots.len(), 2, "both proofs ran: {log}");
+    assert!(
+        roots.iter().all(|root| root.is_empty()),
+        "REQ_ROOT must not reach the proofs: {roots:?}"
+    );
+}
+
+#[test]
+fn the_callers_git_configuration_cannot_change_the_clean_copy() {
+    // A global `core.autocrlf = true` checks files out with CRLF endings: bytes that are not the
+    // commit's. The stub's `tree_is_the_clean_copy` compares the committed Baseline text exactly.
+    let world = World::standard("git-config");
+    let config = world.root.join("gitconfig");
+    fs::write(&config, "[core]\n\tautocrlf = true\n").expect("writes a git config");
+    let config = config.to_string_lossy().into_owned();
+    let run = world.release(&[world.built_from(), ("GIT_CONFIG_GLOBAL", &config)]);
+    assert_eq!(
+        run.code,
+        Some(0),
+        "the proofs must see the commit's bytes whatever the caller's git config says; stderr: {}",
+        run.stderr
+    );
+}
+
 // ---------------------------------------------------------------------------------------------
 // (b) the binary must prove which rev it is
 // ---------------------------------------------------------------------------------------------
@@ -542,6 +582,9 @@ fn a_binary_that_does_not_report_a_bare_prefix_of_the_rev_is_refused() {
         "unknown".to_string(),
         wrong_prefix.to_string(),
         String::new(),
+        // A prefix of the full SHA, but too short to name a commit: refused on length alone.
+        world.full_sha[..6].to_string(),
+        world.full_sha[..1].to_string(),
     ];
     for built_from in &cases {
         let run = world.release(&[("STUB_BUILT_FROM", built_from)]);
