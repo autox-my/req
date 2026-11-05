@@ -258,7 +258,7 @@ jobs:
           esac
           api() {
             printf 'Authorization: token %s\n' "$RELEASE_TOKEN" |
-              curl --proto "$proto" -sS -H @- "$@"
+              curl --proto "$proto" --tlsv1.2 -sS -H @- "$@"
           }
           say_body() { head -c 300 "$1" | LC_ALL=C tr -c '[:print:]\n' '?'; echo; }
           release_id() {

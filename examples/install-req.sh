@@ -19,7 +19,8 @@ SHA256_aarch64_apple_darwin='<placeholder: 64 hex digits from the release asset 
 # `req --version` and require `built from` to equal REV exactly; only then install it, mode 0755,
 # into ${REQ_INSTALL_DIR:-$HOME/.local/bin}. Needs: bash, curl, tar, sha256sum or shasum.
 #
-# Test-only overrides, read here and nowhere else, and never set by any shipped YAML:
+# Overrides, read here and nowhere else, and never set by any ADOPTER-facing YAML (the tests set them; so does
+# this repository's own timing harness, .forgejo/workflows/install-timing.yml, to reach its runner's server URL):
 #   REQ_RELEASE_BASE  replaces the release host (https://git.xantu-barb.ts.net/fdx/req/releases/download)
 #   REQ_CURL_PROTO    replaces curl's --proto value (default =https)
 install_base=${REQ_RELEASE_BASE:-}

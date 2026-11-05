@@ -28,10 +28,15 @@
 #   - The source install starts from an empty CARGO_HOME, so it also pays for fetching the registry
 #     index and every crate. A warm cache on a long-lived runner would make it faster; that is what
 #     the cold figure is not, and the runbook says so beside the number.
-#   - It fetches over https with the read token. The documented source install uses an SSH deploy
-#     key (docs/adopting.md); the transport differs, the compile is the same compile.
+#   - It fetches over the runner's own server URL with the read token, which is not the public https
+#     host (the runner has no tailnet DNS). On a LAN `http://` server URL the instance-wide
+#     `read:repository` token crosses that hop in clear, as the checkout's credentials do. The
+#     documented source install uses an SSH deploy key (docs/adopting.md); the transport differs, the
+#     compile is the same compile.
 #   - The prebuilt install runs the real script from this checkout with only its pin table filled in
-#     (REV and the Linux hash); the script's test-only overrides are never set.
+#     (REV and the Linux hash) and its two documented overrides (REQ_RELEASE_BASE, REQ_CURL_PROTO)
+#     set from the runner's server URL: this harness is the one shipped YAML that sets them, and only
+#     to reach that URL.
 
 name: Install timing
 
