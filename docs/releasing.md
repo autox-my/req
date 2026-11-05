@@ -26,7 +26,9 @@ could carry its own key.
 3. The job checks the runner (C linker, `minisign`, `rustup` with the toolchain the rev pins), runs
    `scripts/build-release.sh --rev <full sha> --out …`, creates the release `rev-<REV>` if it is absent and
    uploads `req-<REV>-x86_64-unknown-linux-gnu.build-info`, `….tar.gz.sha256` and `….tar.gz`, in that order.
-4. The last lines of the log are `released rev-<REV>` and the `pin (Linux): REV=… SHA256=… TARGET=…` line.
+4. The last lines of the log are `released rev-<REV>` and the `pin (Linux): REV=… SHA256=… TARGET=…` line. Use
+   that one: the build step's log also carries the script's own `pin:` line, printed before the upload, which
+   after a half-failed upload names a hash that was never published.
 
 The script refuses to write anything unless the binary says `built from` the bare rev, `req baseline
 --verify baselines/air-gapped.json` prints `[VERIFIED]` and `req bench` passes its FMR gate (exit 1 names
@@ -53,6 +55,7 @@ exists**, tarball last. `RELEASE_TOKEN` here is a shell variable holding a `writ
 header goes through stdin so the token is never in `ps`:
 
 ```bash
+set -euo pipefail   # save this as a file and run it with `bash`: a failed upload must stop it, not scroll past
 API=https://git.xantu-barb.ts.net/api/v1/repos/fdx/req
 REV=<REV>; FULL=<full sha>; OUT=<the --out directory>; T=aarch64-apple-darwin
 api() { printf 'Authorization: token %s\n' "$RELEASE_TOKEN" | curl --proto '=https' --tlsv1.2 -fsS -H @- "$@"; }
@@ -69,7 +72,8 @@ for n in req-$REV-$T.build-info req-$REV-$T.tar.gz.sha256 req-$REV-$T.tar.gz; do
   ! grep -Fxq -- "$n" "$OUT/.listed" || { echo "$n already exists: refusing to replace it" >&2; exit 1; }
 done
 for n in req-$REV-$T.build-info req-$REV-$T.tar.gz.sha256 req-$REV-$T.tar.gz; do
-  api -X POST -F "attachment=@$OUT/$n" "$API/releases/$ID/assets?name=$n" >/dev/null && echo "uploaded $n"
+  api -X POST -F "attachment=@$OUT/$n" "$API/releases/$ID/assets?name=$n" >/dev/null || { echo "uploading $n failed: the release is incomplete" >&2; exit 1; }
+  echo "uploaded $n"
 done
 ```
 

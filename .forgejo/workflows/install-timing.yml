@@ -183,5 +183,13 @@ jobs:
           # same fetch and the same compile, split so the token is gone before any build code runs.
           (cd "$dir/src" && rustup run "$REQ_CHANNEL" cargo install --path . --root "$dir/root" --locked)
           end="$(date +%s%3N)"
+          # The number is printed only for a binary that says it is the measured rev.
+          built="$("$dir/root/bin/req" --version | sed -n 's/^ *built from  *\([^ ]*\) *$/\1/p')"
+          case $REQ_REV in
+            "$built"*) ;;
+            *)
+              echo "::error::the source install reports built from '$built', not the measured rev $REQ_REV; no figure printed"
+              exit 1
+              ;;
+          esac
           echo "INSTALL source: $(((end - start) / 1000))s"
-          "$dir/root/bin/req" --version

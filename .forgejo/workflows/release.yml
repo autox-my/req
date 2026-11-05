@@ -263,12 +263,12 @@ jobs:
 
           list_assets() {
             code="$(api -o "$work/assets.json" -w '%{http_code}' "$FORGEJO_API/releases/$id/assets")" || {
-              echo "::error::cannot reach $FORGEJO_API"
+              echo "::error::cannot reach $FORGEJO_API" >&2
               exit 1
             }
             if [ "$code" != 200 ]; then
-              echo "::error::listing the assets of release $tag answered HTTP $code"
-              say_body "$work/assets.json"
+              echo "::error::listing the assets of release $tag answered HTTP $code" >&2
+              say_body "$work/assets.json" >&2
               exit 1
             fi
             python3 -I -c 'import json, sys; print("\n".join(a["name"] for a in json.load(sys.stdin)))' < "$work/assets.json"

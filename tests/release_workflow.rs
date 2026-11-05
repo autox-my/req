@@ -290,7 +290,13 @@ fn the_upload_cannot_overwrite_an_asset() {
     );
     // And the refusal comes first: the check is before the first byte is uploaded, not after.
     let refusal = text.find("already exists on release").unwrap_or(usize::MAX);
-    let first_upload = text.find("-F \"attachment=").unwrap_or(0);
+    require(
+        RELEASE,
+        &text,
+        "-F \"attachment=",
+        "the upload form the ordering below is measured against",
+    );
+    let first_upload = text.find("-F \"attachment=").unwrap_or(usize::MAX);
     assert!(
         refusal < first_upload,
         "{RELEASE}: the existing-asset check must come before the first upload, not after it"
@@ -301,6 +307,37 @@ fn the_upload_cannot_overwrite_an_asset() {
         "-X POST",
         "assets are created, with the one verb that cannot replace a named one",
     );
+    // The tarball goes last: a visible tarball means the other two assets are there.
+    require(
+        RELEASE,
+        &text,
+        "names=\"req-$rev-$target.build-info req-$rev-$target.tar.gz.sha256 $tarball\"",
+        "the tarball is uploaded last, so it is the signal that the release is complete",
+    );
+    // And the count afterwards, which is what a racing second run shows up in.
+    require(
+        RELEASE,
+        &text,
+        "after the upload; expected exactly once",
+        "each name exactly once after the upload",
+    );
+    for token in [
+        "--request=",
+        "|| exit 0",
+        "set -x",
+        "set -eux",
+        "set -euxo",
+        "curl -v",
+        "--verbose",
+        "--trace",
+    ] {
+        forbid(
+            RELEASE,
+            &text,
+            token,
+            "a spelling that deletes or replaces an asset, ends the step green after a failure, or prints the Authorization header",
+        );
+    }
     for verb in [
         "-X PUT",
         "-X PATCH",
