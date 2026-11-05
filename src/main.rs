@@ -4,6 +4,8 @@
 //!   req [--root <dir>] bench [corpus.yml] — run the FMR gate (default: bench/corpus/parity.yml)
 //!   req [--root <dir>] canon               — the derived parse and each pin's verdict, per claim
 //!   req [--root <dir>] compare A.yml B.yml — what kind of change is this between two claims?
+//!   req [--root <dir>] diff --base <rev> [--head <rev>] [--fail-on <classes>] [--format text|json]
+//!                                          — what changed in meaning between two revisions (ADR 0026)
 //!   req [--root <dir>] select k=v [...]    — which claims apply in this variant? (tri-state)
 //!   req [--root <dir>] render [--format text|json] k=v [...]
 //!                                          — the spec view for that selection
@@ -42,8 +44,8 @@
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
 use req::{
-    audit, baseline, bench, canon, check, compare, decision, gate, impact, init, propose, root,
-    select, view,
+    audit, baseline, bench, canon, check, compare, decision, diff, gate, impact, init, propose,
+    root, select, view,
 };
 use std::path::Path;
 use std::process::exit;
@@ -57,6 +59,7 @@ usage: req [--root <dir>] <command> [args]
   bench [corpus.yml]              the FMR gate (default: bench/corpus/parity.yml)
   canon                           the derived parse and each pin's verdict (diagnostics)
   compare <a.yml> <b.yml>         what kind of change is this between two claims?
+  diff --base <rev> [...]         what changed in meaning between two revisions (ADR 0026)
   select | render | trace | gate k=v [...]
                                   the variant projections and the release gate
   check [--test-report <file>]    may this repository ship: every declared variant and projection,
@@ -207,6 +210,48 @@ classification is for a human to ratify, never an approval.
 exit: 0 classified, 3 UNVERIFIABLE (a side that will not load, or that declares a file
 format this build does not write, so its parse is NOT JUDGED; a pair with no structured form
 to compare), 2 usage.
+
+`docs/adopting.md` for the loop.";
+
+const DIFF_HELP: &str = "\
+usage: req diff --base <rev> [--head <rev>] [--fail-on <classes>] [--format text|json]
+
+What changed in meaning between two revisions of this corpus? `--base` is a git revision;
+`--head` is a git revision, or the working tree when absent (an uncommitted edit is read).
+Claims are matched by claim_id; each id on either side gets one class: `added`, `removed`,
+`weakened` (strictly more complies: modality weakening, numeric loosening, scope widening),
+`tightened` (the reverse), `reshaped` (a different obligation: polarity flip, scope
+divergence, unrelated), `not-judged` (the meaning changed but a side has no structured
+form), `reworded` (the text changed, the meaning fingerprint did not) or `metadata` (only
+relations, rationale, tests, evidence or pins changed). Identical claims are counted, not
+listed. A claim also carries flags: `pins-changed` (the authored pins differ, structurally),
+`pin-flagged` (a head-side pin disagrees with the parse), `tests-lost` and `tests-added`
+(linked test ids), and `same-address-as <id>` on an added claim whose meaning fingerprint a
+removed claim had (a candidate renumber, never inferred as a rename). `registry: changed`
+is reported once, at the top: a changed `aliases/subjects.yml` can move many addresses.
+
+Each side is read from git without checking anything out: only `claims/` and `aliases/`, as
+raw blobs, into a temporary directory that is removed on every exit, then loaded by the same
+loaders every command uses and derived under this binary's rules and that side's own
+registry. `git` is run as a local process with `GIT_*` redirections, user and system
+configuration removed; nothing is fetched, no hook runs, and the base revision must be in
+the checkout (a shallow clone needs `fetch-depth: 0`). The corpus must be inside a git work
+tree; its direction quality is exactly `req compare`'s.
+
+`--fail-on <list>` names classes that turn the run into exit 1: a comma-separated subset of
+`weakened`, `removed`, `reshaped`, `not-judged`, `pins-changed`, `pin-flagged`, `tests-lost`.
+Nothing is on by default; an unlisted class is still printed. `--format json` prints one
+`req.diff/1` document, the same classes as the text.
+
+The output is a description, not a verdict: it never says PASS or FAIL, and `weakened` is a
+prompt for a human, not a rejection.
+
+exit: 0 the report was produced (whatever it lists); 1 only with `--fail-on`, when a named
+class or flag is present; 3 UNVERIFIABLE (`git` missing or failing, the corpus not inside a
+git work tree, a revision that does not resolve, a side whose claims or registry do not
+load, including a claim declaring a file format this build does not write, or an empty
+`claims/`); 2 usage (a missing `--base`, a revision beginning with `-`, an empty or unknown
+`--fail-on` class).
 
 `docs/adopting.md` for the loop.";
 
@@ -573,6 +618,11 @@ const COMMANDS: &[Command] = &[
             }
         },
         help: COMPARE_HELP,
+    },
+    Command {
+        name: "diff",
+        run: |args, corpus| diff::run(args, corpus),
+        help: DIFF_HELP,
     },
     Command {
         name: "canon",

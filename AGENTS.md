@@ -70,6 +70,7 @@ surprises you. Run as `cargo run -q -- <command>`.
 | `canon` | what each claim's statement derives, and whether each pin holds (diagnostics; `--fill`/`--verify` removed) |
 | `bench [corpus.yml]` | the FMR = 0 gate (seed parity by default); also scores the direction gold set |
 | `compare <a> <b>` | the direction of a change between two claims — for a human to ratify |
+| `diff` | what changed in meaning between two revisions |
 | `select` | which claims apply in a variant (tri-state: UNKNOWN is an answer) |
 | `render`, `trace` | the spec view, the traceability matrix (projections; `--out` / `--check`) |
 | `impact <id>` | what depends on a claim, nearest first |
