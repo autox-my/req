@@ -58,11 +58,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: the rev to release, resolved, and required to be on main
+      - name: the tooling is main's, and the rev to release is resolved and on main
         env:
           REV_INPUT: ${{ github.event.inputs.rev }}
         run: |
-          set -eu
+          set -euo pipefail
+          # This job runs the checked-out scripts/build-release.sh and the checked-out workflow, so
+          # the ref it was dispatched from decides which code proves the binary. Only main's does;
+          # a dispatch from any other branch would run that branch's proofs (or none).
+          if [ "${GITHUB_REF:-}" != refs/heads/main ]; then
+            echo "::error::dispatched from '${GITHUB_REF:-}'; dispatch Release from main only (the proofs are main's script, ADR 0025 §2)"
+            exit 1
+          fi
           if [ -z "${REV_INPUT:-}" ]; then
             echo "::error::the rev input is empty"
             exit 1
@@ -307,6 +314,13 @@ jobs:
               exit 1
             fi
           done
+
+          # What is published is what was checked: the rev the script built is the rev this job
+          # resolved and required to be on main, whatever the script's output says.
+          if [ "$full" != "$REL_FULL" ]; then
+            echo "::error::the build-info names $full, not the resolved $REL_FULL; refusing to publish"
+            exit 1
+          fi
 
           sum="$(cut -d' ' -f1 "$RELEASE_OUT/req-$rev-$target.tar.gz.sha256")"
           echo "released $tag"

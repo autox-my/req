@@ -2,9 +2,9 @@
 #
 # The cost per job of compiling req from source was never measured (issue #65); this workflow
 # measures it, next to the prebuilt install, on the machine that runs CI. It prints exactly two
-# lines, each between two readings of `date +%s`:
+# lines, each between two readings of `date +%s%3N` (milliseconds, printed in whole seconds):
 #
-#   INSTALL source: <n>s     cargo install --git ... --rev <rev> --locked, in an empty CARGO_HOME
+#   INSTALL source: <n>s     git clone + checkout <rev>, then cargo install --path . --locked, in an empty CARGO_HOME
 #   INSTALL prebuilt: <n>s   examples/install-req.sh, with the pin table filled from the inputs
 #
 # Dispatch-only, on purpose: a measurement is taken on request, and tests/release_workflow.rs fails
@@ -105,8 +105,18 @@ jobs:
               | sh -s -- -y --profile minimal --default-toolchain none
             . "$HOME/.cargo/env"
           fi
-          rustup toolchain install 1.99.0 --profile minimal
-          rustup run 1.99.0 cargo --version
+          # The channel the checked-out tree pins (not a number typed here twice), and the source
+          # step checks the measured rev pins the same one, so a bump cannot silently skew the figure.
+          channel="$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)"
+          case $channel in
+            '' | *[!0-9A-Za-z._-]*)
+              echo "::error::no usable channel in rust-toolchain.toml"
+              exit 1
+              ;;
+          esac
+          rustup toolchain install "$channel" --profile minimal
+          rustup run "$channel" cargo --version
+          echo "REQ_CHANNEL=$channel" >> "$GITHUB_ENV"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           echo "RUSTUP_HOME=$HOME/.rustup" >> "$GITHUB_ENV"
 
@@ -135,10 +145,10 @@ jobs:
             fi
           done
           export REQ_INSTALL_DIR="$dir/bin"
-          start="$(date +%s)"
+          start="$(date +%s%3N)"
           bash "$dir/install-req.sh"
-          end="$(date +%s)"
-          echo "INSTALL prebuilt: $((end - start))s"
+          end="$(date +%s%3N)"
+          echo "INSTALL prebuilt: $(((end - start) / 1000))s"
 
       - name: the source install, timed
         env:
@@ -152,15 +162,26 @@ jobs:
           dir="$(mktemp -d)"
           # An empty CARGO_HOME: nothing cached by an earlier job helps this install. The git CLI
           # fetches (so the header below applies), with the credential held in the environment
-          # rather than in an argument list.
+          # rather than in an argument list. The credential is dropped from the environment BEFORE
+          # the compile: every build script and proc-macro of every crate cargo then fetches is a
+          # child process that would inherit it, and `read:repository` reads the whole instance.
           export CARGO_HOME="$dir/cargo-home"
-          export CARGO_NET_GIT_FETCH_WITH_CLI=true
           auth="$(printf 'x-access-token:%s' "$REQ_RELEASE_TOKEN" | base64 | tr -d '\n')"
           export GIT_CONFIG_COUNT=1
           export GIT_CONFIG_KEY_0="http.https://git.xantu-barb.ts.net/.extraheader"
           export GIT_CONFIG_VALUE_0="Authorization: Basic $auth"
-          start="$(date +%s)"
-          rustup run 1.99.0 cargo install --git "$REPO_URL" --rev "$REQ_REV" --root "$dir/root" --locked
-          end="$(date +%s)"
-          echo "INSTALL source: $((end - start))s"
+          start="$(date +%s%3N)"
+          git clone --quiet --no-checkout "$REPO_URL" "$dir/src"
+          git -C "$dir/src" checkout --quiet --detach "$REQ_REV"
+          unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 REQ_RELEASE_TOKEN auth
+          rev_channel="$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' "$dir/src/rust-toolchain.toml")"
+          if [ "$rev_channel" != "$REQ_CHANNEL" ]; then
+            echo "::error::the measured rev pins toolchain '$rev_channel', this job installed '$REQ_CHANNEL'; the figure would not be comparable"
+            exit 1
+          fi
+          # The documented source install is `cargo install --git ... --rev ... --locked`; this is the
+          # same fetch and the same compile, split so the token is gone before any build code runs.
+          (cd "$dir/src" && rustup run "$REQ_CHANNEL" cargo install --path . --root "$dir/root" --locked)
+          end="$(date +%s%3N)"
+          echo "INSTALL source: $(((end - start) / 1000))s"
           "$dir/root/bin/req" --version

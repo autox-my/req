@@ -199,6 +199,30 @@ fn the_release_builds_with_the_script_that_proves_the_binary() {
         "--out",
         "the script is told where the assets go",
     );
+    require(
+        RELEASE,
+        &text,
+        "!= refs/heads/main",
+        "the tooling that proves the binary is main's: a dispatch from another ref is refused",
+    );
+    require(
+        RELEASE,
+        &text,
+        "merge-base --is-ancestor",
+        "only a rev on main is released (the script proves the Baseline with the trust anchor of the rev it builds)",
+    );
+    require(
+        RELEASE,
+        &text,
+        "case $REV_INPUT in",
+        "the rev input is a name, never a command: its alphabet is checked before it reaches git",
+    );
+    require(
+        RELEASE,
+        &text,
+        "\"$full\" != \"$REL_FULL\"",
+        "what is published is the rev that was checked to be on main",
+    );
     forbid(
         RELEASE,
         &text,
@@ -363,8 +387,14 @@ fn the_timing_measures_both_installs_and_prints_two_lines() {
     require(
         TIMING,
         &text,
-        "cargo install --git",
-        "the source install is one of the two things measured",
+        "cargo install --path",
+        "the source install is one of the two things measured (after the authenticated clone)",
+    );
+    require(
+        TIMING,
+        &text,
+        "unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 REQ_RELEASE_TOKEN",
+        "the read token is dropped from the environment before any build script of a fetched crate can see it",
     );
     require(
         TIMING,
