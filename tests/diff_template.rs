@@ -157,6 +157,11 @@ fn the_trigger_is_pull_request_and_nothing_that_hands_secrets_to_fork_code() {
          release check) and is triggered by `pull_request` alone:\n{}",
         text.lines().take(8).collect::<Vec<_>>().join("\n")
     );
+    // The token is read-only: a job that runs for any pull request gets no write scope.
+    assert!(
+        code.contains("permissions:\n      contents: read\n") && !code.contains("write"),
+        "the job's token is `contents: read` and nothing in the workflow asks for a write scope:\n{text}"
+    );
     for forbidden in [
         "pull_request_target",
         "push:",
@@ -217,7 +222,7 @@ fn the_diff_command_is_unpiped_and_unmasked() {
     let command = the_diff_command(&text);
 
     let after_flag = command
-        .strip_prefix("if req diff --base \"origin/${{ github.base_ref }}\" --fail-on ")
+        .strip_prefix("if req diff --base \"origin/$BASE_REF\" --fail-on ")
         .unwrap_or_else(|| {
             panic!(
                 "the command compares the pull request's base branch against the checkout, with `--fail-on` \
@@ -303,12 +308,24 @@ fn the_job_summary_is_written_from_the_captured_copy_before_the_exit() {
         "the captured copy is a fresh temporary file:\n{script}"
     );
     assert!(
-        at("GITHUB_STEP_SUMMARY") < at("exit \"$code\""),
+        script.contains("summary=\"${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}\""),
+        "the summary target is guarded like req.yml's (Forgejo's variable, else GitHub's, else /dev/null), \
+         because the step runs under `set -u`:\n{script}"
+    );
+    assert!(
+        at("} >> \"$summary\"") < at("exit \"$code\""),
         "the summary is written before the step exits with req's status"
     );
     assert!(
-        at("if req diff ") < at("GITHUB_STEP_SUMMARY"),
+        at("if req diff ") < at("} >> \"$summary\""),
         "the summary is written after `req diff` ran, from what it printed"
+    );
+    // The block itself carries the captured report and the exit status, so exit 3 (UNVERIFIABLE)
+    // stays distinguishable from exit 1 in the artifact a reviewer reads.
+    let block = &script[script.find("{\n").unwrap_or(0)..at("} >> \"$summary\"")];
+    assert!(
+        block.contains("cat \"$out\"") && block.contains("echo \"exit status: $code\""),
+        "the summary block holds the captured report and the exit status:\n{block}"
     );
     assert!(
         script.contains("cat \"$out\""),

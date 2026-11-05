@@ -11,6 +11,10 @@
 # The base revision must be in the checkout: `fetch-depth: 0` below is required, because with a
 # shallow clone `origin/<base>` is missing and `req diff` is exit 3 (UNVERIFIABLE), never a quiet
 # empty report. `git` must be on the runner. Nothing is fetched by req.
+#
+# A pull request from a fork gets no repository secrets, so the install step refuses (no
+# `REQ_RELEASE_TOKEN`) and this check is red on it, by design: the trigger stays `pull_request`,
+# never `pull_request_target`, so code the pull request supplies never runs with the secret.
 name: req-diff
 on:
   pull_request:
@@ -176,20 +180,26 @@ jobs:
       # flag is present, 3 it could not be produced, 2 a usage error. There is no `|| true`, no
       # `continue-on-error`, and nothing after the `if` can change the status.
       - name: what changed in meaning between the base branch and this change
+        env:
+          # Carried through the environment, never interpolated into the script: a branch name may
+          # hold `$`, backticks or `;`.
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -u
           out=$(mktemp)
-          if req diff --base "origin/${{ github.base_ref }}" --fail-on weakened,removed,pins-changed,tests-lost > "$out"; then
+          if req diff --base "origin/$BASE_REF" --fail-on weakened,removed,pins-changed,tests-lost > "$out"; then
             code=0
           else
             code=$?
           fi
           cat "$out"
+          # Absent variable = an older runner: the step must still pass, so the target is /dev/null.
+          summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}"
           {
             echo '### req diff'
             echo '```'
             cat "$out"
             echo '```'
             echo "exit status: $code"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } >> "$summary"
           exit "$code"

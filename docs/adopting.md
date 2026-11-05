@@ -924,10 +924,13 @@ What to keep in mind when reading it:
 
 `examples/github-workflows/req-diff.yml` is the copy-ready workflow: on `pull_request`, a checkout with
 `fetch-depth: 0`, the same prebuilt install as the CI section's (the pin table is the one thing you edit),
-then `req diff --base "origin/${{ github.base_ref }}"` with the starting set above. It is a separate file
+then `req diff --base "origin/$BASE_REF"` (the branch name arrives through `env:`, never interpolated into the script) with the starting set above. It is a separate file
 from `req.yml` and runs beside it. The command is unpiped and unmasked, so its exit is the step's; its
 output is also written to the job summary from a captured copy. Posting a comment, labelling the pull
 request or reading a forge's API is a CI step's job, not req's.
+
+A pull request from a fork has no access to the repository secrets, so the install step refuses and the check is red on
+it; that is deliberate (the trigger is `pull_request`, never `pull_request_target`).
 
 ## The coverage rule
 
