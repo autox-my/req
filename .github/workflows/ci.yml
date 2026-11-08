@@ -46,6 +46,13 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request makes that pull request's older run pointless, so it is cancelled. Every other
+# run (a push to main, a manual dispatch) gets a group of its own through github.run_id: those are verdicts on a
+# commit and always complete, and the post-merge run is the only proof that main itself is green.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   gate:
     runs-on: ubuntu-latest
