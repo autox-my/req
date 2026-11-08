@@ -167,6 +167,34 @@ fn no_live_file_names_the_private_host_the_runner_or_a_local_path() {
 }
 
 #[test]
+fn no_live_file_points_at_a_workflow_the_tree_no_longer_has() {
+    // ADR 0029 §7 removed these; a live page that still names one sends a reader to a file that is not there.
+    const REMOVED: [&str; 3] = ["install-timing.yml", "review-measure.yml", "review.yml"];
+    let mut hits = Vec::new();
+    for path in tracked() {
+        if EXEMPT.iter().any(|prefix| path.starts_with(prefix)) {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(repo_root().join(&path)) else {
+            continue;
+        };
+        let Ok(text) = String::from_utf8(bytes) else {
+            continue;
+        };
+        for name in REMOVED {
+            if text.contains(name) {
+                hits.push(format!("{path}: {name:?}"));
+            }
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "a live file names a workflow that is no longer in the tree (ADR 0029 §7):\n{}",
+        hits.join("\n")
+    );
+}
+
+#[test]
 fn the_licence_files_a_public_repository_owes_are_there() {
     let licence = read("LICENSE");
     assert!(
