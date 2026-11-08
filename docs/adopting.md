@@ -14,14 +14,18 @@ a build of the revision that introduced it.
 
 req is deliberately not published to crates.io (`publish = false`), so **the rev is the provenance**: you pin a
 commit, never a version number. Two ways honour that: a **prebuilt, checksummed binary** for the
-rev (the default, below) and a **build from source** at the rev ([From source](#from-source)).
+rev (below; none is published yet) and a **build from source** at the rev ([From source](#from-source)).
+
+> **Status: no release is published yet.** The prebuilt path below is written, tested against a local server and
+> ported to GitHub, but there is no `rev-<REV>` release to download from, so its first-use pin cannot be taken yet.
+> Until the first release exists, use [From source](#from-source); this section describes the path as it will work.
 
 ### Prebuilt
 
 `examples/install-req.sh` (copy it out of req's checkout at the rev you pin) downloads the release
 `rev-<REV>` for your machine, verifies the tarball against a SHA-256 *you* pin, and installs nothing
-that is not that rev. It needs `curl`, `tar` and a SHA-256 tool (`sha256sum` or `shasum`); the release
-is public (<https://github.com/autox-my/req/releases>), so it needs no credential. The targets are `x86_64-unknown-linux-gnu` (Linux
+that is not that rev. It needs `curl`, `tar` and a SHA-256 tool (`sha256sum` or `shasum`); a release
+is public (<https://github.com/autox-my/req/releases>) and needs no credential. The targets are `x86_64-unknown-linux-gnu` (Linux
 x86_64; the release's `.build-info` states the glibc it was built against) and `aarch64-apple-darwin`
 (Darwin arm64); any other machine is a non-zero exit that says so.
 
