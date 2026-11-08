@@ -94,6 +94,19 @@ Git-native storage is table stakes, not the moat.
   nor refutes the bet. Tier-1 is a drift and direction fingerprint, not a paraphrase collapser;
   that is Tier-2's job. Read its README first.
 
+## Install
+
+req is not on crates.io (`publish = false`): you pin a commit, and the commit is the provenance. **No prebuilt
+release is published yet**, so today the install is a build from source at a rev you choose:
+
+```bash
+cargo install --git https://github.com/autox-my/req.git --rev <REV> --locked
+```
+
+`docs/adopting.md` (*Install req*) explains the pin, the prebuilt-binary path that follows once a release exists,
+and the air-gapped route. req is early (`0.1.0`), maintained by one person, and its claims are bounded as
+stated under *Status*.
+
 ## Development
 
 ```bash
@@ -106,17 +119,19 @@ cargo run -q -- bench     # the gate: zero false merges, or the build is red
 The test run is `cargo nextest run --profile ci`; it replaces `cargo test` (one run, one truth) and
 its report is what `req gate --test-report` reads. The gate's detail is in `AGENTS.md`.
 
-Changes go through a feature branch and a pull request. CI runs the same gate that runs
-locally, and an AI review reads the diff and blocks on critical or high findings. The
+Changes go through a feature branch and a pull request (see `CONTRIBUTING.md`). CI runs the same gate that
+runs locally; there is no automated review, a human reads every pull request. The
 agent-facing instructions are in `AGENTS.md`, the glossary in `CONTEXT.md`, the design of
 record in `docs/design.md`, and the decisions in `docs/adr/`.
 
 How it works: `docs/how-it-works.md` (diagrams, for engineers) and `docs/overview.html` (one page for
 non-developers, generated from the real tool by `tools/overview/build.py`, never hand-edited).
 
-Existing requirements need not be retyped: `tools/adopt.py` (markdown lists) and `tools/needs_import.py`
-(a Sphinx-Needs `needs.json`) draft claims from them, copy-and-adjust scripts whose drafts are proposals
-for a human to ratify (`docs/adopting.md`).
+Existing requirements need not be retyped: `tools/adopt.py` (markdown lists), `tools/needs_import.py`
+(a Sphinx-Needs `needs.json`) and `tools/reqif_import.py` (a ReqIF file, as DOORS, Polarion and Eclipse ProR
+export) draft claims from them, copy-and-adjust scripts whose drafts are proposals for a human to ratify
+(`docs/adopting.md`). The ReqIF reader has been run on three small public sample files only; its yield on a real
+specification is unmeasured.
 
 Adopting req in a project — as a human or as an agent — starts at `docs/adopting.md` (its
 "For an agent" section is the five-minute path): the CI snippet is `examples/github-workflows/req.yml`,
