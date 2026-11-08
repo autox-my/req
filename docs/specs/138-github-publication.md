@@ -23,6 +23,9 @@ private Forgejo host, and CI, release and review are Forgejo workflows that GitH
    "no `SKIP` line is a pass" step, same trust anchor read from `origin/main` with `fetch-depth: 0`. Add
    `permissions: contents: read` at the top level. Triggers `pull_request`, `push` to `main`, `workflow_dispatch`
    (never `pull_request_target`). The job id stays `gate`. No secret is referenced.
+   Every `curl` that downloads a tool in this workflow (the rustup installer, the nextest tarball) retries on a
+   transient server error (`--retry 3 --retry-all-errors`); a SHA-256 mismatch still fails closed and is never
+   retried around. (The first CI run on the Forgejo copy failed once on a 504 from the nextest download.)
 2. **Release.** `.github/workflows/release.yml`, `workflow_dispatch` only, input the rev as now. The build and
    the §2 proofs of ADR 0025 are unchanged. The publish half is rewritten for GitHub: create release `rev-<REV>`
    if absent, upload the three assets, using the workflow's `GITHUB_TOKEN`
