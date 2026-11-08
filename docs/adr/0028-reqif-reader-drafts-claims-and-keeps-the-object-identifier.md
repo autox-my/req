@@ -108,6 +108,16 @@ the Polarion `Status`.
     relations, a DOCTYPE, a duplicate object identifier — are written by the tests into a temporary directory and
     labelled synthetic. The owner is asked to accept the fixture reading by merging.
 
+## Amendment (review of #137, 2026-11-08)
+
+Two behaviours the writer chose and the review accepted, recorded here so the ADR and the tool agree:
+(a) a selected object whose text attribute's value is not text at all (an integer, a date, an enumeration) is
+skipped and named `not text (<KIND>)`, after the three reasons in §5; it is never turned into text.
+(b) `--id-attr` naming an attribute that none of the selected objects' types defines is exit 1 (nothing
+written), as `--text-attr` is in §9. Also clarified: a file may split its objects, types, specifications or
+relations over several containers of the same name; every one is read, and N still counts every `SPEC-OBJECT`.
+ReqIF elements are matched by their namespace-qualified name, so a foreign-namespace element is never a value.
+
 ## What stays outside req
 
 The engine reads claims, not ReqIF. The file is the source of the drafts; the drafts are proposals; a human
