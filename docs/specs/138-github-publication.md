@@ -60,8 +60,8 @@ private Forgejo host, and CI, release and review are Forgejo workflows that GitH
      with `.forgejo/`; no tracked file outside `docs/adr/`, `docs/specs/`, `docs/handoffs/`, `bench/results/`,
      `experiments/`, `prompts/`, `tests/` (tests assert the absence of these strings, so they name them) and
      `bench/corpus/` contains `xantu-barb`, `.ts.net`,
-     `pct exec`, `/Users/`, a `100.x.y.z` address in `100.64.0.0/10`, or `FORGEJO`; `LICENSE` starts with the
-     Apache-2.0 title and `NOTICE` exists and names `PROMISE`, `StrictDoc` and `Doorstop`; `Cargo.toml` says
+     `pct exec`, `/Users/`, a `100.x.y.z` address in `100.64.0.0/10`, or `FORGEJO`; `LICENSE`, after trimming leading whitespace,
+     starts with the Apache-2.0 title; `LICENSES/LGPL-3.0.txt` and `LICENSES/GPL-3.0.txt` exist and `NOTICE` exists and names `PROMISE`, `StrictDoc` and `Doorstop`; `Cargo.toml` says
      `license = "Apache-2.0"`; `.mailmap` exists. (The oracle is the list of strings above, written in the test.)
    - A test that the `ci.yml` `on:` block holds no `pull_request_target`.
 7. **Mutation checks** (envelope `mutations`):
