@@ -186,7 +186,7 @@ fn init_creates_a_working_corpus_in_the_current_directory() {
     // The next steps are printed, not written: a tool must not guess a forge. Every
     // item the pack requires is named — where to report a bug, and the per-variant rule.
     for required in [
-        "https://git.xantu-barb.ts.net/fdx/req/issues",
+        "https://github.com/autox-my/req/issues",
         ".req/variants",
         "req canon",
         "req gate",
@@ -843,11 +843,10 @@ fn the_adoption_doc_carries_the_verified_install_form_and_the_ci_gate() {
     let doc =
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("reads {}: {e}", path.display()));
 
-    // The install form that was measured to work — the scp-style URL is rejected
-    // (`relative URL without a base`) and libgit2 ignores `GIT_SSH_COMMAND`.
+    // The source install (ADR 0029 §5): public https, pinned by rev, locked. No ssh key, no
+    // libgit2 workaround, and no private host in any spelling.
     for required in [
-        "ssh://git@git.xantu-barb.ts.net/fdx/req.git",
-        "CARGO_NET_GIT_FETCH_WITH_CLI=true",
+        "cargo install --git https://github.com/autox-my/req.git",
         "--rev <PIN>",
         "--locked",
         "cargo install --path .",
@@ -855,13 +854,21 @@ fn the_adoption_doc_carries_the_verified_install_form_and_the_ci_gate() {
     ] {
         assert!(
             doc.contains(required),
-            "docs/adopting.md must carry the verified install form ({required:?} missing)"
+            "docs/adopting.md must carry the source install form ({required:?} missing)"
         );
     }
-    assert!(
-        !doc.contains("git@git.xantu-barb.ts.net:"),
-        "the scp-style URL is the form that fails, and the doc must not offer it"
-    );
+    for gone in [
+        "ssh://",
+        "git@",
+        "GIT_SSH_COMMAND",
+        "CARGO_NET_GIT_FETCH_WITH_CLI",
+        "StrictHostKeyChecking",
+    ] {
+        assert!(
+            !doc.contains(gone),
+            "the retired SSH install ({gone:?}) must not come back into docs/adopting.md"
+        );
+    }
 
     // The release step is `req check` (ADR 0023): the page names the command, the file it reads
     // and the bug URL; the loop that used to be shell is req's, not the page's.
@@ -869,7 +876,7 @@ fn the_adoption_doc_carries_the_verified_install_form_and_the_ci_gate() {
         "if req check --test-report",
         "req check",
         ".req/variants",
-        "https://git.xantu-barb.ts.net/fdx/req/issues",
+        "https://github.com/autox-my/req/issues",
     ] {
         assert!(
             doc.contains(required),
@@ -972,9 +979,8 @@ fn run_release_step(fx: &Fixture, script: &str, bin_dir: &Path) -> (i32, String,
                 std::env::var("PATH").unwrap_or_default()
             ),
         )
-        .env("FORGEJO_STEP_SUMMARY", &summary)
+        .env("GITHUB_STEP_SUMMARY", &summary)
         .env("RUNNER_TEMP", fx.path())
-        .env_remove("GITHUB_STEP_SUMMARY")
         .env_remove("CARGO_TARGET_DIR")
         .env_remove("REQ_ROOT")
         .output()

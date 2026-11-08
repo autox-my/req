@@ -12,7 +12,7 @@ a build of the revision that introduced it.
 
 ## Install req
 
-req is deliberately unpublished (`publish = false`), so **the rev is the provenance**: you pin a
+req is deliberately not published to crates.io (`publish = false`), so **the rev is the provenance**: you pin a
 commit, never a version number. Two ways honour that: a **prebuilt, checksummed binary** for the
 rev (the default, below) and a **build from source** at the rev ([From source](#from-source)).
 
@@ -20,14 +20,18 @@ rev (the default, below) and a **build from source** at the rev ([From source](#
 
 `examples/install-req.sh` (copy it out of req's checkout at the rev you pin) downloads the release
 `rev-<REV>` for your machine, verifies the tarball against a SHA-256 *you* pin, and installs nothing
-that is not that rev. It needs `curl`, `tar`, a SHA-256 tool (`sha256sum` or `shasum`) and a read
-token for req's host in `REQ_RELEASE_TOKEN`. The targets are `x86_64-unknown-linux-gnu` (Linux
+that is not that rev. It needs `curl`, `tar` and a SHA-256 tool (`sha256sum` or `shasum`); the release
+is public (<https://github.com/autox-my/req/releases>), so it needs no credential. The targets are `x86_64-unknown-linux-gnu` (Linux
 x86_64; the release's `.build-info` states the glibc it was built against) and `aarch64-apple-darwin`
 (Darwin arm64); any other machine is a non-zero exit that says so.
 
 ```bash
-REQ_RELEASE_TOKEN=<a token with read:repository on req's host> bash install-req.sh
+bash install-req.sh
 ```
+
+(A private fork or mirror of the release sets `REQ_RELEASE_TOKEN=<a token that can read it>` and
+`REQ_RELEASE_BASE`'s default host is its own to change; the `Authorization` header is sent **only** when
+that variable is set and non-empty.)
 
 Its first three lines are the **pin table**, the only thing you edit:
 
@@ -48,38 +52,36 @@ member `req` before extracting anything, runs the binary, and requires `req --ve
 with `built from` equal to `REV`; only then does it install `req` (mode 0755) into
 `${REQ_INSTALL_DIR:-$HOME/.local/bin}` and print the two lines that decide the binary, `rules_v` and
 `built from`. Every refusal is a non-zero exit naming its cause — an unsupported platform, a missing
-token or pin, a download that is not HTTP 2xx (an unknown rev is a 404; a wrong token on this private
-host is a 401 or a 404), a hash that differs from the pin, an archive that is not exactly `req`, a
+pin, a download that is not HTTP 2xx (an unknown rev is a 404; a wrong token on a private fork is a 401
+or a 404), a hash that differs from the pin, an archive that is not exactly `req`, a
 binary that does not run, a `built from` that is not `REV` — and there is **no automatic fallback**
 to the source install: falling back on a mismatch would hide the very event the check exists to
 surface. Choosing the source install is a separate act of yours.
 
-The token replaces the SSH key and the toolchain for *req*, not the need for a credential: the host
-is private, so the download carries a token in an `Authorization` header (read from stdin, never on a
-command line, never printed). Keep it in a CI secret, not in the repository. This path was
-exercised against a local server by `tests/install_req.rs`; it has not yet been run against a
-published release, and the rev and hashes it pins exist only after the owner cuts one.
+A public release replaces the SSH key and the toolchain for *req* and asks for no credential. Only a
+private fork sets a token: it travels in an `Authorization` header (read from stdin, never on a command
+line, never printed); keep it in a CI secret, not in the repository. This path was exercised against a
+local server by `tests/install_req.rs`; it has not yet been run against a published release, and the
+rev and hashes it pins exist only after the owner cuts one.
 
 ### From source
 
 ```bash
-GIT_SSH_COMMAND="ssh -o ControlMaster=no -o ControlPath=none -o StrictHostKeyChecking=accept-new" \
-CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install \
-  --git ssh://git@git.xantu-barb.ts.net/fdx/req.git \
+cargo install --git https://github.com/autox-my/req.git \
   --rev <PIN> --root "$HOME/.local" --locked
 ```
 
 `<PIN>` is the merge SHA of the req commit you depend on — read it with
-`git rev-parse --short origin/main`; do not copy a SHA out of any document. This exact form was
-measured at `2afbd68`: exit 0, and the installed binary reported `rules_v 5` (a build at rules v6 reports `rules_v 6`; the exit code is the measurement).
+`git rev-parse --short origin/main`; do not copy a SHA out of any document. The repository is public,
+so no key and no credential is involved. The form is checked by its exit code (0) and by the installed
+binary's `rules_v` and `built from` lines.
 
-Three things make it work, and each one is a failure without it:
+Two things make it a provenance, and each one is a failure without it:
 
 | piece | what fails without it |
 | --- | --- |
-| `ssh://git@host/path.git`, not the scp-style `git@host:path` | cargo rejects the scp form with `relative URL without a base` |
-| `CARGO_NET_GIT_FETCH_WITH_CLI=true` | libgit2 ignores `GIT_SSH_COMMAND` and insists on `known_hosts`; with the git CLI fetcher, the ssh options above apply |
-| `--rev <PIN> --locked` | without `--rev` there is no provenance to name; `--locked` installs the committed `Cargo.lock`, which is part of the identity path |
+| `--rev <PIN>` | without `--rev` cargo builds the branch tip: there is no provenance to name |
+| `--locked` | installs the committed `Cargo.lock`, which is part of the identity path |
 
 ### After either install
 
@@ -602,9 +604,8 @@ not.
 
 ## CI
 
-Save this as `.github/workflows/req.yml` (GitHub) or `.forgejo/workflows/req.yml` (Forgejo — Forgejo
-reads `.github/workflows/` only while no `.forgejo/workflows/` exists). The summary step below
-targets Forgejo's variable and GitHub's, and works with neither.
+Save this as `.github/workflows/req.yml`. The summary step below targets GitHub's
+`GITHUB_STEP_SUMMARY`, and works without it.
 
 ```yaml
 name: req
@@ -621,10 +622,11 @@ jobs:
       # The install (ADR 0025): a prebuilt, checksummed binary, pinned in THIS file. Edit the three
       # pin lines at the top of the script below -- the rev and the SHA-256 of each target's tarball;
       # take them from the `.sha256` assets of the release the first time, and this file is the
-      # authority from then on -- and set the `REQ_RELEASE_TOKEN` secret to a token that can read the
-      # release host. The token replaces the SSH key and the toolchain for req, not the need for a
-      # credential. A refusal (wrong hash, unknown rev, wrong binary) fails this step and nothing
-      # falls back to a source build; req's own claim operations need no network.
+      # authority from then on. The release is public, so the install needs no credential. The `env:`
+      # line below matters only to a private fork or mirror, which sets the `REQ_RELEASE_TOKEN` secret to
+      # a token that can read its release (an unset secret is an empty value, and then no
+      # Authorization header is sent). A refusal (wrong hash, unknown rev, wrong binary) fails this
+      # step and nothing falls back to a source build; req's own claim operations need no network.
       - name: req, installed from the prebuilt binary pinned below
         env:
           REQ_RELEASE_TOKEN: ${{ secrets.REQ_RELEASE_TOKEN }}
@@ -674,9 +676,6 @@ jobs:
             fail "the pin table's SHA-256 for $target is not 64 lower-case hex digits; fill it in from the release's .sha256 asset"
           fi
 
-          if [ -z "${REQ_RELEASE_TOKEN:-}" ]; then
-            fail "REQ_RELEASE_TOKEN is not set: set it (a CI secret) to a token with read access to the release host"
-          fi
           for tool in curl tar; do
             if ! command -v "$tool" >/dev/null 2>&1; then
               fail "$tool is required and was not found on PATH"
@@ -697,15 +696,16 @@ jobs:
           stage=$(mktemp -d "$dir/.req-install.XXXXXX")
           trap 'rm -rf "$stage"' EXIT
 
-          base=${install_base:-https://git.xantu-barb.ts.net/fdx/req/releases/download}
+          base=${install_base:-https://github.com/autox-my/req/releases/download}
           proto=${install_proto:-=https}
           asset=req-$REV-$target.tar.gz
           url=$base/rev-$REV/$asset
 
-          # The header is built by the shell builtin `printf` and read by curl from stdin: the token is
-          # never in an argument list (`ps`), and nothing here is traced.
+          # The header exists only when a token was given (a public release needs none). It is built by the
+          # shell builtin `printf` and read by curl from stdin: the token is never in an argument list (`ps`),
+          # and nothing here is traced. With no token the header file is empty and no Authorization is sent.
           status=0
-          code=$(printf 'Authorization: token %s\n' "$REQ_RELEASE_TOKEN" |
+          code=$({ if [ -n "${REQ_RELEASE_TOKEN:-}" ]; then printf 'Authorization: token %s\n' "$REQ_RELEASE_TOKEN"; fi; } |
             curl --proto "$proto" --tlsv1.2 -fsSL -H @- -o "$stage/$asset" -w '%{http_code}' "$url") || status=$?
           case $code in
             2??)
@@ -714,10 +714,10 @@ jobs:
               fi
               ;;
             401 | 403)
-              fail "HTTP $code for $url: the host refused the token; check that REQ_RELEASE_TOKEN is valid and can read the release"
+              fail "HTTP $code for $url: the host refused the request; if the release is private, check that REQ_RELEASE_TOKEN is valid and can read it, otherwise unset REQ_RELEASE_TOKEN"
               ;;
             404)
-              fail "HTTP 404 for $url: there is no release rev-$REV for $target, or the token cannot see it (a private host answers 404 for both); check REV and REQ_RELEASE_TOKEN"
+              fail "HTTP 404 for $url: there is no release rev-$REV for $target, or (for a private fork) the token cannot see it; check REV and REQ_RELEASE_TOKEN"
               ;;
             *)
               fail "HTTP $code (curl exit $status) for $url"
@@ -829,9 +829,9 @@ jobs:
             code=$?
           fi
           cat "$out"
-          # A job summary above the log (runner >= 13.2 sets one of these).
-          # Absent variable = an older runner: the step must still pass, so the target is /dev/null.
-          summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}"
+          # A job summary above the log. GitHub sets GITHUB_STEP_SUMMARY; a run without it (this step
+          # run by hand) must still pass, so the target falls back to /dev/null.
+          summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
           verdict="$(sed -n 's/^verdict: //p' "$out" | head -1)"
           {
             printf '## req check\n\n| exit | verdict |\n| --- | --- |\n| %s | %s |\n\n' "$code" "${verdict:-no verdict line}"
@@ -899,16 +899,15 @@ jobs:
 **The install is the prebuilt binary, pinned in this file.** The first step is
 `examples/install-req.sh`'s body verbatim (a test keeps the three copies and the script identical),
 pin table first: edit the rev and the SHA-256 of each target's tarball, which ship as placeholders
-that fail closed, and set the `REQ_RELEASE_TOKEN` secret to a token with `read:repository` on req's
-host (*Install req*). The token is the one credential the install needs; it replaces the SSH deploy
-key and the Rust toolchain for *req*, not the need for a credential, and it is sent as a header read
-from stdin, never on a command line and never printed. Every refusal — a wrong hash, an unknown rev,
+that fail closed. The release is public, so the install needs no credential and replaces the SSH deploy
+key and the Rust toolchain for *req*; the `env:` line that maps the `REQ_RELEASE_TOKEN` secret matters
+only to a private fork or mirror (*Install req*), whose token is sent as a header read from stdin,
+never on a command line and never printed, and only when it is set. Every refusal — a wrong hash, an unknown rev,
 a binary that is not the pinned rev — fails the step: it is not `continue-on-error`, not followed by
 `|| true`, and does not fall back to a source build. The second step adds the install directory (`${REQ_INSTALL_DIR:-$HOME/.local/bin}`, the one the install
 used) to the runner's `PATH` through `$GITHUB_PATH`, which applies to *later* steps only (the install runs its own
-binary by path). The deploy key and the step that removed it are gone: they existed only for the
-source install, which stays documented under *Install req* for a project that wants it. req's own
-claim operations need no network (REQ-0012).
+binary by path). No deploy key and no source build is involved; the source install stays documented
+under *Install req* for a project that wants it. req's own claim operations need no network (REQ-0012).
 
 **The release step is one command: `req check`.** It reads the two lists beside the corpus —
 `.req/variants` (one complete release per line) and `.req/projections` (one committed document path
@@ -964,12 +963,12 @@ one thing a consumer would parse and believe. The step knows it expects **four**
 coordinated removal from all three copies is still red.
 
 The upload names `actions/upload-artifact@v4`. That version is the one **runner-specific** line in
-this file: check the major your GitHub or Forgejo runner implements and change it if it differs —
+this file: check the major your runner implements (GitHub Enterprise Server may lag the hosted runners) and change it if it differs —
 the JSON files are written to `req-views/` either way, and only the upload is version-specific.
 
 **This body is one text in three places**, and a test keeps it that way: `req init` prints it,
 this page carries it, and `examples/github-workflows/req.yml` is the copy-ready file to `cp` into
-`.github/workflows/` or `.forgejo/workflows/`. `tests/ci_template.rs` compares the three byte for
+`.github/workflows/`. `tests/ci_template.rs` compares the three byte for
 byte — the equality is checked, never assumed — and refuses a copy that carries the old shell
 (a loop over `.req/variants`, `read -a`, a sticky `rc`) back.
 
@@ -1197,7 +1196,7 @@ step.
 
 ## Reporting a bug in req
 
-Report it at <https://git.xantu-barb.ts.net/fdx/req/issues>. Include four things, because each one
+Report it at <https://github.com/autox-my/req/issues>. Include four things, because each one
 changes the triage:
 
 1. the claim `statement` you were authoring, or the corpus file if it is a parsing problem;

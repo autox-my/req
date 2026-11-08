@@ -308,8 +308,8 @@ fn the_job_summary_is_written_from_the_captured_copy_before_the_exit() {
         "the captured copy is a fresh temporary file:\n{script}"
     );
     assert!(
-        script.contains("summary=\"${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}\""),
-        "the summary target is guarded like req.yml's (Forgejo's variable, else GitHub's, else /dev/null), \
+        script.contains("summary=\"${GITHUB_STEP_SUMMARY:-/dev/null}\""),
+        "the summary target is guarded like req.yml's (GitHub's variable, else /dev/null), \
          because the step runs under `set -u`:\n{script}"
     );
     assert!(

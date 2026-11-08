@@ -3,12 +3,18 @@
 # One implementation, two invocations. There is no check logic in this file: a check added to
 # scripts/check.sh runs here with no change, and the two cannot drift.
 #
-# Three things shape it, all of them load-bearing.
+# Four things shape it, all of them load-bearing.
+#
+#   0. It runs with read-only permissions and no secret (`permissions: contents: read`, and the
+#      triggers below never include `pull_request_target`), so a pull request from a fork cannot
+#      reach a credential through it. A change that needed a secret here would be a different
+#      workflow, not an edit of this one.
 #
 #   1. scripts/check.sh resolves the toolchain from $HOME/.rustup/toolchains/<channel>-*/bin and
 #      exits 2 when it finds none. A container image that ships cargo without rustup, or that
 #      puts RUSTUP_HOME elsewhere (the official rust images use /usr/local/rustup), fails the
-#      gate outright. rustup must own $HOME/.rustup for the runner's user.
+#      gate outright. rustup must own $HOME/.rustup for the runner's user; the GitHub-hosted
+#      runner image does, and the step below installs the pinned channel into it.
 #
 #   2. It prints SKIP and still exits 0 when a check could not run: rustfmt, clippy, python3 and
 #      the review CLI can each skip. A green exit is therefore not a verdict, which is why the
@@ -17,9 +23,15 @@
 #      because an unverified Baseline is UNVERIFIABLE, so this workflow verifies minisign above
 #      and the gate blocks without it.
 #
-#   3. runs-on must name a label some runner actually carries. A workflow with no matching
-#      runner queues forever, which reads as "CI is slow" rather than "CI is absent" — adjust
-#      this one line to whatever the runner registered with.
+#   3. runs-on must name a label some runner actually carries: `ubuntu-latest` is a GitHub-hosted
+#      runner. A fork that moves to a self-hosted runner changes this one line to the label it
+#      registered with; a label no runner carries queues forever, which reads as "CI is slow"
+#      rather than "CI is absent".
+#
+# Every download of a tool retries a transient server error (`--retry 3 --retry-all-errors`): the
+# first run of this workflow on its previous host failed once on a 504 from the nextest download. A
+# retry is never a way around a check: the SHA-256 of the nextest tarball is compared AFTER the
+# download and a mismatch fails the step, with no retry.
 
 name: CI
 
@@ -27,9 +39,12 @@ on:
   pull_request:
   push:
     branches: [main]
-  # Manual dispatch, so a green run can be produced on demand without inventing a commit —
-  # including after a force-push, which this instance does not appear to re-trigger.
+  # Manual dispatch, so a green run can be produced on demand without inventing a commit.
   workflow_dispatch:
+
+# Read-only for the whole workflow; the one job below asks for nothing more.
+permissions:
+  contents: read
 
 jobs:
   gate:
@@ -41,8 +56,7 @@ jobs:
         with:
           # Full history, so origin/main resolves here. On a pull_request event the default
           # depth-1 fetch brings only the merge ref, and the trust-anchor step below would
-          # then read "absent" and fail closed on every change. Same reason, and the same
-          # setting, as the review workflow's checkout.
+          # then read "absent" and fail closed on every change.
           fetch-depth: 0
 
       - name: the C toolchain the build scripts link against
@@ -54,7 +68,7 @@ jobs:
           if ! command -v cc >/dev/null 2>&1; then
             echo "::error::no C linker on this runner, so every Rust build script will fail to link"
             echo "On a Debian-ish host: sudo apt-get update && sudo apt-get install -y build-essential"
-            echo "Or run this job in a container image that ships gcc, such as rust:1.99-bookworm."
+            echo "The GitHub-hosted ubuntu-latest image ships gcc; a self-hosted runner needs it installed."
             exit 1
           fi
           cc --version | head -1
@@ -63,9 +77,14 @@ jobs:
         run: |
           set -eu
           # scripts/check.sh re-verifies the committed Baseline on every run, and that step has
-          # no SKIP: with no verifier req answers UNVERIFIABLE and the gate blocks. The runner
-          # image ships minisign; verify the effect here so a runner that lost it fails naming
-          # the reason, rather than as an UNVERIFIABLE verdict inside the gate log.
+          # no SKIP: with no verifier req answers UNVERIFIABLE and the gate blocks. The GitHub-hosted
+          # image does not ship minisign, so install it from the distribution when it is absent, then
+          # verify the effect here: a runner that still lacks it fails naming the reason, rather than
+          # as an UNVERIFIABLE verdict inside the gate log.
+          if ! command -v minisign >/dev/null 2>&1; then
+            sudo apt-get update -o Acquire::Retries=3
+            sudo apt-get install -y -o Acquire::Retries=3 minisign
+          fi
           if ! command -v minisign >/dev/null 2>&1; then
             echo "::error::minisign is not installed, so the Baseline step cannot verify"
             echo "On a Debian-ish host: sudo apt-get update && sudo apt-get install -y minisign"
@@ -79,8 +98,10 @@ jobs:
           set -eu
           export RUSTUP_HOME="$HOME/.rustup"
           if ! command -v rustup >/dev/null 2>&1; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-              | sh -s -- -y --profile minimal --default-toolchain none
+            # To a file, then run: a retry of a piped download could feed a half-read script to sh.
+            installer="$(mktemp)"
+            curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -sSf https://sh.rustup.rs -o "$installer"
+            sh "$installer" -y --profile minimal --default-toolchain none
             . "$HOME/.cargo/env"
           fi
           rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
@@ -97,13 +118,12 @@ jobs:
       - name: the trust anchor, taken from origin/main rather than from this pull request
         run: |
           set -eu
-          # Closing review finding [F3]. The trust anchor is a root of trust, so in CI it must
-          # come from origin/main and never from the pull request — the same boundary already
-          # enforced for the gate (tools/review/ocr_gate.py), the rule file and the review CLI
-          # pin. The exploit this closes: a pull request swaps the key in baselines/trust.yml,
-          # re-signs its manifest under that key, and its own gate reports [VERIFIED].
+          # The trust anchor is a root of trust, so in CI it must come from origin/main and never
+          # from the pull request. The exploit this closes: a pull request swaps the key in
+          # baselines/trust.yml, re-signs its manifest under that key, and its own gate reports
+          # [VERIFIED].
           #
-          # Written IN PLACE, unlike the review workflow's $RUNNER_TEMP copy, because req reads
+          # Written IN PLACE, not as a copy elsewhere, because req reads
           # the anchor through the ADR-0012 corpus root: root.join(TRUST_PATH), with TRUST_PATH
           # = "baselines/trust.yml" (src/baseline.rs:992 reading src/baseline.rs:27). The gate
           # runs from the checkout root and walk-up selects it, so the resolved root IS this
@@ -122,9 +142,8 @@ jobs:
             git show "origin/main:$ANCHOR_PATH" > "$ANCHOR_PATH"
             echo "judging with the trust anchor from origin/main"
           else
-            # Fail CLOSED, exactly like the review gate's "land the gate first" error: falling
-            # back to this checkout would let the change under review supply the anchor that
-            # judges it.
+            # Fail CLOSED: falling back to this checkout would let the change under review supply
+            # the anchor that judges it.
             echo "::error::origin/main has no $ANCHOR_PATH — fail closed, never fall back to this checkout (a pull request could then supply the trust anchor that judges it)"
             exit 1
           fi
@@ -146,7 +165,7 @@ jobs:
           SHA256=32d1d8c0567b7a80bee2bad8bb09125c846da96bc009b2de11ec08557290c770
           url="https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-${VERSION}/cargo-nextest-${VERSION}-${TARGET}.tar.gz"
           tmp="$(mktemp -d)"
-          curl --proto '=https' --tlsv1.2 -fsSL "$url" -o "$tmp/nextest.tar.gz"
+          curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -fsSL "$url" -o "$tmp/nextest.tar.gz"
           echo "${SHA256}  $tmp/nextest.tar.gz" | sha256sum -c -
           tar -xzf "$tmp/nextest.tar.gz" -C "$tmp"
           # One root-level member (`cargo-nextest`, 0755); absent = a layout change, named here.

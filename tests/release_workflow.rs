@@ -1,11 +1,14 @@
-//! String pins on the release machinery of ADR 0025 (unit 65-3 of `docs/specs/65-prebuilt-binary.md`):
-//! `.forgejo/workflows/release.yml`, `.forgejo/workflows/install-timing.yml` and `docs/releasing.md`.
+//! String pins on the release machinery of ADR 0025 as amended by ADR 0029 (unit 138-1 of
+//! `docs/specs/138-github-publication.md`): `.github/workflows/release.yml`, `.github/workflows/ci.yml`'s
+//! trigger block and `docs/releasing.md`.
 //!
-//! Neither workflow can be run from a test (no runner, no secret, and publishing a release is the
-//! owner's act), so what is checked is what a text can show and what a careless edit would silently
-//! lose: the **triggers** (a release is cut on request, never by a push, a pull request, a schedule
-//! or another workflow), the absence of anything that turns a failure into a pass, the **no-overwrite**
-//! rule of §5 (a checksum that has been pinned must stay true), that the Linux tarball comes out of
+//! The workflow cannot be run from a test (no runner, and publishing a release is the owner's act),
+//! so what is checked is what a text can show and what a careless edit would silently lose: the
+//! **trigger** (a release is cut on request, never by a push, a pull request, a schedule or another
+//! workflow), the **permissions** (`contents: write` on the publishing job only, `contents: read`
+//! everywhere else), the absence of any secret but the run's own `GITHUB_TOKEN`, the absence of anything
+//! that turns a failure into a pass, the **no-overwrite** rule of §5 (a checksum that has been pinned
+//! must stay true: no `--clobber`, no delete, no edit), that the Linux tarball comes out of
 //! `scripts/build-release.sh` (the script that proves a binary before it writes one) and that the
 //! token never reaches a command line.
 //!
@@ -13,11 +16,12 @@
 //! without tripping the pin on `continue-on-error`. The pins are text, not a parse of YAML, and say
 //! so: they catch the edits this repository has already had to take back, not every possible one.
 //! Each one has been mutation-checked (the change that must turn it red is in the unit's envelope).
+//! **None of this shows a green GitHub run**: that is the owner's first-run checklist in the spec.
 
 use std::path::{Path, PathBuf};
 
-const RELEASE: &str = ".forgejo/workflows/release.yml";
-const TIMING: &str = ".forgejo/workflows/install-timing.yml";
+const RELEASE: &str = ".github/workflows/release.yml";
+const CI: &str = ".github/workflows/ci.yml";
 const RUNBOOK: &str = "docs/releasing.md";
 
 fn repo_root() -> PathBuf {
@@ -120,41 +124,220 @@ fn forbid(rel: &str, text: &str, needle: &str, why: &str) {
     );
 }
 
+/// The block of one job: the lines under `  <name>:` up to the next line indented two spaces or less.
+fn job_block(text: &str, name: &str) -> String {
+    let header = format!("  {name}:");
+    let mut inside = false;
+    let mut block = Vec::new();
+    for line in text.lines() {
+        if line == header {
+            inside = true;
+            continue;
+        }
+        if inside {
+            let indent = line.len() - line.trim_start().len();
+            if !line.trim().is_empty() && indent <= 2 {
+                break;
+            }
+            block.push(line);
+        }
+    }
+    assert!(inside, "a job named `{name}` must exist");
+    block.join("\n")
+}
+
+/// The top-level `permissions:` block, as its `key: value` lines (a job's own sits deeper).
+fn top_level_permissions(text: &str) -> Vec<String> {
+    let mut inside = false;
+    let mut entries = Vec::new();
+    for line in text.lines() {
+        if line.trim_end() == "permissions:" {
+            inside = true;
+            continue;
+        }
+        if inside {
+            if !line.is_empty() && !line.starts_with(' ') {
+                break;
+            }
+            if !line.trim().is_empty() {
+                entries.push(line.trim().to_owned());
+            }
+        }
+    }
+    entries
+}
+
 #[test]
-fn both_workflows_are_dispatch_only() {
-    for rel in [RELEASE, TIMING] {
-        assert_eq!(
-            trigger_keys(rel),
-            vec!["workflow_dispatch".to_owned()],
-            "{rel}: a release is cut and a timing is taken on request — `workflow_dispatch` is the only \
-             trigger (no push, pull_request, schedule, release or workflow_run)"
+fn the_release_is_dispatch_only() {
+    assert_eq!(
+        trigger_keys(RELEASE),
+        vec!["workflow_dispatch".to_owned()],
+        "{RELEASE}: a release is cut on request — `workflow_dispatch` is the only trigger \
+         (no push, pull_request, schedule, release or workflow_run)"
+    );
+}
+
+#[test]
+fn ci_runs_on_pull_request_push_and_dispatch_and_never_on_pull_request_target() {
+    // `pull_request_target` runs the base repository's workflow with its secrets against code the
+    // pull request supplies; the CI job must never be reachable that way (ADR 0029 §3).
+    assert_eq!(
+        trigger_keys(CI),
+        vec![
+            "pull_request".to_owned(),
+            "push".to_owned(),
+            "workflow_dispatch".to_owned()
+        ],
+        "{CI}: the `on:` block holds exactly pull_request, push and workflow_dispatch"
+    );
+    for rel in [CI, RELEASE] {
+        forbid(
+            rel,
+            &code(rel),
+            "pull_request_target",
+            "it would hand the repository's token to a fork's code",
         );
     }
 }
 
 #[test]
-fn the_release_takes_a_rev_and_the_timing_takes_a_rev_and_a_hash() {
+fn the_release_takes_exactly_one_input_the_rev() {
     assert_eq!(
         input_names(RELEASE),
         vec!["rev".to_owned()],
         "{RELEASE}: exactly one input, `rev`"
     );
+}
+
+#[test]
+fn write_permission_is_the_publishing_jobs_alone() {
+    let text = code(RELEASE);
     assert_eq!(
-        input_names(TIMING),
-        vec!["rev".to_owned(), "sha256".to_owned()],
-        "{TIMING}: inputs `rev` and `sha256`, in that order"
+        top_level_permissions(&text),
+        vec!["contents: read".to_owned()],
+        "{RELEASE}: the workflow's default is `contents: read` and nothing else"
+    );
+    let build = job_block(&text, "build");
+    let publish = job_block(&text, "publish");
+    assert!(
+        build.contains("contents: read") && !build.contains(": write"),
+        "{RELEASE}: the build job runs the rev's code and holds `contents: read`, never write:\n{build}"
+    );
+    assert!(
+        publish.contains("contents: write"),
+        "{RELEASE}: the publishing job holds `contents: write`:\n{publish}"
+    );
+    assert_eq!(
+        text.matches(": write").count(),
+        1,
+        "{RELEASE}: exactly one write permission in the whole workflow, the publishing job's"
+    );
+    for broader in [
+        "write-all",
+        "id-token",
+        "packages:",
+        "actions:",
+        "pull-requests:",
+    ] {
+        forbid(
+            RELEASE,
+            &text,
+            broader,
+            "the publishing job needs `contents: write` and no other scope",
+        );
+    }
+    // The job that holds the token runs none of the rev's code.
+    forbid(
+        RELEASE,
+        &publish,
+        "actions/checkout",
+        "the publishing job checks out nothing: it must not be able to run the rev's code",
+    );
+    forbid(
+        RELEASE,
+        &publish,
+        "scripts/",
+        "the publishing job runs no script from the tree",
+    );
+    forbid(
+        RELEASE,
+        &build,
+        "GITHUB_TOKEN",
+        "the job that runs the rev's code does not receive the token",
+    );
+    forbid(
+        RELEASE,
+        &build,
+        "GH_TOKEN",
+        "the job that runs the rev's code does not receive the token",
+    );
+}
+
+#[test]
+fn ci_is_read_only_and_references_no_secret() {
+    let text = code(CI);
+    assert_eq!(
+        top_level_permissions(&text),
+        vec!["contents: read".to_owned()],
+        "{CI}: `permissions: contents: read` at the top level, nothing broader"
+    );
+    forbid(CI, &text, ": write", "CI holds no write permission");
+    forbid(
+        CI,
+        &text,
+        "secrets.",
+        "CI references no secret: a fork's pull request must not reach one",
+    );
+    forbid(CI, &text, "GITHUB_TOKEN", "CI does not use the token");
+    assert!(
+        text.lines().any(|line| line.trim() == "gate:"),
+        "{CI}: the job id stays `gate`, the name branch protection requires"
+    );
+}
+
+#[test]
+fn every_download_of_a_tool_in_ci_retries_a_transient_error_and_still_checks_the_hash() {
+    let text = code(CI);
+    for line in text.lines().filter(|line| line.contains("curl ")) {
+        assert!(
+            line.contains("--retry 3 --retry-all-errors"),
+            "{CI}: a download retries a transient server error (a 504 failed the first run once):\n{line}"
+        );
+    }
+    assert!(
+        text.matches("curl ").count() >= 2,
+        "{CI}: the rustup installer and the nextest tarball are both downloaded with curl"
+    );
+    // The hash is compared after the download, and a mismatch is never retried around.
+    require(
+        CI,
+        &text,
+        "sha256sum -c -",
+        "the nextest tarball is verified against its pinned SHA-256",
+    );
+    require(
+        CI,
+        &text,
+        "SHA256=32d1d8c0567b7a80bee2bad8bb09125c846da96bc009b2de11ec08557290c770",
+        "the pin of the nextest tarball is unchanged by the move",
+    );
+    forbid(
+        CI,
+        &text,
+        "|| true",
+        "it would swallow the failure it follows",
     );
 }
 
 #[test]
 fn no_step_turns_a_failure_into_a_pass() {
-    for rel in [RELEASE, TIMING] {
+    for rel in [RELEASE, CI] {
         let text = code(rel);
         forbid(
             rel,
             &text,
             "continue-on-error",
-            "a release or a measurement that fails must fail the run",
+            "a release or a gate that fails must fail the run",
         );
         forbid(
             rel,
@@ -169,12 +352,36 @@ fn no_step_turns_a_failure_into_a_pass() {
             "it would swallow the failure it follows",
         );
         forbid(rel, &text, "set +e", "it would let a failed command pass");
-        forbid(
-            rel,
-            &text,
-            "| tee",
-            "the pipeline's status is tee's, not the command's (AGENTS.md)",
-        );
+    }
+    // The release has no pipe into `tee`: the pipeline's status is tee's, not the command's
+    // (AGENTS.md). ci.yml uses one on purpose and reads PIPESTATUS, which the release does not need.
+    forbid(
+        RELEASE,
+        &code(RELEASE),
+        "| tee",
+        "the pipeline's status is tee's, not the command's (AGENTS.md)",
+    );
+}
+
+#[test]
+fn neither_workflow_names_the_old_host() {
+    for rel in [RELEASE, CI] {
+        let text = read(rel);
+        for old in [
+            "xantu-barb",
+            ".ts.net",
+            "FORGEJO",
+            "forgejo",
+            "Forgejo",
+            "RELEASE_TOKEN",
+        ] {
+            forbid(
+                rel,
+                &text,
+                old,
+                "the public workflows know nothing of the private host or its credentials (ADR 0029)",
+            );
+        }
     }
 }
 
@@ -199,24 +406,6 @@ fn the_release_builds_with_the_script_that_proves_the_binary() {
         "--out",
         "the script is told where the assets go",
     );
-    forbid(
-        RELEASE,
-        &text,
-        "git.xantu-barb.ts.net",
-        "the public tailnet name does not resolve on the runner: the API base is the runner's server URL",
-    );
-    require(
-        RELEASE,
-        &text,
-        "curl --proto \"$proto\" --tlsv1.2",
-        "the TLS floor survives the parameterised scheme (the token travels in this request)",
-    );
-    require(
-        RELEASE,
-        &text,
-        "${{ github.server_url }}/api/v1/repos/${{ github.repository }}",
-        "the API base is the URL this runner reaches Forgejo at",
-    );
     require(
         RELEASE,
         &text,
@@ -240,6 +429,12 @@ fn the_release_builds_with_the_script_that_proves_the_binary() {
         &text,
         "\"$full\" != \"$REL_FULL\"",
         "what is published is the rev that was checked to be on main",
+    );
+    require(
+        RELEASE,
+        &text,
+        "sha256sum \"$RELEASE_OUT/$tarball\"",
+        "the sidecar is re-checked against the tarball after the artifact hand-over",
     );
     forbid(
         RELEASE,
@@ -288,6 +483,12 @@ fn the_release_keeps_the_runner_prerequisites_of_ci() {
         "fetch-depth: 0",
         "the rev to release is resolved in the checkout's history",
     );
+    for line in text.lines().filter(|line| line.contains("curl ")) {
+        assert!(
+            line.contains("--retry 3 --retry-all-errors"),
+            "{RELEASE}: the rustup download retries a transient error:\n{line}"
+        );
+    }
 }
 
 #[test]
@@ -297,7 +498,7 @@ fn the_upload_cannot_overwrite_an_asset() {
     require(
         RELEASE,
         &text,
-        "/assets\"",
+        "--json assets",
         "the release's existing assets are listed before anything is uploaded",
     );
     require(
@@ -311,19 +512,15 @@ fn the_upload_cannot_overwrite_an_asset() {
     require(
         RELEASE,
         &text,
-        "-F \"attachment=",
-        "the upload form the ordering below is measured against",
+        "gh release upload \"$tag\"",
+        "the upload the ordering below is measured against",
     );
-    let first_upload = text.find("-F \"attachment=").unwrap_or(usize::MAX);
+    let first_upload = text
+        .find("gh release upload \"$tag\"")
+        .unwrap_or(usize::MAX);
     assert!(
         refusal < first_upload,
         "{RELEASE}: the existing-asset check must come before the first upload, not after it"
-    );
-    require(
-        RELEASE,
-        &text,
-        "-X POST",
-        "assets are created, with the one verb that cannot replace a named one",
     );
     // The tarball goes last: a visible tarball means the other two assets are there.
     require(
@@ -339,257 +536,148 @@ fn the_upload_cannot_overwrite_an_asset() {
         "after the upload; expected exactly once",
         "each name exactly once after the upload",
     );
-    for token in [
+    // A draft release is refused, not published into or edited.
+    require(
+        RELEASE,
+        &text,
+        "exists as a draft",
+        "an asset uploaded into a draft is invisible to adopters",
+    );
+    for spelling in [
+        // replacing, deleting or editing what is published
+        "--clobber",
+        "gh release delete",
+        "gh release delete-asset",
+        "gh release edit",
+        "gh release create --draft",
+        // raw API access, which could do any of the above under another name
+        "gh api",
+        "-X PUT",
+        "-X PATCH",
+        "-X DELETE",
+        "--method",
+        "--request",
+        "--upload-file",
+        "-T ",
+        // ending a step green after a failure, or printing the credential
         "|| :",
-        "set -ex",
-        "--request=",
         "|| exit 0",
+        "set -ex",
         "set -x",
         "set -eux",
         "set -euxo",
-        "curl -v",
+        "GH_DEBUG",
         "--verbose",
         "--trace",
     ] {
         forbid(
             RELEASE,
             &text,
-            token,
-            "a spelling that deletes or replaces an asset, ends the step green after a failure, or prints the Authorization header",
+            spelling,
+            "a spelling that deletes or replaces an asset, ends the step green after a failure, or prints the credential",
         );
     }
-    for verb in [
-        "-X PUT",
-        "-X PATCH",
-        "-X DELETE",
-        "--request PUT",
-        "--request PATCH",
-        "--request DELETE",
-    ] {
-        forbid(
-            RELEASE,
-            &text,
-            verb,
-            "an asset that has been pinned somewhere must stay true: no replace, edit or delete",
-        );
-    }
-    forbid(
-        RELEASE,
-        &text,
-        "--upload-file",
-        "that is a PUT; assets are created with a POST",
-    );
-    forbid(
-        RELEASE,
-        &text,
-        "-T ",
-        "that is a PUT; assets are created with a POST",
-    );
 }
 
 #[test]
-fn the_release_credential_is_one_secret_and_never_on_a_command_line() {
+fn the_only_credential_is_the_runs_own_token_and_it_is_never_on_a_command_line() {
     let text = code(RELEASE);
-    require(
+    // Every `secrets.` reference is the token the run mints for itself: no repository secret
+    // (no RELEASE_TOKEN, no REQ_RELEASE_TOKEN) is read, so there is nothing for the owner to provision.
+    let mut seen = 0;
+    for (at, _) in text.match_indices("secrets.") {
+        seen += 1;
+        assert!(
+            text[at..].starts_with("secrets.GITHUB_TOKEN"),
+            "{RELEASE}: the only secrets reference allowed is secrets.GITHUB_TOKEN, found `{}`",
+            text[at..].lines().next().unwrap_or("")
+        );
+    }
+    assert!(
+        seen >= 1,
+        "{RELEASE}: the publishing job authenticates with secrets.GITHUB_TOKEN"
+    );
+    forbid(
         RELEASE,
         &text,
-        "${{ secrets.RELEASE_TOKEN }}",
-        "the credential is one repository secret, the owner's to provision",
+        "RELEASE_TOKEN",
+        "no repository secret is read by the release",
     );
-    require(
-        RELEASE,
-        &text,
-        "-H @-",
-        "the header is read by curl from stdin, so the token is not in an argument list",
-    );
-    forbid(RELEASE, &text, "set -x", "a trace would print the token");
+    // The token is mapped into one environment variable `gh` reads, and into no argument list.
+    for line in text.lines().filter(|line| line.contains("GH_TOKEN")) {
+        assert!(
+            line.trim_start() == "GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+            "{RELEASE}: GH_TOKEN appears only as the env mapping of the token, found `{line}`"
+        );
+    }
+    for line in text.lines().filter(|line| line.contains("GITHUB_TOKEN")) {
+        assert!(
+            line.trim_start() == "GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+            "{RELEASE}: GITHUB_TOKEN appears only in that mapping, found `{line}`"
+        );
+    }
     forbid(RELEASE, &text, "xtrace", "a trace would print the token");
+    forbid(
+        RELEASE,
+        &text,
+        "gh auth",
+        "the token stays in the environment, never written by a login",
+    );
     forbid(
         RELEASE,
         &text,
         "curl -v",
         "a verbose curl prints request headers",
     );
-    forbid(
-        RELEASE,
-        &text,
-        "--verbose",
-        "a verbose curl prints request headers",
-    );
-    // Every line that mentions the token is the secret's mapping, the guard that it is set, or the
-    // one `printf` that feeds the header to curl's stdin. Anything else is a way for it to leak.
-    for line in text.lines().filter(|l| l.contains("RELEASE_TOKEN")) {
-        let allowed = line
-            .trim_start()
-            .starts_with("RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}")
-            || line.contains("-z \"${RELEASE_TOKEN:-}\"")
-            || line.contains("printf 'Authorization: token %s\\n' \"$RELEASE_TOKEN\"")
-            || line.contains("::error::RELEASE_TOKEN");
-        assert!(
-            allowed,
-            "{RELEASE}: a line mentions the token outside the places that are safe: `{line}`"
-        );
-    }
 }
 
 #[test]
-fn the_timing_measures_both_installs_and_prints_two_lines() {
-    let text = code(TIMING);
-    require(
-        TIMING,
-        &text,
-        "date +%s",
-        "each install is timed between two readings of the clock",
-    );
-    require(
-        TIMING,
-        &text,
-        "cargo install --path",
-        "the source install is one of the two things measured (after the authenticated clone)",
-    );
-    require(
-        TIMING,
-        &text,
-        "!= refs/heads/main",
-        "the read token goes only to main's install script, the one an adopter gets",
-    );
-    require(
-        TIMING,
-        &text,
-        "[ -z \"$built\" ]",
-        "an unestablished identity prints no figure: an empty `built from` must not match every rev",
-    );
-    require(
-        TIMING,
-        &text,
-        "unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 REQ_RELEASE_TOKEN",
-        "the read token is dropped from the environment before any build script of a fetched crate can see it",
-    );
-    require(
-        TIMING,
-        &text,
-        "--locked",
-        "the source install is the documented one, with the committed lockfile",
-    );
-    require(
-        TIMING,
-        &text,
-        "examples/install-req.sh",
-        "the prebuilt install is the copy-ready script, not a reimplementation of it",
-    );
-    require(
-        TIMING,
-        &text,
-        "INSTALL source: ",
-        "the first of the two lines the orchestrator copies",
-    );
-    require(
-        TIMING,
-        &text,
-        "INSTALL prebuilt: ",
-        "the second of the two lines the orchestrator copies",
-    );
-    require(
-        TIMING,
-        &text,
-        "${{ secrets.REQ_RELEASE_TOKEN }}",
-        "the prebuilt install reads its token from REQ_RELEASE_TOKEN, as an adopter's CI does",
-    );
-    // The runner cannot resolve the public host, so the timing points the script at the runner's own
-    // server URL through the two overrides; but only ever at that URL, never at a literal host.
-    require(
-        TIMING,
-        &text,
-        "REQ_RELEASE_BASE=\"${GITHUB_SERVER_URL%/}/${GITHUB_REPOSITORY}/releases/download\"",
-        "the override is derived from the runner's own server URL, not typed",
-    );
-    require(
-        TIMING,
-        &text,
-        "http://*) export REQ_CURL_PROTO='=http' ;;",
-        "the plain-http arm of the protocol override is derived from the server URL's scheme, never typed",
-    );
-    require(
-        TIMING,
-        &text,
-        "https://*) export REQ_CURL_PROTO='=https' ;;",
-        "the https arm keeps the https-only protocol",
-    );
-    forbid(
-        TIMING,
-        &text,
-        "git.xantu-barb.ts.net",
-        "the public tailnet name does not resolve on the runner: use the server URL",
-    );
-}
-
-#[test]
-fn the_runbook_exists_and_names_both_scripts_and_both_workflows() {
+fn the_runbook_is_for_github_and_names_the_machinery_and_the_first_run() {
     let text = read(RUNBOOK);
     for name in [
         "scripts/build-release.sh",
         "examples/install-req.sh",
-        ".forgejo/workflows/release.yml",
-        ".forgejo/workflows/install-timing.yml",
+        ".github/workflows/release.yml",
+        "gh release upload",
+        "GITHUB_TOKEN",
+        "contents: write",
+        "REQ_RELEASE_TOKEN",
+        "glibc",
+        "-dirty",
+        "## First run on GitHub",
+        "## Install timing",
+        "https://github.com/autox-my/req",
     ] {
         require(
             RUNBOOK,
             &text,
             name,
-            "the runbook names every part of the release machinery",
+            "the runbook names every part of the release machinery and the owner's first-run checklist",
         );
     }
-    require(
-        RUNBOOK,
-        &text,
-        "## Measured",
-        "the runbook has the section the timing is copied into",
-    );
-    for word in [
-        "read:repository",
+    for old in [
+        "xantu-barb",
+        ".ts.net",
+        ".forgejo",
+        "Forgejo",
+        "install-timing.yml",
         "write:repository",
-        "RELEASE_TOKEN",
-        "glibc",
-        "-dirty",
+        "read:repository",
     ] {
-        require(
+        forbid(
             RUNBOOK,
             &text,
-            word,
-            "a rule or a scope the owner needs on the page",
+            old,
+            "the runbook is for the GitHub repository; the old host is history (ADR 0029)",
         );
     }
-}
-
-#[test]
-fn the_measured_section_holds_the_two_install_lines_the_workflow_prints() {
-    // No child writes a timing into a document (the spec): the orchestrator copies the two `INSTALL`
-    // lines and the run URL from a dispatched `install-timing.yml`. The section therefore carries
-    // exactly those two lines in the shape the workflow prints, and the run they came from.
-    let text = read(RUNBOOK);
-    let start = text
-        .find("\n## Measured")
-        .unwrap_or_else(|| panic!("{RUNBOOK} has no `## Measured` section"))
-        + 1;
-    let rest = &text[start..];
-    let section = &rest[..rest[3..].find("\n## ").map_or(rest.len(), |at| at + 3)];
-    for label in ["INSTALL source: ", "INSTALL prebuilt: "] {
-        let line = section
-            .lines()
-            .find(|line| line.starts_with(label))
-            .unwrap_or_else(|| {
-                panic!("the Measured section has no `{label}<n>s` line:\n{section}")
-            });
-        let figure = line[label.len()..].strip_suffix('s').unwrap_or("");
+    // The only token variable it names is the install's optional one, never a `RELEASE_TOKEN` secret.
+    for (at, _) in text.match_indices("RELEASE_TOKEN") {
         assert!(
-            !figure.is_empty() && figure.chars().all(|c| c.is_ascii_digit()),
-            "`{line}` is not in the shape the workflow prints (`{label}<n>s`)"
+            text[..at].ends_with("REQ_"),
+            "{RUNBOOK}: a bare RELEASE_TOKEN secret no longer exists (GITHUB_TOKEN is the credential)"
         );
     }
-    assert!(
-        section.contains("/actions/runs/"),
-        "the Measured section names the run the figures came from:\n{section}"
-    );
 }
 
 #[test]
