@@ -259,6 +259,82 @@ default. Exit **0** drafted, **1** a definite problem (nothing drafted, an unkno
 **2** usage, **3** the export, the corpus or `req` cannot be read honestly (not JSON, no `versions`, several
 versions and no `current_version` — pass `--version-key` — or a corpus the loader rejects).
 
+### From a ReqIF file (DOORS, Polarion, …)
+
+DOORS, Polarion, Codebeamer, Jama and Eclipse ProR export ReqIF, and an OEM often sends a supplier one.
+`tools/reqif_import.py` (a sibling of `needs_import.py`, python3 standard library only, also a **starting
+point to copy and adjust**, not a `req` command; ADR 0028) reads a `.reqif` file and writes the same legal
+drafts: the statement, its provenance, empty `applicability` and `relations`, nothing derived, no pin.
+**The yield on a real specification is unmeasured**: the reader was built on three small public files, so
+what it drafts and what it names as skipped on yours is the first measurement, not a known rate. A `.reqifz`
+is a zip: unzip it and pass the `.reqif` inside (the script opens no archive). A PDF is the rendering of data
+ReqIF holds with its structure; read the ReqIF, not the PDF.
+
+```bash
+# from the corpus root, with reqif_import.py copied into your project
+python3 tools/reqif_import.py --from module.reqif --list                    # what is in the file; writes nothing
+python3 tools/reqif_import.py --from module.reqif --origin <where it came from> --date YYYY-MM-DD \
+    --type <an object type> --text-attr <the attribute holding the statement> \
+    --id-attr <your own id attribute>                                       # dry run
+python3 tools/reqif_import.py ...the same arguments... --write              # the drafts
+req canon                # exit 0 — the parse each draft derives
+```
+
+**Run `--list` first.** It prints the header, each specification with its object count, and each object type
+with its attributes (declared kind, and how many objects carry a value). A DOORS object type has no name at
+all: it shows as `(unnamed)`, which is display only and never a selector, and you select it by its
+`IDENTIFIER`. The attribute that holds the requirement text differs by tool and by module (`ReqIF.Text` is
+common, but a DOORS module can rename its columns and an Eclipse ProR export may have none), so there is no
+default: `--text-attr` is required, and a text attribute none of the selected types defines is exit **1**.
+
+**Name your selection.** At least one of `--type` (an object type's name, else its `IDENTIFIER`; repeatable)
+and `--where NAME=VALUE` (repeatable, all must hold; an enumeration such as a status compares its names, and a
+value of any other kind compares its text) is required: a built-in selection would be a guess about your
+vocabulary. An object you did not select is not ignored; the report counts it by type.
+
+**The statement is the text attribute when that is one plain paragraph.** The value's own kind decides how
+it is read (a plain string and an XHTML value can sit under the same attribute). Anything else is skipped
+and named, by the first reason that applies:
+
+| reason | when |
+| --- | --- |
+| `no text` | the attribute has no value for the object, or a blank one |
+| `multi-paragraph` | a blank line in a plain string, or more than one block element in XHTML |
+| `rich markup (<element>)` | any element inside the one `div`/`p` wrapper, or a wrapper that is not one; the first is named (`br`, `span`, `sub`, `ul`, `table`, `object`, …) |
+
+Nothing is flattened to make an object fit: a subscript taken out of `m<sub>2</sub>` is a changed meaning, which
+is the failure this project exists to prevent. If your export is mostly `rich markup`, that is a finding to
+report, not something this script loosens.
+
+**The object's `IDENTIFIER` is the provenance, and req allocates the claim id.** Each draft's
+`rationale.source` is `<origin>#<IDENTIFIER>` (`--origin` is the URL or path the file came from). `--id-attr`
+names the attribute holding your own human id; it is shown in the report and in the draft's header comment,
+never as the claim id. An object already drafted from the same origin is refused (exit **1**, nothing
+written). Whether an `IDENTIFIER` survives a second export of the same module is not verified: some tools
+regenerate identifiers per export, so there is no re-sync from a later export yet.
+
+**Not carried, and the report says so.** Every attribute other than the text attribute (the `not carried`
+line counts the drafted objects carrying each, so a status or object type you did not select on is visible),
+the specification hierarchy (a `hierarchy` line counts the drafted objects that sit under a parent), and the
+relations (a `relations` line counts the file's relations, the drafted objects they touch and their types;
+`relations` stays `[]` because a relation names a claim id that does not exist yet and its kind is a
+judgement). The object `IDENTIFIER`s are not claim ids.
+
+**The report adds up.** It ends with one line accounting for every object in the file, counted from the file
+itself:
+
+```text
+objects N = drafted D + skipped S + not selected M (by type: ...)
+```
+
+The drafts are proposals (ADR 0004): read the parse `req canon` shows, re-word what does not parse as meant,
+and pin a load-bearing bound. `--date` is required (the retrieval date of the file; the header's creation
+time is shown and never used). A dry run is the default. Exit **0** drafted (or `--list`), **1** a definite
+problem (nothing selected or extracted, a type the file does not have, already drafted), **2** usage, **3**
+the file, the corpus or `req` cannot be read honestly (not XML, a DOCTYPE or entity declaration, a missing
+or repeated object `IDENTIFIER`, a reference that does not resolve, an attribute name matching two
+definitions, a corpus the loader rejects).
+
 ## The document your project can commit
 
 A `spec.md` is usually a second source of truth: it drifts, and a "generated, do not edit" comment
