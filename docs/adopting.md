@@ -301,6 +301,7 @@ and named, by the first reason that applies:
 | `no text` | the attribute has no value for the object, or a blank one |
 | `multi-paragraph` | a blank line in a plain string, or more than one block element in XHTML |
 | `rich markup (<element>)` | any element inside the one `div`/`p` wrapper, or a wrapper that is not one; the first is named (`br`, `span`, `sub`, `ul`, `table`, `object`, …) |
+| `not text (<KIND>)` | the text attribute's value for this object is an integer, a date, an enumeration or another kind with no text to take (it is named, never turned into text) |
 
 Nothing is flattened to make an object fit: a subscript taken out of `m<sub>2</sub>` is a changed meaning, which
 is the failure this project exists to prevent. If your export is mostly `rich markup`, that is a finding to
@@ -330,7 +331,8 @@ objects N = drafted D + skipped S + not selected M (by type: ...)
 The drafts are proposals (ADR 0004): read the parse `req canon` shows, re-word what does not parse as meant,
 and pin a load-bearing bound. `--date` is required (the retrieval date of the file; the header's creation
 time is shown and never used). A dry run is the default. Exit **0** drafted (or `--list`), **1** a definite
-problem (nothing selected or extracted, a type the file does not have, already drafted), **2** usage, **3**
+problem (nothing selected or extracted, a type the file does not have, `--text-attr` or `--id-attr` defined on
+none of the selected objects' types, already drafted), **2** usage, **3**
 the file, the corpus or `req` cannot be read honestly (not XML, a DOCTYPE or entity declaration, a missing
 or repeated object `IDENTIFIER`, a reference that does not resolve, an attribute name matching two
 definitions, a corpus the loader rejects).

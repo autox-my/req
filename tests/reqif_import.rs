@@ -2331,3 +2331,132 @@ fn the_public_fixtures_are_the_pinned_bytes() {
         assert_eq!(len, size, "{file} is not the pinned file");
     }
 }
+
+// --- review of #137: findings turned into tests -------------------------------------------------------------------------
+
+#[test]
+fn objects_split_over_several_containers_are_all_counted() {
+    // SYNTHETIC: the objects sit in two `SPEC-OBJECTS` containers; the report must account for all four.
+    let doc = Doc::new()
+        .object(req_xhtml("c1-a", &div("The first shall hold.")))
+        .object(req_xhtml("c1-b", &div("The second shall hold.")))
+        .object("</SPEC-OBJECTS>\n<SPEC-OBJECTS>\n".to_string())
+        .object(req_xhtml("c2-a", &div("The third shall hold.")))
+        .object(obj(
+            "c2-note",
+            "T-NOTE",
+            &[text_xhtml("AD-NTEXT", &div("A note."))],
+        ));
+    let fx = synthetic_fixture("req-reqif-containers", &doc);
+    let out = import(fx.path(), &base(&REQ_ARGS));
+    out.assert_code(0, "two containers");
+    let recon = assert_adds_up(&out, "two containers");
+    assert_eq!(
+        (
+            recon.total,
+            recon.drafted,
+            recon.skipped,
+            recon.not_selected
+        ),
+        (4, 3, 0, 1),
+        "{}",
+        out.stdout
+    );
+}
+
+#[test]
+fn a_value_element_in_a_foreign_namespace_is_not_read_as_a_reqif_value() {
+    // SYNTHETIC: `r2` carries an `ATTRIBUTE-VALUE-STRING` that is not in the ReqIF namespace, with a
+    // ReqIF `DEFINITION` inside. Elements are matched by their namespace-qualified name, so it is no value.
+    let foreign = "<o:ATTRIBUTE-VALUE-STRING xmlns:o=\"urn:foreign\" THE-VALUE=\"Foreign text.\"><DEFINITION><ATTRIBUTE-DEFINITION-STRING-REF>AD-ID</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION></o:ATTRIBUTE-VALUE-STRING>".to_string();
+    let doc = Doc::new()
+        .object(obj("r1", "T-REQ", &[text_string("AD-ID", "Real text.")]))
+        .object(obj("r2", "T-REQ", &[foreign]));
+    let fx = synthetic_fixture("req-reqif-foreign", &doc);
+    let out = import(
+        fx.path(),
+        &base(&["--type", "Requirement", "--text-attr", "ID"]),
+    );
+    out.assert_code(0, "foreign namespace");
+    let ids: Vec<String> = drafts_of(&out).into_iter().map(|d| d.identifier).collect();
+    assert_eq!(ids, ["r1"], "{}", out.stdout);
+    assert_eq!(
+        skips_of(&out),
+        [("r2".to_string(), "no text".to_string())],
+        "the foreign element is not a value"
+    );
+    assert!(
+        !out.stdout.contains("Foreign text."),
+        "a foreign element's text never reaches a report or a statement"
+    );
+}
+
+#[test]
+fn the_nothing_selected_message_blames_only_the_clause_that_selects_nothing() {
+    let fx = synthetic_fixture("req-reqif-where-msg", &where_doc());
+    // `Status=Rejected` selects no object; `Num=5` selects some on its own.
+    let out = import(
+        fx.path(),
+        &base(&[
+            "--text-attr",
+            "ReqIF.Text",
+            "--where",
+            "Status=Rejected",
+            "--where",
+            "Num=5",
+        ]),
+    );
+    out.assert_code(1, "nothing selected");
+    assert!(
+        out.stderr
+            .contains("--where Status=Rejected selects no object"),
+        "{}",
+        out.stderr
+    );
+    assert!(
+        out.stderr
+            .contains("--where Num=5 selects objects on its own"),
+        "a clause that selects objects is not blamed: {}",
+        out.stderr
+    );
+    // Two clauses that each select something but not together: neither is "no object".
+    let both = import(
+        fx.path(),
+        &base(&[
+            "--text-attr",
+            "ReqIF.Text",
+            "--where",
+            "ID=BETA",
+            "--where",
+            "Num=6",
+        ]),
+    );
+    both.assert_code(1, "nothing selected together");
+    assert!(
+        !both.stderr.contains("selects no object;"),
+        "neither clause alone selects nothing: {}",
+        both.stderr
+    );
+}
+
+#[test]
+fn the_already_drafted_refusal_still_adds_up() {
+    let fx = Fixture::with_public("req-reqif-refusal-recon", POLARION);
+    let args = base(&[
+        "--type",
+        "System Requirement",
+        "--text-attr",
+        "ReqIF.Text",
+        "--write",
+    ]);
+    import(fx.path(), &args).assert_code(0, "the first write");
+    let again = import(fx.path(), &args);
+    again.assert_code(1, "the same origin again");
+    assert!(
+        again
+            .stderr
+            .contains("objects 2 = drafted 1 + skipped 0 + not selected 1"),
+        "the refusal carries the accounting line:\n{}",
+        again.stderr
+    );
+}

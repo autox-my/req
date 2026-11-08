@@ -24,8 +24,10 @@ What it decides, and what it refuses to guess:
              type, in the report — never silently ignored.
   statement  `--text-attr NAME` (required), and only when its value is one plain paragraph. The
              kind is read from the *value element*, not the declaration. Anything else is skipped
-             and NAMED — `no text`, `multi-paragraph`, `rich markup (<element>)`, in that order.
-             Nothing is flattened: `m<sub>2</sub>` as `m2` is a changed meaning.
+             and NAMED — `no text`, `multi-paragraph`, `rich markup (<element>)`, in that order,
+             or `not text (<KIND>)` when the value is an integer, a date, an enumeration... and
+             so has no text to take. Nothing is flattened: `m<sub>2</sub>` as `m2` is a changed
+             meaning.
   claim id   req allocates it (the next free REQ-NNNN). The object's IDENTIFIER is kept as
              provenance: `rationale.source` is `<origin>#<IDENTIFIER>`. `--id-attr NAME` names the
              project's own human id; it is shown in the report and the header comment only.
@@ -216,6 +218,17 @@ def collapse(text):
 def local_name(element):
     """An element's tag without its namespace."""
     return element.tag.rsplit("}", 1)[-1]
+
+
+def reqif_name(element):
+    """An element's local name when it is in the ReqIF namespace, else None (a foreign element is not ReqIF)."""
+    prefix = f"{{{REQIF_NS}}}"
+    return element.tag[len(prefix):] if isinstance(element.tag, str) and element.tag.startswith(prefix) else None
+
+
+def members(content, container):
+    """Every child of every `container` element under `content`: a file may split one kind over several."""
+    return [child for holder in content.findall(q(container)) for child in holder]
 
 
 def is_block(element):
@@ -649,8 +662,8 @@ def read_definitions(type_element):
     if attributes is None:
         return defs
     for element in attributes:
-        name = local_name(element)
-        if not name.startswith("ATTRIBUTE-DEFINITION-"):
+        name = reqif_name(element)
+        if name is None or not name.startswith("ATTRIBUTE-DEFINITION-"):
             continue
         type_ref = element.find(q("TYPE"))
         enum_ref = type_ref.find(q("DATATYPE-DEFINITION-ENUMERATION-REF")) if type_ref is not None else None
@@ -678,7 +691,7 @@ def read_hierarchy(children, depth, out):
 
 def read_value(obj_ident, element, definitions, enum_names):
     """One attribute value, with its definition and any enumeration references resolved."""
-    kind = local_name(element)[len("ATTRIBUTE-VALUE-"):]
+    kind = reqif_name(element)[len("ATTRIBUTE-VALUE-"):]
     reference_holder = element.find(q("DEFINITION"))
     reference = next(iter(reference_holder), None) if reference_holder is not None else None
     wanted = text_of(reference)
@@ -735,14 +748,13 @@ def load_reqif(root):
         content = ET.Element(q("REQ-IF-CONTENT"))
 
     enum_types, enum_names = {}, {}
-    datatypes = content.find(q("DATATYPES"))
-    for datatype in (datatypes if datatypes is not None else []):
-        if local_name(datatype) != "DATATYPE-DEFINITION-ENUMERATION":
+    for datatype in members(content, "DATATYPES"):
+        if reqif_name(datatype) != "DATATYPE-DEFINITION-ENUMERATION":
             continue
         names = []
         specified = datatype.find(q("SPECIFIED-VALUES"))
         for value in (specified if specified is not None else []):
-            if local_name(value) != "ENUM-VALUE":
+            if reqif_name(value) != "ENUM-VALUE":
                 continue
             name = value.get("LONG-NAME") or value.get("IDENTIFIER", "")
             names.append(name)
@@ -750,9 +762,10 @@ def load_reqif(root):
         enum_types[datatype.get("IDENTIFIER", "")] = names
 
     types, definitions, relation_types = [], {}, {}
-    spec_types = content.find(q("SPEC-TYPES"))
-    for element in (spec_types if spec_types is not None else []):
-        kind = local_name(element)
+    for element in members(content, "SPEC-TYPES"):
+        kind = reqif_name(element)
+        if kind is None:
+            continue
         defs = read_definitions(element)
         for definition in defs:
             definitions.setdefault(definition.ident, []).append(definition)
@@ -763,9 +776,8 @@ def load_reqif(root):
     types_by_id = {object_type.ident: object_type for object_type in types}
 
     objects, seen = [], set()
-    spec_objects = content.find(q("SPEC-OBJECTS"))
-    for position, element in enumerate(spec_objects if spec_objects is not None else [], start=1):
-        if local_name(element) != "SPEC-OBJECT":
+    for position, element in enumerate(members(content, "SPEC-OBJECTS"), start=1):
+        if reqif_name(element) != "SPEC-OBJECT":
             continue
         ident = element.get("IDENTIFIER", "")
         if not ident.strip():
@@ -788,23 +800,21 @@ def load_reqif(root):
         values = []
         holder = element.find(q("VALUES"))
         for value in (holder if holder is not None else []):
-            if local_name(value).startswith("ATTRIBUTE-VALUE-"):
+            if (reqif_name(value) or "").startswith("ATTRIBUTE-VALUE-"):
                 values.append(read_value(ident, value, definitions, enum_names))
         objects.append(SpecObject(ident, types_by_id[type_ref], values))
 
     specs = []
-    specifications = content.find(q("SPECIFICATIONS"))
-    for element in (specifications if specifications is not None else []):
-        if local_name(element) != "SPECIFICATION":
+    for element in members(content, "SPECIFICATIONS"):
+        if reqif_name(element) != "SPECIFICATION":
             continue
         nodes = []
         read_hierarchy(element.find(q("CHILDREN")), 0, nodes)
         specs.append(Specification(element.get("LONG-NAME") or None, nodes))
 
     relations = []
-    relation_elements = content.find(q("SPEC-RELATIONS"))
-    for element in (relation_elements if relation_elements is not None else []):
-        if local_name(element) != "SPEC-RELATION":
+    for element in members(content, "SPEC-RELATIONS"):
+        if reqif_name(element) != "SPEC-RELATION":
             continue
         type_ref = text_of(element.find(q("TYPE") + "/" + q("SPEC-RELATION-TYPE-REF")))
         relations.append(
@@ -1267,10 +1277,19 @@ def run(args):
     total = len(model.objects)
     if not chosen:
         lines = []
-        for name, wanted in args.where:
+        alone = [
+            any(selected(obj, set(args.type), [clause]) for obj in model.objects)
+            for clause in args.where
+        ]
+        for (name, wanted), selects_some in zip(args.where, alone):
             carried, declared = values_seen(model, name)
+            verdict = (
+                "selects no object"
+                if not selects_some
+                else "selects objects on its own (the selection as a whole selects none)"
+            )
             lines.append(
-                f"  --where {one_line(name)}={one_line(wanted)} selects no object; values of "
+                f"  --where {one_line(name)}={one_line(wanted)} {verdict}; values of "
                 f"{one_line(name)}: declared {shown(declared)}; carried by objects: {shown(carried)}"
             )
         raise Problem(
@@ -1331,7 +1350,8 @@ def run(args):
             f"refusing to draft: {len(clashes)} object(s) in {label} are already drafted from "
             f"this origin ({args.origin}):\n" + "\n".join(clashes) + "\n"
             "  edit those claims, or delete them deliberately, before drafting from this origin "
-            "again — or pass the --origin the file was retrieved from this time"
+            "again — or pass the --origin the file was retrieved from this time\n"
+            f"  {recon}"
         )
 
     humans = [human_id(obj, args.id_attr) for obj, _statement in drafts]
