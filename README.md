@@ -123,3 +123,8 @@ Adopting req in a project — as a human or as an agent — starts at `docs/adop
 and `examples/agents-snippet.md` is a block to paste into a project's own `AGENTS.md`.
 `tools/quickstart.sh` rehearses the path offline and prints `QUICKSTART <n>s`; the page is
 rehearsed by the script, not asserted by it.
+
+## Licence
+
+Apache-2.0; see [`LICENSE`](LICENSE). Test and benchmark data taken from other projects keeps its own
+licence and is listed in [`NOTICE`](NOTICE).

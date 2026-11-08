@@ -5,6 +5,8 @@ edition = "2024"
 rust-version = "1.88"
 description = "The req engine: Tier-1 canonicalizer, claim model, and the FMR gate."
 publish = false
+license = "Apache-2.0"
+repository = "https://github.com/autox-my/req"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

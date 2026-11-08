@@ -29,6 +29,6 @@ worktrees/
 .tools/
 
 # Never commit a credential. The harness keeps its own outside the repository
-# (/home/dsh/.dsh/secrets.env); this is the guard for one dropped in by mistake.
+# (outside the repository); this is the guard for one dropped in by mistake.
 secrets.env
 *.env
