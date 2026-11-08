@@ -201,6 +201,34 @@ fn ci_runs_on_pull_request_push_and_dispatch_and_never_on_pull_request_target() 
 }
 
 #[test]
+fn ci_cancels_a_superseded_pull_request_run_and_never_a_run_on_main() {
+    // A new push to a pull request makes the older run of that pull request pointless, so it is cancelled.
+    // A run on `main` (or a manual dispatch) is a verdict on a commit and always completes: the post-merge
+    // run is the only proof that `main` itself is green.
+    let text = code(CI);
+    let group = text
+        .lines()
+        .find(|line| line.trim_start().starts_with("group:"))
+        .unwrap_or_else(|| panic!("{CI}: a top-level `concurrency:` block with a `group:`"));
+    assert!(
+        group.contains("github.workflow")
+            && group.contains("github.event.pull_request.number")
+            && group.contains("github.run_id"),
+        "{CI}: the group is per workflow and per pull request, and a non-pull-request run gets its own group \
+         (github.run_id) so a run on main is never cancelled by another: {group}"
+    );
+    let cancel = text
+        .lines()
+        .find(|line| line.trim_start().starts_with("cancel-in-progress:"))
+        .unwrap_or_else(|| panic!("{CI}: `cancel-in-progress:` is stated"));
+    assert_eq!(
+        cancel.trim(),
+        "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+        "{CI}: only a pull_request run may be cancelled"
+    );
+}
+
+#[test]
 fn the_release_takes_exactly_one_input_the_rev() {
     assert_eq!(
         input_names(RELEASE),
