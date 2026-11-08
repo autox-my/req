@@ -11,6 +11,11 @@
 //! writer (so a `..` or `/abs` member name exists exactly as written, which no `tar` front end
 //! would produce), and every expected message is hand-written. The script's one job is to fail
 //! **closed**: every refusal below must leave nothing installed and say why.
+//!
+//! The release is public (ADR 0029 §5): the default host needs no credential, so the happy path runs
+//! against a host that asks for none and **no `Authorization` header may be sent**; the header
+//! exists only when `REQ_RELEASE_TOKEN` is set and non-empty (a private fork), and that case runs
+//! against a host that refuses everything else.
 
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -264,6 +269,24 @@ fn private_host(routes: Vec<(String, Vec<u8>)>) -> Server {
     }))
 }
 
+/// A server that serves the routed body to anyone, as a public release does. It still records the
+/// `Authorization` header it was sent, which is what makes "no header without a token" observable.
+fn public_host(routes: Vec<(String, Vec<u8>)>) -> Server {
+    let table: HashMap<String, Vec<u8>> = routes.into_iter().collect();
+    Server::start(Arc::new(move |request: &Seen| {
+        match table.get(&request.path) {
+            Some(body) => Reply {
+                status: 200,
+                body: body.clone(),
+            },
+            None => Reply {
+                status: 404,
+                body: b"not found".to_vec(),
+            },
+        }
+    }))
+}
+
 fn asset_path(rev: &str) -> String {
     format!("/rev-{rev}/req-{rev}-{TARGET}.tar.gz")
 }
@@ -363,7 +386,7 @@ impl<'a> Run<'a> {
             scratch,
             script: script_with_pins(REV, linux_pin, "0".repeat(64).as_str()),
             base: Some(server.base()),
-            token: Some(TOKEN),
+            token: None,
             proto: Some("=http"),
             uname: "Linux x86_64",
             install_dir: None,
@@ -484,6 +507,13 @@ fn failed(outcome: &Outcome, what: &str) {
 fn serving_good(built_from: &str) -> (Server, String) {
     let tarball = good_tarball(built_from);
     let hash = sha256_hex(&tarball);
+    (public_host(vec![(asset_path(REV), tarball)]), hash)
+}
+
+/// The same release behind a private host: only `Authorization: token <TOKEN>` is served.
+fn serving_good_privately(built_from: &str) -> (Server, String) {
+    let tarball = good_tarball(built_from);
+    let hash = sha256_hex(&tarball);
     (private_host(vec![(asset_path(REV), tarball)]), hash)
 }
 
@@ -532,8 +562,9 @@ fn a_the_happy_path_installs_req_0755_and_prints_the_lines_that_decide_it() {
         .collect();
     assert_eq!(entries, vec!["req".to_string()], "only req is left behind");
 
-    // The wire: one request, the pinned path, the token in an Authorization header, and the
-    // release's own `.sha256` asset never read (ADR 0025 §3).
+    // The wire: one request, the pinned path, NO Authorization header (a public release asks for no
+    // credential and the script has none to send), and the release's own `.sha256` asset never read
+    // (ADR 0025 §3).
     let requests = server.requests();
     assert_eq!(
         requests.len(),
@@ -542,8 +573,27 @@ fn a_the_happy_path_installs_req_0755_and_prints_the_lines_that_decide_it() {
     );
     assert_eq!(requests[0].path, asset_path(REV));
     assert_eq!(
+        requests[0].authorization, None,
+        "no token is set, so no Authorization header may be sent"
+    );
+}
+
+#[test]
+fn a_a_private_fork_sets_the_token_and_the_header_is_sent() {
+    let scratch = Scratch::new("private-fork");
+    let (server, hash) = serving_good_privately(REV);
+    let mut run = Run::new(&scratch, &server, &hash);
+    run.token = Some(TOKEN);
+    let outcome = run.go();
+
+    assert_eq!(outcome.code, Some(0), "{}", outcome.text());
+    assert!(run.install_dir().join("req").is_file());
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    assert_eq!(
         requests[0].authorization.as_deref(),
-        Some(format!("token {TOKEN}").as_str())
+        Some(format!("token {TOKEN}").as_str()),
+        "a set token travels as `Authorization: token <it>`"
     );
 }
 
@@ -592,7 +642,7 @@ fn b_a_tampered_tarball_with_a_matching_sidecar_is_still_refused() {
     let tampered = tar_gz(&[member("req", &stub_req(REV)), member("req.extra", b"x")]);
     let tampered_hash = sha256_hex(&tampered);
     let sidecar = format!("{tampered_hash}  req-{REV}-{TARGET}.tar.gz\n").into_bytes();
-    let server = private_host(vec![
+    let server = public_host(vec![
         (asset_path(REV), tampered),
         (format!("{}.sha256", asset_path(REV)), sidecar),
     ]);
@@ -623,7 +673,7 @@ fn b_a_tampered_tarball_with_a_matching_sidecar_is_still_refused() {
 #[test]
 fn c_an_unknown_rev_is_a_404_and_a_non_zero_exit() {
     let scratch = Scratch::new("unknown-rev");
-    let server = private_host(vec![]);
+    let server = public_host(vec![]);
     let run = Run::new(&scratch, &server, &sha256_hex(b"whatever"));
     let outcome = run.go();
 
@@ -640,7 +690,7 @@ fn c_an_unknown_rev_is_a_404_and_a_non_zero_exit() {
 #[test]
 fn d_a_refused_token_is_a_401_that_names_the_token() {
     let scratch = Scratch::new("unauthorized");
-    let (server, hash) = serving_good(REV);
+    let (server, hash) = serving_good_privately(REV);
     let mut run = Run::new(&scratch, &server, &hash);
     run.token = Some("a_token_the_host_does_not_accept");
     let outcome = run.go();
@@ -697,7 +747,7 @@ fn e_an_archive_that_is_not_exactly_one_req_is_refused_before_anything_is_extrac
         let scratch = Scratch::new(&format!("archive-{index}"));
         let tarball = tar_gz(&members);
         let hash = sha256_hex(&tarball);
-        let server = private_host(vec![(asset_path(REV), tarball)]);
+        let server = public_host(vec![(asset_path(REV), tarball)]);
         let run = Run::new(&scratch, &server, &hash);
         let outcome = run.go();
 
@@ -759,7 +809,7 @@ fn f_a_binary_with_no_built_from_line_is_refused() {
         b"#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'req 0.1.0'; exit 0; fi\nexit 2\n";
     let tarball = tar_gz(&[member("req", silent)]);
     let hash = sha256_hex(&tarball);
-    let server = private_host(vec![(asset_path(REV), tarball)]);
+    let server = public_host(vec![(asset_path(REV), tarball)]);
     let run = Run::new(&scratch, &server, &hash);
     let outcome = run.go();
     failed(&outcome, "a --version with no `built from` line");
@@ -833,7 +883,7 @@ fn h_a_binary_that_cannot_run_is_refused() {
         let scratch = Scratch::new(&format!("cannot-run-{}", name.len()));
         let tarball = tar_gz(&[member("req", &content)]);
         let hash = sha256_hex(&tarball);
-        let server = private_host(vec![(asset_path(REV), tarball)]);
+        let server = public_host(vec![(asset_path(REV), tarball)]);
         let run = Run::new(&scratch, &server, &hash);
         let outcome = run.go();
 
@@ -843,11 +893,13 @@ fn h_a_binary_that_cannot_run_is_refused() {
 }
 
 // ---------------------------------------------------------------------------
-// (i) no token
+// (i) no token: a public release needs none, and a private one says what to set
 // ---------------------------------------------------------------------------
 
 #[test]
-fn i_no_token_is_a_non_zero_exit_that_names_the_variable_before_any_request() {
+fn i_no_token_installs_from_a_public_release_and_sends_no_authorization_header() {
+    // Unset and set-but-empty are the same answer: an empty value must not become a bare
+    // `Authorization: token ` header.
     for token in [None, Some("")] {
         let scratch = Scratch::new(&format!("no-token-{}", token.is_some()));
         let (server, hash) = serving_good(REV);
@@ -855,18 +907,37 @@ fn i_no_token_is_a_non_zero_exit_that_names_the_variable_before_any_request() {
         run.token = token;
         let outcome = run.go();
 
-        failed(&outcome, "no token");
+        assert_eq!(outcome.code, Some(0), "{}", outcome.text());
+        assert!(run.install_dir().join("req").is_file());
+        let requests = server.requests();
+        assert_eq!(requests.len(), 1, "{requests:?}");
+        assert_eq!(
+            requests[0].authorization, None,
+            "token {token:?}: no Authorization header at all, not even an empty one"
+        );
         assert!(
-            outcome.stderr.contains("REQ_RELEASE_TOKEN is not set"),
-            "{}",
+            !outcome.stderr.contains("REQ_RELEASE_TOKEN is not set"),
+            "the retired refusal must be gone:\n{}",
             outcome.text()
         );
-        assert!(
-            server.requests().is_empty(),
-            "no request is made without a token"
-        );
-        assert_nothing_installed(&run.install_dir(), "no token");
     }
+}
+
+#[test]
+fn i_a_private_host_without_a_token_is_a_401_that_names_the_variable() {
+    let scratch = Scratch::new("private-no-token");
+    let (server, hash) = serving_good_privately(REV);
+    let run = Run::new(&scratch, &server, &hash);
+    let outcome = run.go();
+
+    failed(&outcome, "a private host and no token");
+    assert!(outcome.stderr.contains("HTTP 401"), "{}", outcome.text());
+    assert!(
+        outcome.stderr.contains("REQ_RELEASE_TOKEN"),
+        "the refusal names the variable a private fork sets:\n{}",
+        outcome.text()
+    );
+    assert_nothing_installed(&run.install_dir(), "a 401 with no token");
 }
 
 // ---------------------------------------------------------------------------
@@ -881,20 +952,24 @@ fn j_the_token_never_appears_in_stdout_or_stderr() {
 
     let scratch = Scratch::new("secret-happy");
     let (server, hash) = serving_good(REV);
-    outputs.push(("happy".into(), Run::new(&scratch, &server, &hash).go()));
+    let mut happy = Run::new(&scratch, &server, &hash);
+    happy.token = Some(TOKEN);
+    outputs.push(("happy".into(), happy.go()));
 
     let scratch_mismatch = Scratch::new("secret-mismatch");
-    outputs.push((
-        "mismatch".into(),
-        Run::new(&scratch_mismatch, &server, &"f".repeat(64)).go(),
-    ));
+    let mut mismatch = Run::new(&scratch_mismatch, &server, &"f".repeat(64));
+    mismatch.token = Some(TOKEN);
+    outputs.push(("mismatch".into(), mismatch.go()));
 
     let scratch_404 = Scratch::new("secret-404");
     let empty = private_host(vec![]);
-    outputs.push(("404".into(), Run::new(&scratch_404, &empty, &hash).go()));
+    let mut missing = Run::new(&scratch_404, &empty, &hash);
+    missing.token = Some(TOKEN);
+    outputs.push(("404".into(), missing.go()));
 
     let scratch_401 = Scratch::new("secret-401");
-    let mut refused = Run::new(&scratch_401, &server, &hash);
+    let (private, _) = serving_good_privately(REV);
+    let mut refused = Run::new(&scratch_401, &private, &hash);
     refused.token = Some("wrong_but_also_secret_55aa");
     let refused_outcome = refused.go();
     assert!(
@@ -955,7 +1030,7 @@ fn j_the_script_source_keeps_the_token_off_the_command_line_and_the_trace_off() 
 #[test]
 fn k_the_shipped_placeholders_fail_closed_and_say_so() {
     let scratch = Scratch::new("placeholders");
-    let server = private_host(vec![]);
+    let server = public_host(vec![]);
     let mut run = Run::new(&scratch, &server, "");
     // The script exactly as shipped: nobody has filled the pin table in.
     run.script = std::fs::read_to_string(repo_root().join(SCRIPT)).expect("reads the script");
@@ -1056,6 +1131,7 @@ fn m_by_default_only_https_is_spoken_so_the_token_is_never_sent_in_the_clear() {
     let scratch = Scratch::new("https-only");
     let (server, hash) = serving_good(REV);
     let mut run = Run::new(&scratch, &server, &hash);
+    run.token = Some(TOKEN);
     run.proto = None;
     let outcome = run.go();
 
@@ -1098,7 +1174,7 @@ fn l_the_shipped_script_opens_with_the_pin_table_and_pins_its_transport() {
         "REQ_RELEASE_BASE",
         "REQ_CURL_PROTO",
         "REQ_INSTALL_DIR",
-        "https://git.xantu-barb.ts.net/fdx/req/releases/download",
+        "https://github.com/autox-my/req/releases/download",
     ] {
         assert!(
             source.contains(required),
@@ -1114,7 +1190,9 @@ fn l_the_shipped_script_opens_with_the_pin_table_and_pins_its_transport() {
     for required in [
         "curl --proto \"$proto\" --tlsv1.2 -fsSL -H @-",
         "proto=${install_proto:-=https}",
-        "base=${install_base:-https://git.xantu-barb.ts.net/fdx/req/releases/download}",
+        "base=${install_base:-https://github.com/autox-my/req/releases/download}",
+        // The header is conditional: only a non-empty token produces one.
+        "if [ -n \"${REQ_RELEASE_TOKEN:-}\" ]; then printf 'Authorization: token %s\\n' \"$REQ_RELEASE_TOKEN\"; fi",
     ] {
         assert!(
             code.iter().any(|line| line.contains(required)),

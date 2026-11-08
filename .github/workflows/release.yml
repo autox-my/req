@@ -1,4 +1,4 @@
-# Release: build, prove and publish the Linux tarball of one rev of req (ADR 0025).
+# Release: build, prove and publish the Linux tarball of one rev of req (ADR 0025, amended by ADR 0029).
 #
 # Dispatch-only, on purpose. A release is cut when the owner asks (ADR 0025 §5), never because a
 # commit landed, a pull request opened or a clock struck; so the only trigger is `workflow_dispatch`
@@ -6,30 +6,27 @@
 # workflow): the workflow file and scripts/build-release.sh are taken from the dispatched ref, and
 # the rev to release is the input.
 #
-# What it does and what it will not do:
+# Two jobs, so the credential is held by as little code as possible:
 #
-#   1. Resolves the input to a full SHA and refuses a rev that is not an ancestor of origin/main.
-#      scripts/build-release.sh proves the Baseline with the trust anchor of the rev it builds, so a
-#      rev that is not on main could carry its own key; the same boundary ci.yml draws (its trust
-#      anchor comes from origin/main) is drawn here by the rev itself.
-#   2. Gives the runner the same prerequisites ci.yml verifies, with the same checks: a C linker,
-#      minisign (the Baseline proof has no SKIP) and rustup with the toolchain the rev pins.
-#   3. Runs scripts/build-release.sh. The script, not this file, builds from a clean copy of the rev
-#      with `--locked`, proves `built from` is the bare rev, `baseline --verify` is [VERIFIED] and
-#      the FMR gate passes, and only then writes the three assets. Nothing is built or packed here.
-#   4. Creates the release `rev-<REV>` if it is absent and uploads the three assets with the Forgejo
-#      API. **An asset name that already exists on the release is an error, never a replacement**:
-#      a checksum that has been pinned in an adopter's repository must stay true. The upload uses
-#      POST only (no PUT, PATCH or DELETE exists in this file), looks before it writes and counts
-#      afterwards. The tarball goes last, so a visible tarball means the other two are there; if a
-#      run dies before it, nothing is pinnable yet, and docs/releasing.md says what to clear.
+#   build    `contents: read`. Resolves the input to a full SHA, refuses a rev that is not an ancestor
+#            of origin/main, gives the runner the prerequisites ci.yml verifies (a C linker, minisign,
+#            rustup with the toolchain the rev pins), and runs scripts/build-release.sh. The script, not
+#            this file, builds from a clean copy of the rev with `--locked`, proves `built from` is the
+#            bare rev, `baseline --verify` is [VERIFIED] and the FMR gate passes, and only then writes
+#            the three assets. Nothing is built or packed here. It runs the rev's code, so it holds no
+#            write permission and no secret.
+#   publish  `contents: write`, and ONLY this job. It checks out nothing and runs none of the rev's
+#            code: it takes the three assets as an artifact, re-checks them, creates the release
+#            `rev-<REV>` if it is absent and uploads the assets with the `gh` CLI, authenticated by
+#            this workflow's own GITHUB_TOKEN. **An asset name that already exists on the release is
+#            an error, never a replacement** (no `--clobber`, no delete, no edit): a checksum that has
+#            been pinned in an adopter's repository must stay true. It looks before it writes and
+#            counts afterwards. The tarball goes last, so a visible tarball means the other two are
+#            there; if a run dies before it, nothing is pinnable yet, and docs/releasing.md says what
+#            to clear.
 #
+# No repository secret is configured or read: GITHUB_TOKEN is the one credential, minted per run.
 # No `continue-on-error` and no `|| true` anywhere: a failed step fails the release.
-#
-# Configuration (Settings, then Actions):
-#   Secret  RELEASE_TOKEN  a token with `write:repository`, the owner's to provision. It is sent as an
-#                          `Authorization` header that curl reads from stdin (`-H @-`), so it is never
-#                          in an argument list, and nothing here is traced or echoed.
 #
 # The macOS tarball is not built here: it is the same script on the owner's machine (docs/releasing.md).
 # The runner is Linux, so the glibc floor of the Linux tarball is this runner's; the script records it
@@ -45,16 +42,18 @@ on:
         required: true
         type: string
 
+# Read-only by default; the publishing job alone raises it.
+permissions:
+  contents: read
+
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      # Where releases are read from (examples/install-req.sh) is where they are written.
-      # The URL THIS RUNNER reaches Forgejo at (its own server URL: the one checkout uses), not the
-      # public tailnet name: the runner is a LAN container with no tailnet DNS, so
-      # https://git.xantu-barb.ts.net does not resolve there (first dispatch: "Could not resolve host").
-      FORGEJO_API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
+    permissions:
+      contents: read
+    outputs:
+      full: ${{ steps.resolve.outputs.full }}
     steps:
       - name: checkout, with the history the rev is resolved in
         uses: actions/checkout@v4
@@ -62,6 +61,7 @@ jobs:
           fetch-depth: 0
 
       - name: the tooling is main's, and the rev to release is resolved and on main
+        id: resolve
         env:
           REV_INPUT: ${{ github.event.inputs.rev }}
         run: |
@@ -106,6 +106,7 @@ jobs:
               ;;
           esac
           echo "releasing $full (toolchain $channel)"
+          echo "full=$full" >> "$GITHUB_OUTPUT"
           echo "REL_FULL=$full" >> "$GITHUB_ENV"
           echo "REL_CHANNEL=$channel" >> "$GITHUB_ENV"
 
@@ -125,7 +126,13 @@ jobs:
         run: |
           set -eu
           # scripts/build-release.sh answers exit 3 (UNVERIFIABLE) without it, and the Baseline proof
-          # has no SKIP. Verify the effect here so a runner that lost it fails naming the reason.
+          # has no SKIP. The GitHub-hosted image does not ship minisign, so install it from the
+          # distribution when it is absent, then verify the effect: a runner that still lacks it fails
+          # naming the reason. Same step, same reason, as ci.yml.
+          if ! command -v minisign >/dev/null 2>&1; then
+            sudo apt-get update -o Acquire::Retries=3
+            sudo apt-get install -y -o Acquire::Retries=3 minisign
+          fi
           if ! command -v minisign >/dev/null 2>&1; then
             echo "::error::minisign is not installed, so the Baseline proof cannot verify"
             echo "On a Debian-ish host: sudo apt-get update && sudo apt-get install -y minisign"
@@ -133,22 +140,15 @@ jobs:
           fi
           minisign -v
 
-      - name: python3, which reads the API's answers
-        run: |
-          set -eu
-          if ! command -v python3 >/dev/null 2>&1; then
-            echo "::error::python3 is not installed, so the release API's answers cannot be read"
-            exit 1
-          fi
-          python3 --version
-
       - name: rustup and the toolchain the rev pins
         run: |
           set -eu
           export RUSTUP_HOME="$HOME/.rustup"
           if ! command -v rustup >/dev/null 2>&1; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-              | sh -s -- -y --profile minimal --default-toolchain none
+            # To a file, then run: a retry of a piped download could feed a half-read script to sh.
+            installer="$(mktemp)"
+            curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -sSf https://sh.rustup.rs -o "$installer"
+            sh "$installer" -y --profile minimal --default-toolchain none
             . "$HOME/.cargo/env"
           fi
           # Minimal: the build needs neither rustfmt nor clippy (they are the gate's, not the release's).
@@ -172,21 +172,47 @@ jobs:
           # Exit 0 released; 1 a check failed; 2 usage or environment; 3 UNVERIFIABLE (no minisign).
           # Any non-zero fails this step, and the script has then written nothing.
           bash scripts/build-release.sh --rev "$REL_FULL" --out "$out"
-          echo "RELEASE_OUT=$out" >> "$GITHUB_ENV"
+
+      - name: hand the three assets to the publishing job
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-out
+          path: ${{ runner.temp }}/release-out
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The only write permission in this workflow, and the only job that holds the token.
+    permissions:
+      contents: write
+    steps:
+      - name: receive the assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-out
+          path: ${{ runner.temp }}/release-out
 
       - name: publish the release rev-REV, refusing to replace any asset
         env:
-          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          REL_FULL: ${{ needs.build.outputs.full }}
+          RELEASE_OUT: ${{ runner.temp }}/release-out
         run: |
           set -euo pipefail
-          if [ -z "${RELEASE_TOKEN:-}" ]; then
-            echo "::error::RELEASE_TOKEN is not set (Settings, Actions, Secrets): a token with write:repository"
-            exit 1
-          fi
           if [ -z "${RELEASE_OUT:-}" ] || [ ! -d "$RELEASE_OUT" ]; then
-            echo "::error::RELEASE_OUT is not set or is not a directory — the build step did not hand over its assets"
+            echo "::error::RELEASE_OUT is not set or is not a directory — the build job did not hand over its assets"
             exit 1
           fi
+          case ${REL_FULL:-} in
+            '' | *[!0-9a-f]*)
+              echo "::error::the build job did not report a usable full SHA"
+              exit 1
+              ;;
+          esac
 
           target=x86_64-unknown-linux-gnu
           set -- "$RELEASE_OUT"/req-*-"$target".tar.gz
@@ -212,7 +238,7 @@ jobs:
           names="req-$rev-$target.build-info req-$rev-$target.tar.gz.sha256 $tarball"
           for name in $names; do
             if [ ! -f "$RELEASE_OUT/$name" ]; then
-              echo "::error::the build step did not write $name"
+              echo "::error::the build job did not write $name"
               exit 1
             fi
           done
@@ -226,8 +252,8 @@ jobs:
 
           # What is published is what was checked, and this is decided BEFORE the first write (a wrong
           # release cannot be repaired afterwards: no asset is ever replaced or deleted): the rev the
-          # script built is the rev this job resolved and required to be on main, and the tag's short
-          # rev is that commit's prefix, whatever the script's output says.
+          # script built is the rev the build job resolved and required to be on main, and the tag's
+          # short rev is that commit's prefix, whatever the script's output says.
           if [ "$full" != "$REL_FULL" ]; then
             echo "::error::the build-info names $full, not the resolved $REL_FULL; refusing to publish"
             exit 1
@@ -239,82 +265,41 @@ jobs:
               exit 1
               ;;
           esac
+          # The bytes crossed an artifact store between the two jobs: the sidecar the script wrote must
+          # still describe the tarball it sits beside.
+          sum="$(cut -d' ' -f1 "$RELEASE_OUT/req-$rev-$target.tar.gz.sha256")"
+          actual="$(sha256sum "$RELEASE_OUT/$tarball" | cut -d' ' -f1)"
+          if [ "$sum" != "$actual" ]; then
+            echo "::error::$tarball hashes to $actual, not the $sum its sidecar names; refusing to publish"
+            exit 1
+          fi
 
           work="$(mktemp -d)"
           trap 'rm -rf "$work"' EXIT
 
-          # The token travels as a header curl reads from stdin: never in an argument list, never printed.
-          # The scheme is the server URL's, and only http or https is accepted. On a runner whose server
-          # URL is a LAN `http://` address the token crosses that LAN hop in clear, exactly as the
-          # checkout's credentials do; the published bytes are verified by the adopter's pin, not by
-          # this transport (ADR 0025 §3).
-          case $FORGEJO_API in
-            https://*) proto='=https' ;;
-            http://*) proto='=http' ;;
-            *)
-              echo "::error::the runner's server URL is neither http nor https: $FORGEJO_API"
-              exit 1
-              ;;
-          esac
-          api() {
-            printf 'Authorization: token %s\n' "$RELEASE_TOKEN" |
-              curl --proto "$proto" --tlsv1.2 -sS -H @- "$@"
-          }
-          say_body() { head -c 300 "$1" | LC_ALL=C tr -c '[:print:]\n' '?'; echo; }
-          release_id() {
-            python3 -I -c 'import json, sys; print(int(json.load(sys.stdin)["id"]))' < "$1"
-          }
-
-          code="$(api -o "$work/release.json" -w '%{http_code}' "$FORGEJO_API/releases/tags/$tag")" || {
-            echo "::error::cannot reach $FORGEJO_API"
-            exit 1
-          }
-          case $code in
-            200)
-              id="$(release_id "$work/release.json")"
-              # An asset uploaded into a draft is invisible to adopters, which would break "a visible
-              # tarball means the other two are there".
-              if python3 -I -c 'import json, sys; sys.exit(1 if json.load(sys.stdin).get("draft") else 0)' < "$work/release.json"; then
-                :
-              else
-                echo "::error::release $tag exists as a draft; publish or delete it by hand first (this workflow never edits a release)"
-                exit 1
-              fi
-              echo "release $tag exists (id $id)"
-              ;;
-            404)
-              body="$(printf '{"tag_name":"%s","target_commitish":"%s","name":"%s","body":"Prebuilt req for the pinned rev %s (ADR 0025). Pin the .sha256 of the tarball in your own repository.","draft":false,"prerelease":false}' "$tag" "$full" "$tag" "$rev")"
-              code="$(api -o "$work/release.json" -w '%{http_code}' -X POST \
-                -H 'Content-Type: application/json' -d "$body" "$FORGEJO_API/releases")" || {
-                echo "::error::cannot reach $FORGEJO_API"
-                exit 1
-              }
-              if [ "$code" != 201 ]; then
-                echo "::error::creating the release $tag answered HTTP $code (a token without write:repository answers 403 or 404)"
-                say_body "$work/release.json"
-                exit 1
-              fi
-              id="$(release_id "$work/release.json")"
-              echo "created release $tag (id $id)"
-              ;;
-            *)
-              echo "::error::looking up the release $tag answered HTTP $code (a wrong token answers 401 or 404)"
-              say_body "$work/release.json"
-              exit 1
-              ;;
-          esac
-
-          list_assets() {
-            code="$(api -o "$work/assets.json" -w '%{http_code}' "$FORGEJO_API/releases/$id/assets")" || {
-              echo "::error::cannot reach $FORGEJO_API" >&2
-              exit 1
-            }
-            if [ "$code" != 200 ]; then
-              echo "::error::listing the assets of release $tag answered HTTP $code" >&2
-              say_body "$work/assets.json" >&2
+          # The release for this rev: look it up, create it only when `gh` says it is absent. Any other
+          # failure to look is a failure, not a reason to create. A draft is refused: an asset uploaded
+          # into a draft is invisible to adopters, which would break "a visible tarball means the other
+          # two are there", and this workflow never edits a release.
+          if gh release view "$tag" --json isDraft --jq .isDraft > "$work/draft" 2> "$work/view.err"; then
+            if [ "$(cat "$work/draft")" != false ]; then
+              echo "::error::release $tag exists as a draft; publish or delete it by hand first (this workflow never edits a release)"
               exit 1
             fi
-            python3 -I -c 'import json, sys; print("\n".join(a["name"] for a in json.load(sys.stdin)))' < "$work/assets.json"
+            echo "release $tag exists"
+          elif grep -qi 'release not found' "$work/view.err"; then
+            gh release create "$tag" --target "$full" --title "$tag" \
+              --notes "Prebuilt req for the pinned rev $rev (ADR 0025). Pin the .sha256 of the tarball in your own repository."
+            echo "created release $tag"
+          else
+            echo "::error::looking up the release $tag failed:"
+            head -c 300 "$work/view.err" | LC_ALL=C tr -c '[:print:]\n' '?'
+            echo
+            exit 1
+          fi
+
+          list_assets() {
+            gh release view "$tag" --json assets --jq '.assets[].name'
           }
 
           # How many times a name is in the listing. `grep -c` reads the whole listing (no early exit, so
@@ -335,16 +320,7 @@ jobs:
           done
 
           for name in $names; do
-            code="$(api -o "$work/upload.json" -w '%{http_code}' -X POST \
-              -F "attachment=@$RELEASE_OUT/$name" "$FORGEJO_API/releases/$id/assets?name=$name")" || {
-              echo "::error::cannot reach $FORGEJO_API"
-              exit 1
-            }
-            if [ "$code" != 201 ]; then
-              echo "::error::uploading $name answered HTTP $code"
-              say_body "$work/upload.json"
-              exit 1
-            fi
+            gh release upload "$tag" "$RELEASE_OUT/$name"
             echo "uploaded $name"
           done
 
@@ -358,6 +334,5 @@ jobs:
             fi
           done
 
-          sum="$(cut -d' ' -f1 "$RELEASE_OUT/req-$rev-$target.tar.gz.sha256")"
           echo "released $tag"
           echo "pin (Linux): REV=$rev SHA256=$sum TARGET=$target"

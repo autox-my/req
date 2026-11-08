@@ -62,7 +62,7 @@ const REGISTRY_V: u8 = 1;
 
 /// The upstream issue tracker: printed, never written into the adopter's project — a tool
 /// must not guess the forge a project uses.
-const ISSUES_URL: &str = "https://git.xantu-barb.ts.net/fdx/req/issues";
+const ISSUES_URL: &str = "https://github.com/autox-my/req/issues";
 
 /// Why a path is refused, because the operator's next move depends on which: an existing corpus
 /// is edited in place, while a *link* is removed (or `init` is run where the corpus should live).
@@ -362,17 +362,16 @@ fn print_next_steps() {
          \x20    undecided is not examined, so its gate exits 3 (UNVERIFIABLE) and names it. Add a\n\
          \x20    variant here in the same commit that adds the `applicability:` that needs it\n\
          \x20    (ADR 0015: the invocation that decides every claim is the gate).\n\
-         \x20 4. Add .github/workflows/req.yml (GitHub) or .forgejo/workflows/req.yml (Forgejo —\n\
-         \x20    Forgejo reads .github/workflows/ only while no .forgejo/workflows/ exists):\n"
+         \x20 4. Add .github/workflows/req.yml:\n"
     );
     print!("{CI_SNIPPET}");
     println!(
         "\n\
          \x20    The install step pins a rev and the SHA-256 of each target's tarball: its three\n\
          \x20    pin lines ship as placeholders that fail closed, to be filled from a release's\n\
-         \x20    .sha256 assets, and it reads a token from the REQ_RELEASE_TOKEN secret (it\n\
-         \x20    replaces the SSH key, not the need for a credential). req is deliberately\n\
-         \x20    unpublished (publish = false), so the rev IS the provenance; docs/adopting.md\n\
+         \x20    .sha256 assets. The release is public, so the install needs no credential: it\n\
+         \x20    reads a REQ_RELEASE_TOKEN secret only for a private fork. req is deliberately\n\
+         \x20    not on crates.io (publish = false), so the rev IS the provenance; docs/adopting.md\n\
          \x20    (section Install req) also has the source install.\n\
          \n\
          \x20 5. Report a req bug at {ISSUES_URL} — include the statement, the command, its\n\
@@ -412,10 +411,11 @@ jobs:
       # The install (ADR 0025): a prebuilt, checksummed binary, pinned in THIS file. Edit the three
       # pin lines at the top of the script below -- the rev and the SHA-256 of each target's tarball;
       # take them from the `.sha256` assets of the release the first time, and this file is the
-      # authority from then on -- and set the `REQ_RELEASE_TOKEN` secret to a token that can read the
-      # release host. The token replaces the SSH key and the toolchain for req, not the need for a
-      # credential. A refusal (wrong hash, unknown rev, wrong binary) fails this step and nothing
-      # falls back to a source build; req's own claim operations need no network.
+      # authority from then on. The release is public, so the install needs no credential. The `env:`
+      # line below matters only to a private fork or mirror, which sets the `REQ_RELEASE_TOKEN` secret to
+      # a token that can read its release (an unset secret is an empty value, and then no
+      # Authorization header is sent). A refusal (wrong hash, unknown rev, wrong binary) fails this
+      # step and nothing falls back to a source build; req's own claim operations need no network.
       - name: req, installed from the prebuilt binary pinned below
         env:
           REQ_RELEASE_TOKEN: ${{ secrets.REQ_RELEASE_TOKEN }}
@@ -465,9 +465,6 @@ jobs:
             fail "the pin table's SHA-256 for $target is not 64 lower-case hex digits; fill it in from the release's .sha256 asset"
           fi
 
-          if [ -z "${REQ_RELEASE_TOKEN:-}" ]; then
-            fail "REQ_RELEASE_TOKEN is not set: set it (a CI secret) to a token with read access to the release host"
-          fi
           for tool in curl tar; do
             if ! command -v "$tool" >/dev/null 2>&1; then
               fail "$tool is required and was not found on PATH"
@@ -488,15 +485,16 @@ jobs:
           stage=$(mktemp -d "$dir/.req-install.XXXXXX")
           trap 'rm -rf "$stage"' EXIT
 
-          base=${install_base:-https://git.xantu-barb.ts.net/fdx/req/releases/download}
+          base=${install_base:-https://github.com/autox-my/req/releases/download}
           proto=${install_proto:-=https}
           asset=req-$REV-$target.tar.gz
           url=$base/rev-$REV/$asset
 
-          # The header is built by the shell builtin `printf` and read by curl from stdin: the token is
-          # never in an argument list (`ps`), and nothing here is traced.
+          # The header exists only when a token was given (a public release needs none). It is built by the
+          # shell builtin `printf` and read by curl from stdin: the token is never in an argument list (`ps`),
+          # and nothing here is traced. With no token the header file is empty and no Authorization is sent.
           status=0
-          code=$(printf 'Authorization: token %s\n' "$REQ_RELEASE_TOKEN" |
+          code=$({ if [ -n "${REQ_RELEASE_TOKEN:-}" ]; then printf 'Authorization: token %s\n' "$REQ_RELEASE_TOKEN"; fi; } |
             curl --proto "$proto" --tlsv1.2 -fsSL -H @- -o "$stage/$asset" -w '%{http_code}' "$url") || status=$?
           case $code in
             2??)
@@ -505,10 +503,10 @@ jobs:
               fi
               ;;
             401 | 403)
-              fail "HTTP $code for $url: the host refused the token; check that REQ_RELEASE_TOKEN is valid and can read the release"
+              fail "HTTP $code for $url: the host refused the request; if the release is private, check that REQ_RELEASE_TOKEN is valid and can read it, otherwise unset REQ_RELEASE_TOKEN"
               ;;
             404)
-              fail "HTTP 404 for $url: there is no release rev-$REV for $target, or the token cannot see it (a private host answers 404 for both); check REV and REQ_RELEASE_TOKEN"
+              fail "HTTP 404 for $url: there is no release rev-$REV for $target, or (for a private fork) the token cannot see it; check REV and REQ_RELEASE_TOKEN"
               ;;
             *)
               fail "HTTP $code (curl exit $status) for $url"
@@ -620,9 +618,9 @@ jobs:
             code=$?
           fi
           cat "$out"
-          # A job summary above the log (runner >= 13.2 sets one of these).
-          # Absent variable = an older runner: the step must still pass, so the target is /dev/null.
-          summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}"
+          # A job summary above the log. GitHub sets GITHUB_STEP_SUMMARY; a run without it (this step
+          # run by hand) must still pass, so the target falls back to /dev/null.
+          summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
           verdict="$(sed -n 's/^verdict: //p' "$out" | head -1)"
           {
             printf '## req check\n\n| exit | verdict |\n| --- | --- |\n| %s | %s |\n\n' "$code" "${verdict:-no verdict line}"

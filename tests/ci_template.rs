@@ -216,15 +216,37 @@ fn the_ci_snippet_has_one_text_in_three_places() {
         (
             "secrets.REQ_RELEASE_TOKEN",
             1,
-            "the read token for the private host comes from a secret, in this step's `env:` and \
-             nowhere on a command line: it replaces the SSH key, not the need for a credential",
+            "the optional read token of a private fork comes from a secret, in this step's `env:` and \
+             nowhere on a command line (an unset secret is an empty value, and sends no header)",
         ),
         (
             "REQ_RELEASE_TOKEN is not set",
-            1,
-            "a missing token is named, and exits non-zero: a silent skip would make a tokenless \
-             runner look provisioned",
+            0,
+            "the refusal for a missing token is retired (ADR 0029 §5): a public release needs no \
+             credential, and a template that demanded one would fail every adopter's fork PR",
         ),
+        (
+            "if [ -n \"${REQ_RELEASE_TOKEN:-}\" ]; then printf 'Authorization: token %s\\n' \"$REQ_RELEASE_TOKEN\"; fi",
+            1,
+            "the Authorization header exists only when a token is set and non-empty: an always-sent \
+             header would hand a public host a credential-shaped string for nothing",
+        ),
+        (
+            "https://github.com/autox-my/req/releases/download",
+            1,
+            "the default download base is the public GitHub release (ADR 0029 §5)",
+        ),
+        (
+            "xantu-barb",
+            0,
+            "the private host is not written into an adopter's file (ADR 0029)",
+        ),
+        (
+            "FORGEJO",
+            0,
+            "no Forgejo variable: the summary target is GitHub's",
+        ),
+        ("forgejo", 0, "no Forgejo workflow directory is offered"),
         (
             "SHA-256 mismatch",
             1,
@@ -699,7 +721,7 @@ fn the_install_step_is_the_install_scripts_body_verbatim() {
 /// the step-level switch, the shell's `|| true`, a pipe into `tee` (whose status replaces the
 /// command's), a conditional that skips the step, and a shell that does not stop on error.
 #[test]
-fn the_install_step_cannot_mask_a_failure_and_takes_its_token_from_a_secret() {
+fn the_install_step_cannot_mask_a_failure_and_takes_its_optional_token_from_a_secret() {
     for (name, copy) in the_three_copies() {
         let steps = the_steps(&copy);
         let found: Vec<&(String, String)> = steps
@@ -737,7 +759,7 @@ fn the_install_step_cannot_mask_a_failure_and_takes_its_token_from_a_secret() {
         );
         assert!(
             step.contains("REQ_RELEASE_TOKEN: ${{ secrets.REQ_RELEASE_TOKEN }}"),
-            "{name}: the token comes from the REQ_RELEASE_TOKEN secret, in the step's `env:`:\n{step}"
+            "{name}: the optional token comes from the REQ_RELEASE_TOKEN secret, in the step's `env:`:\n{step}"
         );
         assert!(
             step.lines().any(|line| line.trim() == "set -eu"),
@@ -799,7 +821,7 @@ fn the_install_comes_before_every_step_that_runs_req() {
 
 /// The adopting page leads with the prebuilt install and says what it does not do. The existing
 /// `cargo install` form stays — as "from source" and "air-gapped" — and `tests/init.rs` pins its
-/// words; this pins the order and the honesty (a token replaces the key, there is no fallback).
+/// words; this pins the order and the honesty (a public release needs no credential, there is no fallback).
 #[test]
 fn the_adoption_doc_leads_with_the_prebuilt_install_and_says_what_it_does_not_do() {
     let doc = read_reporting(&repo_root().join("docs/adopting.md"), "adopting doc");
@@ -819,7 +841,10 @@ fn the_adoption_doc_leads_with_the_prebuilt_install_and_says_what_it_does_not_do
     );
     for needle in [
         "REQ_RELEASE_TOKEN",
-        "read:repository",
+        "private fork",
+        "sent **only** when",
+        "needs no credential",
+        "https://github.com/autox-my/req.git",
         "curl",
         "tar",
         "SHA-256",
@@ -830,9 +855,20 @@ fn the_adoption_doc_leads_with_the_prebuilt_install_and_says_what_it_does_not_do
         "from source",
         "Air-gapped",
         "replaces the SSH key and the toolchain",
-        "not the need for a credential",
     ] {
         at(needle);
+    }
+    for gone in [
+        "read:repository",
+        "git@",
+        "ssh://",
+        "GIT_SSH_COMMAND",
+        "CARGO_NET_GIT_FETCH_WITH_CLI",
+    ] {
+        assert!(
+            !section.contains(gone),
+            "the retired SSH/Forgejo install ({gone:?}) is gone from § Install req:\n{section}"
+        );
     }
     // The pin table's placeholders are named as placeholders, not presented as values.
     assert!(
@@ -908,8 +944,7 @@ impl Probe {
             .current_dir(&self.0)
             .env("PATH", path)
             .env("RUNNER_TEMP", &self.0)
-            .env("FORGEJO_STEP_SUMMARY", &summary)
-            .env_remove("GITHUB_STEP_SUMMARY")
+            .env("GITHUB_STEP_SUMMARY", &summary)
             .env_remove("CARGO_TARGET_DIR")
             .env_remove("REQ_ROOT")
             .output()

@@ -13,15 +13,15 @@ SHA256_aarch64_apple_darwin='<placeholder: 64 hex digits from the release asset 
 #
 # What it does, in order, and each failure is a non-zero exit that names its cause (never a skip,
 # never a retry by another path): detect the target from `uname -sm` (Linux x86_64, Darwin arm64);
-# download <base>/rev-<REV>/req-<REV>-<TARGET>.tar.gz over https with the token in REQ_RELEASE_TOKEN
-# (sent as a header read from stdin, never as an argument, never printed); verify the tarball
+# download <base>/rev-<REV>/req-<REV>-<TARGET>.tar.gz over https (a public release needs no credential:
+# the Authorization header is sent ONLY when REQ_RELEASE_TOKEN is set and non-empty, for a private fork or
+# mirror, and then as a header read from stdin, never as an argument, never printed); verify the tarball
 # against the pin; check the archive lists exactly one member, `req`; extract it; run
 # `req --version` and require `built from` to equal REV exactly; only then install it, mode 0755,
 # into ${REQ_INSTALL_DIR:-$HOME/.local/bin}. Needs: bash, curl, tar, sha256sum or shasum.
 #
-# Overrides, read here and nowhere else, and never set by any ADOPTER-facing YAML (the tests set them; so does
-# this repository's own timing harness, .forgejo/workflows/install-timing.yml, to reach its runner's server URL):
-#   REQ_RELEASE_BASE  replaces the release host (https://git.xantu-barb.ts.net/fdx/req/releases/download)
+# Overrides, read here and nowhere else, and never set by any ADOPTER-facing YAML (the tests set them):
+#   REQ_RELEASE_BASE  replaces the release host (https://github.com/autox-my/req/releases/download)
 #   REQ_CURL_PROTO    replaces curl's --proto value (default =https)
 install_base=${REQ_RELEASE_BASE:-}
 install_proto=${REQ_CURL_PROTO:-}
@@ -68,9 +68,6 @@ if [ "${#pin}" -ne 64 ]; then
   fail "the pin table's SHA-256 for $target is not 64 lower-case hex digits; fill it in from the release's .sha256 asset"
 fi
 
-if [ -z "${REQ_RELEASE_TOKEN:-}" ]; then
-  fail "REQ_RELEASE_TOKEN is not set: set it (a CI secret) to a token with read access to the release host"
-fi
 for tool in curl tar; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     fail "$tool is required and was not found on PATH"
@@ -91,15 +88,16 @@ mkdir -p "$dir"
 stage=$(mktemp -d "$dir/.req-install.XXXXXX")
 trap 'rm -rf "$stage"' EXIT
 
-base=${install_base:-https://git.xantu-barb.ts.net/fdx/req/releases/download}
+base=${install_base:-https://github.com/autox-my/req/releases/download}
 proto=${install_proto:-=https}
 asset=req-$REV-$target.tar.gz
 url=$base/rev-$REV/$asset
 
-# The header is built by the shell builtin `printf` and read by curl from stdin: the token is
-# never in an argument list (`ps`), and nothing here is traced.
+# The header exists only when a token was given (a public release needs none). It is built by the
+# shell builtin `printf` and read by curl from stdin: the token is never in an argument list (`ps`),
+# and nothing here is traced. With no token the header file is empty and no Authorization is sent.
 status=0
-code=$(printf 'Authorization: token %s\n' "$REQ_RELEASE_TOKEN" |
+code=$({ if [ -n "${REQ_RELEASE_TOKEN:-}" ]; then printf 'Authorization: token %s\n' "$REQ_RELEASE_TOKEN"; fi; } |
   curl --proto "$proto" --tlsv1.2 -fsSL -H @- -o "$stage/$asset" -w '%{http_code}' "$url") || status=$?
 case $code in
   2??)
@@ -108,10 +106,10 @@ case $code in
     fi
     ;;
   401 | 403)
-    fail "HTTP $code for $url: the host refused the token; check that REQ_RELEASE_TOKEN is valid and can read the release"
+    fail "HTTP $code for $url: the host refused the request; if the release is private, check that REQ_RELEASE_TOKEN is valid and can read it, otherwise unset REQ_RELEASE_TOKEN"
     ;;
   404)
-    fail "HTTP 404 for $url: there is no release rev-$REV for $target, or the token cannot see it (a private host answers 404 for both); check REV and REQ_RELEASE_TOKEN"
+    fail "HTTP 404 for $url: there is no release rev-$REV for $target, or (for a private fork) the token cannot see it; check REV and REQ_RELEASE_TOKEN"
     ;;
   *)
     fail "HTTP $code (curl exit $status) for $url"

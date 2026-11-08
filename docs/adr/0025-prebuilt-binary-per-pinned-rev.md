@@ -1,5 +1,7 @@
 # 0025. A prebuilt, checksummed binary per pinned rev; the install downloads and fails closed
 
+Amended by ADR 0029 §4–§5.
+
 **Status: proposed** — the owner ratifies it by merging the pull request that carries it; issue #65
 (opened from the Sedia evaluation). Date proposed: 2026-11-05. **Adds an install path; removes none.**
 `cargo install --git … --rev <PIN> --locked` stays, documented, as the source path and the air-gapped path
