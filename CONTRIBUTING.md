@@ -11,6 +11,9 @@ Thank you for looking. req is early (`0.1.0`) and maintained by one person, so t
   actionable: the statement or file, the exact command, its exit code and deciding line, and `req --version`.
   A **false merge** (two different requirements sharing an address) is the failure this tool exists to prevent;
   say so in the title.
+- **A tool defect** (req gave a wrong or misleading answer) has its own issue form, **Tool defect**, which applies the `tool-defect`
+  label; a maintainer adds `wrong-verdict` to a verdict that hides a defect. A pull request that fixes one says `Fixes #N` and uses the
+  `fix:` prefix, so the release notes list it under *Fixes* (ADR 0031).
 - **Security problems** go through [`SECURITY.md`](SECURITY.md), not a public issue.
 
 ## Build and test

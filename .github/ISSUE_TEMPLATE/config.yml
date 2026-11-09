@@ -1,0 +1,7 @@
+# Blank issues stay open: a question, a feature request or a docs fix is not a tool defect. A security
+# problem must NOT be a public issue, so the private route is offered on the page where a reporter chooses.
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/autox-my/req/security/advisories/new
+    about: A vulnerability is reported privately, never as a public issue. See SECURITY.md.
