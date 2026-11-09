@@ -91,6 +91,7 @@ impl Class {
         match direction {
             Direction::ModalityStrengthening
             | Direction::NumericTightening
+            | Direction::MembershipNarrowing
             | Direction::ScopeNarrowing => Class::Tightened,
             Direction::Unclassifiable => Class::NotJudged,
             // A different obligation rather than a stronger or weaker one; and `Identical`, which
@@ -102,6 +103,7 @@ impl Class {
             | Direction::Identical => Class::Reshaped,
             Direction::ModalityWeakening
             | Direction::NumericLoosening
+            | Direction::MembershipWidening
             | Direction::ScopeWidening => Class::Weakened,
         }
     }

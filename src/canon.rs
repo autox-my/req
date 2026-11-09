@@ -32,10 +32,12 @@ use crate::model::Registry;
 /// the widened external corpus); 4 -> 5 put authored applicability into identity
 /// (ADR 0003 said it belonged there; the form had no field for it at all); 5 -> 6 added the
 /// coverage invariant (T1.10: no statement word leaves identity silently) and the whole-span
-/// subject match (T1.7 as written) after two false merges in this repository's own corpus.
+/// subject match (T1.7 as written) after two false merges in this repository's own corpus;
+/// 6 -> 7 added the `IN` operator (ADR 0030): an enumerated "one of {A, B, C}" is a set in the
+/// value slot and no longer the bound `1`.
 /// Addresses computed under older rules are re-canonicalization candidates, never silently
 /// rewritten (hashing spec §5).
-pub const RULES_V: u32 = 6;
+pub const RULES_V: u32 = 7;
 /// The claim **file format's** own version (`docs/claim-format.md`), an axis that moves
 /// independently of the normalization rules: a schema bump is a migration and moves no
 /// address, while a rules bump re-derives every address. Named here, beside the other
@@ -184,6 +186,9 @@ pub enum Comp {
     Ge,
     Gt,
     Ne,
+    /// Membership of a set (ADR 0030): "one of {A, B, C}". The set lives in
+    /// [`CanonicalForm::members`]; there is no number.
+    In,
 }
 
 impl Comp {
@@ -195,6 +200,9 @@ impl Comp {
             Comp::Ge => Comp::Lt,
             Comp::Gt => Comp::Le,
             Comp::Ne => Comp::Eq,
+            // No comparative stem inverts a membership; the absorbed-negation table
+            // never produces `In`, so this arm only keeps the match total.
+            Comp::In => Comp::In,
         }
     }
     pub fn as_str(&self) -> &'static str {
@@ -205,6 +213,7 @@ impl Comp {
             Comp::Ge => "GE",
             Comp::Gt => "GT",
             Comp::Ne => "NE",
+            Comp::In => "IN",
         }
     }
 }
@@ -236,6 +245,9 @@ pub struct CanonicalForm {
     pub action: String,
     pub operator: Option<Comp>,
     pub value: Option<Decimal>,
+    /// The members of an `IN` set (ADR 0030), lower-cased and sorted by the `BTreeSet`;
+    /// empty for every other operator. Serialised in the `value` slot as a JSON array.
+    pub members: BTreeSet<String>,
     /// Canonical unit symbol, or "none" for unitless counts/state values.
     pub unit: Option<String>,
     /// The *post-value* phrase — an identity field, never dropped.
@@ -264,6 +276,16 @@ impl CanonicalForm {
             Some(c) => c.as_str(),
             None => "none",
         }
+    }
+    /// The value as a human reads it in `req canon`: the decimal, or `{a|b|c}` for an `IN` set.
+    pub fn value_display(&self) -> Option<String> {
+        if self.operator == Some(Comp::In) {
+            return Some(format!(
+                "{{{}}}",
+                self.members.iter().cloned().collect::<Vec<_>>().join("|")
+            ));
+        }
+        self.value.as_ref().map(canonical_decimal)
     }
     /// The canonical bytes that get hashed. Sorting + exact-form decimal strings
     /// make this bite-stable across platforms.
@@ -353,9 +375,19 @@ pub fn canonical_json(f: &CanonicalForm) -> String {
         opt_str(&f.temporal),
         f.unstructured,
         opt_str(&f.unit),
-        match &f.value {
-            Some(d) => format!("\"{}\"", json_escape(&canonical_decimal(d))),
-            None => "null".to_string(),
+        match (&f.operator, &f.value) {
+            // A set rides in the value slot as a sorted array, so no other claim's bytes move
+            // (ADR 0030 §2): a number is a string, a set is a list, nothing is null.
+            (Some(Comp::In), _) => format!(
+                "[{}]",
+                f.members
+                    .iter()
+                    .map(|m| format!("\"{}\"", json_escape(m)))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+            (_, Some(d)) => format!("\"{}\"", json_escape(&canonical_decimal(d))),
+            (_, None) => "null".to_string(),
         },
     )
 }
@@ -855,6 +887,307 @@ fn extract_conditions(body: &str, lints: &mut Vec<Lint>) -> (String, BTreeSet<St
 }
 
 // ---------------------------------------------------------------------------
+// Membership: "one of {A, B, C}" (T1.5, rules v7, ADR 0030)
+// ---------------------------------------------------------------------------
+
+/// What `find_membership` found after the modal phrase.
+enum Membership {
+    /// No "one of", or one with no enumeration (`one of the target market countries`): the
+    /// statement parses exactly as it did before `IN` existed.
+    Absent,
+    /// The index of the word "one" and the enumeration read after "of".
+    Parsed(usize, Enumeration),
+    /// An enumeration the parser will not guess at. The claim stays unstructured with this lint.
+    Refused(Lint),
+}
+
+struct Enumeration {
+    members: BTreeSet<String>,
+    /// The words naming what is chosen from ("standards" in "the four standards: …"), minus the
+    /// article, the count and "following". Identity, never dropped.
+    header: String,
+    /// Whatever follows the last member ("and no other standard"). Identity, never dropped.
+    tail: String,
+}
+
+impl Enumeration {
+    fn qualifier(&self) -> String {
+        [self.header.as_str(), self.tail.as_str()]
+            .iter()
+            .filter(|p| !p.is_empty())
+            .copied()
+            .collect::<Vec<_>>()
+            .join(" | ")
+    }
+}
+
+fn membership_lint(code: &str, detail: String) -> Lint {
+    Lint {
+        code: code.to_string(),
+        detail,
+    }
+}
+
+/// A count a list header may state: "two".."ten" (the curated word-number table) or a bare
+/// number up to 99. "one" is not a count of a list.
+fn header_count(word: &str) -> Option<usize> {
+    let word = word.trim_matches(|c: char| !c.is_alphanumeric());
+    if word == "one" {
+        return None;
+    }
+    if let Some(d) = word_number(word) {
+        return usize::try_from(d.mantissa()).ok();
+    }
+    if !word.is_empty() && word.len() <= 2 && word.chars().all(|c| c.is_ascii_digit()) {
+        return word.parse().ok();
+    }
+    None
+}
+
+/// Split at top-level (depth-0) occurrences of `sep`, where depth counts `(` `[` `{`.
+fn split_top(text: &str, sep: char) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut cur = String::new();
+    let mut depth = 0i32;
+    for c in text.chars() {
+        match c {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            _ => {}
+        }
+        if c == sep && depth == 0 {
+            parts.push(std::mem::take(&mut cur));
+        } else {
+            cur.push(c);
+        }
+    }
+    parts.push(cur);
+    parts.into_iter().map(|p| p.trim().to_string()).collect()
+}
+
+/// Depth-0 positions (byte offsets) of the word `or` surrounded by spaces, or leading the text.
+fn top_level_or(item: &str) -> Vec<usize> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    for (i, c) in item.char_indices() {
+        match c {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            _ => {}
+        }
+        if depth == 0
+            && c == 'o'
+            && item[i..].starts_with("or ")
+            && (i == 0 || item.as_bytes()[i - 1] == b' ')
+        {
+            out.push(i);
+        }
+    }
+    out
+}
+
+/// The first depth-0 colon that ends a word (`sources:` yes, `1500:2019` no).
+fn header_colon(text: &str) -> Option<usize> {
+    let mut depth = 0i32;
+    let bytes = text.as_bytes();
+    for (i, c) in text.char_indices() {
+        match c {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            ':' if depth == 0 && (i + 1 == bytes.len() || bytes[i + 1] == b' ') => return Some(i),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Words that make a "member" a clause rather than a name. Outside parentheses only.
+const MEMBER_CONNECTIVES: &[&str] = &["and", "but", "except", "unless", "otherwise", "nor"];
+
+fn read_enumeration(rest: &str) -> Result<Option<Enumeration>, Lint> {
+    let rest = rest.trim().trim_end_matches('.').trim();
+    if rest.is_empty() {
+        return Ok(None);
+    }
+    let unclear = |why: &str| {
+        Err(membership_lint(
+            "membership_unclear",
+            format!("{why}; claim stays unstructured"),
+        ))
+    };
+
+    // Shape 1: a bracketed list, no header: `one of {a, b, c}`.
+    let first = rest.chars().next().unwrap_or(' ');
+    let (header_text, list_text, tail_text, bracketed) = if matches!(first, '{' | '[' | '(') {
+        let mut depth = 0i32;
+        let mut close = None;
+        for (i, c) in rest.char_indices() {
+            match c {
+                '(' | '[' | '{' => depth += 1,
+                ')' | ']' | '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(close) = close else {
+            return unclear("an opening bracket is never closed");
+        };
+        let inner = &rest[first.len_utf8()..close];
+        let after = rest[close + 1..]
+            .trim()
+            .trim_start_matches([',', ';'])
+            .trim();
+        (String::new(), inner.to_string(), after.to_string(), true)
+    } else if let Some(colon) = header_colon(rest)
+        && split_top(&rest[..colon], ',').len() == 1
+    {
+        // Shape 2: `one of <header>: a, b or c` (the header may be empty or "the following").
+        (
+            rest[..colon].trim().to_string(),
+            rest[colon + 1..].trim().to_string(),
+            String::new(),
+            false,
+        )
+    } else {
+        let segs = split_top(rest, ',');
+        if segs.len() < 2 {
+            return Ok(None); // no delimiter: prose, not an enumeration
+        }
+        let lead: Vec<&str> = segs[0].split_whitespace().collect();
+        let counted = !lead.is_empty()
+            && lead.len() <= 6
+            && (header_count(lead[0]).is_some()
+                || lead[0] == "following"
+                || (lead[0] == "the"
+                    && lead
+                        .get(1)
+                        .is_some_and(|w| header_count(w).is_some() || *w == "following")));
+        if counted {
+            // Shape 3: `one of the four sources, a, b or c`.
+            (segs[0].clone(), segs[1..].join(", "), String::new(), false)
+        } else {
+            // Shape 4: a bare list, `one of a, b or c` — needs its `or`, below.
+            (String::new(), rest.to_string(), String::new(), false)
+        }
+    };
+
+    // The list text: comma items; the item holding the top-level `or` is the last member.
+    let items = split_top(&list_text, ',');
+    let mut members: Vec<String> = Vec::new();
+    let mut tail_items: Vec<String> = Vec::new();
+    let mut closed = false;
+    for (n, item) in items.iter().enumerate() {
+        if closed {
+            tail_items.push(item.clone());
+            continue;
+        }
+        let ors = top_level_or(item);
+        match ors.len() {
+            0 => members.push(item.clone()),
+            1 => {
+                let at = ors[0];
+                let (left, right) = (item[..at].trim(), item[at + 3..].trim());
+                if !left.is_empty() {
+                    members.push(left.to_string());
+                }
+                members.push(right.to_string());
+                closed = true;
+            }
+            _ => return unclear("a list item holds more than one `or`"),
+        }
+        let _ = n;
+    }
+    let has_or = closed;
+    if !bracketed && !has_or && header_text.is_empty() {
+        return Ok(None); // `one of a, b, c` with nothing to end the list: not enumerated
+    }
+    let tail = if bracketed {
+        tail_text
+    } else {
+        tail_items.join(", ")
+    };
+
+    // A member is a short name: no clause connective outside parentheses, at most 8 such words.
+    let mut seen = BTreeSet::new();
+    for m in &members {
+        let m = m.trim().trim_end_matches(['.', ';']).trim();
+        if m.is_empty() {
+            return unclear("an empty list member");
+        }
+        let mut depth = 0i32;
+        let mut outside = String::new();
+        for c in m.chars() {
+            match c {
+                '(' | '[' | '{' => depth += 1,
+                ')' | ']' | '}' => depth -= 1,
+                _ if depth == 0 => outside.push(c),
+                _ => {}
+            }
+        }
+        let outside_words: Vec<&str> = outside.split_whitespace().collect();
+        if outside_words.len() > 8 || outside_words.iter().any(|w| MEMBER_CONNECTIVES.contains(w)) {
+            return unclear(&format!("list member {m:?} reads as a clause, not a name"));
+        }
+        if !seen.insert(m.to_string()) {
+            return unclear(&format!("the member {m:?} appears twice"));
+        }
+    }
+    if seen.len() < 2 {
+        return unclear("a set of fewer than two members");
+    }
+
+    // The header: what is chosen from. The count it states must match the members.
+    let words: Vec<&str> = header_text.split_whitespace().collect();
+    let mut stated: Option<usize> = None;
+    let mut header_words = Vec::new();
+    for w in words {
+        let bare = w.trim_matches(|c: char| !c.is_alphanumeric());
+        if stated.is_none()
+            && let Some(c) = header_count(bare)
+        {
+            stated = Some(c);
+        } else if !matches!(bare, "the" | "these" | "those" | "following" | "a" | "an") {
+            header_words.push(bare.to_string());
+        }
+    }
+    if let Some(c) = stated
+        && c != seen.len()
+    {
+        return Err(membership_lint(
+            "membership_count_mismatch",
+            format!(
+                "the statement says {c} but lists {}; claim stays unstructured",
+                seen.len()
+            ),
+        ));
+    }
+    Ok(Some(Enumeration {
+        members: seen,
+        header: header_words.join(" "),
+        tail: tail.trim().trim_end_matches('.').trim().to_string(),
+    }))
+}
+
+/// Look for `one of <enumeration>` in the words after the modal phrase.
+fn find_membership(words: &[&str], from: usize) -> Membership {
+    let Some(k) =
+        (from..words.len().saturating_sub(1)).find(|&i| words[i] == "one" && words[i + 1] == "of")
+    else {
+        return Membership::Absent;
+    };
+    match read_enumeration(&words[k + 2..].join(" ")) {
+        Ok(Some(e)) => Membership::Parsed(k, e),
+        Ok(None) => Membership::Absent,
+        Err(lint) => Membership::Refused(lint),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Word-sequence phrase matching (never a raw substring: "mere" can't match
 // inside "merecat")
 // ---------------------------------------------------------------------------
@@ -1018,12 +1351,32 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
         });
     }
 
+    // Membership (rules v7): an enumerated "one of {…}" is a set. It runs before the comparator
+    // table and the number scan because "one" would otherwise be read as the bound 1 and the
+    // members would fall into the qualifier as free text (issue #17).
+    let mut membership: Option<(usize, Enumeration)> = None;
+    let mut membership_refused = false;
+    if comparator.is_none() {
+        match find_membership(&words, modal_end) {
+            Membership::Parsed(k, e) => {
+                comparator = Some(Comp::In);
+                comp_start_abs = Some(k);
+                membership = Some((k, e));
+            }
+            Membership::Refused(lint) => {
+                lints.push(lint);
+                membership_refused = true;
+            }
+            Membership::Absent => {}
+        }
+    }
+
     // ORDER: comparator first (it anchors the value), then the value, then the
     // action. The absorbed-negation case (a comparative directly after the modal)
     // has already set comparator+anchor above; the plain table runs next.
     let post_modal: Vec<&str> = words[modal_end.min(words.len())..].to_vec();
 
-    let mut comp_len: usize = 0;
+    let mut comp_len: usize = if membership.is_some() { 2 } else { 0 };
     if comparator.is_none() {
         let mut best: Option<(usize, usize, Comp)> = None; // (phrase words, local start, comp)
         for (phrase, cmp) in COMPARATOR_PHRASES {
@@ -1053,6 +1406,12 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
     let mut num_local: Option<usize> = None;
     let mut numeric: Option<(String, Option<Decimal>)> = None;
     let mut unit_suffix: Option<String> = None;
+    // A set has no number: the scan would read the "1" out of "one of" or a digit inside a member.
+    let scan_from = if membership.is_some() {
+        post_modal.len()
+    } else {
+        scan_from
+    };
     for (i, tok) in post_modal.iter().enumerate().skip(scan_from) {
         if let Some((num, suffix)) = leading_numeric_part(tok) {
             num_local = Some(i);
@@ -1165,9 +1524,10 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
             i + 1 + _unit_consumed
         }
     });
-    let qualifier = match tail_start {
-        Some(start) => words.get(start..).unwrap_or(&[]).join(" "),
-        None => String::new(),
+    let qualifier = match (&membership, tail_start) {
+        (Some((_, e)), _) => e.qualifier(),
+        (None, Some(start)) => words.get(start..).unwrap_or(&[]).join(" "),
+        (None, None) => String::new(),
     };
 
     // Testability: a qualitative predicate is not measurable, so it cannot be
@@ -1183,7 +1543,10 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
             ),
         });
     }
-    let unparseable = second_obligation || untestable_qualifier.is_some() || ambiguous_may_not;
+    let unparseable = second_obligation
+        || untestable_qualifier.is_some()
+        || ambiguous_may_not
+        || membership_refused;
 
     // T1.10 coverage invariant (rules v6): every word *position* of the body must be held
     // by a slot or be a stopword, or the claim is unstructured. Checked only for a parse
@@ -1211,6 +1574,11 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
         // value (+ unit) and the qualifier tail. A numeric token that did not resolve to a
         // value, or whose attached suffix did not resolve to a unit ("200-300", "5foobarbaz"),
         // is *not* held: the text it carried left the form.
+        // The whole enumeration — the "one of" phrase is already held as the comparator — is
+        // carried by the members, the header noun and the tail.
+        if let Some((k, _)) = &membership {
+            mark(k + 2..words.len());
+        }
         if let Some(n) = num_idx {
             if value.is_some() && (unit_suffix.is_none() || unit.is_some()) {
                 mark(n..n + 1);
@@ -1264,6 +1632,7 @@ pub fn canonicalize_statement(text: &str, registry: &Registry) -> (CanonicalForm
             action,
             operator,
             value,
+            members: membership.map(|(_, e)| e.members).unwrap_or_default(),
             unit,
             qualifier,
             conditions,
@@ -1783,7 +2152,7 @@ pub fn run_claim_diagnostics_with(root: &std::path::Path, fail_on_flag: bool) ->
                     .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| "-".to_string()),
                 dash(form.operator.map(|c| c.as_str().to_string())),
-                dash(form.value.as_ref().map(canonical_decimal)),
+                dash(form.value_display()),
                 dash(form.unit.clone().filter(|u| u != "none")),
             )
         };

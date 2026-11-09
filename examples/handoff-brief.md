@@ -8,7 +8,7 @@ The agent also needs the block from `examples/agents-snippet.md` in its project'
 ```text
 STEP        <the one step, by its title in docs/adopting.md § For an agent, e.g. "Bring your own spec">
 REQ PIN     <sha>. Precheck, before any other command: `req --version` must show
-            claim_schema req.claim/2, rules_v 6 and built from <sha>. If it does not, stop and
+            claim_schema req.claim/2, rules_v 7 and built from <sha>. If it does not, stop and
             report what it shows. Do not install, rebuild or work around it.
 INPUT       <the file in your repo the step reads, e.g. docs/capabilities.md>
 DONE WHEN   <the exit code and the named line the step ends on, copied from docs/adopting.md,

@@ -1,4 +1,4 @@
-<!-- req projection: generator=req render | rules_v=6 | selection=none | claims=17 | identity=sha256:4135b45c704b995ef4a35c2b9d302b08d8579550c176bd2d8efbf925bcc585c5 -->
+<!-- req projection: generator=req render | rules_v=7 | selection=none | claims=17 | identity=sha256:4135b45c704b995ef4a35c2b9d302b08d8579550c176bd2d8efbf925bcc585c5 -->
 # Selection: (no context: nothing is decided by the caller)
 applies 17, undecided 5, outside the selection 0 (an undecided claim is never reported as excluded)
 

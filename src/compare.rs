@@ -27,6 +27,10 @@ pub enum Direction {
     NumericLoosening,
     /// The reverse: fewer values comply.
     NumericTightening,
+    /// Members left an `IN` set (or joined a forbidden one): fewer values comply.
+    MembershipNarrowing,
+    /// Members joined an `IN` set (or left a forbidden one): more values comply.
+    MembershipWidening,
     /// A condition was added: the claim applies less often.
     ScopeNarrowing,
     /// A condition was removed: it applies more often.
@@ -48,6 +52,8 @@ impl Direction {
             Direction::PolarityFlip => "polarity_flip",
             Direction::NumericLoosening => "numeric_loosening",
             Direction::NumericTightening => "numeric_tightening",
+            Direction::MembershipNarrowing => "membership_narrowing",
+            Direction::MembershipWidening => "membership_widening",
             Direction::ScopeNarrowing => "scope_narrowing",
             Direction::ScopeWidening => "scope_widening",
             Direction::ScopeDivergence => "scope_divergence",
@@ -66,6 +72,8 @@ impl Direction {
             Direction::PolarityFlip,
             Direction::NumericLoosening,
             Direction::NumericTightening,
+            Direction::MembershipNarrowing,
+            Direction::MembershipWidening,
             Direction::ScopeNarrowing,
             Direction::ScopeWidening,
             Direction::ScopeDivergence,
@@ -79,7 +87,10 @@ impl Direction {
     pub fn is_loosening(&self) -> bool {
         matches!(
             self,
-            Direction::ModalityWeakening | Direction::NumericLoosening | Direction::ScopeWidening
+            Direction::ModalityWeakening
+                | Direction::NumericLoosening
+                | Direction::MembershipWidening
+                | Direction::ScopeWidening
         )
     }
 
@@ -99,6 +110,8 @@ impl Direction {
             Direction::ModalityStrengthening => Some(Direction::ModalityWeakening),
             Direction::NumericLoosening => Some(Direction::NumericTightening),
             Direction::NumericTightening => Some(Direction::NumericLoosening),
+            Direction::MembershipNarrowing => Some(Direction::MembershipWidening),
+            Direction::MembershipWidening => Some(Direction::MembershipNarrowing),
             Direction::ScopeNarrowing => Some(Direction::ScopeWidening),
             Direction::ScopeWidening => Some(Direction::ScopeNarrowing),
             _ => None,
@@ -161,7 +174,10 @@ pub fn compare(a: &CanonicalForm, b: &CanonicalForm) -> Direction {
         return ScopeDivergence;
     }
 
-    if a.operator != b.operator || a.value != b.value {
+    if a.operator != b.operator || a.value != b.value || a.members != b.members {
+        if a.operator == Some(Comp::In) || b.operator == Some(Comp::In) {
+            return membership_direction(a, b);
+        }
         return numeric_direction(a, b);
     }
 
@@ -171,6 +187,34 @@ pub fn compare(a: &CanonicalForm, b: &CanonicalForm) -> Direction {
     // Same subject, predicate, modality, conditions, qualifier, bound — yet a different
     // canonical form. Something in identity is not accounted for above; divergence is
     // the honest answer, and this arm is what keeps a new field from silently passing.
+    ScopeDivergence
+}
+
+/// Which way a set moved (ADR 0030). A removed member means fewer values comply: a narrowing. For
+/// a prohibition the set is what is *forbidden*, so the senses swap: a member added to a forbidden
+/// set narrows what may be done. Members both added and removed, or a set against a non-set, is
+/// not a direction — `scope_divergence`, never "no change".
+fn membership_direction(a: &CanonicalForm, b: &CanonicalForm) -> Direction {
+    use Direction::*;
+
+    if a.operator != Some(Comp::In) || b.operator != Some(Comp::In) {
+        return ScopeDivergence;
+    }
+    let forbidden = prohibition(a.modality);
+    if b.members.is_subset(&a.members) {
+        return if forbidden {
+            MembershipWidening
+        } else {
+            MembershipNarrowing
+        };
+    }
+    if a.members.is_subset(&b.members) {
+        return if forbidden {
+            MembershipNarrowing
+        } else {
+            MembershipWidening
+        };
+    }
     ScopeDivergence
 }
 

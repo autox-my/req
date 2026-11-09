@@ -1,0 +1,5835 @@
+{
+  "corpus": "bench/corpus/external-v4.yml",
+  "corpus_sha256": "8539feb6af26f40bbf7c9b391a8ad47c829f19f6fe96825b28311909f0717eef",
+  "degraded": [],
+  "direction": {
+    "accuracy": null,
+    "checked": 0,
+    "correct": 0,
+    "dangerous_confusions": [],
+    "hard_gate": "UNVERIFIABLE",
+    "mismatches": [],
+    "note": "a loosening reported as no change, or as the opposite direction, is the dangerous confusion — the direction analogue of a false merge. Accuracy is reported rather than gated: a harmless misread costs nothing, while a dangerous one costs a ratified loosening.",
+    "soft_target": 0.95,
+    "unclassifiable": [],
+    "unknown_labels": []
+  },
+  "fmr": {
+    "collapses": 0,
+    "hard_gate": "PASS",
+    "hit_pairs": [],
+    "not_equivalent_total": 1595,
+    "rate": 0.0,
+    "structurally_unverifiable_ids": [
+      "N-ST-SDOC-SSS-51-AP",
+      "N-ST-SDOC-SSS-61-MW",
+      "N-ST-SDOC-SSS-61-PF",
+      "N-ST-SDOC-SSS-61-PS",
+      "N-ST-SDOC-SSS-61-AP",
+      "N-ST-SDOC-SSS-61-AF",
+      "N-ST-SDOC-SSS-61-PH",
+      "N-ST-SDOC-SSS-61-PR",
+      "N-ST-SDOC-SSS-5-MW",
+      "N-ST-SDOC-SSS-5-PF",
+      "N-ST-SDOC-SSS-5-PS",
+      "N-ST-SDOC-SSS-5-AP",
+      "N-ST-SDOC-SSS-5-AF",
+      "N-ST-SDOC-SSS-5-PH",
+      "N-ST-SDOC-SSS-5-PR",
+      "N-ST-SDOC-SSS-71-AP",
+      "N-ST-SDOC-SSS-89-AP",
+      "N-ST-SDOC-SSS-49-MW",
+      "N-ST-SDOC-SSS-49-PF",
+      "N-ST-SDOC-SSS-49-PS",
+      "N-ST-SDOC-SSS-49-AP",
+      "N-ST-SDOC-SSS-49-AF",
+      "N-ST-SDOC-SSS-49-PH",
+      "N-ST-SDOC-SSS-49-PR",
+      "N-ST-SDOC-SSS-72-MW",
+      "N-ST-SDOC-SSS-72-PF",
+      "N-ST-SDOC-SSS-72-PS",
+      "N-ST-SDOC-SSS-72-AP",
+      "N-ST-SDOC-SSS-72-AF",
+      "N-ST-SDOC-SSS-72-PH",
+      "N-ST-SDOC-SSS-72-PR",
+      "N-ST-SDOC-SSS-79-MW",
+      "N-ST-SDOC-SSS-79-PF",
+      "N-ST-SDOC-SSS-79-PS",
+      "N-ST-SDOC-SSS-79-AP",
+      "N-ST-SDOC-SSS-79-AF",
+      "N-ST-SDOC-SSS-79-PH",
+      "N-ST-SDOC-SSS-79-PR",
+      "N-ST-SDOC-SSS-80-MW",
+      "N-ST-SDOC-SSS-80-PF",
+      "N-ST-SDOC-SSS-80-PS",
+      "N-ST-SDOC-SSS-80-AP",
+      "N-ST-SDOC-SSS-80-AF",
+      "N-ST-SDOC-SSS-80-PH",
+      "N-ST-SDOC-SSS-80-PR",
+      "N-ST-SDOC-SSS-86-MW",
+      "N-ST-SDOC-SSS-86-PF",
+      "N-ST-SDOC-SSS-86-PS",
+      "N-ST-SDOC-SSS-86-AP",
+      "N-ST-SDOC-SSS-86-AF",
+      "N-ST-SDOC-SSS-86-PH",
+      "N-ST-SDOC-SSS-86-PR",
+      "N-ST-SDOC-SSS-87-AP",
+      "N-ST-SDOC-SSS-31-AP",
+      "N-ST-SDOC-SSS-67-MW",
+      "N-ST-SDOC-SSS-67-PF",
+      "N-ST-SDOC-SSS-67-PS",
+      "N-ST-SDOC-SSS-67-AP",
+      "N-ST-SDOC-SSS-67-AF",
+      "N-ST-SDOC-SSS-67-PH",
+      "N-ST-SDOC-SSS-67-PR",
+      "N-ST-SDOC-SSS-88-AP",
+      "N-ST-SDOC-SSS-54-AP",
+      "N-ST-SDOC-SSS-77-MW",
+      "N-ST-SDOC-SSS-77-PF",
+      "N-ST-SDOC-SSS-77-PS",
+      "N-ST-SDOC-SSS-77-AP",
+      "N-ST-SDOC-SSS-77-AF",
+      "N-ST-SDOC-SSS-77-PH",
+      "N-ST-SDOC-SSS-77-PR",
+      "N-ST-SDOC-SSS-78-MW",
+      "N-ST-SDOC-SSS-78-PF",
+      "N-ST-SDOC-SSS-78-PS",
+      "N-ST-SDOC-SSS-78-AP",
+      "N-ST-SDOC-SSS-78-AF",
+      "N-ST-SDOC-SSS-78-PH",
+      "N-ST-SDOC-SSS-78-PR",
+      "N-DO-REQ004-MW",
+      "N-DO-REQ004-PF",
+      "N-DO-REQ004-AP",
+      "N-DO-REQ004-AF",
+      "N-DO-REQ019-AP",
+      "N-DO-REQ019-AF",
+      "N-PR-P1:r15-AP",
+      "N-PR-P1:r15-AF",
+      "N-PR-P2:r30-AP",
+      "N-PR-P2:r50-MW",
+      "N-PR-P2:r50-PF",
+      "N-PR-P2:r50-PS",
+      "N-PR-P2:r50-AP",
+      "N-PR-P2:r50-AF",
+      "N-PR-P2:r50-PH",
+      "N-PR-P2:r50-PR",
+      "N-PR-P3:r85-MW",
+      "N-PR-P3:r85-PF",
+      "N-PR-P3:r85-PS",
+      "N-PR-P3:r85-AP",
+      "N-PR-P3:r85-AF",
+      "N-PR-P3:r85-PH",
+      "N-PR-P3:r85-PR",
+      "N-PR-P3:r115-MW",
+      "N-PR-P3:r115-PF",
+      "N-PR-P3:r115-PS",
+      "N-PR-P3:r115-AP",
+      "N-PR-P3:r115-AF",
+      "N-PR-P3:r115-PH",
+      "N-PR-P3:r115-PR",
+      "N-PR-P3:r125-AP",
+      "N-PR-P3:r140-AP",
+      "N-PR-P3:r140-AF",
+      "N-PR-P4:r155-MW",
+      "N-PR-P4:r155-PF",
+      "N-PR-P4:r155-PS",
+      "N-PR-P4:r155-AP",
+      "N-PR-P4:r155-AF",
+      "N-PR-P4:r155-PH",
+      "N-PR-P4:r155-PR",
+      "N-PR-P4:r160-MW",
+      "N-PR-P4:r160-PF",
+      "N-PR-P4:r160-PS",
+      "N-PR-P4:r160-AP",
+      "N-PR-P4:r160-AF",
+      "N-PR-P4:r160-PH",
+      "N-PR-P4:r160-PR",
+      "N-PR-P4:r165-AP",
+      "N-PR-P4:r190-PS",
+      "N-PR-P4:r190-AP",
+      "N-PR-P4:r190-AF",
+      "N-PR-P4:r190-PH",
+      "N-PR-P4:r190-PR",
+      "N-PR-P4:r195-PS",
+      "N-PR-P4:r195-AP",
+      "N-PR-P4:r195-AF",
+      "N-PR-P5:r210-MW",
+      "N-PR-P5:r210-PF",
+      "N-PR-P5:r210-PS",
+      "N-PR-P5:r210-AP",
+      "N-PR-P5:r210-AF",
+      "N-PR-P5:r210-PH",
+      "N-PR-P5:r210-PR",
+      "N-PR-P5:r215-MW",
+      "N-PR-P5:r215-PF",
+      "N-PR-P5:r215-PS",
+      "N-PR-P5:r215-AP",
+      "N-PR-P5:r215-AF",
+      "N-PR-P5:r215-PH",
+      "N-PR-P5:r215-PR",
+      "N-PR-P5:r220-MW",
+      "N-PR-P5:r220-PF",
+      "N-PR-P5:r220-PS",
+      "N-PR-P5:r220-AP",
+      "N-PR-P5:r220-AF",
+      "N-PR-P5:r220-PH",
+      "N-PR-P5:r220-PR",
+      "N-PR-P5:r230-AP",
+      "N-PR-P5:r230-AF",
+      "N-PR-P6:r300-MW",
+      "N-PR-P6:r300-PF",
+      "N-PR-P6:r300-PS",
+      "N-PR-P6:r300-AP",
+      "N-PR-P6:r300-AF",
+      "N-PR-P6:r300-PH",
+      "N-PR-P6:r300-PR",
+      "N-PR-P6:r310-MW",
+      "N-PR-P6:r310-PF",
+      "N-PR-P6:r310-PS",
+      "N-PR-P6:r310-AP",
+      "N-PR-P6:r310-AF",
+      "N-PR-P6:r310-PH",
+      "N-PR-P6:r310-PR",
+      "N-PR-P7:r355-MW",
+      "N-PR-P7:r355-PF",
+      "N-PR-P7:r355-PS",
+      "N-PR-P7:r355-AP",
+      "N-PR-P7:r355-AF",
+      "N-PR-P7:r355-PH",
+      "N-PR-P7:r355-PR",
+      "N-PR-P7:r360-AP",
+      "N-PR-P8:r385-AP",
+      "N-PR-P8:r385-AF",
+      "N-PR-P8:r390-AP",
+      "N-PR-P8:r390-AF",
+      "N-PR-P8:r405-AP",
+      "N-PR-P8:r405-AF",
+      "N-PR-P8:r420-AP",
+      "N-PR-P8:r420-AF",
+      "N-PR-P8:r425-AP",
+      "N-PR-P8:r425-AF",
+      "N-PR-P8:r435-AP",
+      "N-PR-P8:r435-AF",
+      "N-PR-P8:r445-AP",
+      "N-PR-P8:r445-AF",
+      "N-PR-P8:r460-AP",
+      "N-PR-P8:r460-AF",
+      "N-PR-P9:r465-AP",
+      "N-PR-P9:r465-AF",
+      "N-PR-P9:r470-AP",
+      "N-PR-P9:r470-AF",
+      "N-PR-P9:r475-AP",
+      "N-PR-P9:r475-AF",
+      "N-PR-P9:r480-AP",
+      "N-PR-P9:r480-AF",
+      "N-PR-P9:r485-AP",
+      "N-PR-P9:r485-AF",
+      "N-PR-P10:r500-MW",
+      "N-PR-P10:r500-PF",
+      "N-PR-P10:r500-PS",
+      "N-PR-P10:r500-AP",
+      "N-PR-P10:r500-AF",
+      "N-PR-P10:r500-PH",
+      "N-PR-P10:r500-PR",
+      "N-PR-P11:r545-PS",
+      "N-PR-P11:r545-AP",
+      "N-PR-P11:r545-AF",
+      "N-PR-P11:r550-MW",
+      "N-PR-P11:r550-PF",
+      "N-PR-P11:r550-PS",
+      "N-PR-P11:r550-AP",
+      "N-PR-P11:r550-AF",
+      "N-PR-P11:r550-PH",
+      "N-PR-P11:r550-PR",
+      "N-PR-P12:r560-MW",
+      "N-PR-P12:r560-PF",
+      "N-PR-P12:r560-PS",
+      "N-PR-P12:r560-AP",
+      "N-PR-P12:r560-AF",
+      "N-PR-P12:r560-PH",
+      "N-PR-P12:r560-PR",
+      "N-PR-P12:r565-MW",
+      "N-PR-P12:r565-PF",
+      "N-PR-P12:r565-PS",
+      "N-PR-P12:r565-AP",
+      "N-PR-P12:r565-AF",
+      "N-PR-P12:r565-PH",
+      "N-PR-P12:r565-PR",
+      "N-PR-P12:r575-MW",
+      "N-PR-P12:r575-PF",
+      "N-PR-P12:r575-PS",
+      "N-PR-P12:r575-AP",
+      "N-PR-P12:r575-AF",
+      "N-PR-P12:r575-PH",
+      "N-PR-P12:r575-PR",
+      "N-PR-P13:r580-PS",
+      "N-PR-P13:r580-AP",
+      "N-PR-P13:r580-AF",
+      "N-PR-P13:r580-PH",
+      "N-PR-P13:r580-PR",
+      "N-PR-P13:r590-PS",
+      "N-PR-P13:r590-AP",
+      "N-PR-P13:r590-AF",
+      "N-PR-P13:r590-PH",
+      "N-PR-P13:r590-PR",
+      "N-PR-P14:r595-AP",
+      "N-PR-P14:r595-AF",
+      "N-PR-P15:r620-AP",
+      "N-PR-P15:r620-AF",
+      "N-PR-P17:r640-AP",
+      "N-PR-P18:r650-AP",
+      "N-PR-P18:r650-AF",
+      "N-PR-P19:r655-PS",
+      "N-PR-P19:r655-AP",
+      "N-PR-P19:r655-AF",
+      "N-PR-P19:r655-PH",
+      "N-PR-P19:r655-PR",
+      "N-PR-P24:r675-AP",
+      "N-PR-P24:r675-AF",
+      "N-PR-P25:r680-MW",
+      "N-PR-P25:r680-PF",
+      "N-PR-P25:r680-PS",
+      "N-PR-P25:r680-AP",
+      "N-PR-P25:r680-AF",
+      "N-PR-P25:r680-PH",
+      "N-PR-P25:r680-PR",
+      "N-PR-P27:r685-AP",
+      "N-PR-P27:r690-AF",
+      "N-PR-P27:r695-MW",
+      "N-PR-P30:r705-AP",
+      "N-PR-P30:r705-AF",
+      "N-PR-P30:r710-AP",
+      "N-PR-P30:r710-AF",
+      "N-PR-P30:r715-AP",
+      "N-PR-P30:r715-AF",
+      "N-PR-P31:r720-AP",
+      "N-PR-P31:r720-AF",
+      "N-PR-P32:r725-AP",
+      "N-PR-P32:r730-AP",
+      "N-PR-P32:r730-AF",
+      "N-PR-P34:r755-AP",
+      "N-PR-P34:r755-AF",
+      "N-PR-P34:r760-AP",
+      "N-PR-P34:r760-AF",
+      "N-PR-P35:r765-AP",
+      "N-PR-P35:r765-AF",
+      "N-PR-P35:r770-AP",
+      "N-PR-P35:r770-AF",
+      "N-PR-P37:r780-AP",
+      "N-PR-P37:r780-AF",
+      "N-PR-P38:r785-AP",
+      "N-PR-P38:r785-AF",
+      "N-PR-P38:r800-AP",
+      "N-PR-P38:r800-AF",
+      "N-PR-P38:r805-AP",
+      "N-PR-P38:r805-AF",
+      "N-PR-P40:r810-AP",
+      "N-PR-P40:r810-AF",
+      "N-PR-P40:r815-AP",
+      "N-PR-P40:r815-AF",
+      "N-PR-P42:r820-AP",
+      "N-PR-P42:r820-AF",
+      "N-PR-P42:r825-AP",
+      "N-PR-P42:r825-AF",
+      "N-PR-P42:r830-AP",
+      "N-PR-P42:r830-AF",
+      "N-PR-P45:r835-AP",
+      "N-PR-P45:r840-AP",
+      "N-PR-P45:r860-AP",
+      "N-PR-P45:r870-AP",
+      "N-PR-P45:r870-AF",
+      "N-PR-P46:r875-AP",
+      "N-PR-P46:r945-MW",
+      "N-PR-P48:r955-AP",
+      "N-PR-P48:r955-AF",
+      "N-PR-P49:r965-PS",
+      "N-PR-P49:r965-AP",
+      "N-PR-P49:r965-AF",
+      "N-PR-P49:r965-PH",
+      "N-PR-P49:r965-PR"
+    ],
+    "structurally_unverifiable_pairs": 327
+  },
+  "fsr": {
+    "hit_pairs": [],
+    "rate": 0.0,
+    "splits": 0,
+    "structured_equivalent_total": 389
+  },
+  "lints": [
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "E-ST-SDOC-SSS-61-MS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "E-ST-SDOC-SSS-61-MS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "E-ST-SDOC-SSS-61-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "E-ST-SDOC-SSS-61-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "E-ST-SDOC-SSS-5-MS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "E-ST-SDOC-SSS-5-MS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "E-ST-SDOC-SSS-5-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "E-ST-SDOC-SSS-5-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-49-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-49-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-49-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-49-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-72-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-72-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-72-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-72-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-79-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-79-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-79-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-79-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-80-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-80-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-80-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-80-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-80-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-80-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-80-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-80-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-86-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-86-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-86-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-86-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "E-ST-SDOC-SSS-67-MS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "E-ST-SDOC-SSS-67-MS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "E-ST-SDOC-SSS-67-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "E-ST-SDOC-SSS-67-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-77-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-77-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-77-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-77-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "E-ST-SDOC-SSS-78-MS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "E-ST-SDOC-SSS-78-MS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "E-ST-SDOC-SSS-78-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "E-ST-SDOC-SSS-78-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "E-ST-SDOC-SSS-78-NG",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "E-ST-SDOC-SSS-78-NG",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "E-DO-REQ004-EM",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "E-DO-REQ004-EM",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "E-DO-REQ004-MS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "E-DO-REQ004-MS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "E-DO-REQ004-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "E-DO-REQ004-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P1:r15-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"/4\" is not in the T1.4 table; kept verbatim",
+      "pair": "E-PR-P1:r15-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P1:r15-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"/4\" is not in the T1.4 table; kept verbatim",
+      "pair": "E-PR-P1:r15-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "E-PR-P2:r50-MS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "E-PR-P2:r50-MS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "E-PR-P2:r50-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "E-PR-P2:r50-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "E-PR-P2:r50-NG",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "E-PR-P2:r50-NG",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "E-PR-P3:r85-MS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "E-PR-P3:r85-MS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "E-PR-P3:r85-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "E-PR-P3:r85-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P3:r115-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P3:r115-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P3:r115-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P3:r115-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P3:r140-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P3:r140-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "E-PR-P4:r155-MS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "E-PR-P4:r155-MS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "E-PR-P4:r155-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "E-PR-P4:r155-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P4:r160-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P4:r160-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P4:r160-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P4:r160-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P4:r190-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P4:r190-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P4:r195-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P4:r195-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P5:r210-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P5:r210-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P5:r210-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P5:r210-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P5:r210-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P5:r210-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P5:r210-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P5:r210-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P5:r215-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P5:r215-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P5:r215-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P5:r215-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P5:r220-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P5:r220-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "E-PR-P5:r225-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "E-PR-P5:r225-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "E-PR-P5:r225-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "E-PR-P5:r225-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "E-PR-P5:r225-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "E-PR-P5:r225-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "E-PR-P5:r225-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "E-PR-P5:r225-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P6:r300-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P6:r300-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P6:r300-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P6:r300-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P6:r310-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P6:r310-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P6:r310-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P6:r310-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P7:r355-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P7:r355-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P7:r355-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P7:r355-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "E-PR-P8:r375-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "E-PR-P8:r375-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "E-PR-P8:r375-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "E-PR-P8:r375-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "E-PR-P8:r380-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "E-PR-P8:r380-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "E-PR-P8:r380-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "E-PR-P8:r380-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P8:r385-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P8:r385-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P8:r390-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P8:r390-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P8:r405-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P8:r405-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P8:r420-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P8:r420-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P8:r435-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P8:r435-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P8:r445-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P8:r445-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P8:r460-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P8:r460-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P9:r465-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P9:r465-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P9:r470-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"x7\" is not in the T1.4 table; kept verbatim",
+      "pair": "E-PR-P9:r470-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P9:r470-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"x7\" is not in the T1.4 table; kept verbatim",
+      "pair": "E-PR-P9:r470-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P9:r475-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P9:r475-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P9:r480-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P9:r480-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P9:r485-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P9:r485-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P10:r500-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P10:r500-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P10:r500-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P10:r500-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P11:r550-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P11:r550-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P11:r550-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P11:r550-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P12:r560-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P12:r560-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P12:r560-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P12:r560-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P12:r565-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P12:r565-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P12:r565-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P12:r565-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P12:r565-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P12:r565-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P12:r565-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P12:r565-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P12:r575-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P12:r575-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P12:r575-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P12:r575-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P13:r580-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P13:r580-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"1-2-3\" is not exactly representable",
+      "pair": "E-PR-P13:r590-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "1-2-3",
+      "pair": "E-PR-P13:r590-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"1-2-3\" is not exactly representable",
+      "pair": "E-PR-P13:r590-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "1-2-3",
+      "pair": "E-PR-P13:r590-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P14:r595-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P14:r595-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "week, of, notification, of, incorrect, display",
+      "pair": "E-PR-P15:r620-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "week, of, notification, of, incorrect, display",
+      "pair": "E-PR-P15:r620-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P18:r650-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P18:r650-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easily\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P19:r655-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easily\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P19:r655-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P24:r675-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P24:r675-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P24:r675-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P24:r675-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P25:r680-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P25:r680-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P25:r680-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P25:r680-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
+      "pair": "E-PR-P27:r690-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
+      "pair": "E-PR-P27:r690-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"intuitive\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P30:r715-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"intuitive\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P30:r715-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P31:r720-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P31:r720-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P35:r765-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P35:r765-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P35:r770-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P35:r770-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"2-3\" is not exactly representable",
+      "pair": "E-PR-P40:r810-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P40:r810-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"2-3\" is not exactly representable",
+      "pair": "E-PR-P40:r810-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P40:r810-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"simple\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P40:r815-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"simple\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-PR-P40:r815-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P42:r825-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P42:r825-CP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P42:r830-CP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "E-PR-P42:r830-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P48:r955-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P48:r955-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P49:r965-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-PR-P49:r965-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-MW",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-MW",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-PF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-PF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-PS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-PS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-AP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-AF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, zq06371f, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-AF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-PH",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-PH",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-PR",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-PR",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-MW",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-MW",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-PF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-PF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-PS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-PS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-AP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-AP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-AF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "zq1a9b86, document",
+      "pair": "N-ST-SDOC-SSS-5-AF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-PH",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-PH",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-PR",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PR",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PH",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PH",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PR",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PH",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PH",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PR",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PR",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PR",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-MW",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-MW",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-PF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-PF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-PS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-PS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-AP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-AF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, zq77d1ae",
+      "pair": "N-ST-SDOC-SSS-67-AF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-PH",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-PH",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-PR",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-PR",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PH",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PH",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PR",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PR",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-MW",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-MW",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-PF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-PF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-PS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-PS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-AP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-AP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-AF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-AF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-PH",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-PH",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-PR",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-PR",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "N-DO-REQ004-MW",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "N-DO-REQ004-MW",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "N-DO-REQ004-PF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "N-DO-REQ004-PF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "N-DO-REQ004-AP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "N-DO-REQ004-AF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, zqa1bb3b",
+      "pair": "N-DO-REQ004-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P1:r15-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"/4\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P1:r15-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P1:r15-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"/4\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P1:r15-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P1:r15-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"/4\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P1:r15-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P1:r15-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"/4\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P1:r15-AF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "N-PR-P2:r50-MW",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "N-PR-P2:r50-MW",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "N-PR-P2:r50-PF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "N-PR-P2:r50-PF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "N-PR-P2:r50-PS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "N-PR-P2:r50-PS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "N-PR-P2:r50-AP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "N-PR-P2:r50-AP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "N-PR-P2:r50-AF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "zqb3df39, year",
+      "pair": "N-PR-P2:r50-AF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "N-PR-P2:r50-PH",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "N-PR-P2:r50-PH",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "N-PR-P2:r50-PR",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "next, year",
+      "pair": "N-PR-P2:r50-PR",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "N-PR-P3:r85-MW",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "N-PR-P3:r85-MW",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "N-PR-P3:r85-PF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "N-PR-P3:r85-PF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "N-PR-P3:r85-PS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "N-PR-P3:r85-PS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "N-PR-P3:r85-AP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, zq9dd7ae, by, program, administrators/nursing, staff, members",
+      "pair": "N-PR-P3:r85-AP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "N-PR-P3:r85-AF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, zq5cbd80, staff, members",
+      "pair": "N-PR-P3:r85-AF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "N-PR-P3:r85-PH",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "N-PR-P3:r85-PH",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "N-PR-P3:r85-PR",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "specifications, defined, by, computers, used, by, program, administrators/nursing, staff, members",
+      "pair": "N-PR-P3:r85-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P3:r115-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P3:r115-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P3:r115-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P3:r115-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P3:r115-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P3:r115-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P3:r115-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P3:r115-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P3:r115-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P3:r115-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P3:r115-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P3:r115-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P3:r115-PR",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P3:r140-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P3:r140-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P3:r140-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P3:r140-AF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-MW",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-MW",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-PF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-PF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-PS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-PS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-AP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-AP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-AF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-AF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-PH",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-PH",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-PR",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "24x7x365",
+      "pair": "N-PR-P4:r155-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r160-PR",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P4:r165-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r190-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r190-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r190-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r190-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r190-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r190-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r190-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r190-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r190-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r190-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r195-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r195-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r195-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r195-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r195-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P4:r195-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-PH",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-PH",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-PR",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r210-PR",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P5:r210-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r215-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r215-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r215-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r215-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r215-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r215-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r215-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r215-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r215-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r215-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r215-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r215-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r215-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r215-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r220-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r220-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r220-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r220-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r220-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r220-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r220-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r220-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r220-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r220-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r220-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r220-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P5:r220-PR",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P5:r225-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r225-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P5:r225-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r225-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P5:r225-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r225-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P5:r225-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r225-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P5:r225-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r225-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P5:r225-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r225-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P5:r225-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r225-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P5:r225-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r225-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P5:r225-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r225-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P5:r225-PH",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r225-PH",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P5:r225-PH",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r225-PH",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P5:r225-PR",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r225-PR",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"00\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P5:r225-PR",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"approximately\" is not in the T1.5 table",
+      "pair": "N-PR-P5:r225-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r300-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r300-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r300-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r300-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r300-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r300-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r300-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r300-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r300-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r300-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r300-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r300-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r300-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P6:r310-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P7:r355-PR",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r375-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r375-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r375-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r375-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r375-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r375-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r375-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r375-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r375-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r375-PH",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r375-PH",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r375-PR",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r375-PR",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r380-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r380-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r380-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r380-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r380-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r380-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r380-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r380-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r380-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r380-PH",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r380-PH",
+      "side": "b"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r380-PR",
+      "side": "a"
+    },
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-PR-P8:r380-PR",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P8:r385-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P8:r385-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P8:r385-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P8:r385-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r390-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r390-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r390-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r390-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r405-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r405-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r405-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r405-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r420-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r420-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r420-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r420-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r435-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r435-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r435-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r435-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r445-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r445-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r445-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r445-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r460-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r460-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r460-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P8:r460-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r465-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r465-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r465-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r465-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r470-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"x7\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P9:r470-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r470-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"x7\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P9:r470-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r470-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"x7\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P9:r470-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r470-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"x7\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P9:r470-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r475-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r475-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r475-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r475-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r480-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r480-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r480-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r480-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r485-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r485-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r485-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P9:r485-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P10:r500-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P10:r500-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P10:r500-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P10:r500-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P10:r500-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P10:r500-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P10:r500-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P10:r500-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P10:r500-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P10:r500-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P10:r500-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P10:r500-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P10:r500-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P11:r550-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r560-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r560-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r560-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r560-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r560-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r560-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r560-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r560-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r560-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r560-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r560-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r560-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r560-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r565-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r565-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r565-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r565-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r565-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r565-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r565-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r565-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r565-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r565-PH",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r565-PH",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r565-PR",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r565-PR",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"robust\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P12:r565-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P12:r575-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P13:r580-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P13:r580-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P13:r580-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P13:r580-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P13:r580-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P13:r580-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P13:r580-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P13:r580-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P13:r580-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P13:r580-PR",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"1-2-3\" is not exactly representable",
+      "pair": "N-PR-P13:r590-PS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "1-2-3",
+      "pair": "N-PR-P13:r590-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"1-2-3\" is not exactly representable",
+      "pair": "N-PR-P13:r590-PS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "1-2-3",
+      "pair": "N-PR-P13:r590-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"1-2-3\" is not exactly representable",
+      "pair": "N-PR-P13:r590-AP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "1-2-3",
+      "pair": "N-PR-P13:r590-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"1-2-3\" is not exactly representable",
+      "pair": "N-PR-P13:r590-AP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "1-2-3",
+      "pair": "N-PR-P13:r590-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"1-2-3\" is not exactly representable",
+      "pair": "N-PR-P13:r590-AF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "1-2-3",
+      "pair": "N-PR-P13:r590-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"1-2-3\" is not exactly representable",
+      "pair": "N-PR-P13:r590-AF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "1-2-3",
+      "pair": "N-PR-P13:r590-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"1-2-3\" is not exactly representable",
+      "pair": "N-PR-P13:r590-PH",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "1-2-3",
+      "pair": "N-PR-P13:r590-PH",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"1-2-3\" is not exactly representable",
+      "pair": "N-PR-P13:r590-PH",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "1-2-3",
+      "pair": "N-PR-P13:r590-PH",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"1-2-3\" is not exactly representable",
+      "pair": "N-PR-P13:r590-PR",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "1-2-3",
+      "pair": "N-PR-P13:r590-PR",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"1-2-3\" is not exactly representable",
+      "pair": "N-PR-P13:r590-PR",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "1-2-3",
+      "pair": "N-PR-P13:r590-PR",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P14:r595-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P14:r595-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P14:r595-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P14:r595-AF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "week, of, notification, of, incorrect, display",
+      "pair": "N-PR-P15:r620-AP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "week, of, notification, of, incorrect, display",
+      "pair": "N-PR-P15:r620-AP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "week, of, notification, of, incorrect, display",
+      "pair": "N-PR-P15:r620-AF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "week, of, zqa4990b, of, incorrect, display",
+      "pair": "N-PR-P15:r620-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P18:r650-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P18:r650-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P18:r650-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P18:r650-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easily\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P19:r655-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easily\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P19:r655-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easily\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P19:r655-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easily\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P19:r655-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easily\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P19:r655-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easily\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P19:r655-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easily\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P19:r655-PH",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easily\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P19:r655-PH",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easily\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P19:r655-PR",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easily\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P19:r655-PR",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P24:r675-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P24:r675-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P24:r675-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P24:r675-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P24:r675-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P24:r675-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P24:r675-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P24:r675-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P25:r680-PR",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P27:r690-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P27:r690-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P27:r690-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P27:r690-AF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "zq3023e2, bits",
+      "pair": "N-PR-P27:r690-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P27:r690-PH",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P27:r690-PH",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P27:r690-PR",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
+      "pair": "N-PR-P27:r690-PR",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'may not'/'may never' is ambiguous (prohibition vs permission to refrain); claim stays unstructured",
+      "pair": "N-PR-P27:r695-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"intuitive\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P30:r715-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"intuitive\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P30:r715-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"intuitive\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P30:r715-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"intuitive\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P30:r715-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P31:r720-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P31:r720-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P31:r720-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P35:r765-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P35:r765-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P35:r765-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P35:r765-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P35:r770-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P35:r770-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P35:r770-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P35:r770-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"2-3\" is not exactly representable",
+      "pair": "N-PR-P40:r810-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P40:r810-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"2-3\" is not exactly representable",
+      "pair": "N-PR-P40:r810-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P40:r810-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"2-3\" is not exactly representable",
+      "pair": "N-PR-P40:r810-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P40:r810-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_quantity",
+      "detail": "number \"2-3\" is not exactly representable",
+      "pair": "N-PR-P40:r810-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P40:r810-AF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"simple\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P40:r815-AP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"simple\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P40:r815-AP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"simple\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P40:r815-AF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"simple\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-PR-P40:r815-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P42:r825-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P42:r825-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P42:r825-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P42:r825-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P42:r830-AP",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P42:r830-AP",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P42:r830-AF",
+      "side": "a"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'will' has no deontic reading we can resolve; claim stays unstructured",
+      "pair": "N-PR-P42:r830-AF",
+      "side": "b"
+    },
+    {
+      "code": "ambiguous_modality",
+      "detail": "'may not'/'may never' is ambiguous (prohibition vs permission to refrain); claim stays unstructured",
+      "pair": "N-PR-P46:r945-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P48:r955-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P48:r955-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P48:r955-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P49:r965-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P49:r965-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P49:r965-AP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P49:r965-AP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P49:r965-AF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P49:r965-AF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P49:r965-PH",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P49:r965-PH",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P49:r965-PR",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-PR-P49:r965-PR",
+      "side": "b"
+    }
+  ],
+  "pairs_total": 2094,
+  "rules_v": 7,
+  "schema": "req.bench.result/1",
+  "tier2": {
+    "candidates": 110,
+    "collapsed_at_tier1": 83,
+    "ids": [
+      "E-ST-SDOC-SSS-61-MS",
+      "E-ST-SDOC-SSS-61-CP",
+      "E-ST-SDOC-SSS-5-MS",
+      "E-ST-SDOC-SSS-5-CP",
+      "E-ST-SDOC-SSS-49-MS",
+      "E-ST-SDOC-SSS-49-CP",
+      "E-ST-SDOC-SSS-72-MS",
+      "E-ST-SDOC-SSS-72-CP",
+      "E-ST-SDOC-SSS-79-MS",
+      "E-ST-SDOC-SSS-79-CP",
+      "E-ST-SDOC-SSS-80-MS",
+      "E-ST-SDOC-SSS-80-CP",
+      "E-ST-SDOC-SSS-86-MS",
+      "E-ST-SDOC-SSS-86-CP",
+      "E-ST-SDOC-SSS-67-MS",
+      "E-ST-SDOC-SSS-67-CP",
+      "E-ST-SDOC-SSS-77-MS",
+      "E-ST-SDOC-SSS-77-CP",
+      "E-ST-SDOC-SSS-78-MS",
+      "E-ST-SDOC-SSS-78-CP",
+      "E-ST-SDOC-SSS-78-NG",
+      "E-DO-REQ002-CP",
+      "E-DO-REQ004-EM",
+      "E-DO-REQ004-MS",
+      "E-DO-REQ004-CP",
+      "E-DO-REQ006-CP",
+      "E-DO-REQ010-CP",
+      "E-DO-REQ018-CP",
+      "E-DO-REQ019-CP",
+      "E-PR-P1:r15-CP",
+      "E-PR-P2:r50-MS",
+      "E-PR-P2:r50-CP",
+      "E-PR-P2:r50-NG",
+      "E-PR-P3:r85-MS",
+      "E-PR-P3:r85-CP",
+      "E-PR-P3:r115-MS",
+      "E-PR-P3:r115-CP",
+      "E-PR-P3:r140-CP",
+      "E-PR-P4:r155-MS",
+      "E-PR-P4:r155-CP",
+      "E-PR-P4:r160-MS",
+      "E-PR-P4:r160-CP",
+      "E-PR-P4:r190-CP",
+      "E-PR-P4:r195-CP",
+      "E-PR-P5:r210-MS",
+      "E-PR-P5:r210-CP",
+      "E-PR-P5:r215-MS",
+      "E-PR-P5:r215-CP",
+      "E-PR-P5:r220-CP",
+      "E-PR-P5:r230-CP",
+      "E-PR-P6:r300-MS",
+      "E-PR-P6:r300-CP",
+      "E-PR-P6:r310-MS",
+      "E-PR-P6:r310-CP",
+      "E-PR-P7:r355-MS",
+      "E-PR-P7:r355-CP",
+      "E-PR-P8:r385-CP",
+      "E-PR-P8:r390-CP",
+      "E-PR-P8:r405-CP",
+      "E-PR-P8:r420-CP",
+      "E-PR-P8:r425-CP",
+      "E-PR-P8:r435-CP",
+      "E-PR-P8:r445-CP",
+      "E-PR-P8:r460-CP",
+      "E-PR-P9:r465-CP",
+      "E-PR-P9:r470-CP",
+      "E-PR-P9:r475-CP",
+      "E-PR-P9:r480-CP",
+      "E-PR-P9:r485-CP",
+      "E-PR-P10:r500-MS",
+      "E-PR-P10:r500-CP",
+      "E-PR-P11:r545-CP",
+      "E-PR-P11:r550-MS",
+      "E-PR-P11:r550-CP",
+      "E-PR-P12:r560-MS",
+      "E-PR-P12:r560-CP",
+      "E-PR-P12:r565-MS",
+      "E-PR-P12:r565-CP",
+      "E-PR-P12:r575-MS",
+      "E-PR-P12:r575-CP",
+      "E-PR-P13:r580-CP",
+      "E-PR-P13:r590-CP",
+      "E-PR-P14:r595-CP",
+      "E-PR-P15:r620-CP",
+      "E-PR-P18:r650-CP",
+      "E-PR-P19:r655-CP",
+      "E-PR-P24:r675-CP",
+      "E-PR-P25:r680-MS",
+      "E-PR-P25:r680-CP",
+      "E-PR-P30:r705-CP",
+      "E-PR-P30:r710-CP",
+      "E-PR-P30:r715-CP",
+      "E-PR-P31:r720-CP",
+      "E-PR-P32:r730-CP",
+      "E-PR-P34:r755-CP",
+      "E-PR-P34:r760-CP",
+      "E-PR-P35:r765-CP",
+      "E-PR-P35:r770-CP",
+      "E-PR-P37:r780-CP",
+      "E-PR-P38:r785-CP",
+      "E-PR-P38:r800-CP",
+      "E-PR-P38:r805-CP",
+      "E-PR-P40:r810-CP",
+      "E-PR-P40:r815-CP",
+      "E-PR-P42:r820-CP",
+      "E-PR-P42:r825-CP",
+      "E-PR-P42:r830-CP",
+      "E-PR-P45:r870-CP",
+      "E-PR-P48:r955-CP",
+      "E-PR-P49:r965-CP"
+    ],
+    "note": "pairs needing the provider funnel; excluded from the FSR headline by design"
+  },
+  "verdict": "PASS"
+}

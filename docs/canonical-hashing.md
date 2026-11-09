@@ -22,7 +22,7 @@ is its `claim_id`: docs/adr/0020-the-address-is-a-meaning-fingerprint.md, accept
 | Subject (via the registry) | Rationale (source, dated alternatives, assumptions) |
 | Attribute / verb-object | Evidence links |
 | Value(s) + unit(s), exact | Decisions, approvals, dissent |
-| Comparator {LT, LE, EQ, GE, GT, NE} | Author, timestamps, status |
+| Comparator {LT, LE, EQ, GE, GT, NE, IN} | Author, timestamps, status |
 | Conditions[] / exceptions / temporal / quantifier | Variant *selections* (queries) |
 
 The claim's own applicability predicate **enters** identity (it is part of what is
@@ -64,6 +64,22 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
     16 false positives on real external prose. Precision costs nothing here — an
     unresolved comparator is never guessed anyway, so the claim cannot collapse either
     way; only the lint's credibility was at stake.
+  - **`IN`** (rules v7, ADR 0030) — an **enumerated** "one of …" is a set, not a bound.
+    The members are lower-cased and sorted, and ride in the `value` slot as a JSON array, so
+    no other claim's bytes move. Four shapes read, and only these: a bracketed list
+    (`one of {a, b, c}`), a colon header (`one of the following: a, b or c`), a counted
+    header (`one of the four sources, a, b, c or d`) and a bare list with its `or`
+    (`one of a, b or c`). A stated count must equal the members, or the claim is unstructured
+    with `membership_count_mismatch` (a wrong count is a dropped member). A member that holds a
+    conjunction, a duplicate member, or fewer than two members is `membership_unclear` and
+    unstructured. The noun the list is about ("standards") and any clause after the last member
+    ("and no other standard") are identity, in `qualifier`, joined with ` | `; the article, the
+    count and "following" are not. A "one of" with no enumeration (`one of the target market
+    countries`) parses exactly as before — no delimiter, no set — and still derives the
+    quantity `1`, which is a known wrinkle left alone because the near-miss corpora hold dozens
+    of that shape and it has never merged anything. Direction: a member removed narrows, added
+    widens (swapped, or a set against a non-set, is `scope_divergence`); for a prohibition the
+    set is what is forbidden, so the senses swap.
   - a **qualitative predicate** ("friction-free", "seamless") cannot be canonicalized
     into an operator and a value → lint `untestable_qualifier`, unstructured. This
     *derives* what claim authors previously had to declare by hand (REQ-0007's
@@ -115,7 +131,8 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
   ``{action, applicability, conditions, exception, modality, operator, qualifier, raw,
   subject, temporal, unstructured, unit, value}``: every key always present (null when
   unset), **valid JSON with sorted keys**, no insignificant whitespace, canonical number
-  format → canonical form bytes →
+  format (``value`` is a decimal string, or — for the operator ``IN`` only — a sorted array of
+  member strings) → canonical form bytes →
   ``address = sha256("req.claim.v1\0" || canonical_form_bytes)``.
   - **`applicability` is an input, not a derivation.** The statement carries no formal
     selector syntax yet (ADR 0003 defers it), so the form takes the sorted authored list.
@@ -295,6 +312,22 @@ cannot read as a clean gate. A definite defect still outranks the open question,
 as `req gate` lets Fail outrank Unverifiable.
 
 #### Recorded runs (append-only)
+
+- **Rules v7** — the `IN` operator (T1.5, ADR 0030; issue #17). Found on an adopter's statements
+  ("one of the four sources, …"), which parsed `value "1"` with the members as free text in the
+  qualifier: reordering them moved the address and dropping one was only `scope_divergence`.
+  Per corpus, never pooled, against the recorded v6 numbers:
+  - **parity** — 25 pairs (the eight new ones are hand-written from the spec: two equivalent,
+    six not-equivalent): FMR 0/15, FSR 0/7, 2 structurally unverifiable (was 17 pairs, 0/9, 0/5).
+  - **external-v1/v2/v3/v4** and the **direction gold set** — every count is identical to v6
+    (FMR 0/160, 0/227, 0/625, 0/1595; FSR 0/150, 0/150, 0/389, 0/389; direction hard gate PASS,
+    0 dangerous confusions, 1012 of 1016 classified correct): none of those corpora holds an
+    enumerated "one of", so no pair moved. The new rule therefore has teeth only in the parity
+    pairs and `tests/membership.rs`; it is not an external result.
+  - **dogfood** — no claim holds an enumerated "one of": `req canon` 0 flags, all 18 attested
+    hashes of the re-emitted manifest equal the signed ones; only `rules_v` 6 → 7 differs. The
+    Baseline therefore needs the owner's re-signature and nothing else (no re-canonicalization
+    candidate).
 
 - **Dogfood split (M4-1), rules v6** — no rule moved; REQ-0007's second obligation was split
   into the new REQ-0023 (owner ruling 2026-11-04) and REQ-0015's rationale assumption was
