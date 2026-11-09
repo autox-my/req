@@ -7,11 +7,15 @@ side is `examples/install-req.sh` and [`docs/adopting.md`](adopting.md) § *Inst
 cuts the release. Nothing here changes req: the binary gains no command and no network client, and nothing is
 released until a person asks.
 
-**Status.** `.github/workflows/release.yml` has been dispatched once, on 2026-11-09 for `ec87808`
-(<https://github.com/autox-my/req/actions/runs/42568766890>): both jobs succeeded and the release `rev-ec87808`
-holds the three Linux assets (the tarball's SHA-256 matches the `.sha256` asset). `examples/install-req.sh` was then
-run against it on Ubuntu 22.04, 24.04 and latest runners (the floor note below). Not yet exercised: the
-no-overwrite refusal (a second dispatch for the same rev) and the macOS path. `tests/release_workflow.rs` pins the workflow's text and shape (the trigger, the
+**Status.** `.github/workflows/release.yml` has been dispatched twice, on 2026-11-09: for `ec87808`
+(<https://github.com/autox-my/req/actions/runs/42568766890>) and for `6b74f51`
+(<https://github.com/autox-my/req/actions/runs/42622634900>). Both runs succeeded, and each release holds the three
+Linux assets (the tarball's SHA-256 matches the `.sha256` asset). `rev-6b74f51` also holds the three macOS assets, built
+with `scripts/build-release.sh` on the owner's machine and attached with the upload script of the macOS path below (its
+first use). `examples/install-req.sh` was run against `rev-ec87808` on Ubuntu 22.04, 24.04 and latest runners (the floor
+note below) and against `rev-6b74f51`'s macOS tarball on one macOS arm64 machine. Not yet exercised: the
+no-overwrite refusal (a second dispatch for the same rev) and a macOS binary on a second machine. Intel Mac and Windows
+are not built; a Windows adopter runs the Linux tarball under WSL2 (`docs/adopting.md`, *Windows*). `tests/release_workflow.rs` pins the workflow's text and shape (the trigger, the
 permissions, the no-overwrite rule). The workflow fails closed, so a misconfiguration is a red run, never a
 half-published release you cannot tell from a good one.
 

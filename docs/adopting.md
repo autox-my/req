@@ -14,17 +14,22 @@ a build of the revision that introduced it.
 
 req is deliberately not published to crates.io (`publish = false`), so **the rev is the provenance**: you pin a
 commit, never a version number. Two ways honour that: a **prebuilt, checksummed binary** for the
-rev (below; one release exists so far) and a **build from source** at the rev ([From source](#from-source)).
+rev (below; two releases exist so far) and a **build from source** at the rev ([From source](#from-source)).
 
-> **Status: one release exists, `rev-ec87808`, for Linux x86_64 only.** There is no macOS tarball and no release
-> for any other rev, so for anything else use [From source](#from-source). That release was built on a runner
-> whose libc is glibc 2.43 (its `.build-info` says so); read that line before you rely on it on an older
-> distribution. `install-req.sh` was run against it on GitHub-hosted Ubuntu 22.04 (glibc 2.35), 24.04 and the latest
-> image (2026-11-09): the right pin installed, `req --version` said `built from ec87808`, and `req init` and
-> `req canon` exited 0; a wrong pin was refused with nothing installed (seen on 24.04 and latest). On 22.04 the
-> binary ran but its loader printed ``weak version `GLIBC_2.39' not found`` on stderr. That run did not yet retry:
-> a 504 from GitHub's download host (seen once on 22.04) was a refusal. The installer now retries a transient
-> server error three times on the same URL; that change is tested against a local server, not yet against GitHub.
+> **Status: two releases exist.** `rev-ec87808` (Linux x86_64 only) and `rev-6b74f51` (Linux x86_64 and macOS arm64,
+> Apple silicon only; no Intel Mac, no native Windows: see [Windows](#windows)). For any other rev or machine use
+> [From source](#from-source). Both Linux tarballs were built on a runner whose libc is glibc 2.43 (each `.build-info`
+> says so); read that line before you rely on one on an older distribution. The macOS tarball was built on the owner's
+> machine, not on a runner (`docs/releasing.md`). `install-req.sh` was run against `rev-ec87808` on GitHub-hosted
+> Ubuntu 22.04 (glibc 2.35), 24.04 and the latest image (2026-11-09): the right pin installed, `req --version` said
+> `built from ec87808`, and `req init` and `req canon` exited 0; a wrong pin was refused with nothing installed (seen
+> on 24.04 and latest). On 22.04 the binary ran but its loader printed ``weak version `GLIBC_2.39' not found`` on
+> stderr. That run did not yet retry: a 504 from GitHub's download host (seen once on 22.04) was a refusal. The
+> installer now retries a transient server error three times on the same URL; that change is tested against a local
+> server, not yet against GitHub. It was run once against `rev-6b74f51`'s macOS tarball, on one macOS arm64 machine
+> (macOS 27.2, 2026-11-09, anonymous download, a clean environment): the pin installed, and `req --version` said
+> `built from 6b74f51` and `rules_v 7`. That rev's Linux tarball was checked against its `.sha256` but has not been
+> installed through the script, and the macOS binary has not been run on a second Mac.
 
 ### Prebuilt
 
@@ -71,9 +76,9 @@ surface. Choosing the source install is a separate act of yours.
 
 A public release replaces the SSH key and the toolchain for *req* and asks for no credential. Only a
 private fork sets a token: it travels in an `Authorization` header (read from stdin, never on a command
-line, never printed); keep it in a CI secret, not in the repository. This path was exercised against a
-local server by `tests/install_req.rs`; it has not yet been run against a published release, and the
-rev and hashes it pins exist only after the owner cuts one.
+line, never printed); keep it in a CI secret, not in the repository. The public path was exercised against a
+local server by `tests/install_req.rs` and against the published releases as the status note above says; the
+private-fork token path has only run against the local server.
 
 ### From source
 
@@ -113,6 +118,28 @@ below runs offline against the corpus (REQ-0012).
 Clone req once at the rev you want and install from the clone —
 `cargo install --path . --locked`. req's core has no network dependency and providers are a local
 process boundary (REQ-0012), so a corpus, a gate and a Baseline verification all work offline.
+
+### Windows
+
+There is no native Windows build: no tarball, no PowerShell installer, and the install script, the CI snippets and the
+gate (`scripts/check.sh`) are `sh`/`bash`. On Windows, run req inside **WSL2** and install the Linux tarball there
+(`install-req.sh` supports Linux x86_64). We have not run req on Windows, WSL2 included; the Linux binary is expected
+to behave as on any glibc Linux, and that is an expectation, not a result.
+
+Mind line endings in your repository. A Baseline is signed over the **exact bytes** of its manifest, and a committed
+projection is compared byte for byte (`req render --check`). A Windows checkout with `core.autocrlf=true` rewrites text
+files to CRLF, and a CRLF manifest or projection fails verification on a clean tree. Pin LF for them in your own
+`.gitattributes`, whichever machine writes them:
+
+```gitattributes
+baselines/*.json     text eol=lf
+baselines/*.minisig  text eol=lf
+# each path listed in .req/projections, for example:
+docs/spec.md         text eol=lf
+```
+
+(req's own repository pins LF per path for the files it compares byte for byte, not globally; the decision log's chain
+and a claim's address are computed from parsed content, so a CRLF there is not a byte-for-byte hazard.)
 
 ## Start a corpus
 
