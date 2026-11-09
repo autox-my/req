@@ -6,6 +6,9 @@
 //!   req [--root <dir>] compare A.yml B.yml — what kind of change is this between two claims?
 //!   req [--root <dir>] diff --base <rev> [--head <rev>] [--fail-on <classes>] [--format text|json]
 //!                                          — what changed in meaning between two revisions (ADR 0026)
+//!   req [--root <dir>] pin --verify <file> | --drift <file> --against <rev>
+//!                                          — the corpus is exactly the commit a consumer pinned, or how
+//!                                            it moved since (ADR 0033)
 //!   req [--root <dir>] select k=v [...]    — which claims apply in this variant? (tri-state)
 //!   req [--root <dir>] render [--format text|json] k=v [...]
 //!                                          — the spec view for that selection
@@ -44,8 +47,8 @@
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
 use req::{
-    audit, baseline, bench, canon, check, compare, decision, diff, gate, impact, init, propose,
-    root, select, view,
+    audit, baseline, bench, canon, check, compare, decision, diff, gate, impact, init, pin,
+    propose, root, select, view,
 };
 use std::path::Path;
 use std::process::exit;
@@ -60,6 +63,8 @@ usage: req [--root <dir>] <command> [args]
   canon                           the derived parse and each pin's verdict (diagnostics)
   compare <a.yml> <b.yml>         what kind of change is this between two claims?
   diff --base <rev> [...]         what changed in meaning between two revisions (ADR 0026)
+  pin --verify <file>             the corpus is exactly the commit a consumer pinned (ADR 0033)
+  pin --drift <file> [...]        how the corpus moved since the pin, per claim and direction
   select | render | trace | gate k=v [...]
                                   the variant projections and the release gate
   check [--test-report <file>]    may this repository ship: every declared variant and projection,
@@ -210,6 +215,38 @@ classification is for a human to ratify, never an approval.
 exit: 0 classified, 3 UNVERIFIABLE (a side that will not load, or that declares a file
 format this build does not write, so its parse is NOT JUDGED; a pair with no structured form
 to compare), 2 usage.
+
+`docs/adopting.md` for the loop.";
+
+const PIN_HELP: &str = "\
+usage: req pin --verify <file>
+       req pin --drift <file> --against <rev>
+
+A repository that is gated against a corpus kept elsewhere pins the commit it means. The pin file is
+two lines, `repo: <label>` (optional, printed as given) and `rev: <40 hex>` (the full commit SHA of
+the corpus; a short SHA is ambiguous and a branch or tag moves); blank lines and `#` comments are
+allowed and anything else is refused. `--root` (or `REQ_ROOT`) names the corpus checkout.
+
+`--verify` says whether the corpus at the root is exactly that commit: `HEAD` equals the pin, and
+`claims/` and `aliases/` hold no uncommitted or untracked change (a gate would judge something other
+than the pin). It prints `corpus pinned: <repo> @ <sha>` first, so a gate log names the policy it
+judged; run it before `req gate`. req never fetches: the consumer's CI gets the commit into the
+checkout (`git fetch`, `git checkout <sha>`), and a pinned commit that is not there is UNVERIFIABLE.
+
+`--drift` is `req diff --base <pin> --head <rev>` in the corpus's repository, introduced by a
+`pin drift:` line: each claim that changed gets its class (added, removed, weakened, tightened,
+reshaped, …) and flags, and identical claims are counted. It is a description, never a verdict, and
+it does not need the checkout to be at the pin; `<rev>` is any revision of that repository
+(`origin/main` after a `git fetch`). See `req diff --help` for the classes and what is read.
+
+`git` is run as a local process with every `GIT_*` redirection, user and system configuration
+removed; nothing is fetched and no hook runs.
+
+exit: 0 verified, or a drift report was produced; 1 only with `--verify`, when the corpus is not
+the pinned commit (ahead, behind or diverged) or `claims/` or `aliases/` has an uncommitted change;
+3 UNVERIFIABLE (the pin file is unreadable or malformed, the pinned commit is not in the checkout or
+is not a commit, `git` is missing or failing, the corpus is not inside a git work tree, or a drift
+revision does not resolve or a side does not load); 2 usage.
 
 `docs/adopting.md` for the loop.";
 
@@ -623,6 +660,11 @@ const COMMANDS: &[Command] = &[
         name: "diff",
         run: |args, corpus| diff::run(args, corpus),
         help: DIFF_HELP,
+    },
+    Command {
+        name: "pin",
+        run: |args, corpus| pin::run(args, corpus),
+        help: PIN_HELP,
     },
     Command {
         name: "canon",
