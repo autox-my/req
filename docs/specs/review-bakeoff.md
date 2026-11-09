@@ -103,8 +103,8 @@ Per arm, over the cases it completed:
 - **Selection bias favours OCR on recall.** Most ground truth was found by OCR-family reviews (the commit
   messages say so; each case records `finder`). OCR's recall is therefore an upper bound and a challenger's a
   lower one; the report gives recall split by `finder` where the numbers allow.
-- One model, one repository, one run per cell: run-to-run variance is **not** measured by the main table. A
-  second phase repeats three cases twice per arm.
+- One model, one repository, one run per cell: run-to-run variance is **not** measured. (A second phase that
+  repeated three cases twice per arm was planned and dropped: the owner asked for a verdict, not more measurement.)
 - The judge is an LLM. A random 20 % of its labels is re-read by a human before any number is repeated.
 - The earlier reviews that produced the ground truth ran on other models and an older rule file; today's
   `review/rule.json` is used for all `O1` runs.

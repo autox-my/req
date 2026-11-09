@@ -7,6 +7,15 @@ requests of this repository. Data to recompute every number below: `docs/researc
 **Status of the numbers: unaudited.** The labels are one LLM judge's (Opus, blind to the tool); the spec requires a human to
 re-read a random 20 % before any figure is repeated, and that has not happened. Read this as a lead, not a finding.
 
+## Verdict
+
+**Keep OCR as the by-hand reviewer; adopt nothing new.** PR-Agent is not added to the repository: no pin, no ADR, no
+workflow. It finds some real defects OCR misses, cheaply, but at a higher noise rate and with a second toolchain to
+keep (a Python 3.12 environment and a project that describes itself as a community-maintained legacy of Qodo's product);
+that gain does not pay for either. A maintainer who wants a second opinion on a risky change can run `pr-agent` by hand.
+ADR 0029 §7 stands unchanged: until a review workflow is chosen for GitHub, a human reads every pull request. No further
+measurement is planned.
+
 ## Result in five lines
 
 1. **OCR stays the by-hand reviewer.** Neither PR-Agent arm meets the replacement rule: their recall of the defects reviewers
@@ -70,8 +79,8 @@ mean anything (spec, rule 4).
 
 ## What this does not show
 
-- **One model, one repository, one run per cell.** Run-to-run variance is unmeasured (the spec's phase 2, three cases twice, is
-  not done). A different model could move PR-Agent a lot: `deepseek-v4.1-flash` is not what it is tuned for, and on `f117`
+- **One model, one repository, one run per cell.** Run-to-run variance is unmeasured (the spec's phase 2 was dropped by decision; no further
+  measurement is planned). A different model could move PR-Agent a lot: `deepseek-v4.1-flash` is not what it is tuned for, and on `f117`
   it exhausted its output budget.
 - **The judge is an LLM, blind to the arm but not to style.** It flagged its own uncertain calls (for example whether a stale
   doc comment is `real` or `minor`, and a few ground-truth items it thought overstated or weak). The human re-read is pending.
