@@ -760,3 +760,69 @@ fn agents_md_points_at_the_runbook() {
         "AGENTS.md: the pointer to docs/releasing.md is one bullet line: `{line}`"
     );
 }
+
+#[test]
+fn the_release_notes_are_made_in_the_build_job_and_only_read_by_the_publishing_job() {
+    let text = code(RELEASE);
+    let build = job_block(&text, "build");
+    let publish = job_block(&text, "publish");
+    // Made by main's script, in the job that holds no token and reads history (ADR 0031).
+    require(
+        RELEASE,
+        &build,
+        "scripts/release-notes.sh",
+        "the notes are written by one tested script in the read-only build job, not by a step of the workflow",
+    );
+    require(
+        RELEASE,
+        &build,
+        "name: release-notes",
+        "the notes travel as their own artifact, apart from the assets the publish job re-checks",
+    );
+    // Before the build script, so notes that cannot be written fail the release before anything is built.
+    let notes_at = build.find("scripts/release-notes.sh").unwrap_or(usize::MAX);
+    let build_at = build.find("scripts/build-release.sh").unwrap_or(0);
+    assert!(
+        notes_at < build_at,
+        "{RELEASE}: the notes step must come before the build script"
+    );
+    // The publishing job reads a file and hands it to `gh`; it runs no script and writes no notes of its own.
+    require(
+        RELEASE,
+        &publish,
+        "name: release-notes",
+        "the publishing job downloads the notes artifact",
+    );
+    require(
+        RELEASE,
+        &publish,
+        "--notes-file \"$NOTES_FILE\"",
+        "the release is created with the notes file",
+    );
+    forbid(
+        RELEASE,
+        &publish,
+        "release-notes.sh",
+        "the publishing job holds the token and runs no script",
+    );
+    for spelling in [
+        "--generate-notes",
+        "--notes \"",
+        "--notes '",
+        "--notes-start-tag",
+    ] {
+        forbid(
+            RELEASE,
+            &text,
+            spelling,
+            "notes come from the tested script only: GitHub's generator would drop the identity block, and an inline string would be a second source",
+        );
+    }
+    // A missing or empty file is a refusal before the first write.
+    require(
+        RELEASE,
+        &publish,
+        "refusing to publish without them",
+        "the publishing job refuses a release whose notes did not arrive",
+    );
+}
