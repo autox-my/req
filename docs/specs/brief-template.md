@@ -23,8 +23,8 @@ Rules:
   second source of truth.
 - `NOTE` is for facts the spec cannot know: a reviewer's finding, a changed base commit.
 - The report contract is a link, never an inlined schema.
-- A worker that writes pushes its branch and opens a pull request (`POST
-  /api/v1/repos/fdx/req/pulls`); it never pushes `main`, and the human merges. The envelope's
+- A worker that writes pushes its branch and opens a pull request (`gh pr
+  create` against `autox-my/req`); it never pushes `main`, and the human merges. The envelope's
   `pr` carries the URL.
 - A reviewer makes no edits, no commits and no worktree; its envelope's `task_id` contains
   `-review-`, `files_changed` lists what it flagged (may be empty), `committed` is `false`, and
