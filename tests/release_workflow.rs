@@ -358,6 +358,44 @@ fn every_download_of_a_tool_in_ci_retries_a_transient_error_and_still_checks_the
 }
 
 #[test]
+fn the_nextest_download_falls_back_to_the_api_asset_route_and_is_still_hash_checked() {
+    // 2026-11-09: `github.com/.../releases/download/...` answered 504 for this asset on every try
+    // (reproduced from outside CI) while GitHub's status page was green, and the same asset came
+    // down intact through the API asset route. The fallback is the same file, so it changes where
+    // the bytes come from and nothing about what is accepted: the pin below still decides.
+    let text = code(CI);
+    require(
+        CI,
+        &text,
+        "https://api.github.com/repos/nextest-rs/nextest/releases/assets/660814555",
+        "the fallback names the pinned asset by id, so a name cannot be re-pointed",
+    );
+    require(
+        CI,
+        &text,
+        "Accept: application/octet-stream",
+        "the API asset route serves the bytes only for this Accept header",
+    );
+    let primary = text
+        .find("releases/download/cargo-nextest")
+        .expect("primary url");
+    let fallback = text
+        .find("releases/assets/660814555")
+        .expect("fallback url");
+    let check = text.find("sha256sum -c -").expect("hash check");
+    assert!(
+        primary < fallback && fallback < check,
+        "{CI}: the primary is tried first and the hash is checked after BOTH routes, never between"
+    );
+    forbid(
+        CI,
+        &text,
+        "Authorization",
+        "the fallback is anonymous: CI does not use the token (ci_is_read_only_and_references_no_secret)",
+    );
+}
+
+#[test]
 fn no_step_turns_a_failure_into_a_pass() {
     for rel in [RELEASE, CI] {
         let text = code(rel);
