@@ -171,8 +171,16 @@ jobs:
           TARGET=x86_64-unknown-linux-gnu
           SHA256=32d1d8c0567b7a80bee2bad8bb09125c846da96bc009b2de11ec08557290c770
           url="https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-${VERSION}/cargo-nextest-${VERSION}-${TARGET}.tar.gz"
+          # The same asset by id through the API route: on 2026-11-09 the `releases/download` URL
+          # answered 504 on every try while this route served the intact file. Anonymous on
+          # purpose (CI uses no token); it only runs when the first route has failed, and the
+          # SHA-256 below decides what is accepted whichever route the bytes came by.
+          api="https://api.github.com/repos/nextest-rs/nextest/releases/assets/660814555"
           tmp="$(mktemp -d)"
-          curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -fsSL "$url" -o "$tmp/nextest.tar.gz"
+          if ! curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -fsSL "$url" -o "$tmp/nextest.tar.gz"; then
+            echo "the release URL failed; trying the API asset route for the same pinned file"
+            curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -fsSL -H "Accept: application/octet-stream" "$api" -o "$tmp/nextest.tar.gz"
+          fi
           echo "${SHA256}  $tmp/nextest.tar.gz" | sha256sum -c -
           tar -xzf "$tmp/nextest.tar.gz" -C "$tmp"
           # One root-level member (`cargo-nextest`, 0755); absent = a layout change, named here.
