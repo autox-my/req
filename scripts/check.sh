@@ -526,6 +526,16 @@ else
   skip "python3 or tools/orchestration/validate_envelope.py missing: cannot self-check the envelope validator"
 fi
 
+# The review bake-off harness's pure half (tools/review/bakeoff/bakeoff.py, docs/specs/review-bakeoff.md):
+# the three result normalizers (a failed OCR run is never "no findings"), the blind packet, the scoring
+# join and the command lines (no secret in argv). No network, no model and no `req`, so `--fast` keeps it.
+# A missing python3 or script prints SKIP, never PASS.
+if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/review/bakeoff/bakeoff.py" ] && command -v python3 >/dev/null 2>&1; }; then
+  run python3 -I "$PWD/tools/review/bakeoff/bakeoff.py" --self-check
+else
+  skip "python3 or tools/review/bakeoff/bakeoff.py missing: cannot self-check the review bake-off harness"
+fi
+
 # The external-corpus generator's pure half (tools/corpus/build_external.py): the registry-alias
 # digest (order-sensitive, alias-list only), the per-class counter arithmetic and the header
 # sentence. No network, no corpus, no `req`, so `--fast` keeps it. A missing python3 or script
