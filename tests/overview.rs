@@ -103,8 +103,12 @@ fn the_overview_page_carries_no_invented_metric() {
         );
     }
     assert!(
-        page.contains("not yet been tested against outside corpora"),
-        "the page must say the bet is measured on req's own corpora only"
+        page.contains("independent human-written paraphrase is not yet measured"),
+        "the page must state the bound of the measurement (README \"The bet\")"
+    );
+    assert!(
+        !page.contains("not yet been tested against outside corpora"),
+        "the external families (external-v1 to external-v4) exist: the page must not deny them"
     );
 }
 
