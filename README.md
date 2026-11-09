@@ -45,6 +45,7 @@ identity ([ADR 0020](docs/adr/0020-the-address-is-a-meaning-fingerprint.md), acc
 | `req init` | start a corpus here — a starter claim whose pins hold, its registry, and the authoring README |
 | `req canon` | what each claim's statement derives, and whether each of its pins holds |
 | `req bench` | does the fingerprint hold — zero false merges over the corpora; exit non-zero and the build is red |
+| `req selftest` | does this installed binary, on this machine, derive what the project's reference build derives — known answers compiled in; reads no corpus |
 | `req diff` | what changed in meaning between two revisions — each claim's class and flags, and an opt-in exit 1 for a pull request |
 | `req pin` | is a corpus kept in another repository exactly the commit this repository pinned, and how has it moved since |
 | `req select` | which claims apply in a variant — selectors, not branches — with UNKNOWN as a first-class answer |

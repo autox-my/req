@@ -327,7 +327,7 @@ fn bare_req_and_unknown_arguments_stay_usage_errors() {
 /// `init` case is outside the table, and a loop that ran zero times would pass silently).
 const ALL_COMMANDS: &[&str] = &[
     "audit", "baseline", "bench", "canon", "check", "compare", "decision", "diff", "gate",
-    "impact", "init", "pin", "propose", "render", "select", "trace",
+    "impact", "init", "pin", "propose", "render", "select", "selftest", "trace",
 ];
 
 /// The page `<command> --help` prints, or a failure that names the command and its output.

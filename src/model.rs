@@ -373,8 +373,13 @@ impl Registry {
     /// never look like a successful empty one (REQ-0008's three-state rule).
     pub fn load(path: &str) -> Result<Self, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("read {path}: {e}"))?;
+        Self::parse(&text, path)
+    }
+
+    /// Parse a registry from text already in hand; `origin` only names it in an error.
+    pub fn parse(text: &str, path: &str) -> Result<Self, String> {
         let file: RegistryFile =
-            yaml_serde::from_str(&text).map_err(|e| format!("parse {path}: {e}"))?;
+            yaml_serde::from_str(text).map_err(|e| format!("parse {path}: {e}"))?;
         let mut alias_to_subject = BTreeMap::new();
         for (subject_id, def) in &file.subjects {
             for alias in &def.aliases {
@@ -436,8 +441,12 @@ pub struct Corpus {
 impl Corpus {
     pub fn load(path: &str) -> Result<Self, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("read {path}: {e}"))?;
-        let corpus: Corpus =
-            yaml_serde::from_str(&text).map_err(|e| format!("parse {path}: {e}"))?;
-        Ok(corpus)
+        Self::parse(&text, path)
+    }
+
+    /// Parse a corpus from text already in hand; `origin` only names it in an error. `req selftest`
+    /// reads the parity corpus this binary was built with, not a file on this machine.
+    pub fn parse(text: &str, origin: &str) -> Result<Self, String> {
+        yaml_serde::from_str(text).map_err(|e| format!("parse {origin}: {e}"))
     }
 }
