@@ -22,9 +22,9 @@ rev (below; one release exists so far) and a **build from source** at the rev ([
 > distribution. `install-req.sh` was run against it on GitHub-hosted Ubuntu 22.04 (glibc 2.35), 24.04 and the latest
 > image (2026-11-09): the right pin installed, `req --version` said `built from ec87808`, and `req init` and
 > `req canon` exited 0; a wrong pin was refused with nothing installed (seen on 24.04 and latest). On 22.04 the
-> binary ran but its loader printed ``weak version `GLIBC_2.39' not found`` on stderr. The installer does not retry:
-> a 504 from GitHub's download host (seen once on 22.04, and by our CI on other downloads) is a refusal, so run it
-> again.
+> binary ran but its loader printed ``weak version `GLIBC_2.39' not found`` on stderr. That run did not yet retry:
+> a 504 from GitHub's download host (seen once on 22.04) was a refusal. The installer now retries a transient
+> server error three times on the same URL; that change is tested against a local server, not yet against GitHub.
 
 ### Prebuilt
 
@@ -62,7 +62,8 @@ member `req` before extracting anything, runs the binary, and requires `req --ve
 with `built from` equal to `REV`; only then does it install `req` (mode 0755) into
 `${REQ_INSTALL_DIR:-$HOME/.local/bin}` and print the two lines that decide the binary, `rules_v` and
 `built from`. Every refusal is a non-zero exit naming its cause — an unsupported platform, a missing
-pin, a download that is not HTTP 2xx (an unknown rev is a 404; a wrong token on a private fork is a 401
+pin, a download that is not HTTP 2xx (curl first retries a transient 408, 429 or 5xx up to three times on the same
+URL; an unknown rev is a 404, final; a wrong token on a private fork is a 401
 or a 404), a hash that differs from the pin, an archive that is not exactly `req`, a
 binary that does not run, a `built from` that is not `REV` — and there is **no automatic fallback**
 to the source install: falling back on a mismatch would hide the very event the check exists to
@@ -720,7 +721,7 @@ jobs:
           # and nothing here is traced. With no token the header file is empty and no Authorization is sent.
           status=0
           code=$({ if [ -n "${REQ_RELEASE_TOKEN:-}" ]; then printf 'Authorization: token %s\n' "$REQ_RELEASE_TOKEN"; fi; } |
-            curl --proto "$proto" --tlsv1.2 -fsSL -H @- -o "$stage/$asset" -w '%{http_code}' "$url") || status=$?
+            curl --proto "$proto" --tlsv1.2 --retry 3 -fsSL -H @- -o "$stage/$asset" -w '%{http_code}' "$url") || status=$?
           case $code in
             2??)
               if [ "$status" -ne 0 ]; then

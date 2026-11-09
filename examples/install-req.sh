@@ -13,7 +13,8 @@ SHA256_aarch64_apple_darwin='<placeholder: 64 hex digits from the release asset 
 #
 # What it does, in order, and each failure is a non-zero exit that names its cause (never a skip,
 # never a retry by another path): detect the target from `uname -sm` (Linux x86_64, Darwin arm64);
-# download <base>/rev-<REV>/req-<REV>-<TARGET>.tar.gz over https (a public release needs no credential:
+# download <base>/rev-<REV>/req-<REV>-<TARGET>.tar.gz over https (curl retries a transient server error, 408, 429
+# or 5xx, up to three times on that same url; any other status is final; a public release needs no credential:
 # the Authorization header is sent ONLY when REQ_RELEASE_TOKEN is set and non-empty, for a private fork or
 # mirror, and then as a header read from stdin, never as an argument, never printed); verify the tarball
 # against the pin; check the archive lists exactly one member, `req`; extract it; run
@@ -98,7 +99,7 @@ url=$base/rev-$REV/$asset
 # and nothing here is traced. With no token the header file is empty and no Authorization is sent.
 status=0
 code=$({ if [ -n "${REQ_RELEASE_TOKEN:-}" ]; then printf 'Authorization: token %s\n' "$REQ_RELEASE_TOKEN"; fi; } |
-  curl --proto "$proto" --tlsv1.2 -fsSL -H @- -o "$stage/$asset" -w '%{http_code}' "$url") || status=$?
+  curl --proto "$proto" --tlsv1.2 --retry 3 -fsSL -H @- -o "$stage/$asset" -w '%{http_code}' "$url") || status=$?
 case $code in
   2??)
     if [ "$status" -ne 0 ]; then

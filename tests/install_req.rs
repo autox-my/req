@@ -687,6 +687,79 @@ fn c_an_unknown_rev_is_a_404_and_a_non_zero_exit() {
     assert_nothing_installed(&run.install_dir(), "a 404");
 }
 
+/// A host that answers `status` for the first `failures` requests and the good tarball after.
+fn flaky_host(failures: usize, status: u16, tarball: Vec<u8>) -> Server {
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    Server::start(Arc::new(move |request: &Seen| {
+        let n = count.fetch_add(1, Ordering::SeqCst);
+        if n < failures || request.path != asset_path(REV) {
+            Reply {
+                status,
+                body: b"try later".to_vec(),
+            }
+        } else {
+            Reply {
+                status: 200,
+                body: tarball.clone(),
+            }
+        }
+    }))
+}
+
+// GitHub's download host answered 504 for an asset that was there (2026-11-09, seen by CI and by
+// this script on a runner). A transient server error is retried by curl on the SAME url, up to
+// three times; a client error is an answer, not a fault, and is never retried; and the pin still
+// decides what is accepted after any number of tries.
+#[test]
+fn e_a_transient_504_is_retried_and_the_install_still_completes() {
+    let scratch = Scratch::new("retry-504");
+    let tarball = good_tarball(REV);
+    let hash = sha256_hex(&tarball);
+    let server = flaky_host(2, 504, tarball);
+    let run = Run::new(&scratch, &server, &hash);
+    let outcome = run.go();
+
+    assert_eq!(outcome.code, Some(0), "{}", outcome.text());
+    assert!(run.install_dir().join("req").is_file());
+    let requests = server.requests();
+    assert_eq!(requests.len(), 3, "two 504s then the file: {requests:?}");
+    assert!(requests.iter().all(|r| r.path == asset_path(REV)));
+}
+
+#[test]
+fn e_a_404_is_an_answer_and_is_not_retried() {
+    let scratch = Scratch::new("no-retry-404");
+    let server = public_host(vec![]);
+    let run = Run::new(&scratch, &server, &sha256_hex(b"whatever"));
+    let outcome = run.go();
+
+    failed(&outcome, "a rev with no release");
+    assert_eq!(
+        server.requests().len(),
+        1,
+        "a 404 is final: {:?}",
+        server.requests()
+    );
+}
+
+#[test]
+fn e_a_504_that_never_clears_is_refused_after_three_retries() {
+    let scratch = Scratch::new("retry-bounded");
+    let server = flaky_host(usize::MAX, 504, good_tarball(REV));
+    let run = Run::new(&scratch, &server, &sha256_hex(&good_tarball(REV)));
+    let outcome = run.go();
+
+    failed(&outcome, "a host that only ever answers 504");
+    assert!(outcome.stderr.contains("HTTP 504"), "{}", outcome.text());
+    assert_eq!(
+        server.requests().len(),
+        4,
+        "the first try and three retries, then a refusal: {:?}",
+        server.requests()
+    );
+    assert_nothing_installed(&run.install_dir(), "a persistent 504");
+}
+
 #[test]
 fn d_a_refused_token_is_a_401_that_names_the_token() {
     let scratch = Scratch::new("unauthorized");
@@ -1188,7 +1261,7 @@ fn l_the_shipped_script_opens_with_the_pin_table_and_pins_its_transport() {
         .filter(|line| !line.trim_start().starts_with('#'))
         .collect();
     for required in [
-        "curl --proto \"$proto\" --tlsv1.2 -fsSL -H @-",
+        "curl --proto \"$proto\" --tlsv1.2 --retry 3 -fsSL -H @-",
         "proto=${install_proto:-=https}",
         "base=${install_base:-https://github.com/autox-my/req/releases/download}",
         // The header is conditional: only a non-empty token produces one.
