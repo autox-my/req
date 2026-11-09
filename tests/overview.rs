@@ -178,3 +178,22 @@ fn how_it_works_names_only_commands_and_files_that_exist() {
         "three diagrams: lifecycle, authored/derived/signed, change to release"
     );
 }
+
+/// GitHub Pages serves `docs/` as is (`docs/.nojekyll`), so `https://autox-my.github.io/req/` is
+/// `docs/index.html` or a 404. The landing page must exist, reach the overview by a relative link
+/// (it is served beside it) and name no file the repository does not have.
+#[test]
+fn the_pages_root_is_a_landing_page_that_links_the_overview() {
+    let page = read("docs/index.html");
+    assert!(
+        page.contains("href=\"overview.html\""),
+        "docs/index.html must link the overview page relatively: it is served beside it"
+    );
+    for linked in ["docs/how-it-works.md", "docs/adopting.md", "README.md"] {
+        assert!(
+            page.contains(&format!("/blob/main/{linked}")),
+            "docs/index.html should link `{linked}` on GitHub"
+        );
+        assert!(root().join(linked).is_file(), "`{linked}` must exist");
+    }
+}
