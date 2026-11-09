@@ -1,0 +1,16 @@
+schema: req.claim/2
+claim_id: REQ-0028
+statement: >-
+  The req tool shall fail the verification of a Baseline when a claim was edited after
+  signing.
+applicability: []
+tests:
+  - "req::baseline::an_edited_claim_fails_verification"
+evidence: machine
+rationale:
+  source: docs/adr/0010-baseline-signing-and-trust.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - trusting git history alone to show that a ratified claim did not change
+  assumptions: []
+relations: []

@@ -113,3 +113,16 @@ fully verified; 2 flags remained, both in REQ-0007.
 - ADRs keep the narrative; each claim points to its ADR in `rationale.source`. The
   automated cross-check (statement ↔ ADR text) is deliberately deferred (claim-format
   §deferred) — until then the pointer carries the link by discipline, not tooling.
+
+## Tool operational requirements (REQ-0024 to REQ-0040)
+
+Where REQ-0001 to REQ-0023 are the project's design decisions, REQ-0024 to REQ-0040 state **observable behaviours of the tool** that a
+user relies on, one each, each linked to an existing test that asserts it (ADR 0019) and none carrying an applicability predicate, so
+every variant is gated against them: unverifiable on an undecided claim, a missing test link, a skipped test not counted as a pass, a
+pin that disagrees, a Baseline that does not verify (edited claim, bad signature or no verifier, another rules version), an edited
+decision record, an unknown claim key, an empty corpus, a loosened obligation reported as weakened, a benchmark with no
+not-equivalent pairs, a hand-edited projection, failure outranking undecided, a corpus that is not the pinned commit, an install that
+refuses a wrong hash, and an unknown command exiting 2. They were written from the behaviours the safety manual
+([docs/safety-manual.md](../docs/safety-manual.md)) relies on, and each link was checked against what its test asserts. They are
+evidence that a behaviour is pinned by a test; whether the set is *sufficient* for a given use is a question for that use's
+classification, which is not written yet.

@@ -1,0 +1,16 @@
+schema: req.claim/2
+claim_id: REQ-0029
+statement: >-
+  The req tool shall not report a Baseline as verified when its signature does not verify
+  or no verifier is installed.
+applicability: []
+tests:
+  - "req::baseline::a_bad_signature_fails_and_a_missing_verifier_does_not_pass"
+evidence: machine
+rationale:
+  source: docs/adr/0010-baseline-signing-and-trust.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - skipping the signature check when minisign is absent (a verification that silently did less)
+  assumptions: []
+relations: []

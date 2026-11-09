@@ -1,0 +1,17 @@
+schema: req.claim/2
+claim_id: REQ-0031
+statement: >-
+  The req tool shall report an edited decision record as tampered.
+applicability: []
+tests:
+  - "req::decision::editing_a_recorded_decision_is_tampering"
+evidence: machine
+rationale:
+  source: docs/adr/0005-authority-is-a-signed-decision.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - relying on file timestamps or the hosting platform's event log to show a decision was not changed
+  assumptions: []
+relations:
+  - type: derives-from
+    to: REQ-0002

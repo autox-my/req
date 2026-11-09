@@ -1,0 +1,16 @@
+schema: req.claim/2
+claim_id: REQ-0035
+statement: >-
+  The benchmark harness shall report a corpus with no not-equivalent pairs as
+  UNVERIFIABLE.
+applicability: []
+tests:
+  - "req::gate::a_corpus_with_no_not_equivalent_pairs_is_unverifiable_not_pass"
+evidence: machine
+rationale:
+  source: docs/canonical-hashing.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - reading a false merge rate of 0 out of 0 pairs as a pass
+  assumptions: []
+relations: []

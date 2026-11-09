@@ -1,0 +1,15 @@
+schema: req.claim/2
+claim_id: REQ-0026
+statement: >-
+  The req tool shall not count a skipped test as a pass.
+applicability: []
+tests:
+  - "req::release_gate::evidence::a_skipped_test_is_not_a_pass"
+evidence: machine
+rationale:
+  source: docs/adr/0019-claims-carry-authored-test-links.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - counting a skipped test as a pass, which lets a disabled test keep a claim green
+  assumptions: []
+relations: []

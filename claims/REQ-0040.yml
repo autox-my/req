@@ -1,0 +1,17 @@
+schema: req.claim/2
+claim_id: REQ-0040
+statement: >-
+  The req tool shall exit with status 2 for a command it does not know.
+applicability: []
+tests:
+  - "req::cli_version::bare_req_and_unknown_arguments_stay_usage_errors"
+evidence: machine
+rationale:
+  source: src/main.rs
+  date: 2026-11-10
+  rejected_alternatives:
+    - exit 1 for a misspelled command, which would read as a finding about the corpus
+  assumptions: []
+relations: []
+pins:
+  value: "2"

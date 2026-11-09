@@ -61,7 +61,7 @@ every ratification (ADR 0004); req never auto-merges and never rewrites a claim.
 | zero false merges on the corpora that measure it | `req bench` is a hard gate on every commit; one record per corpus and rules version, append-only | `bench/results/`, `docs/canonical-hashing.md` §6 and *Recorded runs* |
 | the direction classifier does not confuse a loosening with no change or its opposite | the direction gold set; a *dangerous confusion* fails the gate | `bench/results/direction-v1-*`, `docs/canonical-hashing.md` §6.3 |
 | each rule has teeth | the rule behind each trap class is deleted and a corpus test must fail (a mutation check, done by hand and recorded per change) | commit messages, `docs/canonical-hashing.md` |
-| the tool's own requirements are managed by the tool | 22 claims in `claims/`, signed Baseline `baselines/air-gapped.json`, linked tests, a decision log | `claims/`, `baselines/`, `decisions/` |
+| the tool's own requirements are managed by the tool | 39 claims in `claims/` (22 design claims and 17 tool operational requirements, each linked to a test that proves it), signed Baseline `baselines/air-gapped.json`, linked tests, a decision log | `claims/`, `baselines/`, `decisions/` |
 | a change is gated before it merges | one local gate (`scripts/check.sh`) and the same job in CI, required by branch protection; a human reads every pull request | `scripts/check.sh`, `.github/workflows/ci.yml`, ADR 0029 §7 |
 
 **What the headline numbers are.** At `rules_v 7`, per corpus and never pooled: the seed parity corpus (25 pairs) has FMR 0/15; the four

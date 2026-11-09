@@ -1,0 +1,16 @@
+schema: req.claim/2
+claim_id: REQ-0034
+statement: >-
+  The req tool shall report a change that loosens an obligation as weakened.
+applicability: []
+tests:
+  - "req::diff::a_looser_upper_bound_is_weakened_and_a_tighter_one_is_tightened"
+  - "req::diff::shall_to_should_is_weakened_and_the_reverse_is_tightened"
+evidence: machine
+rationale:
+  source: docs/adr/0026-req-diff-what-changed-in-meaning-between-two-revisions.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - reporting a loosened obligation as no change, or as a tightening, which a reviewer would ratify unnoticed
+  assumptions: []
+relations: []

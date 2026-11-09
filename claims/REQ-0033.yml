@@ -1,0 +1,16 @@
+schema: req.claim/2
+claim_id: REQ-0033
+statement: >-
+  The req tool shall report a corpus with no claim files as UNVERIFIABLE when it derives
+  the parse.
+applicability: []
+tests:
+  - "req::loader::an_empty_corpus_is_unverifiable_never_a_pass"
+evidence: machine
+rationale:
+  source: docs/adr/0012-runtime-corpus-root.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - an empty corpus as a pass with zero discrepancy flags
+  assumptions: []
+relations: []

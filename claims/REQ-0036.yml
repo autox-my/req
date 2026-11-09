@@ -1,0 +1,15 @@
+schema: req.claim/2
+claim_id: REQ-0036
+statement: >-
+  The req tool shall report a hand-edited projection as stale.
+applicability: []
+tests:
+  - "req::projection::a_hand_edited_projection_is_stale"
+evidence: machine
+rationale:
+  source: docs/adr/0018-documents-are-projections.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - regenerating the projection silently, which hides an edit made to a generated file
+  assumptions: []
+relations: []

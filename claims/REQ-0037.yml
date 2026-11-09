@@ -1,0 +1,16 @@
+schema: req.claim/2
+claim_id: REQ-0037
+statement: >-
+  The req tool shall rank a failure above an undecided line when it folds the checks of a
+  repository.
+applicability: []
+tests:
+  - "req::check::a_failure_outranks_an_undecided_line_in_either_order"
+evidence: machine
+rationale:
+  source: docs/adr/0023-req-check-folds-the-repositorys-release-lists.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - letting the first non-zero exit decide, so that the order of the release list changes the verdict
+  assumptions: []
+relations: []
