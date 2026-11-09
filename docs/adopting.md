@@ -14,11 +14,13 @@ a build of the revision that introduced it.
 
 req is deliberately not published to crates.io (`publish = false`), so **the rev is the provenance**: you pin a
 commit, never a version number. Two ways honour that: a **prebuilt, checksummed binary** for the
-rev (below; none is published yet) and a **build from source** at the rev ([From source](#from-source)).
+rev (below; one release exists so far) and a **build from source** at the rev ([From source](#from-source)).
 
-> **Status: no release is published yet.** The prebuilt path below is written, tested against a local server and
-> ported to GitHub, but there is no `rev-<REV>` release to download from, so its first-use pin cannot be taken yet.
-> Until the first release exists, use [From source](#from-source); this section describes the path as it will work.
+> **Status: one release exists, `rev-ec87808`, for Linux x86_64 only.** There is no macOS tarball and no release
+> for any other rev, so for anything else use [From source](#from-source). That release was built on a runner
+> whose libc is glibc 2.43 (its `.build-info` says so); read that line before you rely on it on an older
+> distribution. The installer has been exercised against a local server; it has not yet been run against this
+> release.
 
 ### Prebuilt
 
