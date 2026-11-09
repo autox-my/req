@@ -1,7 +1,8 @@
 # 0018. Documents are projections, and a committed projection is checked for staleness
 
-**Status: proposed** — drafted by the agent on 2026-10-21. Acceptance is the maintainer's act. Date proposed:
-2026-10-21.
+**Status: accepted** — drafted by the agent on 2026-10-21; accepted by the owner, who confirmed it on 2026-11-09.
+The status line had kept saying "proposed" while the decision was in force: `req render --check`, `.req/projections` and
+the gate's projection step implement it, and ADR 0023 amends one clause of it. Date proposed: 2026-10-21.
 
 **Amended 2026-11-03** — §4 cites `tools/review/check_rules.py` as the precedent for a pinned allow-list.
 That script was removed on 2026-11-03 (owner ruling M2-1: the review that blocks merges is CI's, and the

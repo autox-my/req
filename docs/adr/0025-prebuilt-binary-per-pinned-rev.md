@@ -2,7 +2,7 @@
 
 Amended by ADR 0029 §4–§5.
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it; issue #65
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-05, former Forgejo PR #116); issue #65
 (opened from the Sedia evaluation). Date proposed: 2026-11-05. **Adds an install path; removes none.**
 `cargo install --git … --rev <PIN> --locked` stays, documented, as the source path and the air-gapped path
 (ADR 0009's toolchain, REQ-0012). "The rev is the provenance" (`docs/adopting.md`) is unchanged: it now has

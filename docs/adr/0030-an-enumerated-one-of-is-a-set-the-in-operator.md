@@ -1,6 +1,6 @@
 # 0030. An enumerated "one of" is a set: the `IN` operator
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it; issue #17. Date
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-09, GitHub PR #24); issue #17. Date
 proposed: 2026-11-09. Extends T1.5 of `docs/canonical-hashing.md` (the closed comparator table); nothing else in it, and no
 ADR, is superseded. ADR 0014's concern — a wrong slot is least visible where it is most consequential — is the reason.
 

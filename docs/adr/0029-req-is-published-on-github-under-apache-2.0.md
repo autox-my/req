@@ -1,6 +1,6 @@
 # 0029. req is published on GitHub under Apache-2.0; GitHub becomes the canonical home
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it; issue #138. Date
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-08, former Forgejo PR #139); issue #138. Date
 proposed: 2026-11-08. **Amends [ADR 0025](0025-prebuilt-binary-per-pinned-rev.md) §5 and §6** (where the release
 lives and what the install needs); nothing else in 0025 changes. ADRs 0001–0009 are untouched.
 

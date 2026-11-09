@@ -1,6 +1,6 @@
 # 0028. A ReqIF reader drafts claims and keeps the object IDENTIFIER as provenance
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it; issue #135, the third
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-08, former Forgejo PR #136); issue #135, the third
 part of the architecture review's finding F8 (after `req diff`, ADR 0026, and the Sphinx-Needs reader, ADR
 0027). Date proposed: 2026-11-08. **Adds a copy-and-adjust script; adds no `req` command and changes no
 address.** It is the ReqIF counterpart of `tools/needs_import.py`, built the same way.
