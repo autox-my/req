@@ -2040,8 +2040,10 @@ fn an_audit_under_a_misdeclared_rules_version_reports_coverage_not_judged() {
     );
     assert!(stdout.contains("NOT JUDGED"), "{stdout}");
     assert!(stdout.contains("drift was NOT judged"), "{stdout}");
+    // The shape of a blame is `<id>: edited after signing — …`. The bare phrase is not the oracle: the
+    // audit prints every claim's statement, and one of them (REQ-0028) legitimately says it.
     assert!(
-        !stdout.contains("edited after signing"),
+        !stdout.contains(": edited after signing"),
         "no claim is blamed for a comparison that never happened:\n{stdout}"
     );
     assert!(
