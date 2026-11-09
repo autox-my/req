@@ -195,7 +195,7 @@ def score(cases: list[dict], gts: dict, keys: dict, labels: dict, runs: dict) ->
     """Per-arm totals. ``runs[(arm, case)]`` is the run's meta (status, seconds, tokens)."""
     out = {}
     for arm in ARMS:
-        t = dict(findings=0, real=0, minor=0, noise=0, unverifiable=0, gt_total=0, gt_hit=0,
+        t = dict(findings=0, real=0, minor=0, noise=0, unverifiable=0, unlabelled=0, gt_total=0, gt_hit=0,
                  runs=0, runs_failed=0, seconds=0, tokens=0, unique_real=0, clean_cases=0,
                  clean_cases_with_real=0, clean_cases_with_findings=0)
         for c in cases:
@@ -217,15 +217,15 @@ def score(cases: list[dict], gts: dict, keys: dict, labels: dict, runs: dict) ->
             real_here = 0
             for fid in mine:
                 f = lab.get(fid)
-                if f is None:
+                t["findings"] += 1
+                if f is None or (f.get("verdict") not in VERDICTS and not f.get("gt")):
+                    t["unlabelled"] += 1  # a skipped finding is reported, never folded into a verdict
                     continue
                 v = f.get("verdict")
                 if f.get("gt"):
                     v = "real"  # a finding that matches a ground-truth item is real by construction
                     hit.update(f["gt"])
-                t["findings"] += 1
-                if v in VERDICTS:
-                    t[v] += 1
+                t[v] += 1
                 if v == "real":
                     real_here += 1
                     if f.get("cluster") and f["cluster"] not in clusters_other:
@@ -238,7 +238,7 @@ def score(cases: list[dict], gts: dict, keys: dict, labels: dict, runs: dict) ->
                 t["clean_cases"] += 1
                 t["clean_cases_with_findings"] += 1 if mine else 0
                 t["clean_cases_with_real"] += 1 if real_here else 0
-        judged = t["real"] + t["minor"] + t["noise"] + t["unverifiable"]
+        judged = t["real"] + t["minor"] + t["noise"] + t["unverifiable"]  # unlabelled is not judged
         t["precision_real"] = round(t["real"] / judged, 3) if judged else None
         t["recall_gt"] = round(t["gt_hit"] / t["gt_total"], 3) if t["gt_total"] else None
         out[arm] = t
@@ -506,6 +506,10 @@ def self_check() -> int:
     check("pr clean case with a real finding", s["PR"]["clean_cases_with_real"], 1)
     check("pi failed run counted", s["PI"]["runs_failed"], 1)
     check("pi precision undefined with no findings", s["PI"]["precision_real"], None)
+    labels2 = {"t001": {"findings": [{"id": "F01", "verdict": "real"}, {"id": "F02", "verdict": "maybe"}]}}
+    s2 = score(cases, gts, keys, labels2, runs)
+    check("a missing or invalid verdict is unlabelled, not judged", (s2["PR"]["unlabelled"], s2["PR"]["noise"]), (2, 0))
+    check("unlabelled findings stay out of the precision base", s2["O1"]["precision_real"], 1.0)
     # Command lines: no secret in argv, and both PR-Agent arms share the same environment.
     ctx = dict(ocr="ocr", pa="pa", base_ref="b", head="h", raw=Path("/r"), rule="rule.json", key="SECRET",
                session="s")

@@ -145,7 +145,7 @@
   "review_files": 2,
   "title": "Merge pull request 'feat(review): a dispatch-only measurement run for the OCR duration exp",
   "fix": "289d7df7d6144754184e22e2e0cfed537e7f2822",
-  "fix_subject": "fix(review): the five findings on the measurement workflow, and the CLI's trust boundary in review.yml",
+  "fix_subject": "fix(review): the five findings on the measurement workflow, and the CLI's trust boundary in the review workflow",
   "fix_lines": 162,
   "review_commits_in_pr": 1
  },
