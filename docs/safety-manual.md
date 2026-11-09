@@ -137,7 +137,10 @@ falsification of the bet, and the README says so.
   and moves the Baseline for the owner to re-sign (ADR 0030 is the worked example). Decisions are ADRs; a superseded one says so rather
   than being edited (`docs/adr/`). Version pins that sit on the fingerprint path (`rust-toolchain.toml`, `Cargo.lock`) are never bumped
   opportunistically (`AGENTS.md`).
-- **Known problems.** Open issues are the known-problems list: <https://github.com/autox-my/req/issues>. A vulnerability is reported
+- **Known problems.** Open issues labelled `tool-defect` are the known-problems list, and `wrong-verdict` marks the ones that matter
+  most for reliance (a requirement change read as no change; a pass where nothing could be checked):
+  <https://github.com/autox-my/req/issues?q=label%3Atool-defect>. The *Tool defect* form asks for the version, the use affected and
+  the consequence. A vulnerability is reported
   privately (`SECURITY.md`).
 
 ## 8. What a qualification would additionally need (not provided here)

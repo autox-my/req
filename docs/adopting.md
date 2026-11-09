@@ -1286,7 +1286,11 @@ step.
 
 ## Reporting a bug in req
 
-Report it at <https://github.com/autox-my/req/issues>. Include four things, because each one
+Report it at <https://github.com/autox-my/req/issues/new/choose> with the **Tool defect** form, which asks for what follows and
+labels the issue `tool-defect`. The repository is public: reduce the problem to the smallest statement that shows it, never
+paste confidential requirement text. A maintainer adds **`wrong-verdict`** to the two failures that matter most, a requirement
+change read as no change and a pass where nothing could be checked, and **`noise`** to the survivable ones (a false split, a
+wrong lint). Open `tool-defect` issues are the project's known-problems list. Include four things, because each one
 changes the triage:
 
 1. the claim `statement` you were authoring, or the corpus file if it is a parsing problem;

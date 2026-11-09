@@ -1,0 +1,85 @@
+name: Tool defect — req gave a wrong or misleading answer
+description: "A verdict, a derived parse, a direction or an exit code that is wrong, or req failing in use. (A security problem is not this: use the private link on the previous page.)"
+title: "[defect] "
+labels: ["tool-defect"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. This repository is **public**: do not paste a customer's or employer's requirement text. Reduce the problem to the smallest
+        statement that shows it, or re-word it.
+
+        The failure this tool exists to prevent is a **false merge** (two different requirements sharing an address, or a change in meaning read
+        as no change). If that is what you saw, say so first; it is triaged before anything else.
+  - type: textarea
+    id: version
+    attributes:
+      label: "`req --version` (the whole output)"
+      description: "`rules_v` decides whether a stored address is current, and `built from` says which build this is. A verdict is not reproducible without them."
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: use_case
+    attributes:
+      label: What were you using req for?
+      options:
+        - Checking whether a requirement's meaning changed (canon, compare, diff, pin)
+        - The release gate (gate, check)
+        - Verifying or signing a Baseline (baseline, decision)
+        - The audit packet, trace or impact views (audit, trace, impact, render)
+        - Importing or adopting existing requirements (adopt, needs_import, reqif_import)
+        - Installing or releasing req (install-req.sh, the release workflow, selftest)
+        - Something else
+    validations:
+      required: true
+  - type: dropdown
+    id: consequence
+    attributes:
+      label: What did it do wrong?
+      options:
+        - "It said a requirement did not change, or was the same as another, when its meaning did (a false merge, or a weakening read as no change)"
+        - "It passed (exit 0) where it could not have checked: an UNVERIFIABLE case, a skipped check or a missing input reported as a pass"
+        - "It failed or refused where it should not have (a false split, a lint that is wrong, noise)"
+        - "It crashed, hung or printed something unreadable"
+        - "Something else"
+    validations:
+      required: true
+  - type: textarea
+    id: statement_or_file
+    attributes:
+      label: The claim statement, or the corpus file, that shows it
+      description: If it is a parsing problem, the smallest claim file or statement that reproduces it.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: The exact command you ran
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Its exit code and the output line that decided it
+      description: A verdict has three states, always; say which one you got (PASS 0, FAIL 1, UNVERIFIABLE 3, usage 2).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead, and why
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before you submit
+      options:
+        - label: I searched the existing issues for the same defect.
+          required: false
+        - label: This report contains nothing confidential (this repository is public).
+          required: true
