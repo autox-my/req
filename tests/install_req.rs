@@ -1211,3 +1211,32 @@ fn l_the_shipped_script_opens_with_the_pin_table_and_pins_its_transport() {
         "the overrides are documented as test-only"
     );
 }
+
+/// `cargo install --git` on a repository with several binary packages refuses without a package
+/// name (issue #11: req, req-paraphrase and req-tier2). Every source-install command in the docs an
+/// adopter copies must therefore name `req`, as its own argument, after the flags.
+#[test]
+fn every_source_install_command_in_the_docs_names_the_req_package() {
+    let mut seen = 0;
+    for rel in ["README.md", "docs/adopting.md", "docs/releasing.md"] {
+        let text = std::fs::read_to_string(repo_root().join(rel)).expect("a doc reads");
+        let flat = text.replace("\\\n", " ");
+        for line in flat.lines().filter(|l| l.contains("cargo install --git")) {
+            seen += 1;
+            let tokens: Vec<&str> = line.split_whitespace().collect();
+            let at = tokens
+                .iter()
+                .position(|t| *t == "install")
+                .expect("an install command");
+            assert!(
+                tokens[at..].contains(&"req"),
+                "{rel}: `cargo install --git` must name the package `req` (the repository has three \
+                 binary packages and cargo refuses without one):\n{line}"
+            );
+        }
+    }
+    assert!(
+        seen >= 3,
+        "the three docs carry a source install; found {seen}"
+    );
+}

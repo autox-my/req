@@ -101,7 +101,7 @@ prebuilt release is `rev-ec87808`** (Linux x86_64 only; no macOS tarball is publ
 rev, or any other machine, the install is a build from source at a rev you choose:
 
 ```bash
-cargo install --git https://github.com/autox-my/req.git --rev <REV> --locked
+cargo install --git https://github.com/autox-my/req.git --rev <REV> --locked req
 ```
 
 `docs/adopting.md` (*Install req*) explains the pin, the prebuilt-binary path,
