@@ -4,7 +4,7 @@ The page for people who will read, extend or debug req. Three diagrams (Mermaid;
 forge and in most editors) and the one honest statement about extension. The commands' contracts are
 `req --help` and `req <command> --help`; the adopter's loop is `docs/adopting.md`; the decisions are in
 `docs/adr/`. This page restates none of them, it draws how they connect. For managers and
-non-developers there is a separate generated page, `docs/overview.html`.
+non-developers there is a separate generated page, `docs/overview.html` ([rendered](https://autox-my.github.io/req/overview.html)).
 
 ## 1. What one command does
 
