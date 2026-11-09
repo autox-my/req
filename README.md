@@ -124,7 +124,7 @@ runs locally; there is no automated review, a human reads every pull request. Th
 agent-facing instructions are in `AGENTS.md`, the glossary in `CONTEXT.md`, the design of
 record in `docs/design.md`, and the decisions in `docs/adr/`.
 
-How it works: `docs/how-it-works.md` (diagrams, for engineers) and `docs/overview.html` (one page for
+How it works: `docs/how-it-works.md` (diagrams, for engineers) and `docs/overview.html` ([read it rendered](https://autox-my.github.io/req/overview.html); one page for
 non-developers, generated from the real tool by `tools/overview/build.py`, never hand-edited).
 
 Existing requirements need not be retyped: `tools/adopt.py` (markdown lists), `tools/needs_import.py`
