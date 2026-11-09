@@ -7,9 +7,12 @@ side is `examples/install-req.sh` and [`docs/adopting.md`](adopting.md) § *Inst
 cuts the release. Nothing here changes req: the binary gains no command and no network client, and nothing is
 released until a person asks.
 
-**Status.** `.github/workflows/release.yml` has not been dispatched yet; its first dispatch is also its first
-test. `tests/release_workflow.rs` pins its text and shape (the trigger, the permissions, the no-overwrite rule),
-and cannot show a green run. The workflow fails closed, so a misconfiguration is a red run, never a
+**Status.** `.github/workflows/release.yml` has been dispatched once, on 2026-11-09 for `ec87808`
+(<https://github.com/autox-my/req/actions/runs/42568766890>): both jobs succeeded and the release `rev-ec87808`
+holds the three Linux assets (the tarball's SHA-256 matches the `.sha256` asset). Not yet exercised: running that
+tarball on a Linux host, `examples/install-req.sh` against it, the no-overwrite refusal (a second dispatch for the
+same rev), and the macOS path. `tests/release_workflow.rs` pins the workflow's text and shape (the trigger, the
+permissions, the no-overwrite rule). The workflow fails closed, so a misconfiguration is a red run, never a
 half-published release you cannot tell from a good one.
 
 ## When to cut a release

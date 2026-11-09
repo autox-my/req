@@ -96,14 +96,15 @@ Git-native storage is table stakes, not the moat.
 
 ## Install
 
-req is not on crates.io (`publish = false`): you pin a commit, and the commit is the provenance. **No prebuilt
-release is published yet**, so today the install is a build from source at a rev you choose:
+req is not on crates.io (`publish = false`): you pin a commit, and the commit is the provenance. **The first
+prebuilt release is `rev-ec87808`** (Linux x86_64 only; no macOS tarball is published yet), so for any other
+rev, or any other machine, the install is a build from source at a rev you choose:
 
 ```bash
 cargo install --git https://github.com/autox-my/req.git --rev <REV> --locked
 ```
 
-`docs/adopting.md` (*Install req*) explains the pin, the prebuilt-binary path that follows once a release exists,
+`docs/adopting.md` (*Install req*) explains the pin, the prebuilt-binary path,
 and the air-gapped route. req is early (`0.1.0`), maintained by one person, and its claims are bounded as
 stated under *Status*.
 
