@@ -1,0 +1,16 @@
+schema: req.claim/2
+claim_id: REQ-0038
+statement: >-
+  The req tool shall report a corpus that is not the pinned commit as a failure.
+applicability: []
+tests:
+  - "req::corpus_pin::a_corpus_ahead_of_the_pin_fails_and_says_how_far"
+  - "req::corpus_pin::an_uncommitted_change_under_claims_fails_even_at_the_pinned_commit"
+evidence: machine
+rationale:
+  source: docs/adr/0033-a-consumer-pins-the-commit-of-an-external-corpus.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - gating whatever the policy repository's main happens to be, so a green run does not say which policy it passed
+  assumptions: []
+relations: []

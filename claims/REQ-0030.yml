@@ -1,0 +1,16 @@
+schema: req.claim/2
+claim_id: REQ-0030
+statement: >-
+  The req tool shall report a Baseline written under another rules version as
+  UNVERIFIABLE.
+applicability: []
+tests:
+  - "req::baseline::a_rules_version_bump_is_unverifiable_and_blames_no_claim"
+evidence: machine
+rationale:
+  source: docs/canonical-hashing.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - judging drift across two rule sets, which would blame claims for a change the rules made
+  assumptions: []
+relations: []

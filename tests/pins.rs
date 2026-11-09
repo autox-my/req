@@ -292,17 +292,17 @@ fn row<'a>(stdout: &'a str, id: &str) -> &'a str {
 /// The migration's pins hold on the committed corpus. The count is data, from the migration
 /// rule (`tools/migrate_claims.py`): a numeric authored `value` with the operator authored
 /// beside it, an operator other than `EQ`/none, a unit other than `none` — REQ-0008 (value, EQ),
-/// REQ-0009 (value, GE), REQ-0010 (value, LE), REQ-0022 (value, EQ) = 8 pins on 4 claims of 22.
+/// REQ-0009 (value, GE), REQ-0010 (value, LE), REQ-0022 (value, EQ) = 9 pins on 5 claims of 39 (REQ-0040 pins its exit status).
 /// If a claim joins the corpus or a pin is added, it moves. The counted facts are asserted as
 /// fragments, so rewording the summary sentence does not look like a pin regression.
 #[test]
-fn the_corpus_pins_hold_eight_pins_on_four_claims() {
+fn the_corpus_pins_hold_nine_pins_on_five_claims() {
     let out = run_at(&checkout(), &["canon"]);
     assert_eq!(out.code, 0, "canon exit code:\n{}", out.stderr);
     for fragment in [
-        "claims: 22",
+        "claims: 39",
         "1 unstructured",
-        "pins: 8 on 4 claim(s)",
+        "pins: 9 on 5 claim(s)",
         "0 flagged",
     ] {
         assert!(

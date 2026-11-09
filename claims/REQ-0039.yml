@@ -1,0 +1,15 @@
+schema: req.claim/2
+claim_id: REQ-0039
+statement: >-
+  The install script shall refuse a tarball whose hash differs from the pin.
+applicability: []
+tests:
+  - "req::install_req::b_a_wrong_pin_hash_installs_nothing"
+evidence: machine
+rationale:
+  source: docs/adr/0025-prebuilt-binary-per-pinned-rev.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - falling back to the source install on a mismatch, which would hide the event the check exists to surface
+  assumptions: []
+relations: []

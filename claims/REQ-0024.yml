@@ -1,0 +1,18 @@
+schema: req.claim/2
+claim_id: REQ-0024
+statement: >-
+  The req tool shall report a gate invocation that leaves a claim undecided as
+  UNVERIFIABLE.
+applicability: []
+tests:
+  - "req::release_gate::a_bare_gate_is_unverifiable_and_names_every_undecided_claim"
+evidence: machine
+rationale:
+  source: docs/adr/0015-undecided-claims-make-the-gate-unverifiable.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - exit 0 with a note listing the undecided claims (a green that examined less than it appears to)
+  assumptions: []
+relations:
+  - type: refines
+    to: REQ-0016

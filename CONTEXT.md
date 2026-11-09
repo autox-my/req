@@ -40,6 +40,12 @@ nothing. A claim whose meaning changes keeps its Claim ID and gets a new fingerp
 the claim is loaded, and compared against a signed manifest — never against a copy in the claim.
 _Avoid_: identity, ID
 
+**Tool operational requirement**:
+A claim stating one observable behaviour of req itself that a user relies on — "report a gate invocation that leaves a claim
+undecided as UNVERIFIABLE" — written as an ordinary claim, linked to the test that proves it, and gated like any other. REQ-0024 to
+REQ-0040 are the first set. It is evidence that a behaviour is pinned by a test, not that the behaviour is sufficient for a use.
+_Avoid_: tool spec, feature
+
 **Pin**:
 An author's statement of what a claim's derived parse must hold for one key (`modality`, `subject`,
 `operator`, `value`, `unit`), where the parse is load-bearing. It agrees, or it is a flag — a

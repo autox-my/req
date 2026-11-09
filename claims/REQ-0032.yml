@@ -1,0 +1,15 @@
+schema: req.claim/2
+claim_id: REQ-0032
+statement: >-
+  The req tool shall refuse a claim file that carries a key it does not define.
+applicability: []
+tests:
+  - "req::loader::a_misspelled_key_is_a_parse_error_and_exits_3"
+evidence: machine
+rationale:
+  source: docs/claim-format.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - ignoring an unknown key, which loses an authored slot silently
+  assumptions: []
+relations: []

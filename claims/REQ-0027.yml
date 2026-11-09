@@ -1,0 +1,16 @@
+schema: req.claim/2
+claim_id: REQ-0027
+statement: >-
+  The req tool shall fail the gate when a claim's pin disagrees with the parse its
+  statement derives.
+applicability: []
+tests:
+  - "req::release_gate::cli::a_flagged_pin_fails_the_gate"
+evidence: machine
+rationale:
+  source: docs/adr/0022-claims-are-authored-fingerprints-are-derived.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - editing the pin to fit the parse (the statement is the source of truth, so the pin would stop checking anything)
+  assumptions: []
+relations: []

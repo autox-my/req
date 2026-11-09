@@ -1,0 +1,15 @@
+schema: req.claim/2
+claim_id: REQ-0025
+statement: >-
+  The req tool shall report a claim with no linked test as UNVERIFIABLE.
+applicability: []
+tests:
+  - "req::release_gate::evidence::a_claim_with_no_linked_test_is_unverifiable_and_named"
+evidence: machine
+rationale:
+  source: docs/adr/0019-claims-carry-authored-test-links.md
+  date: 2026-11-10
+  rejected_alternatives:
+    - counting an unlinked claim as passing (absence of evidence read as evidence)
+  assumptions: []
+relations: []

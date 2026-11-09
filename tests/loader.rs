@@ -779,9 +779,11 @@ fn the_committed_corpus_loads_under_the_strict_loader() {
             "REQ-0001", "REQ-0002", "REQ-0003", "REQ-0004", "REQ-0005", "REQ-0006", "REQ-0007",
             "REQ-0008", "REQ-0009", "REQ-0010", "REQ-0012", "REQ-0013", "REQ-0014", "REQ-0015",
             "REQ-0016", "REQ-0017", "REQ-0018", "REQ-0019", "REQ-0020", "REQ-0021", "REQ-0022",
-            "REQ-0023",
+            "REQ-0023", "REQ-0024", "REQ-0025", "REQ-0026", "REQ-0027", "REQ-0028", "REQ-0029",
+            "REQ-0030", "REQ-0031", "REQ-0032", "REQ-0033", "REQ-0034", "REQ-0035", "REQ-0036",
+            "REQ-0037", "REQ-0038", "REQ-0039", "REQ-0040",
         ],
-        "the committed corpus is REQ-0001..REQ-0023 less the retired REQ-0011 (ADR 0021), one claim per file"
+        "the committed corpus is REQ-0001..REQ-0040 less the retired REQ-0011 (ADR 0021), one claim per file"
     );
 }
 
