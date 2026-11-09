@@ -78,8 +78,11 @@ rev and hashes it pins exist only after the owner cuts one.
 
 ```bash
 cargo install --git https://github.com/autox-my/req.git \
-  --rev <PIN> --root "$HOME/.local" --locked
+  --rev <PIN> --root "$HOME/.local" --locked req
 ```
+
+The trailing `req` is the package: the repository holds three binary packages (`req`, `req-paraphrase`,
+`req-tier2`), and without a name cargo refuses with *multiple packages with binaries found*.
 
 `<PIN>` is the merge SHA of the req commit you depend on — read it with
 `git rev-parse --short origin/main`; do not copy a SHA out of any document. The repository is public,
@@ -100,7 +103,8 @@ step's `req init` is `command not found`) and run `req --version` (exit 0). Two 
 the binary is: **`rules_v`** makes a stored address current — an address is derived under a rules
 version, so a verdict is not reproducible, and a Baseline not comparable, under another one — and
 **`built from`**, the commit the binary came from: a bare SHA means *clean*, `-dirty` means tracked files
-were modified, so the binary is not the commit it names. This is the **only networked step**; everything
+were modified, so the binary is not the commit it names (the output pads its columns, so a script that matches
+the line needs one or more spaces between the words, not exactly one). This is the **only networked step**; everything
 below runs offline against the corpus (REQ-0012).
 
 ### Air-gapped

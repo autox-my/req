@@ -140,7 +140,7 @@ Linux machine with an empty `CARGO_HOME`, and write it here with the date and th
 
 ```bash
 # the source install, then the prebuilt one (examples/install-req.sh, pins filled in); each timed alone
-time cargo install --git https://github.com/autox-my/req.git --rev <REV> --root "$(mktemp -d)" --locked
+time cargo install --git https://github.com/autox-my/req.git --rev <REV> --root "$(mktemp -d)" --locked req
 time bash install-req.sh
 ```
 
