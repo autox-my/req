@@ -1,0 +1,66 @@
+# cargo-deny policy for req's dependency graph (ADR 0036). Pinned tool: cargo-deny 0.20.2 (see scripts/check.sh).
+#
+# Three of the four checks need no network and run in every full gate (`scripts/check.sh`):
+#   bans, licenses, sources.
+# The fourth, `advisories`, reads the RustSec database, so it needs the network and is NOT in the gate:
+# the core has no network dependency and the gate stays runnable offline (REQ-0012). It runs on a schedule
+# (.github/workflows/audit.yml) and by hand: `cargo deny check advisories`.
+
+# Judge the graph that ships: the two release targets (ADR 0025), not every platform a dependency
+# happens to support. The lock also carries wasm and WASI crates for other targets; they never link here.
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+]
+
+[licenses]
+# The smallest set the graph needs today, all permissive and compatible with distributing req under
+# Apache-2.0. Every dependency offers at least one of these (several are dual-licensed `X OR MIT`, so BSL-1.0,
+# Unlicense and Zlib are alternatives we do not rely on). Adding a licence here is a reviewed change: a new
+# dependency under only another licence fails the gate first.
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.93
+
+[bans]
+# Duplicate versions are noise, not a defect (two majors of `rand`, `syn`); they are listed, not failed.
+multiple-versions = "warn"
+wildcards = "deny"
+# REQ-0012: no claim operation needs the network. tests/evidence.rs checks the crate's DIRECT
+# dependencies for these names; this denies them anywhere in the graph, so a transitive client or async
+# runtime (which the direct-dependency test cannot see) fails the gate too.
+deny = [
+    { crate = "reqwest" },
+    { crate = "hyper" },
+    { crate = "ureq" },
+    { crate = "curl" },
+    { crate = "isahc" },
+    { crate = "surf" },
+    { crate = "attohttpc" },
+    { crate = "tungstenite" },
+    { crate = "tokio-tungstenite" },
+    { crate = "rustls" },
+    { crate = "native-tls" },
+    { crate = "openssl" },
+    { crate = "socket2" },
+    { crate = "mio" },
+    { crate = "tokio" },
+    { crate = "async-std" },
+    { crate = "smol" },
+    { crate = "axum" },
+    { crate = "warp" },
+]
+
+[sources]
+# Only crates.io. A git or alternate-registry dependency is a different trust decision and needs its own ADR.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+[advisories]
+# The RustSec database is fetched by `cargo deny check advisories`, never by the gate.
+yanked = "deny"

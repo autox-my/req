@@ -33,5 +33,7 @@ These are **not** security issues; report them as ordinary issues: a false merge
 classification (a correctness bug, and the one this tool most wants to hear about), a wrong exit code, or a
 documentation error.
 
+The dependency graph is checked in every gate run for forbidden network crates, unreviewed licences and non-crates.io sources, and weekly against the RustSec advisory database (`.github/workflows/audit.yml`); the bill of materials of the binary is `docs/sbom.cdx.json` (ADR 0036).
+
 req never signs anything and has no network dependency in its core; the optional `req propose` provider is a
 separate process you configure.

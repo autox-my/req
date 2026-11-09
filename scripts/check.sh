@@ -487,6 +487,38 @@ else
   rm -f "$check_out"
 fi
 
+# The dependency graph (ADR 0036). Three cargo-deny checks that need no network: `bans` (no network client or
+# async runtime ANYWHERE in the graph, REQ-0012 from the transitive side that tests/evidence.rs cannot see),
+# `licenses` (a new dependency under a licence we have not reviewed fails here) and `sources` (crates.io
+# only). The fourth, `advisories`, reads the RustSec database over the network and is NOT in the gate: it
+# runs weekly in .github/workflows/audit.yml and by hand, so the gate stays runnable offline and a new
+# advisory never turns an unrelated pull request red. The tool is pinned like nextest: a different
+# installed version is a FAIL naming both, and a missing one is a SKIP (CI installs the pin, so the SKIP
+# makes the job red there). Both checks are fast, so `--fast` keeps them.
+DENY_PIN="0.20.2"
+if [ "$dry" -eq 1 ] || command -v cargo-deny >/dev/null 2>&1; then
+  if [ "$dry" -eq 0 ]; then
+    installed="$(cargo deny --version 2>/dev/null | sed -n 's/^cargo-deny \([0-9][^ ]*\).*/\1/p' | head -1)"
+    if [ "$installed" != "$DENY_PIN" ]; then
+      printf 'FAIL  cargo-deny %s is not the pinned %s: see docs/adr/0036 for the prebuilt download and its SHA-256\n' "${installed:-<none>}" "$DENY_PIN"
+      fail=1
+    fi
+  fi
+  run cargo deny --offline check bans licenses sources
+else
+  skip "cargo-deny not installed (pinned $DENY_PIN; docs/adr/0036)"
+fi
+
+# The software bill of materials (tools/sbom.py, ADR 0036) is a projection of the dependency graph, checked
+# like docs/spec.md: a change to a dependency, a version or Cargo.lock makes it STALE until it is regenerated
+# in the same commit (`python3 tools/sbom.py --out docs/sbom.cdx.json`). A graph that cannot be read is
+# UNVERIFIABLE (exit 3) and blocks, never a match. A missing python3 prints SKIP, never PASS.
+if [ "$dry" -eq 1 ] || { [ -f "$PWD/tools/sbom.py" ] && command -v python3 >/dev/null 2>&1; }; then
+  run python3 "$PWD/tools/sbom.py" --check docs/sbom.cdx.json
+else
+  skip "python3 or tools/sbom.py missing: cannot check the bill of materials"
+fi
+
 # The document extractor's pure half (tools/adopt.py): the two conventions, the heading scope,
 # the skip reasons, the id-ignored rule, the next-free-number scan and the draft template. It is
 # table-driven and needs no filesystem, no git and no `req`, so `--fast` keeps it — the contract

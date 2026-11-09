@@ -888,6 +888,7 @@ impl ScriptFixture {
         fs::create_dir_all(&bin).expect("creates the fake toolchain");
         let stub = "#!/bin/sh\n\
                     case \"$*\" in\n\
+                      \"deny --version\") echo 'cargo-deny 0.20.2 (stub)' ;;\n\
                       *\"-- check \"*)\n\
                         [ -n \"${CHECK_STUB_TEXT:-}\" ] && printf '%s\\n' \"$CHECK_STUB_TEXT\"\n\
                         exit \"${CHECK_STUB_EXIT:-0}\" ;;\n\
