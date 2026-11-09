@@ -1,0 +1,30 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "docs/releasing.md",
+   "start": 67,
+   "end": 73,
+   "title": "Partial release",
+   "text": "The macOS API snippet runs under plain bash with no `set -e`/`pipefail` and no HTTP-status checks: `api ... >/dev/null && echo \"uploaded $n\"` merely skips the echo when an upload fails and the loop continues. If the `.sha256` upload fails (e.g. a transient 5xx) and the `.tar.gz` upload then succeeds, the release has the tarball but no checksum, the script exits 0, and the runbook's \"a visible tarball means the other two are there\" invariant is silently broken. The same applies to the asset listing: if it fails, `.listed` is empty and the refusal loop never sees an existing asset, so the no-overwrite rule is not enforced. Start the snippet with `set -euo pipefail` and abort on a non-2xx response for the listing and for each upload, as the workflow does.",
+   "tool_severity": null
+  },
+  {
+   "file": "<removed forgejo workflow>",
+   "start": 108,
+   "end": 109,
+   "title": "Stale pin",
+   "text": "The source install hardcodes `1.99.0` here and again in `rustup run 1.99.0 cargo install ...` instead of reading the dispatched rev's `rust-toolchain.toml`, unlike `release.yml` which derives the channel from `$full`. If `rust-toolchain.toml` is ever bumped (a routine rules bump) or the timing is dispatched for a rev that pins another channel, the measured compile uses a toolchain the adopter would not use, and nothing fails or flags it. Derive the channel from the rev (as release.yml does) and use it for both the install and the run.",
+   "tool_severity": null
+  },
+  {
+   "file": "tests/release_workflow.rs",
+   "start": 456,
+   "end": 464,
+   "title": "Test conflict",
+   "text": "This assertion requires the `## Measured` section of `docs/releasing.md` to contain no word starting with a digit, but the runbook and `<removed workflow>` both say the two `INSTALL <n>s` lines are copied into that section after the owner dispatches the timing. When that documented follow-up happens the test fails and the required gate goes red unless the test is edited in the same commit, and nothing tells the owner to do that. If this is a one-time tripwire before the timing exists, record in the runbook that it must be relaxed/removed with the copy; otherwise it blocks the very step it guards.",
+   "tool_severity": null
+  }
+ ]
+}

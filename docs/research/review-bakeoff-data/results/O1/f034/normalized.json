@@ -1,0 +1,38 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": ".req/variants",
+   "start": 10,
+   "end": 16,
+   "title": "documentation",
+   "text": "This prose is now inconsistent with the `src/gate.rs` change in the same update. It says \"the code says only *that* something is undecided\" and credits `tests/release_gate.rs` with naming the claim, but the gate now prints `undecided (not examined by this invocation): REQ-\u2026` plus a `remedy:` line naming every undecided claim (see `src/gate.rs:339`). A reader would wrongly conclude the test is the only mechanism that identifies which claim a dropped key cost. Reword to attribute the naming to the gate and keep the test's distinct role (per-declared-line completeness).",
+   "tool_severity": "low"
+  },
+  {
+   "file": "scripts/check.sh",
+   "start": 285,
+   "end": 288,
+   "title": "documentation",
+   "text": "Same inconsistency as `.req/variants`: the gate now emits `undecided (not examined by this invocation): REQ-\u2026` (and a `remedy:` line), and `run` prints the command's output, so this step does surface which claim is undecided \u2014 not only \"that\" one is. The closing clause then credits `tests/release_gate.rs` with the naming, which is no longer the only place the claim is identified. Reword so the gate's naming line is acknowledged and the test's role is stated as the per-line completeness guard.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "src/gate.rs",
+   "start": 343,
+   "end": 343,
+   "title": "bug",
+   "text": "The remedy promises that a variant context decides every claim named above, but a claim can be `Unknown` for a cause no context can fix: `select.rs` maps any selector outside the `==`/`>=` grammar to `Predicate::Unsupported` \u2192 `Applies::Unknown` permanently (the case pinned by `an_unparsed_selector_is_quoted_rather_than_asserted_absent`). Such a corpus prints this remedy on every run while staying at exit 3, so the actionable fix (rewrite/remove the selector) is never named. Also note this hard-codes `.req/variants`, a project-local file that `req` itself never reads (`.req/variants` header: \u201creq itself knows nothing about this file\u201d), so an adopter using another mechanism is pointed at a file that may not exist. Consider qualifying the remedy (e.g. naming the unparsed-selector case) rather than promising a context decides every listed claim.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "src/gate.rs",
+   "start": 287,
+   "end": 287,
+   "title": "documentation",
+   "text": "This new exit contract leaves `review/rule.json`'s `.req/**` entry stale: that custom checklist \u2014 the one handed to the reviewer of `.req/variants` \u2014 still asserts \u201cdropping any other key leaves that claim undecided while the gate exits 0\u201d and \u201cthe gate will not say so, because only `corpus_set` is dependency-guarded\u201d. `.req/variants` and `scripts/check.sh` were updated in this change but that rule was not, so the review rubric now contradicts the code and would mislead the next reviewer of `.req/variants` into accepting a line that leaves a claim undecided. Update it in the same change (docs are claims).",
+   "tool_severity": "medium"
+  }
+ ]
+}

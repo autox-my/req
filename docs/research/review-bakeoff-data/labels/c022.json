@@ -1,0 +1,48 @@
+{
+ "case": "c022",
+ "findings": [
+  {
+   "id": "F01",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c1",
+   "note": "Correct: the CLI audit test uses the committed manifest, so the provenance-failure-plus-NOT-JUDGED precedence in findings() (src/audit.rs ~296) is not exercised. A test gap on a simple arm."
+  },
+  {
+   "id": "F02",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c2",
+   "note": "The header line (src/audit.rs ~148) does restate the mismatch that the coverage block and Findings also state, against the 'one home' comment; this is stylistic duplication."
+  },
+  {
+   "id": "F03",
+   "verdict": "real",
+   "gt": [],
+   "cluster": "c3",
+   "note": "Verified: removing the NOT-JUDGED status arm yields '[uncovered]', which has no '[covered]' substring, and 'NOT JUDGED' is also matched by the packet header, so neither new arm (status, verdict) is pinned by the test."
+  },
+  {
+   "id": "F04",
+   "verdict": "real",
+   "gt": [],
+   "cluster": "c3",
+   "note": "Same gap as F03 for the per-claim status: asserting only that '[covered]' is absent does not catch the fall-through to 'uncovered'."
+  },
+  {
+   "id": "F05",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c2",
+   "note": "not_judged is a String and the header re-formats from manifest.rules_v/RULES_V; a maintainability risk that the wording drifts, with no current defect."
+  },
+  {
+   "id": "F06",
+   "verdict": "noise",
+   "gt": [],
+   "cluster": "c4",
+   "note": "verify drops every open reason when failed is non-empty (by design, as the comment at src/baseline.rs ~957 says a definite finding outranks an open question); the finding restates that documented precedence."
+  }
+ ],
+ "missed_gt": []
+}

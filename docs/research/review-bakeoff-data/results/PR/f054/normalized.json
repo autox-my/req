@@ -1,0 +1,22 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "<removed forgejo workflow>",
+   "start": 145,
+   "end": 151,
+   "title": "Evidence Loss",
+   "text": "The `MEASURE` step is `if: always()` specifically so a failed attempt still emits one machine-readable line, but the step runs under `set -eu` and does not guard the two `python3` calls. If `ocr-result.json` exists but is empty/truncated (a review interrupted after `--output` opened the file) or its top level is not a JSON object, `json.load(...).get(...)` raises and the step aborts before the `echo \"MEASURE \u2026\"` line, so exactly the failed run you wanted to record produces no row. Guard the parse (e.g. `tokens=$(... || echo none)`) so the line is always emitted; whether `ocr` leaves a partial file behind on failure is the uncertain part.",
+   "tool_severity": null
+  },
+  {
+   "file": "AGENTS.md",
+   "start": 428,
+   "end": 436,
+   "title": "Missing Documentation",
+   "text": "The PR description states that the two investigation corrections are written into this paragraph \"rather than left to memory\", but the added text records neither: it does not state `--max-tools`'s hard floor of 50 against the template's 60 (so the cap can save at most ~10 rounds), and it does not state that a custom `--tools` JSON is a full replacement array rather than an override. Only the workflow input description mentions the floor of 50; the `--tools` replacement limitation appears nowhere in the diff, so the knowledge the PR says it preserves is not actually preserved.",
+   "tool_severity": null
+  }
+ ]
+}

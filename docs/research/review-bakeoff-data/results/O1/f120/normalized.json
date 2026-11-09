@@ -1,0 +1,46 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/release_workflow.rs",
+   "start": 153,
+   "end": 158,
+   "title": "test",
+   "text": "The pins forbid `continue-on-error`, `|| true`/`||true`, `set +e` and `| tee`, but they never require a step to abort on its first failed command. Delete `set -eu` from `<removed workflow>`'s \"the prebuilt install, timed\" step and `bash \"$dir/install-req.sh\"` can fail yet execution falls through to `echo \"INSTALL prebuilt: \u2026\"` (exit 0) \u2014 the run goes green with a fabricated number and every pin here still passes. The same mutation removes the guard from the `set -euo pipefail` publish step. Also uncaught: `|| :`, `|| exit 0`, and a disabled step (`if: false`). Add a `require`/count assertion tying each `run: |` block to a `set -e` (a single global `require` is too weak because one surviving step satisfies it), and extend the forbidden list with `|| :`, `|| exit 0` and `if: false`.",
+   "tool_severity": "high"
+  },
+  {
+   "file": "tests/release_workflow.rs",
+   "start": 345,
+   "end": 346,
+   "title": "security",
+   "text": "The allowlist is substring-based, so a leaking line passes as long as it also contains an allowed fragment. A very plausible debugging edit \u2014 `echo \"::error::RELEASE_TOKEN='$RELEASE_TOKEN' is not set\"` \u2014 contains `::error::RELEASE_TOKEN` and is accepted, printing the token into the log while `require(\"-H @-\")` and `forbid(\"set -x\")` still hold. Likewise `echo \"$RELEASE_TOKEN\"; [ -z \"${RELEASE_TOKEN:-}\" ]` matches the `-z \"${RELEASE_TOKEN:-}\"` alternative. Tighten this: reject any line that both expands `$RELEASE_TOKEN`/`${RELEASE_TOKEN` and matches `::error::` or `-z \"${RELEASE_TOKEN:-}\"` (the current guard line and error line do not interpolate the value), or compare against exact expected lines instead of `contains`.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/release_workflow.rs",
+   "start": 456,
+   "end": 458,
+   "title": "test",
+   "text": "The oracle \"any token starting with an ASCII digit means a measurement was recorded\" is not the same as \"a timing was recorded\". It fails on legitimate, number-free content the owner may add before dispatching \u2014 an ordered list (`1.`), a date (`2026-11-09`), a bare version \u2014 while a real measurement written as `\u224842 s` or `~42 seconds` slips through. Match the shape the workflow actually emits (`INSTALL source:` / `INSTALL prebuilt:` and an `Ns` token) instead of any digit-leading word. Suggestion:",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/release_workflow.rs",
+   "start": 268,
+   "end": 269,
+   "title": "maintainability",
+   "text": "`unwrap_or(0)` turns a harmless spelling change into a misleading failure: if the upload is later written with `--form`, single quotes, or a variable, `first_upload` becomes 0 and the assertion reports \"the existing-asset check must come before the first upload\" even though the order is correct. It also conflates \"upload form not found\" with \"found at position 0\". Use `expect` so each missing needle fails with the actual reason (and note that this only proves textual order, not runtime ordering). Suggestion:",
+   "tool_severity": "low"
+  },
+  {
+   "file": "tests/release_workflow.rs",
+   "start": 89,
+   "end": 89,
+   "title": "maintainability",
+   "text": "Only a line whose trimmed text is exactly `inputs:` starts the block. A trailing comment (`inputs: # the dispatch inputs`) or flow style (`inputs: {}`) leaves `names` empty and produces the misleading \"exactly one input, `rev`\" assertion instead of naming the format problem. Match `trimmed.starts_with(\"inputs:\")` (or assert the block was found) so an innocuous reformat fails with an accurate message.",
+   "tool_severity": "low"
+  }
+ ]
+}

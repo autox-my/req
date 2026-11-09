@@ -1,0 +1,14 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/canon.rs",
+   "start": 1311,
+   "end": 1313,
+   "title": "Inaccurate comment",
+   "text": "The loader doc says the `.yaml` twin of a `.yml` is \"the one way two files can share an id\", but the duplicate pass runs over every parsed candidate before any filename check, so a misnamed second file (e.g. `req-0008.yml` declaring `claim_id: REQ-0008` alongside `REQ-0008.yml`) is also reported as a duplicate. That is the broader rule `docs/claim-format.md` states, so the comment and the docs disagree on the invariant. Use wording such as \"including the `.yaml` twin of a `.yml`\" so the comment matches the documented rule.",
+   "tool_severity": null
+  }
+ ]
+}

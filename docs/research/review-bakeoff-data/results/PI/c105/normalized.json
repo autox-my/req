@@ -1,0 +1,26 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/baseline.rs",
+   "start": null,
+   "end": null,
+   "title": "Bound staging file name length",
+   "text": "The staging name embeds the full target file name, so a valid `--out` path whose own name is close to `NAME_MAX` fails with `ENAMETOOLONG` and the manifest is never written. Bound the embedded stem (on a char boundary) since it is only diagnostic.",
+   "existing_code": "let name = target\n    .file_name()\n    .ok_or_else(|| std::io::Error::other(\"the path names no file\"))?\n    .to_string_lossy()\n    .into_owned();\n// The name carries the clock as well as the pid: a run killed between `open` and `rename`\n// leaves its staging file behind, and a recycled pid (or PID 1 in a container) must not make\n// every later run collide with it.\nlet nanos = std::time::SystemTime::now()\n    .duration_since(std::time::UNIX_EPOCH)\n    .map(|d| d.as_nanos())\n    .unwrap_or_default();\nlet staged = directory.join(format!(\n    \".{name}.req-staging-{}-{nanos}\",\n    std::process::id()\n));",
+   "tool_severity": null,
+   "tool_score": 6
+  },
+  {
+   "file": "src/baseline.rs",
+   "start": null,
+   "end": null,
+   "title": "Sync directory after rename",
+   "text": "`sync_all` makes the temp file's data durable, but the rename that installs it is only durable after the containing directory is synced; a crash right after success can leave the previous manifest (or none) where the command reported success. Sync the parent directory after the rename, best-effort so a sync error does not turn an already-written target into \"nothing was written\".",
+   "existing_code": "let finished = written.and_then(|()| std::fs::rename(&staged, target));\nif finished.is_err() {\n    let _ = std::fs::remove_file(&staged);\n}\nfinished",
+   "tool_severity": null,
+   "tool_score": 6
+  }
+ ]
+}

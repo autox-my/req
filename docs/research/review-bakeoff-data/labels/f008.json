@@ -1,0 +1,15 @@
+{"case": "f008",
+ "findings": [
+  {"id": "F01", "verdict": "minor", "gt": [], "cluster": "c1", "note": "src/model.rs relations_digest/rationale_digest hash serde_json::to_string output, which depends on field declaration order; the comment documents this as deliberate, so it is a future-refactor risk, not a present defect."},
+  {"id": "F02", "verdict": "real", "gt": ["G1"], "cluster": "c2", "note": "src/baseline.rs from_json: detail.contains(\"missing field\") gives the v1 re-sign advice for any missing field, e.g. address or claim_id."},
+  {"id": "F03", "verdict": "real", "gt": ["G3", "G4"], "cluster": "c3", "note": "tests/baseline.rs row() uses constant 'relations-hash'/'rationale-hash' placeholders, so load_rows wiring is never exercised, and the edited-relation test only mutates relations_hash directly."},
+  {"id": "F04", "verdict": "real", "gt": [], "cluster": "c4", "note": "src/audit.rs merges attested_changed into drifted and findings() at line ~227 prints 'edited after signing — the ratified text is gone', which is false for a relations/rationale-only drift."},
+  {"id": "F05", "verdict": "real", "gt": ["G5"], "cluster": "c5", "note": "tests/baseline.rs: assert_eq!(relations_digest(&[]), relations_digest(&[])) cannot fail and no golden digest is pinned."},
+  {"id": "F06", "verdict": "real", "gt": [], "cluster": "c6", "note": "src/baseline.rs module header and AGENTS.md:201 still describe the manifest as rules version, selection and addresses; the signed bytes now carry relations_hash/rationale_hash too."},
+  {"id": "F07", "verdict": "real", "gt": ["G5"], "cluster": "c5", "note": "Same tautological empty-list assertion as F05."},
+  {"id": "F08", "verdict": "real", "gt": [], "cluster": "c7", "note": "tests/audit.rs row() uses constant hashes and no test flips one, so the new attested_changed filter/extend in audit::coverage are untested."},
+  {"id": "F09", "verdict": "real", "gt": ["G7"], "cluster": "c8", "note": "tests/common/mod.rs:28-29 constant hashes do not follow rels or the rationale() helper, so the fixture is internally inconsistent."},
+  {"id": "F10", "verdict": "real", "gt": ["G1"], "cluster": "c2", "note": "Same over-broad 'missing field' match; also correct that a real v1 manifest fails deserialization before the version gate in verify."},
+  {"id": "F11", "verdict": "real", "gt": ["G1"], "cluster": "c2", "note": "Same over-broad 'missing field' match in from_json; suggests deciding from version."}
+ ],
+ "missed_gt": ["G2", "G6"]}

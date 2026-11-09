@@ -1,0 +1,46 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/agent_handoff.rs",
+   "start": 70,
+   "end": 70,
+   "title": "test",
+   "text": "The `claim_schema` needle is the bare value (`req.claim/2`), while the `rules_v` needle is anchored to its label. The snippet names `req.claim/2` in **two** places: the precheck (line 7, `` `claim_schema req.claim/2` ``) and the authoring rule (line 10, `` (`req.claim/2`) ``). So if `CLAIM_SCHEMA_V` is bumped and only the authoring mention is updated, the precheck still advertises the stale schema and this test passes \u2014 exactly the drift it exists to catch. Anchor the needle to the label like the `rules_v` needle does.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/agent_handoff.rs",
+   "start": 102,
+   "end": 106,
+   "title": "test",
+   "text": "Two weaknesses in the brief's precheck assertion: (a) it only checks the bare `claim_schema` value anywhere in the file rather than the `claim_schema <v>` pin; (b) it never checks `rules_v`, although the brief's precheck pins `rules_v 6` in exactly the same sentence (line 11) and the sibling snippet test does check it. A `RULES_V` bump would leave the brief stale with this test green. Assert both label-anchored pins, and check the exit code of the `--version` run.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/agent_handoff.rs",
+   "start": 111,
+   "end": 114,
+   "title": "test",
+   "text": "Each `named_commands` call dedupes only within its own file, so the merged vector contains cross-file duplicates. Today the two docs name only three distinct commands (`canon`, `gate`, `render`) and `canon` appears in both files, so `len() >= 4` is satisfied purely by that duplicate: the guard does not guarantee what its message claims, and it would fail spuriously if `canon` were dropped from the brief (a legitimate edit). Dedupe after merging and base the guard on distinct commands.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/agent_handoff.rs",
+   "start": 35,
+   "end": 35,
+   "title": "maintainability",
+   "text": "`run` keeps stdout only, so every failure diagnostic (`unrecognized subcommand: ...`, usage text) is discarded and `assert_eq!(code, 0, ...)` reports nothing actionable about *why* `req <command> --help` failed. Fold stderr into the returned text so a renamed/removed command is debuggable from the test output alone.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "tests/agent_handoff.rs",
+   "start": 54,
+   "end": 54,
+   "title": "test",
+   "text": "The extracted word stops at the first non-lowercase character, so the extractor cannot represent a hyphenated or digit-bearing subcommand. Today every entry in `COMMANDS` (`src/main.rs`) is plain lowercase, so nothing is missed; but if a command is ever renamed to e.g. `render-md`, a doc that still names `req render-md` extracts `render`, which exists, and the stale reference passes silently \u2014 the exact failure this test is supposed to detect. Take the whole token up to whitespace/backtick instead of a lowercase run.",
+   "tool_severity": "low"
+  }
+ ]
+}

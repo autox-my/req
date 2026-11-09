@@ -1,0 +1,26 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "<removed forgejo workflow>",
+   "start": null,
+   "end": null,
+   "title": "Remove forbidden host literal from comment",
+   "text": "The new test in `tests/release_workflow.rs` asserts that the release workflow text does not contain\n`<private-host>`, but this added comment embeds that literal host name, so the `forbid` check will fail.\nReword the comment so it explains the same fact without spelling out the public host.",
+   "existing_code": "# The URL THIS RUNNER reaches Forgejo at (its own server URL: the one checkout uses), not the\n# public tailnet name: the runner is a LAN container with no tailnet DNS, so\n# https://<private-host> does not resolve there (first dispatch: \"Could not resolve host\").",
+   "tool_severity": null,
+   "tool_score": 9
+  },
+  {
+   "file": "<removed forgejo workflow>",
+   "start": null,
+   "end": null,
+   "title": "Preserve TLS 1.2 minimum floor",
+   "text": "Replacing the hard-coded `--proto '=https' --tlsv1.2` with a scheme-derived `--proto \"$proto\"` also drops the\n`--tlsv1.2` minimum, so an https server may be negotiated down to an older TLS version on token-bearing\nrequests. Keep `--tlsv1.2` (it is ignored for plain-http transfers) so the TLS floor is preserved when https is used.",
+   "existing_code": "curl --proto \"$proto\" -sS -H @- \"$@\"",
+   "tool_severity": null,
+   "tool_score": 7
+  }
+ ]
+}

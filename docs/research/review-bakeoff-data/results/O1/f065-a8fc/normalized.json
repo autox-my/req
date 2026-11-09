@@ -1,0 +1,22 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "<removed forgejo workflow>",
+   "start": 261,
+   "end": 261,
+   "title": "security",
+   "text": "Switching the fixed `=https` proto to a `$proto` variable also dropped the explicit `--tlsv1.2` floor. On the https branch this weakens the transport the `Authorization` token rides on (curl will now accept whatever TLS its build permits, e.g. 1.0/1.1), and it diverges from `examples/install-req.sh`, which keeps `--tlsv1.2` alongside the variable `--proto`. `--tlsv1.2` is a no-op for an `http://` URL, so it can stay unconditional.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/release_workflow.rs",
+   "start": 499,
+   "end": 499,
+   "title": "test",
+   "text": "Two problems with the new timing pins. (a) The needle is the whole shell expression verbatim, so a behaviour-preserving rewrite (building the base in a variable first, or using `${{ github.server_url }}/${{ github.repository }}` as release.yml does) turns the test red even though the override is still correct \u2014 it pins formatting, not the rule. (b) Nothing pins `REQ_CURL_PROTO`: deleting the entire `case $GITHUB_SERVER_URL` block keeps this test green, yet the prebuilt timing would then fall back to the script's `=https` default and fail at dispatch on an `http://` runner. Mutation-check the http branch by pinning that `REQ_CURL_PROTO` is set from the server URL (e.g. require the `=http` branch or the variable derivation), rather than pinning the exact base literal.",
+   "tool_severity": "medium"
+  }
+ ]
+}

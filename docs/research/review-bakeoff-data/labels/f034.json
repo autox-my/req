@@ -1,0 +1,10 @@
+{"case": "f034",
+ "findings": [
+  {"id": "F01", "verdict": "real", "gt": ["G3"], "cluster": "c1", "note": "review/rule.json:72 still says dropping a key 'leaves that claim undecided while the gate exits 0' and 'the gate will not say so', which contradicts the new exit_code(results, undecided) in src/gate.rs."},
+  {"id": "F02", "verdict": "minor", "gt": [], "cluster": "c2", "note": ".req/variants prose says the exit code says only *that* something is undecided (true) and credits the test with naming the claim; it under-reports the new gate naming line but states nothing false of consequence."},
+  {"id": "F03", "verdict": "minor", "gt": [], "cluster": "c2", "note": "Same wording issue in the scripts/check.sh comment (lines 284-288): it omits that the gate now names undecided claims; a slight imprecision with no behavioural effect."},
+  {"id": "F04", "verdict": "real", "gt": ["G1", "G2"], "cluster": "c3", "note": "src/init.rs CI snippet: `while IFS= read -r line` has no `|| [ -n \"$line\" ]`, so a final unterminated line is dropped, and a whitespace-only line passes `[ -n \"$variant\" ]` and becomes an unquoted bare `gate`; the snippet is copied in docs/adopting.md."},
+  {"id": "F05", "verdict": "noise", "gt": [], "cluster": "c4", "note": "tests/release_gate.rs:673-682 at reviewed_state still asserts selectors_confirmed starts with [PASS] and does not name `runs`, so the claimed missing assertion is present."},
+  {"id": "F06", "verdict": "minor", "gt": [], "cluster": "c5", "note": "True that select.rs:115 maps Unsupported to Unknown permanently, so the new remedy line (gate.rs:343) is misleading there, but selectors_confirmed (gate.rs:115) already surfaces the unparsed selector; the consequence is minor."}
+ ],
+ "missed_gt": ["G4"]}

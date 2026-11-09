@@ -1,0 +1,124 @@
+{
+ "case": "f005",
+ "reviewed_state": "59455939388cac9155d633d5471d5a81cd16581e",
+ "diff_range": "cea431644cf31fe33d388a761892e519bd7bb78b..59455939388cac9155d633d5471d5a81cd16581e",
+ "ground_truth": [
+  {
+   "id": "G1",
+   "file": "src/model.rs",
+   "text": "Unknown-key rejection (deny_unknown_fields) is applied only to the top-level ClaimFile, not to the nested structs Rationale, Relation and CanonicalCache. Because Rationale's list fields default to empty, a misspelled nested key such as rejected_alternativs: loads silently as an empty list, losing authored data with no error.",
+   "kind": "robustness"
+  },
+  {
+   "id": "G2",
+   "file": "src/canon.rs",
+   "text": "The loader's candidate gate (looks_like_claim_file) is extension-only (yml/yaml). A claim renamed to REQ-0008.txt, REQ-0008 or REQ-0008.yml.disabled is not considered a candidate, so the requirement silently vanishes from the corpus with exit code 0 instead of failing the load.",
+   "kind": "code-bug"
+  },
+  {
+   "id": "G3",
+   "file": "docs/claim-format.md",
+   "text": "The loader contract does not state how a directory entry whose name is not valid UTF-8 is handled, nor that claim-shaped non-yml names are candidates. The code fails the corpus on such an entry (it could be a claim), but the doc says only that non-claim entries are left alone, leaving the behaviour undocumented or contradicting the stated naming rule.",
+   "kind": "docs-contradiction"
+  },
+  {
+   "id": "G4",
+   "file": "tests/claim_slots.rs",
+   "text": "The test helper with_applicability builds a variant claim with String::replace on the CLAIM template and never checks the replacement happened. If the template drifts and the needle is absent the replace is a silent no-op, the variant equals the base, and the failure is misattributed to the identity logic in evaluate_claim rather than to the helper.",
+   "kind": "test-gap"
+  }
+ ],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "src/canon.rs",
+   "text": "The loader doc says the `.yaml` twin of a `.yml` is \"the one way two files can share an id\", but the duplicate pass runs over every parsed candidate before any filename check, so a misnamed second file (e.g. `req-0008.yml` declaring `claim_id: REQ-0008` alongside `REQ-0008.yml`) is also reported as a duplicate. That is the broader rule `docs/claim-format.md` states, so the comment and the docs disagree on the invariant. Use wording such as \"including the `.yaml` twin of a `.yml`\" so the comment matches the documented rule.",
+   "title": "Inaccurate comment",
+   "lines": [
+    1311,
+    1313
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "src/canon.rs",
+   "text": "`read_dir` is not recursive and a subdirectory such as `claims/archive/` fails `looks_like_claim_file`, so every claim inside it disappears while the run stays green \u2014 the same silent deletion the strict loader is meant to prevent. Reject directory entries in `claims/` so a claim can never be shelved out of the corpus unnoticed.",
+   "title": "Reject subdirectories inside claims",
+   "code": "if !looks_like_claim_file(name) {\n    continue;\n}\nlet path = entry.path();\nif !path.is_file() {\n    return Err(format!(\n        \"{}: a claim file must be a regular file (rename or remove it)\",\n        path.display()\n    ));\n}"
+  },
+  {
+   "id": "F03",
+   "file": "tests/loader.rs",
+   "text": "The `relations` rule has a dropped-key test, but the analogous load-bearing rule for `applicability` is never tested as *omitted*. The typo test replaces `applicability:` with `applicabilty:`, which `deny_unknown_fields` rejects regardless of whether `applicability` still carries `#[serde(default)]` \u2014 so if the default were reintroduced (the exact F2 regression this change prevents), the whole suite would still pass. Add a test that drops the `applicability: []` line entirely and asserts the parse fails naming `applicability`, mirroring the relations case (mutation-check it by restoring `#[serde(default)]`).",
+   "title": "test",
+   "lines": [
+    114,
+    115
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "tests/loader.rs",
+   "text": "Hardcoding `21` couples the test to the current corpus size: any legitimate new claim file turns ordinary growth into a red test, while the assertion adds little over \"the corpus loads\" (`load_claims` errors rather than dropping files). Derive the expectation from the filesystem instead so it still catches a silently-skipped file but survives additions \u2014 e.g. count the `claims/*.yml` files and compare against the returned claim count.",
+   "title": "maintainability",
+   "lines": [
+    207,
+    207
+   ]
+  },
+  {
+   "id": "F05",
+   "file": "src/canon.rs",
+   "text": "Extension-only candidacy still drops silently: `REQ-0022.txt` or `REQ-0022.yml.bak` (a save/backup that may hold the only copy) is skipped with every exit code zero, the exact failure the naming pass exists to make loud. Treat any `REQ-`-prefixed name as a candidate so it reaches `is_claim_filename` and errors, while `README.md`/notes files stay ignored.",
+   "title": "Treat misnamed claim files as errors",
+   "code": "fn looks_like_claim_file(name: &str) -> bool {\n    std::path::Path::new(name)\n        .extension()\n        .and_then(|e| e.to_str())\n        .is_some_and(|e| e.eq_ignore_ascii_case(\"yml\") || e.eq_ignore_ascii_case(\"yaml\"))\n}"
+  },
+  {
+   "id": "F06",
+   "file": "src/canon.rs",
+   "text": "The non-UTF-8 check fires for every `read_dir` entry before the `looks_like_claim_file` filter. A non-claim file with a non-UTF-8 name (legal on Linux/macOS, e.g. a Latin-1 filename extracted into `claims/`) therefore aborts the whole corpus: `canon`, `fill`, `verify`, `select` and `view` all exit 3 even though the file is not a `.yml`/`.yaml` and is supposed to be left alone. Check the extension on the `OsStr` (or use `to_string_lossy`, which preserves ASCII extensions) first, and only require UTF-8 for actual claim candidates.",
+   "title": "bug",
+   "lines": [
+    1323,
+    1332
+   ]
+  },
+  {
+   "id": "F07",
+   "file": "tests/loader.rs",
+   "text": "The sibling F3 tests (`a_lowercase_claim_file_...`, `a_yaml_extension_...`) also assert `run_claim_diagnostics_at(...) == 3`, but the stem-mismatch and the duplicate-id tests stop at `load_claims`. Since the requirement is that every unreadable-as-a-claim corpus is UNVERIFIABLE (not a pass), add the same exit-3 assertion here and in `duplicate_claim_ids_error_and_the_content_is_compared` to keep the three outcomes covered consistently.",
+   "title": "test",
+   "lines": [
+    164,
+    166
+   ]
+  },
+  {
+   "id": "F08",
+   "file": "src/canon.rs",
+   "text": "A `claims/` directory that exists but holds no candidate files yields `Ok(vec![])`, so `req canon`/`--verify`/`--fill` and every other consumer report success over zero requirements \u2014 a gate that passes over nothing. Since the loader's premise is that a vanished file deletes a requirement, an empty corpus (all requirements vanished) must be UNVERIFIABLE rather than a clean pass.",
+   "title": "Reject an empty corpus",
+   "code": "paths.sort();\n\nlet mut loaded: Vec<LoadedClaim> = Vec::new();"
+  },
+  {
+   "id": "F09",
+   "file": "tests/claim_slots.rs",
+   "text": "`String::replace` silently no-ops if `CLAIM` is ever reformatted, returning an identical variant: the failure then surfaces as the opaque `assert_ne!` in `authored_applicability_is_part_of_identity` rather than as a clear fixture error. Guard that the pattern is present so a refactor of `CLAIM` fails loudly at the helper.",
+   "title": "maintainability",
+   "lines": [
+    40,
+    45
+   ]
+  },
+  {
+   "id": "F10",
+   "file": "src/canon.rs",
+   "text": "This check (and the UTF-8 check above) runs while iterating `read_dir`, whose order is platform/filesystem-dependent; `paths.sort()` happens only afterwards. With more than one invalid entry, which one is reported depends on iteration order, so the same broken corpus can print different `[UNVERIFIABLE]` messages run to run. Collect candidate entries, sort them, then validate/report so the diagnosis is reproducible. Note also that `is_file()` folds any metadata I/O error into `false`, so a permission/stat failure is reported as \"must be a regular file\" rather than the real cause.",
+   "title": "bug",
+   "lines": [
+    1333,
+    1334
+   ]
+  }
+ ]
+}

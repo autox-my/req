@@ -1,0 +1,14 @@
+{"case": "c100",
+ "findings": [
+  {"id": "F01", "verdict": "real", "gt": [], "cluster": "c1", "note": "agent_handoff.rs:111-116: snippet names canon/gate/render and the brief names canon, so len()>=4 holds only via the cross-file duplicate canon."},
+  {"id": "F02", "verdict": "real", "gt": [], "cluster": "c2", "note": "agent_handoff.rs:70 needle is the bare req.claim/2, which also appears on agents-snippet.md:10, so a stale precheck on line 7 still passes."},
+  {"id": "F03", "verdict": "real", "gt": [], "cluster": "c3", "note": "agent_handoff.rs:102-106 checks only claim_schema in the brief; the brief's 'rules_v 6' (handoff-brief.md:11) is never checked, so a RULES_V bump leaves it stale and green."},
+  {"id": "F04", "verdict": "noise", "gt": [], "cluster": "c4", "note": "All current COMMANDS are plain lowercase; a hypothetical future hyphenated rename, no concrete trigger."},
+  {"id": "F05", "verdict": "real", "gt": [], "cluster": "c3", "note": "Same as F03: the brief test (102-106) omits rules_v and ignores the --version exit code."},
+  {"id": "F06", "verdict": "real", "gt": [], "cluster": "c2", "note": "Same as F02: req.claim/2 occurs at agents-snippet.md:10, so the line-70 check is vacuous for the precheck."},
+  {"id": "F07", "verdict": "real", "gt": [], "cluster": "c3", "note": "Same as F03: handoff-brief.md:11 hardcodes rules_v 6 and agent_handoff.rs:102-106 never checks it."},
+  {"id": "F08", "verdict": "real", "gt": [], "cluster": "c2", "note": "Same as F02: bare value at line 70 matches the unchanged authoring bullet (snippet line 10)."},
+  {"id": "F09", "verdict": "minor", "gt": [], "cluster": "c5", "note": "run (35-45) drops stderr, so a failing --help assertion lacks diagnostics; a debuggability nit."},
+  {"id": "F10", "verdict": "real", "gt": [], "cluster": "c1", "note": "Same as F01: per-file dedupe only (56), so canon counts twice toward the >=4 guard at 113-116."}
+ ],
+ "missed_gt": []}

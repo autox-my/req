@@ -1,0 +1,11 @@
+{"case": "c058",
+ "findings": [
+  {"id": "F01", "verdict": "minor", "gt": [], "cluster": "c1", "note": "tests/funnel_flags.rs:53-55 compares two outputs of the code under test; it detects the bug only while corpus_set changes the count (16 vs 15 today), so the premise is unpinned but the test can fail now."},
+  {"id": "F02", "verdict": "minor", "gt": [], "cluster": "c2", "note": "funnel.rs:445 prints the header before the gold file loads (484-491), so the test does not prove --gold was honoured; but the test's stated claim (not a usage error) is covered, and it does catch the original bug (exit 2)."},
+  {"id": "F03", "verdict": "minor", "gt": [], "cluster": "c3", "note": "decision.rs:318-327 iterates all args and does not use args.first(), so the new comment in funnel.rs:326 is inaccurate; its conclusion (nothing over-consumed) still holds."},
+  {"id": "F04", "verdict": "minor", "gt": [], "cluster": "c1", "note": "Same unpinned-premise concern as F01 (the selector might be inert); a hardening suggestion, and the test catches the bug on today's corpus."},
+  {"id": "F05", "verdict": "minor", "gt": [], "cluster": "c4", "note": "A missing fixture would fail the test with an unhelpful message (stderr not captured); this is a diagnostics nit only."},
+  {"id": "F06", "verdict": "real", "gt": [], "cluster": "c5", "note": "AGENTS.md:322-323 says the --pairs flag 'carries no test of its own', which the new tests/funnel_flags.rs contradicts (docs-are-claims rule); also, no test exercises list_all, so deleting it stays green."},
+  {"id": "F07", "verdict": "minor", "gt": [], "cluster": "c6", "note": "main.rs:523 reads REQ_ROOT before the walk-up and the helper does not env_remove it, unlike tests/cli_version.rs:35 and tests/adopt.rs; this is a hermeticity nit, since CI does not set it."}
+ ],
+ "missed_gt": []}

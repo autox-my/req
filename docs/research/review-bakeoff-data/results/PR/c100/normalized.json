@@ -1,0 +1,22 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/agent_handoff.rs",
+   "start": 102,
+   "end": 106,
+   "title": "Missing rules_v check",
+   "text": "`the_handoff_brief_names_one_step_its_precheck_and_its_report` verifies only the build's `claim_schema` against `examples/handoff-brief.md`, but the brief hardcodes `rules_v 6` in its precheck (line 11) and nothing checks it. When `RULES_V` is bumped (a normal Tier-1 protocol change), the snippet test will fail and force `examples/agents-snippet.md` to be updated, while the brief silently keeps the old value and stays green; an adopter's agent following the brief then stops and reports a mismatch against a current, correct binary \u2014 the exact confusion this PR is meant to remove. Add `format!(\"rules_v {}\", version_field(&version, \"rules_v\"))` to the brief assertions (or make the brief point at `req --version` instead of embedding the literal).",
+   "tool_severity": null
+  },
+  {
+   "file": "tests/agent_handoff.rs",
+   "start": 68,
+   "end": 80,
+   "title": "Vacuous claim_schema guard",
+   "text": "The snippet test asserts `snippet.contains(&version_field(&version, \"claim_schema\"))` over the whole file, but `examples/agents-snippet.md` already contains `req.claim/2` in the bullet \"A claim is authored (`req.claim/2`)...\" (line 10). If the `claim_schema req.claim/2` token is removed or reworded on the `req --version` precheck line, the assertion still passes on that unrelated occurrence, so the test does not actually guard what it claims to. Anchor the check to the precheck, e.g. assert the contiguous string `claim_schema <value>` (or search only the `req --version` bullet).",
+   "tool_severity": null
+  }
+ ]
+}

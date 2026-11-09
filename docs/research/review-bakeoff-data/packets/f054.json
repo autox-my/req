@@ -1,0 +1,130 @@
+{
+ "case": "f054",
+ "reviewed_state": "47424716c862b8156718867a0e13284532f1a977",
+ "diff_range": "97112e89830718564bcd60384ff7114e5a255fe3..47424716c862b8156718867a0e13284532f1a977",
+ "ground_truth": [
+  {
+   "id": "G1",
+   "file": "<removed forgejo workflow>",
+   "text": "workflow_dispatch inputs are interpolated directly into the shell script via ${{ inputs.* }} (e.g. --exclude, --from, --to, label). The runner substitutes them before bash parses the script, so a value with a quote, $(...), a backtick or ';' runs commands in a step holding the OCR_LLM_TOKEN secret.",
+   "kind": "security"
+  },
+  {
+   "id": "G2",
+   "file": "<removed forgejo workflow>",
+   "text": "The review CLI is installed with npm ci from the dispatched checkout, so the commit under measurement can supply the tool and have it executed with the provider token. The same hole exists in <removed workflow>. The install should come from origin/main's package.json and lockfile.",
+   "kind": "security"
+  },
+  {
+   "id": "G3",
+   "file": "<removed forgejo workflow>",
+   "text": "The MEASURE summary step parses ocr-result.json with inline python under set -e; a truncated or missing result, or a comments field of an unexpected shape, aborts the step exactly when the measurement is most useful.",
+   "kind": "robustness"
+  },
+  {
+   "id": "G4",
+   "file": "<removed forgejo workflow>",
+   "text": "The rounds figure is counted from the CLI's progress glyph, so a formatting change would silently read as zero rounds instead of 'unavailable'; the result's own tool_calls count is not used or labelled as the source.",
+   "kind": "code-bug"
+  },
+  {
+   "id": "G5",
+   "file": "<removed forgejo workflow>",
+   "text": "The measurement workflow lacks the step that deletes a stale $HOME/.opencodereview/config.json, which overrides the environment and makes a good token be reported as missing; <removed workflow> has the deletion.",
+   "kind": "robustness"
+  }
+ ],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "<removed forgejo workflow>",
+   "text": "`${{ inputs.* }}` values are substituted into the `run:` script before the shell parses it, so a dispatched value containing `$(...)`, backticks or quotes executes on the runner that holds `OCR_LLM_TOKEN`. Instead, expose the inputs (including `exclude`) through the step's `env:` block and reference them as quoted `$INPUT_*` variables. Apply the same pattern in the `MEASURE` echo and the `--exclude` argument.",
+   "title": "Avoid shell injection from dispatch inputs",
+   "code": "extra=\"\"\nif [ \"${{ inputs.max_tools }}\" != \"0\" ]; then extra=\"$extra --max-tools ${{ inputs.max_tools }}\"; fi\nif [ \"${{ inputs.no_filter }}\" = \"true\" ]; then extra=\"$extra --no-filter\"; fi\n# shellcheck disable=SC2086\nocr review \\\n  --from \"${{ inputs.from_ref }}\" \\\n  --to \"${{ inputs.to_sha }}\" \\"
+  },
+  {
+   "id": "F02",
+   "file": "<removed forgejo workflow>",
+   "text": "The `MEASURE` step is `if: always()` specifically so a failed attempt still emits one machine-readable line, but the step runs under `set -eu` and does not guard the two `python3` calls. If `ocr-result.json` exists but is empty/truncated (a review interrupted after `--output` opened the file) or its top level is not a JSON object, `json.load(...).get(...)` raises and the step aborts before the `echo \"MEASURE \u2026\"` line, so exactly the failed run you wanted to record produces no row. Guard the parse (e.g. `tokens=$(... || echo none)`) so the line is always emitted; whether `ocr` leaves a partial file behind on failure is the uncertain part.",
+   "title": "Evidence Loss",
+   "lines": [
+    145,
+    151
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "<removed forgejo workflow>",
+   "text": "Two problems in one line: the input is interpolated into the script (same injection surface as above) and `max_tools` is never validated, so a blank or non-numeric value yields `--max-tools \"\"` / a CLI parse error instead of a clear failure. Env-pass the three inputs onto this step and validate the number before building `extra` (also keeps the `${extra}` word-splitting down to known-good tokens).",
+   "title": "security",
+   "lines": [
+    113,
+    114
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "<removed forgejo workflow>",
+   "text": "When the attempt step dies before writing `/tmp/measure.elapsed`, this prints `elapsed_s=0`, which reads as an instant review rather than no measurement and would enter the comparison table as a duration. Report the same `no-attempt` sentinel used by `rc` so the line never claims a time that was not measured.",
+   "title": "Avoid fabricated elapsed time when unattempted",
+   "code": "rc=$(cat /tmp/measure.rc 2>/dev/null || echo \"no-attempt\")\nelapsed=$(cat /tmp/measure.elapsed 2>/dev/null || echo \"0\")"
+  },
+  {
+   "id": "F05",
+   "file": "<removed forgejo workflow>",
+   "text": "Dispatch inputs are substituted into the script text before bash parses it, so the quoting around them is not a defence: a value containing `$(...)`, a backtick or a quote is executed on the runner. `label` (echoed in MEASURE, inside single quotes at that) and `exclude` have the same problem. Route them through `env:` (`TO_SHA: ${{ inputs.to_sha }}`, `FROM_REF: \u2026`, `EXCLUDE: \u2026`) and reference the variables here, as `<removed workflow>` does with `HEAD_SHA`.",
+   "title": "security",
+   "lines": [
+    117,
+    118
+   ]
+  },
+  {
+   "id": "F06",
+   "file": "AGENTS.md",
+   "text": "The PR description states that the two investigation corrections are written into this paragraph \"rather than left to memory\", but the added text records neither: it does not state `--max-tools`'s hard floor of 50 against the template's 60 (so the cap can save at most ~10 rounds), and it does not state that a custom `--tools` JSON is a full replacement array rather than an override. Only the workflow input description mentions the floor of 50; the `--tools` replacement limitation appears nowhere in the diff, so the knowledge the PR says it preserves is not actually preserved.",
+   "title": "Missing Documentation",
+   "lines": [
+    428,
+    436
+   ]
+  },
+  {
+   "id": "F07",
+   "file": "<removed forgejo workflow>",
+   "text": "The step runs under `set -e`, so if `ocr-result.json` exists but is truncated or malformed (exactly the failed attempt this workflow is meant to record), either `python3` call aborts the step and the `MEASURE` line is never printed. Fall back to an explicit `unreadable` marker instead of letting the parse kill the measurement.",
+   "title": "Guard measurement parsing against malformed results",
+   "code": "if [ -f ocr-result.json ]; then\n  tokens=$(python3 -c \"import json;print(json.load(open('ocr-result.json')).get('total_tokens',0))\")\n  findings=$(python3 -c \"import json,collections;d=json.load(open('ocr-result.json'));c=collections.Counter(str(x.get('severity','')).strip().lower() for x in (d.get('comments') or []));print('/'.join(str(c.get(s,0)) for s in ('critical','high','medium','low')))\")\nelse\n  tokens=none\n  findings=none\nfi"
+  },
+  {
+   "id": "F08",
+   "file": "<removed forgejo workflow>",
+   "text": "`<removed workflow>` removes `$HOME/.opencodereview/config.json` right after this install step, with the note that a stale config in a persistent `$HOME` overrides the environment and yields \"provider has no api_key configured\" against a valid token. This workflow installs the same CLI and relies on the same env-only provider config, but never clears that file, so a reused/persistent runner home makes the measurement fail for a reason unrelated to the review. Add the same `rm -f \"$HOME/.opencodereview/config.json\"` here.",
+   "title": "maintainability",
+   "lines": [
+    70,
+    70
+   ]
+  },
+  {
+   "id": "F09",
+   "file": "<removed forgejo workflow>",
+   "text": "This step is the whole deliverable of the workflow, yet it aborts under `set -eu` on exactly the runs that most need a MEASURE line: a truncated `ocr-result.json` raises `JSONDecodeError`, and a non-object comment (the schema drift `ocr_gate.py` deliberately fails closed on) raises `AttributeError: 'str' object has no attribute 'get'`. Degrade to a marker instead of failing the step, e.g. tolerate non-dict entries and append `2>/dev/null || echo parse-error`.",
+   "title": "bug",
+   "lines": [
+    147,
+    147
+   ]
+  },
+  {
+   "id": "F10",
+   "file": "<removed forgejo workflow>",
+   "text": "`.get('total_tokens', 0)` cannot distinguish \"the field is absent\" from \"a real zero\", and nothing else in the repository reads a top-level `total_tokens` (`ocr_gate.py` only uses `status`, `comments` and `summary.files_reviewed`; the API `usage.total_tokens` in `tools/review/check_review_scope.py` is a per-call stub response). Printing a silent `0` into the one line the comparison table is built from is worse than printing `none`; use a `none`/`parse-error` sentinel (or read the field the CLI actually emits) so a schema surprise is visible.",
+   "title": "bug",
+   "lines": [
+    146,
+    146
+   ]
+  }
+ ]
+}

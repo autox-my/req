@@ -1,0 +1,26 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/baseline.rs",
+   "start": null,
+   "end": null,
+   "title": "Make gate-script fixture hermetic",
+   "text": "The comment promises \"nothing ambient leaks\", but only `HOME`/`PATH` are overridden; inherited\n`REQ_GATE_BIN` (which `check.sh` is documented to honour) would bypass the stub `cargo` and run the\nreal `req` against an empty fixture, and `REQ_ROOT`/`CARGO_HOME`/`RUSTUP_HOME` can change what the\ncopied script resolves. The sibling `check_sh_env` already removes `REQ_ROOT` for exactly this\nreason \u2014 clear the same variables here so the fixture is the same tree in CI and locally.",
+   "existing_code": "std::process::Command::new(\"bash\")\n    .arg(fixture.path().join(\"scripts/check.sh\"))\n    .current_dir(fixture.path())\n    .env(\"HOME\", fixture.path().join(\"home\"))\n    .env(\n        \"PATH\",\n        format!(\"{}:/usr/bin:/bin:/usr/sbin:/sbin\", bin.display()),\n    )\n    .output()\n    .expect(\"runs the copied scripts/check.sh\")",
+   "tool_severity": null,
+   "tool_score": 7
+  },
+  {
+   "file": "scripts/check.sh",
+   "start": null,
+   "end": null,
+   "title": "Guard release list as regular file",
+   "text": "`-r` is true for a readable *directory*, so a directory named `.req/variants` passes this guard and\nthen the `done < \"$PWD/.req/variants\"` redirection fails, leaving `variants_gated` at 0 and printing\nthe misleading \"declares no release\" message the loop was meant to prevent. Requiring a regular file\nroutes that case to the `else` branch, whose \"missing or unreadable\" message names the real cause.",
+   "existing_code": "if [ -r \"$PWD/.req/variants\" ]; then",
+   "tool_severity": null,
+   "tool_score": 5
+  }
+ ]
+}

@@ -1,0 +1,35 @@
+{
+ "case": "c107",
+ "reviewed_state": "36e8425ddb593b7cd64ccda24f75c9f6546a9fd2",
+ "diff_range": "64d50268e8b9e5ddd7bb602c85682b7c6ddc3aa7..36e8425ddb593b7cd64ccda24f75c9f6546a9fd2",
+ "ground_truth": [],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "tests/canon_fail_on_flag.rs",
+   "text": "The harness does not clear `REQ_ROOT`. Root resolution is `--root`, then `REQ_ROOT`, then the nearest ancestor of the CWD (`src/root.rs`), so on a machine/CI where `REQ_ROOT` is exported every `req canon` here reads that corpus instead of the scratch dir. The exit-code contract these tests exist to pin then proves nothing: the flagged-pin tests redden or, worse, `a_clean_green_does_not_read_as_a_release_pass` goes green against a foreign clean corpus, and the unreadable-corpus test can exit 2/0 for unrelated reasons. This is exactly why `tests/init.rs` (`run_at`) and the other CLI fixtures call `.env_remove(\"REQ_ROOT\")`.",
+   "title": "test",
+   "lines": [
+    72,
+    76
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "src/main.rs",
+   "text": "When `--fail-on-flag` is passed with any additional argument (`req canon --fail-on-flag extra`, `req canon --fail-on-flag --verify`, or the flag twice), the guarded arm (`args.len() == 1`) does not match and the match falls through to `Some(other)`, printing `unrecognized flag: --fail-on-flag`. The exit code 2 is correct, but the message names the one valid flag as unrecognized and points the user at removing it instead of at the bad argument combination. The new `other_arguments_stay_usage_errors` test only asserts the usage line, so it does not catch this wording. Handle `Some(\"--fail-on-flag\")` outside the guard (e.g. an \"unexpected argument\" arm) so the diagnostic names the actual problem.",
+   "title": "Misleading error",
+   "lines": [
+    520,
+    535
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "src/main.rs",
+   "text": "The exit line contradicts itself: it says `req canon` \"never gates\" and in the same sentence describes `--fail-on-flag` exiting 1. Reword it so the default mode is report-only and the opt-in is the only mode that can fail, matching the behavior this PR adds.",
+   "title": "Fix contradictory help exit wording",
+   "code": "exit: 0 diagnostics reported \u2014 not a pass: it reports, and it never gates; with `--fail-on-flag`,\n0 means no pin is flagged and 1 means at least one is; 3 a registry or claim file that cannot be\nread (or is NOT JUDGED); 2 usage, including `--fill` and `--verify`."
+  }
+ ]
+}

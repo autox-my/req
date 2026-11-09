@@ -1,0 +1,16 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "AGENTS.md",
+   "start": null,
+   "end": null,
+   "title": "Guard against an empty toolchain path",
+   "text": "An unmatched glob leaves `TC` empty, and `export PATH=\"$TC:$PWD/...\"` then begins with a bare `:`, which puts the current directory on `PATH` \u2014 a command-injection hazard. Warn and never prepend an empty component.",
+   "existing_code": "TC=\"$(ls -d \"$HOME/.rustup/toolchains/${CHANNEL}-\"*/bin 2>/dev/null | head -1)\"\nexport PATH=\"$TC:$PWD/tools/ocr/node_modules/.bin:$PATH\"",
+   "tool_severity": null,
+   "tool_score": 6
+  }
+ ]
+}

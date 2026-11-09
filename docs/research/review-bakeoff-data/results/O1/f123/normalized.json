@@ -1,0 +1,30 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/diff_template.rs",
+   "start": 155,
+   "end": 155,
+   "title": "maintainability",
+   "text": "This prefix requires `jobs:` to immediately follow `on: pull_request:`, so it also rejects anything that does not affect the property under test \u2014 e.g. a top-level `permissions: { contents: read }` block (the recommended least-privilege placement, currently job-scoped in the workflow) or a `pull_request:` filter (`types:`/`paths:`/`branches:`). A security improvement or an ordinary PR filter would therefore turn this test red even though the trigger is still `pull_request` only. Consider asserting the `on:` block structurally (contains only `pull_request`, unknown triggers rejected) instead of a fixed textual prefix. Not a current failure: the workflow's `permissions:` is job-level, so this passes today.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/diff_template.rs",
+   "start": 506,
+   "end": 509,
+   "title": "test",
+   "text": "The section is pinned for many prose claims but not for the exit-code contract that the whole workflow rests on: 0 = report produced, 1 = a `--fail-on` class/flag triggered, 3 = UNVERIFIABLE, 2 = usage error. Since the reason `fetch-depth: 0` matters is precisely that a shallow clone yields exit 3 (UNVERIFIABLE) rather than an empty report, a doc edit that drops that distinction (while keeping the `fetch-depth: 0` phrase) would still pass this test. Add a needle for the exit semantics \u2014 e.g. the `UNVERIFIABLE` wording / \u201ccannot be produced\u201d \u2014 so the doc keeps the three outcomes distinct.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "examples/github-workflows/req-diff.yml",
+   "start": 8,
+   "end": 9,
+   "title": "documentation",
+   "text": "This pair of sentences reads as contradictory for an adopter: `weakened` is put in the `--fail-on` set (so `req diff` exits 1 and, with a required check, blocks the merge), yet the next sentence says it is \"not a rejection by req\". The docs (`docs/adopting.md`) resolve this with the missing nuance -- loosening is sometimes right, and the point is that it is read on purpose. State that here, or adopters cannot tell whether `weakened` is advisory or blocking in the workflow they just copied.",
+   "tool_severity": "low"
+  }
+ ]
+}

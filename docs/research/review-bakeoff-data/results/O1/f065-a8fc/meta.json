@@ -1,0 +1,12 @@
+{
+ "arm": "O1",
+ "case": "f065-a8fc",
+ "model": "deepseek-v4.1-flash",
+ "exit": 0,
+ "attempts": 1,
+ "seconds": 208,
+ "tokens": 229825,
+ "status": "complete",
+ "complete": true,
+ "findings": 2
+}

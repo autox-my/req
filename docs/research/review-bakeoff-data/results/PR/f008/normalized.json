@@ -1,0 +1,14 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/baseline.rs",
+   "start": 124,
+   "end": 135,
+   "title": "Misleading v1 detection",
+   "text": "Stale-format detection is `detail.contains(\"missing field\")` on serde_json's error text, so *any* manifest missing a required field is reported as \"a manifest without the attested hashes is a v1 Baseline: re-issue and re-sign\". A v2 manifest that is truncated or hand-edited to drop `address` (or `rules_v`) therefore tells the human to re-sign a manifest that may actually be corrupt or tampered with, instead of surfacing the real parse error. Conversely, because `relations_hash`/`rationale_hash` are required, a genuine v1 manifest containing any claim fails to deserialize and never reaches the version gate in `verify`, so the documented \"UNVERIFIABLE at the version gate\" path is unreachable for it and the outcome falls back to whatever the caller does with a `from_json` error (whose exit code is not visible in this diff). Consider parsing `version` first, or matching only the two hash field names (or giving them `#[serde(default)]`) so the version gate owns the stale-format decision and genuine corruption keeps its own message.",
+   "tool_severity": null
+  }
+ ]
+}

@@ -1,0 +1,36 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/canon.rs",
+   "start": null,
+   "end": null,
+   "title": "Reject an empty corpus",
+   "text": "A `claims/` directory that exists but holds no candidate files yields `Ok(vec![])`, so `req canon`/`--verify`/`--fill` and every other consumer report success over zero requirements \u2014 a gate that passes over nothing. Since the loader's premise is that a vanished file deletes a requirement, an empty corpus (all requirements vanished) must be UNVERIFIABLE rather than a clean pass.",
+   "existing_code": "paths.sort();\n\nlet mut loaded: Vec<LoadedClaim> = Vec::new();",
+   "tool_severity": null,
+   "tool_score": 6
+  },
+  {
+   "file": "src/canon.rs",
+   "start": null,
+   "end": null,
+   "title": "Treat misnamed claim files as errors",
+   "text": "Extension-only candidacy still drops silently: `REQ-0022.txt` or `REQ-0022.yml.bak` (a save/backup that may hold the only copy) is skipped with every exit code zero, the exact failure the naming pass exists to make loud. Treat any `REQ-`-prefixed name as a candidate so it reaches `is_claim_filename` and errors, while `README.md`/notes files stay ignored.",
+   "existing_code": "fn looks_like_claim_file(name: &str) -> bool {\n    std::path::Path::new(name)\n        .extension()\n        .and_then(|e| e.to_str())\n        .is_some_and(|e| e.eq_ignore_ascii_case(\"yml\") || e.eq_ignore_ascii_case(\"yaml\"))\n}",
+   "tool_severity": null,
+   "tool_score": 5
+  },
+  {
+   "file": "src/canon.rs",
+   "start": null,
+   "end": null,
+   "title": "Reject subdirectories inside claims",
+   "text": "`read_dir` is not recursive and a subdirectory such as `claims/archive/` fails `looks_like_claim_file`, so every claim inside it disappears while the run stays green \u2014 the same silent deletion the strict loader is meant to prevent. Reject directory entries in `claims/` so a claim can never be shelved out of the corpus unnoticed.",
+   "existing_code": "if !looks_like_claim_file(name) {\n    continue;\n}\nlet path = entry.path();\nif !path.is_file() {\n    return Err(format!(\n        \"{}: a claim file must be a regular file (rename or remove it)\",\n        path.display()\n    ));\n}",
+   "tool_severity": null,
+   "tool_score": 5
+  }
+ ]
+}

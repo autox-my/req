@@ -1,0 +1,12 @@
+{"case": "f024",
+ "findings": [
+  {"id": "F01", "verdict": "minor", "gt": [], "cluster": "c1", "note": "tests/compare.rs hard-codes `req.claim/1` as foreign; on a schema bump the test fails loudly (exit 0 instead of 3), not silently, so this is a maintainability nit."},
+  {"id": "F02", "verdict": "minor", "gt": [], "cluster": "c2", "note": "True that verify_text parses strictly (model.rs deny_unknown_fields) before claim_schema_reason, so a foreign file with new fields gets Mismatch; but the only production caller feeds text that already passed load_claims, so it is not reachable today."},
+  {"id": "F03", "verdict": "real", "gt": ["G2"], "cluster": "c3", "note": "docs/claim-format.md:34 and AGENTS.md:102 still say 'The judgement lives in the loader', while the change moves it to claim_schema_reason, which compare and fill also call."},
+  {"id": "F04", "verdict": "real", "gt": ["G1"], "cluster": "c4", "note": "build.rs:65-71 uses `is_some_and`, and git_raw returns None on a non-zero exit (build.rs:150-152), so a failed status probe (e.g. old git rejecting the new --no-optional-locks flag) yields a bare SHA claiming a clean tree."},
+  {"id": "F05", "verdict": "minor", "gt": [], "cluster": "c5", "note": "The exactly-one-literal rule in declared_schema_literals could redden on a future correct doc edit; this is speculative and it would fail loudly."},
+  {"id": "F06", "verdict": "minor", "gt": [], "cluster": "c6", "note": "fill_path's guard is untested, but the fill.rs doc comment already records fill_path as dead pub code with no caller, kept as symmetry."},
+  {"id": "F07", "verdict": "minor", "gt": [], "cluster": "c7", "note": "Correct that the `other =>` (0 or 2+ literals) arm of declared_schema_literals is never exercised by the new tests; it is an untested branch of a test helper, so the impact is small."},
+  {"id": "F08", "verdict": "minor", "gt": [], "cluster": "c8", "note": "replacing_first depends on Status (claim-format.md:3) being the first occurrence, which holds today; if it moved or the needle went missing, assert_ne!(mutated[0], declared[0]) would fail loudly, so the test cannot pass silently (it is the same concern as G3, which is weak for that reason)."}
+ ],
+ "missed_gt": ["G3"]}

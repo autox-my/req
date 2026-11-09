@@ -1,0 +1,22 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "examples/github-workflows/req-diff.yml",
+   "start": 15,
+   "end": 36,
+   "title": "Fork PR failure",
+   "text": "The workflow triggers on `pull_request`, but its install step requires\n`secrets.REQ_RELEASE_TOKEN`. GitHub does not pass secrets (other than `GITHUB_TOKEN`)\nto a workflow triggered by a pull request from a fork, so the install exits with\n\"REQ_RELEASE_TOKEN is not set\" and the `req-diff` check is red for every external\ncontributor. The adopter section presents `--fail-on` as the merge gate, so a team that\nmarks this check required can never merge a fork PR. This may be the intended\ntrade-off, but neither the workflow header nor the new `## On a pull request` section\nmentions it; document the limitation (and how to handle it) so adopters are not surprised.",
+   "tool_severity": null
+  },
+  {
+   "file": "examples/github-workflows/req-diff.yml",
+   "start": 180,
+   "end": 194,
+   "title": "Summary var unset",
+   "text": "The step runs under `set -u` and appends with `>> \"$GITHUB_STEP_SUMMARY\"` without a\ndefault. GitHub always sets that variable, but the file advertises itself as copyable to\n`<removed forgejo workflow>`, and on a runner that does not set\n`GITHUB_STEP_SUMMARY` (some Forgejo/act_runner versions, or a local `act`) the\nunbound-variable error aborts the shell after `req diff` has already run, so a passing\ndiff (exit 0) still fails the step. Using `>> \"${GITHUB_STEP_SUMMARY:-/dev/null}\"` would\nkeep a missing summary from turning the check red (the pin test still matches the name).\nI could not confirm whether current Forgejo/act_runner sets the variable, so treat this\nas a robustness concern.",
+   "tool_severity": null
+  }
+ ]
+}

@@ -1,0 +1,26 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/parity_annotations.rs",
+   "start": null,
+   "end": null,
+   "title": "Strengthen column-boundary test",
+   "text": "The assertion only checks the negative case, so a helper that slices at the wrong boundary (e.g. offset 0, returning the whole row, or a later column) would still pass. Assert positively that the slice begins with the sentinel's value/unit content so a drifted `CELL_START` fails loudly.",
+   "existing_code": "let cell = value_unit_cell(&row);\nassert!(row.contains(\"ann\"), \"the forged subject carries it: {row}\");\nassert!(\n    !cell.trim_start().starts_with(\"ann\"),\n    \"the sentinel's value/unit cell is `ok`, not the subject column:\\n{row}\"\n);",
+   "tool_severity": null,
+   "tool_score": 5
+  },
+  {
+   "file": "tests/parity_annotations.rs",
+   "start": null,
+   "end": null,
+   "title": "Restore row-wide flag assertion",
+   "text": "The old false-positive concern was only the `ann` substring (which a subject can carry), not `FLAG`, so narrowing the `FLAG` check to the value/unit slice loses coverage for any flag rendered outside that slice. Keep the `FLAG` assertion over the whole row while scoping only the `ann` check to the cell.",
+   "existing_code": "let unstructured = row(&out.stdout, \"REQ-0007\");\nlet unstructured_cell = value_unit_cell(unstructured);\nassert!(\n    !unstructured_cell.contains(\"FLAG\") && !unstructured_cell.trim_start().starts_with(\"ann\"),\n    \"the UNSTRUCTURED claim has nothing to report:\\n{unstructured}\"\n);",
+   "tool_severity": null,
+   "tool_score": 6
+  }
+ ]
+}

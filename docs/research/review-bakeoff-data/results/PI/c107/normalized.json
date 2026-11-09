@@ -1,0 +1,16 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/main.rs",
+   "start": null,
+   "end": null,
+   "title": "Fix contradictory help exit wording",
+   "text": "The exit line contradicts itself: it says `req canon` \"never gates\" and in the same sentence describes `--fail-on-flag` exiting 1. Reword it so the default mode is report-only and the opt-in is the only mode that can fail, matching the behavior this PR adds.",
+   "existing_code": "exit: 0 diagnostics reported \u2014 not a pass: it reports, and it never gates; with `--fail-on-flag`,\n0 means no pin is flagged and 1 means at least one is; 3 a registry or claim file that cannot be\nread (or is NOT JUDGED); 2 usage, including `--fill` and `--verify`.",
+   "tool_severity": null,
+   "tool_score": 4
+  }
+ ]
+}

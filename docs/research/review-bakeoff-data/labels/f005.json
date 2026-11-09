@@ -1,0 +1,14 @@
+{"case": "f005",
+ "findings": [
+  {"id": "F01", "verdict": "minor", "gt": [], "cluster": "c1", "note": "Correct: the duplicate pass runs before the naming pass (src/canon.rs:1311-1313), so a misnamed req-0008.yml declaring REQ-0008 is also reported as a duplicate, and 'the one way' overstates; this is comment wording only."},
+  {"id": "F02", "verdict": "real", "gt": [], "cluster": "c2", "note": "read_dir is not recursive and a directory like claims/archive fails looks_like_claim_file and is skipped (src/canon.rs:1333-1335), so claims moved into it vanish with exit 0; same class as G2 but a different mechanism, so not a G2 match."},
+  {"id": "F03", "verdict": "real", "gt": [], "cluster": "c3", "note": "The typo test (tests/loader.rs:99) is rejected by deny_unknown_fields whether or not applicability has #[serde(default)] (src/model.rs:58), and no test drops the applicability key, so reintroducing the default would pass the whole suite."},
+  {"id": "F04", "verdict": "minor", "gt": [], "cluster": "c4", "note": "A hardcoded 21 (tests/loader.rs:207) couples the test to the corpus size; a maintainability nit with no wrong behaviour."},
+  {"id": "F05", "verdict": "real", "gt": ["G2"], "cluster": "c5", "note": "looks_like_claim_file accepts only yml/yaml extensions, so REQ-0022.txt or REQ-0022.yml.bak is skipped silently with exit 0; this is G2."},
+  {"id": "F06", "verdict": "real", "gt": ["G3"], "cluster": "c6", "note": "The UTF-8 check runs before the extension filter (src/canon.rs:1323-1332), so any non-UTF-8 entry fails the corpus, which contradicts claim-format.md:103 ('non-*.yml entries ... are left alone'); this is the same mismatch G3 describes."},
+  {"id": "F07", "verdict": "minor", "gt": [], "cluster": "c7", "note": "True that the stem and duplicate tests stop at load_claims without an exit-3 assertion (tests/loader.rs:161-200), but load_claims errors are what yield exit 3, so this is a consistency nit."},
+  {"id": "F08", "verdict": "real", "gt": [], "cluster": "c8", "note": "load_claims returns Ok(vec![]) for a claims/ directory with no candidates, and no consumer at this state rejects zero claims, so every command passes over nothing, contrary to the three-state rule this loader rewrite is about."},
+  {"id": "F09", "verdict": "real", "gt": ["G4"], "cluster": "c9", "note": "with_applicability (tests/claim_slots.rs:40-45) uses String::replace without checking that the needle exists, so template drift silently yields an unchanged claim; this is G4."},
+  {"id": "F10", "verdict": "minor", "gt": [], "cluster": "c10", "note": "Validation runs in read_dir order before paths.sort() (src/canon.rs:1323-1340), so with several bad entries the reported one depends on the platform; this affects only which message is printed, and the exit is still an error."}
+ ],
+ "missed_gt": ["G1"]}

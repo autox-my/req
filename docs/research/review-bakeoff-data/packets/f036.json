@@ -1,0 +1,152 @@
+{
+ "case": "f036",
+ "reviewed_state": "cb49636e387ff2af6a6f9f3cbf7ae384ff976bb7",
+ "diff_range": "a8c648c5899fda1e116523a4b74085e7d34b3245..cb49636e387ff2af6a6f9f3cbf7ae384ff976bb7",
+ "ground_truth": [
+  {
+   "id": "G1",
+   "file": "src/canon.rs",
+   "text": "classify_slot treats any authored-but-not-derived slot as an annotation. A quantity-shaped claim such as 'The API shall respond in 200 ms' with authored operator: LE (no comparator word, so the parse derives none) gets zero flags, --fill writes operator: null, and two claims differing only in LE vs GE share one address, a false merge. Only the qualitative triple (operator EQ, unit none, non-numeric value) should be an annotation.",
+   "kind": "code-bug"
+  },
+  {
+   "id": "G2",
+   "file": "tests/parity_annotations.rs",
+   "text": "The test fill_accepts_the_corpus_that_only_annotates runs 'canon --fill' against the real checkout. run_fill writes when a claim is stale, so the test can silently rewrite claims/*.yml and races the parallel canon/--verify tests reading the same files.",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G3",
+   "file": "tests/parity_annotations.rs",
+   "text": "The doc comment of the 'qualitative triple on a measurable statement' test says a qualitative authoring still flags, but the test asserts value_check == Annotation, so the documentation contradicts the assertion (the flag actually comes from the operator slot).",
+   "kind": "docs-contradiction"
+  },
+  {
+   "id": "G4",
+   "file": "tests/parity_annotations.rs",
+   "text": "Failure-direction coverage is missing: no test exercises a unit contradiction (authored ms over parsed s), an omitted unit (unit: null), or an omitted operator over a parsed LE, so the unit sentinel guard and the 'FLAG missing' rendering arm are reachable by no test.",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G5",
+   "file": "tests/parity_annotations.rs",
+   "text": "The registry fixture writes its YAML into a predictable per-pid temp directory (parity-registry-<pid>) and never removes it, leaking a directory and reusing a guessable path.",
+   "kind": "robustness"
+  },
+  {
+   "id": "G6",
+   "file": "src/canon.rs",
+   "text": "value_unit_cell returns on the first annotation (value) and so hides a simultaneous unit annotation, joining or short-circuiting the two so one annotation can hide another in the report cell.",
+   "kind": "code-bug"
+  }
+ ],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "src/canon.rs",
+   "text": "`value_derived`/`unit_derived` are forced to false whenever the authored triple matches `is_qualitative_convention`, even when `form.value`/`form.unit` actually carry a derived quantity. A statement that parses to `value 0.2`, `unit s`, `operator EQ` (e.g. \"... exactly 200 ms\") with an authored `value: present`, `unit: none`, `operator: EQ` yields `value_check = Annotation`, `unit_check = Ok`, `op_check = Ok` \u2014 zero flags \u2014 so `req canon` reports no discrepancy and `canon --fill` accepts a claim whose authored value contradicts the statement. The new test only catches the case where the parsed operator differs (LE vs EQ); when the parsed operator agrees or is absent, nothing flags. The annotation should apply only when the parse did not derive the slot.",
+   "title": "Hidden Contradiction",
+   "lines": [
+    1379,
+    1389
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "src/canon.rs",
+   "text": "`unit_derived` is gated by `qualitative`, so when a qualitative-authored triple sits on a statement whose parse derives a unit, the author's omitted unit is reported `Ok` instead of `Omission` \u2014 the four-case table says a derived slot the author omitted must flag. Only `value` has the stray-number exemption; remove the gate from the unit slot and update `a_qualitative_triple_on_a_measurable_statement_still_flags_the_operator` to expect the unit omission.",
+   "title": "Do not suppress unit omissions",
+   "code": "let unit_derived = !qualitative && form.unit.as_deref().is_some_and(|u| u != \"none\");"
+  },
+  {
+   "id": "F03",
+   "file": "tests/parity_annotations.rs",
+   "text": "`fill_accepts_the_corpus_that_only_annotates` runs `canon --fill` with the checkout as cwd, so the test fills the repository's real `claims/*.yml`. Unlike the other tests, which use a temp `Fixture`, this writes tracked files during `cargo test`: a developer's in-progress unfilled claim can be modified, and in the same test binary `the_corpus_has_zero_flags_and_sixteen_annotations` and `the_parity_change_moves_no_address` read the corpus concurrently, so a truncate-then-write can make them observe a partial YAML and fail with `[UNVERIFIABLE]`. I am not certain whether `--fill` skips files whose derived fields already match; if it does not, this is flaky and mutates the working tree. Run the accepting case against a `Fixture` corpus instead.",
+   "title": "Test Isolation",
+   "lines": [
+    444,
+    452
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "src/canon.rs",
+   "text": "`classify_slot` maps every `(derived = false, authored = true)` slot to `Annotation`, but the qualitative convention described in the PR requires a non-numeric value. A numeric authored quantity the parse does not derive (for example `operator: LE`, `value: \"0.2\"`, `unit: s` on a statement that yields no parseable quantity) used to be a flag under the old `authored_is_num` gate; now it shows `ann`, is counted as an annotation, and `--fill` accepts it. If annotation is meant only for the qualitative triple, `classify_slot` or its callers must distinguish a numeric authored value/unit and flag it when the parse derives nothing.",
+   "title": "Regression",
+   "lines": [
+    1321,
+    1329
+   ]
+  },
+  {
+   "id": "F05",
+   "file": "tests/parity_annotations.rs",
+   "text": "`contains(\"ann\")` can be satisfied by any occurrence of that substring in the row and does not pin the column. Assert the exact cells instead so the test fails if the annotation moves to another column or only one of the two annotated slots is rendered.",
+   "title": "test",
+   "lines": [
+    328,
+    328
+   ]
+  },
+  {
+   "id": "F06",
+   "file": "src/canon.rs",
+   "text": "When both slots are annotations, or one slot flags while the other annotates, the early `FLAG`/`ann value` returns drop the other annotation, so it becomes invisible \u2014 exactly what ADR 0014's amendment says must not happen. Build the cell from both slots so an annotation is always shown, including beside a flag.",
+   "title": "Show annotations beside flags",
+   "code": "fn value_unit_cell(v: &ClaimVerdict) -> String {\n    let value = if v.v_parsed.is_empty() {\n        \"-\"\n    } else {\n        v.v_parsed.as_str()\n    };\n    let authored = if v.authored_v.is_empty() {\n        \"-\"\n    } else {\n        v.authored_v.as_str()\n    };\n    if v.value_check.flags() || v.unit_check.flags() {\n        let mut parts: Vec<String> = Vec::new();\n        if v.value_check.flags() {\n            parts.push(format!(\"value {value}/{authored}\"));\n        }\n        if v.unit_check.flags() {\n            parts.push(format!(\"unit {}/{}\", v.u_parsed, v.authored_u));\n        }\n        return format!(\"FLAG {}\", parts.join(\"; \"));\n    }\n    if v.value_check.is_annotation() {\n        return format!(\"ann value {}\", v.authored_v);\n    }\n    if v.unit_check.is_annotation() {\n        return format!(\"ann unit {}\", v.authored_u);\n    }\n    // `none` is the canonical no-unit sentinel: name a unit only when one exists.\n    if v.u_parsed == \"none\" && v.authored_u == \"none\" {\n        format!(\"ok {value}/{authored}\")\n    } else {\n        format!(\"ok {value}/{authored} {}\", v.u_parsed)\n    }\n}"
+  },
+  {
+   "id": "F07",
+   "file": "src/canon.rs",
+   "text": "`authored_is_numeric` only checks the first character, despite its doc claiming a canonical decimal, so a digit-leading state name (`2-way`, `3rd_party`) is misread as a quantity and `is_qualitative_convention` stops recognizing it. Validate that the whole string is numeric so a state name that happens to start with a digit still classifies as the qualitative annotation.",
+   "title": "Validate the whole numeric string",
+   "code": "fn authored_is_numeric(value: &str) -> bool {\n    let unsigned = value.strip_prefix('-').unwrap_or(value);\n    !unsigned.is_empty() && unsigned.starts_with(|c: char| c.is_ascii_digit())\n}"
+  },
+  {
+   "id": "F08",
+   "file": "tests/parity_annotations.rs",
+   "text": "The rule is only exercised on the `value` slot for the omission direction. No test drives `unit_check` to `Contradiction`/`Omission` (e.g. parse derives `s`, author wrote `ms`), and none drives `op_check` to `Omission` (a measurable statement with `operator: null`). A regression that made `unit_derived`/`classify_slot` return `Ok` for the unit slot would leave every assertion in this file green, because no test expects the unit slot to flag. Add the unit-contradiction and operator-omission cases so both directions of every slot are covered.",
+   "title": "test",
+   "lines": [
+    158,
+    158
+   ]
+  },
+  {
+   "id": "F09",
+   "file": "tests/parity_annotations.rs",
+   "text": "This runs the mutating writer (`run_fill`) against the checkout itself. `run_fill` rewrites any claim whose `fill_text` output differs from disk (stale `rules_v`, drifted `subject_registry`, an edited statement), so this test can silently modify the repo's real `claims/*.yml` and races with the read-only corpus tests above that read the same files. Nothing here (`code == 0`, `refused 0`) proves no write happened \u2014 even a `filled N` line would still exit 0. Make it hermetic by filling a `Fixture` that carries the qualitative claim (annotations must not block a fill); the fixture is also what the other two fill tests already use.",
+   "title": "test",
+   "lines": [
+    445,
+    445
+   ]
+  },
+  {
+   "id": "F10",
+   "file": "src/canon.rs",
+   "text": "When both `value_check` and `unit_check` are `Annotation`, the first branch returns only `ann value \u2026`, so the unit annotation is dropped from the per-claim row; the summary counts *claims* (`has_annotation`), not slots, so that unit annotation is invisible everywhere. Example: `value: claim`, `unit: s`, `operator: EQ` on a qualitative statement makes `qualitative == false` (unit is not `none`), yielding `Annotation` for both value and unit, yet the row never mentions `s`. ADR 0014 requires an annotation to be \"reported and counted, never silent\" in the per-claim cell; render both states instead of returning at the first one.",
+   "title": "bug",
+   "lines": [
+    1756,
+    1761
+   ]
+  },
+  {
+   "id": "F11",
+   "file": "src/canon.rs",
+   "text": "An authored *numeric* value/unit that the parse does not derive is classified as `Annotation`, not a flag. `value_derived`/`unit_derived` are false whenever the parse produced nothing, and `classify_slot(false, true, ..)` always yields `Annotation`; the `!qualitative` guard does not help here because a numeric authored value makes `qualitative` false by construction (`is_qualitative_convention` requires `!authored_is_numeric`).\n\nConcrete failure: a structured claim with no quantity in its statement (e.g. `The API shall log every request.`) but `operator: LE`, `value: \"0.2\"`, `unit: s`. The parser derives none of the three slots, so all become annotations: `flags()` is 0, `req canon` prints `discrepancy flags: 0`, and `req canon --fill` writes an address over a lost quantity. Before this change the same claim was flagged (`value_unit_ok`/`op_ok` fired for a numeric authored value), and the `SlotCheck::Annotation` doc itself defines the class as \"a qualitative statement\" \u2014 a number is not qualitative. ADR 0014's Decision (still governing numeric slots) says an authored slot the parse did not derive is a flag. Keep the `!qualitative` guard for the qualitative convention, but a numeric authored value the statement does not support must remain a contradiction.",
+   "title": "bug",
+   "lines": [
+    1380,
+    1381
+   ]
+  }
+ ],
+ "known_false": [
+  {
+   "text": "Critical: usize::from(verdict.has_annotation()) does not compile because From<bool> exists only for u8.",
+   "why_refuted": "std implements From<bool> for every integer type; clippy and the full test suite pass on the reviewed commit, and a one-line probe 'let _: usize = usize::from(true)' compiles on the pinned toolchain."
+  }
+ ]
+}

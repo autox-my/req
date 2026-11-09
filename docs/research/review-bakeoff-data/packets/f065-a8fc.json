@@ -1,0 +1,71 @@
+{
+ "case": "f065-a8fc",
+ "reviewed_state": "5872bb1a31370d0487e4473d156e995ace3b03ad",
+ "diff_range": "4aa6f02d2ec284ce173e506875c3d82fc06ed3e0..5872bb1a31370d0487e4473d156e995ace3b03ad",
+ "ground_truth": [
+  {
+   "id": "G1",
+   "file": "<removed forgejo workflow>",
+   "text": "Parameterising the URL scheme in the release workflow's api() helper dropped curl's --tlsv1.2 floor (only --proto \"$proto\" remains), so the request carrying the release token no longer enforces a minimum TLS version.",
+   "kind": "security"
+  },
+  {
+   "id": "G2",
+   "file": "<removed forgejo workflow>",
+   "text": "The install script, the 65 spec and the timing harness say the REQ_RELEASE_BASE and REQ_CURL_PROTO overrides are test-only and never set by any shipped YAML, but the timing harness sets both, and over a LAN http server URL the instance-wide read token crosses that hop in clear. The statements about who may set them are false.",
+   "kind": "docs-contradiction"
+  }
+ ],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "",
+   "text": "Sensitive information exposure: when the runner's `github.server_url` is `http://`, `release.yml`'s `api()` now sends the token used to create/upload releases unencrypted over the LAN (the previous code forced `--proto '=https' --tlsv1.2`). The PR documents this as an accepted LAN trade-off, and the https path also loses the explicit `--tlsv1.2` floor. Confirm the token's scope is minimal and the LAN hop is trusted, or keep the token-bearing path on HTTPS only.",
+   "title": "security concern"
+  },
+  {
+   "id": "F02",
+   "file": "<removed forgejo workflow>",
+   "text": "The new explanatory comment quotes the literal host `https://<private-host>`, but `tests/release_workflow.rs` adds `forbid(RELEASE, &text, \"<private-host>\", ...)`. If `forbid` is a plain substring check over the file text (as the surrounding `require`/`forbid` helpers suggest), the test will match this comment and `the_release_builds_with_the_script_that_proves_the_binary` fails, blocking CI. Reference \"the public tailnet name\" without the literal host, or have `forbid` skip comment lines. Uncertain: the helper implementation is not in the diff; if it strips comments this is only a documentation inconsistency.",
+   "title": "Test/comment conflict",
+   "lines": [
+    54,
+    56
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "<removed forgejo workflow>",
+   "text": "Switching the fixed `=https` proto to a `$proto` variable also dropped the explicit `--tlsv1.2` floor. On the https branch this weakens the transport the `Authorization` token rides on (curl will now accept whatever TLS its build permits, e.g. 1.0/1.1), and it diverges from `examples/install-req.sh`, which keeps `--tlsv1.2` alongside the variable `--proto`. `--tlsv1.2` is a no-op for an `http://` URL, so it can stay unconditional.",
+   "title": "security",
+   "lines": [
+    261,
+    261
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "<removed forgejo workflow>",
+   "text": "The new test in `tests/release_workflow.rs` asserts that the release workflow text does not contain\n`<private-host>`, but this added comment embeds that literal host name, so the `forbid` check will fail.\nReword the comment so it explains the same fact without spelling out the public host.",
+   "title": "Remove forbidden host literal from comment",
+   "code": "# The URL THIS RUNNER reaches Forgejo at (its own server URL: the one checkout uses), not the\n# public tailnet name: the runner is a LAN container with no tailnet DNS, so\n# https://<private-host> does not resolve there (first dispatch: \"Could not resolve host\")."
+  },
+  {
+   "id": "F05",
+   "file": "tests/release_workflow.rs",
+   "text": "Two problems with the new timing pins. (a) The needle is the whole shell expression verbatim, so a behaviour-preserving rewrite (building the base in a variable first, or using `${{ github.server_url }}/${{ github.repository }}` as release.yml does) turns the test red even though the override is still correct \u2014 it pins formatting, not the rule. (b) Nothing pins `REQ_CURL_PROTO`: deleting the entire `case $GITHUB_SERVER_URL` block keeps this test green, yet the prebuilt timing would then fall back to the script's `=https` default and fail at dispatch on an `http://` runner. Mutation-check the http branch by pinning that `REQ_CURL_PROTO` is set from the server URL (e.g. require the `=http` branch or the variable derivation), rather than pinning the exact base literal.",
+   "title": "test",
+   "lines": [
+    499,
+    499
+   ]
+  },
+  {
+   "id": "F06",
+   "file": "<removed forgejo workflow>",
+   "text": "Replacing the hard-coded `--proto '=https' --tlsv1.2` with a scheme-derived `--proto \"$proto\"` also drops the\n`--tlsv1.2` minimum, so an https server may be negotiated down to an older TLS version on token-bearing\nrequests. Keep `--tlsv1.2` (it is ignored for plain-http transfers) so the TLS floor is preserved when https is used.",
+   "title": "Preserve TLS 1.2 minimum floor",
+   "code": "curl --proto \"$proto\" -sS -H @- \"$@\""
+  }
+ ]
+}

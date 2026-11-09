@@ -1,0 +1,36 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "scripts/check.sh",
+   "start": null,
+   "end": null,
+   "title": "Parse fast flag in any position",
+   "text": "The flag is only recognized as `$1`, so `scripts/check.sh baseline --fast` falls through to the `baseline [file]` handling and treats `--fast` as a filename instead of the documented usage error (exit 2); `plan --fast` is also rejected. Extract `--fast` from any position before parsing the step, then let the existing step validation reject it beside `baseline`/`decision`.",
+   "existing_code": "fast=0\nif [ \"${1:-}\" = \"--fast\" ]; then\n  fast=1\n  shift\nfi",
+   "tool_severity": null,
+   "tool_score": 6
+  },
+  {
+   "file": "scripts/check.sh",
+   "start": null,
+   "end": null,
+   "title": "Report missing tooling in fast mode",
+   "text": "In fast mode this prints `FAST` even when `cargo-clippy` is absent, contradicting the comment that the tooling is present and hiding a missing dependency. Gate the fast branch on the same probe (while retaining the `dry` bypass for `plan`) so a missing tool still reports `SKIP`; apply the same pattern to the review-rule/review-scope branches.",
+   "existing_code": "if [ \"$fast\" -eq 1 ]; then\n  fastskip \"clippy --all-targets -- -D warnings\"\nelif [ \"$dry\" -eq 1 ] || command -v cargo-clippy >/dev/null 2>&1; then\n  run cargo clippy --all-targets -- -D warnings\nelse\n  skip \"clippy not installed (rustup component add clippy)\"\nfi",
+   "tool_severity": null,
+   "tool_score": 5
+  },
+  {
+   "file": "tests/baseline.rs",
+   "start": null,
+   "end": null,
+   "title": "Tighten full-plan assertion for rules check",
+   "text": "The `check_rules.py` assertion only checks `contains`, so a `FAST \u2026 check_rules.py \u2026` or `SKIP \u2026 check_rules.py \u2026` line would satisfy it even if the full plan stopped planning the self-check. Require the matched line to start with `PLAN` (the fast plan's `FAST` text names `check_rules.py`), so the test actually guards the full plan.",
+   "existing_code": "for planned in [\n    \"PLAN cargo clippy\",\n    \"external-v1\",\n    \"direction-v1\",\n    \"check_rules.py\",\n] {\n    assert!(\n        full_lines.iter().any(|line| line.contains(planned)),\n        \"the full plan must still plan `{planned}`:\\n{full_out}\"\n    );\n}",
+   "tool_severity": null,
+   "tool_score": 2
+  }
+ ]
+}

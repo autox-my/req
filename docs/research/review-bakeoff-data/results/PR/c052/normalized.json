@@ -1,0 +1,14 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "scripts/check.sh",
+   "start": 27,
+   "end": 27,
+   "title": "Contradictory measurements",
+   "text": "This PR introduces three different figures for the same `--fast` measurement: this usage comment says \"85s -> ~60s\", the external-corpora comment a few lines later repeats \"~19s of an 85s run\", while AGENTS.md and the PR description state \"a warm full run is 59s and a fast one 25s\". A reader who quotes the gate's timing (which this repository treats as evidence, not decoration) gets two mutually exclusive answers. The likely cause is that the 85s/~60s pair predates the final measurement and was not updated; if so, the script comments should be aligned to 59s/25s (or both numbers should be stated with their provenance: cold vs warm). This is a documentation accuracy issue only; the flag behaves correctly.",
+   "tool_severity": null
+  }
+ ]
+}

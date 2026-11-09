@@ -1,0 +1,59 @@
+{
+ "case": "c052",
+ "reviewed_state": "71f7f233270d4b9afd3574cad65d1b2e4a616ddc",
+ "diff_range": "007c289d001ba1f7ea38964598dc6b62d3c807fb..71f7f233270d4b9afd3574cad65d1b2e4a616ddc",
+ "ground_truth": [],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "tests/baseline.rs",
+   "text": "The `check_rules.py` assertion only checks `contains`, so a `FAST \u2026 check_rules.py \u2026` or `SKIP \u2026 check_rules.py \u2026` line would satisfy it even if the full plan stopped planning the self-check. Require the matched line to start with `PLAN` (the fast plan's `FAST` text names `check_rules.py`), so the test actually guards the full plan.",
+   "title": "Tighten full-plan assertion for rules check",
+   "code": "for planned in [\n    \"PLAN cargo clippy\",\n    \"external-v1\",\n    \"direction-v1\",\n    \"check_rules.py\",\n] {\n    assert!(\n        full_lines.iter().any(|line| line.contains(planned)),\n        \"the full plan must still plan `{planned}`:\\n{full_out}\"\n    );\n}"
+  },
+  {
+   "id": "F02",
+   "file": "scripts/check.sh",
+   "text": "The fast banner still starts with the exact token sequence `GATE: PASS`, and a fast run exits 0 while `clippy -D warnings`, the external corpora, and the review-rule checks did not run. The repo's own idiom for recognizing a green gate is a substring match (`tests/baseline.rs` and `tests/projection.rs` both assert `contains(\"GATE: PASS\")`), and any CI/wrapper doing the same cannot distinguish this from the merge verdict \u2014 which defeats the stated intent that the fast banner is \"never the plain one\". Use a prefix that does not contain `GATE: PASS` so every prefix/substring consumer sees a distinct verdict.",
+   "title": "maintainability",
+   "lines": [
+    253,
+    253
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "scripts/check.sh",
+   "text": "The flag is only recognized as `$1`, so `scripts/check.sh baseline --fast` falls through to the `baseline [file]` handling and treats `--fast` as a filename instead of the documented usage error (exit 2); `plan --fast` is also rejected. Extract `--fast` from any position before parsing the step, then let the existing step validation reject it beside `baseline`/`decision`.",
+   "title": "Parse fast flag in any position",
+   "code": "fast=0\nif [ \"${1:-}\" = \"--fast\" ]; then\n  fast=1\n  shift\nfi"
+  },
+  {
+   "id": "F04",
+   "file": "scripts/check.sh",
+   "text": "In fast mode this prints `FAST` even when `cargo-clippy` is absent, contradicting the comment that the tooling is present and hiding a missing dependency. Gate the fast branch on the same probe (while retaining the `dry` bypass for `plan`) so a missing tool still reports `SKIP`; apply the same pattern to the review-rule/review-scope branches.",
+   "title": "Report missing tooling in fast mode",
+   "code": "if [ \"$fast\" -eq 1 ]; then\n  fastskip \"clippy --all-targets -- -D warnings\"\nelif [ \"$dry\" -eq 1 ] || command -v cargo-clippy >/dev/null 2>&1; then\n  run cargo clippy --all-targets -- -D warnings\nelse\n  skip \"clippy not installed (rustup component add clippy)\"\nfi"
+  },
+  {
+   "id": "F05",
+   "file": "scripts/check.sh",
+   "text": "This PR introduces three different figures for the same `--fast` measurement: this usage comment says \"85s -> ~60s\", the external-corpora comment a few lines later repeats \"~19s of an 85s run\", while AGENTS.md and the PR description state \"a warm full run is 59s and a fast one 25s\". A reader who quotes the gate's timing (which this repository treats as evidence, not decoration) gets two mutually exclusive answers. The likely cause is that the 85s/~60s pair predates the final measurement and was not updated; if so, the script comments should be aligned to 59s/25s (or both numbers should be stated with their provenance: cold vs warm). This is a documentation accuracy issue only; the flag behaves correctly.",
+   "title": "Contradictory measurements",
+   "lines": [
+    27,
+    27
+   ]
+  },
+  {
+   "id": "F06",
+   "file": "tests/baseline.rs",
+   "text": "This test only drives `--fast plan`, which exits 3 and takes the `dry` branch of `finish()`. The load-bearing new path is the non-plan fast run: it must exit 0, print the FAST banner (not the plain one), and skip the four checks. A regression that reverted the fast PASS banner to the plain text, or that made a fast run fail unconditionally, would leave this suite green (the plan assertions still pass because `fastskip` runs in plan mode too). The `script_fixture`/`script_banner` harness defined below this test can already drive the copied script to its banner with a stub `cargo`; add a run there (copying `.req/variants` into the fixture so the release step is green) asserting exit 0, the fast banner, the `FAST` lines, and that the dropped `cargo clippy` / corpus / review-rule commands were not executed.",
+   "title": "test",
+   "lines": [
+    2326,
+    2326
+   ]
+  }
+ ]
+}

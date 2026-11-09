@@ -1,0 +1,48 @@
+{
+ "case": "c052",
+ "findings": [
+  {
+   "id": "F01",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c1",
+   "note": "A non-fast plan never emits FAST lines (fast=0), so the contains('check_rules.py') loophole needs a separate regression; the assertion could be tighter."
+  },
+  {
+   "id": "F02",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c2",
+   "note": "The fast banner 'GATE: PASS (FAST: \u2026)' does contain 'GATE: PASS', as AGENTS.md documents on purpose; no shipped consumer runs --fast or keys on the substring."
+  },
+  {
+   "id": "F03",
+   "verdict": "noise",
+   "gt": [],
+   "cluster": "c3",
+   "note": "scripts/check.sh: 'baseline --fast' takes the baseline_file case '-*', a usage error with exit 2, and 'plan --fast' is rejected as an unexpected argument; both are already usage errors."
+  },
+  {
+   "id": "F04",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c4",
+   "note": "True: the fast branch prints FAST before probing cargo-clippy/ocr, so a missing tool shows as FAST rather than SKIP; small impact in iteration-only mode."
+  },
+  {
+   "id": "F05",
+   "verdict": "real",
+   "gt": [],
+   "cluster": "c5",
+   "note": "check.sh usage comment says '85s -> ~60s' and '~19s of an 85s run', while AGENTS.md and the test doc comment say 59s full / 25s fast: contradictory measurements in a repo that treats numbers as evidence."
+  },
+  {
+   "id": "F06",
+   "verdict": "real",
+   "gt": [],
+   "cluster": "c6",
+   "note": "The new test only drives '--fast plan' (tests/baseline.rs ~2326), so the non-plan fast PASS banner and exit 0 that its doc claims are never exercised, although the script_fixture/script_banner harness exists (~2784)."
+  }
+ ],
+ "missed_gt": []
+}

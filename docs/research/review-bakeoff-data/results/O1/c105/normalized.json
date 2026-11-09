@@ -1,0 +1,46 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/baseline_out.rs",
+   "start": 284,
+   "end": 285,
+   "title": "test",
+   "text": "This test does not actually pin the temp-file+rename mechanism it is named for: a plain `std::fs::write` to a path that is a directory also fails with EISDIR (exit 3) and leaves the directory as the only entry, satisfying every assertion here. The success test likewise passes for a direct write (one file, no leftovers), and the unwritable-parent test also fails the same way. So replacing `write_manifest_atomically` with an in-place write would not fail any test in this file \u2014 the feature's core guarantee (a refusal or partial write leaves the existing target intact) is mutation-unprotected. Add a case that distinguishes the two implementations, e.g. a symlink target (a plain write follows it and clobbers the linked file, while staging+rename replaces the link) or an existing read-only target that can be renamed over but not opened for writing, and assert the pre-existing bytes survive.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/baseline_out.rs",
+   "start": null,
+   "end": null,
+   "title": "test",
+   "text": "Only the UNVERIFIABLE refusal (exit 3, absent decision log) is exercised with `--out`. The third outcome, FAIL (exit 1), is also a refusal that must leave the target untouched \u2014 a tampered `decisions/*.yml` returns 1 from the `Chain::Tampered` arm before the write. That direction is not covered here, so \"write only on success\" is not pinned for FAIL. Add a case that seeds a tampered decision record (as `tests/baseline.rs::emitting_refuses_a_tampered_decision_log` does), runs with `--out` over a seeded target, and asserts exit 1 plus unchanged target bytes.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "src/baseline.rs",
+   "start": 1609,
+   "end": 1609,
+   "title": "bug",
+   "text": "The success hint embeds the raw `--out` path inside a copy-pasteable shell command. For a path with a space or shell metacharacter (e.g. `--out 'my baselines/release.json'`), the printed line becomes `minisign -Sm my baselines/release.json`, so the operator following the instruction signs the wrong argument or gets a usage error. Print the path separately (it is already in the `wrote {out}` part) instead of splicing it into the command, or shell-quote it.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "src/baseline.rs",
+   "start": 1509,
+   "end": 1509,
+   "title": "documentation",
+   "text": "This change updates the inline usage string (here) and `BASELINE_HELP` in `src/main.rs`, but `run`'s own doc comment was left describing the pre-`--out` contract: the signature line still reads `req baseline --at <ts> [--verify <file>] ...` (no `--out`) and the next paragraph says \"With no `--verify`, prints the canonical manifest to stdout\" \u2014 no longer true when `--out` is given. Its `Exit:` summary also omits that a failed `--out` write reports `3`. Since the fn is `pub`, update the rustdoc alongside the usage string and main.rs help.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "src/baseline.rs",
+   "start": 1606,
+   "end": 1606,
+   "title": "bug",
+   "text": "`--out` does not create the target's parent directory, and `req init` scaffolds `claims/` and `aliases/` but not `baselines/`. So the documented invocation (`docs/adopting.md`: `req baseline --at \"$(date -u ...)\" --out baselines/release.json`) fails on a fresh corpus with exit 3 (`cannot write ... No such file or directory`) until the operator manually runs `mkdir -p baselines`. The missing-dir case is asserted as intended in `tests/baseline_out.rs`, so if auto-creating the parent is unwanted, the docs example needs the `mkdir` step; otherwise create the directory here (as the staging-dir path does).",
+   "tool_severity": "low"
+  }
+ ]
+}

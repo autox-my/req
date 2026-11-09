@@ -1,0 +1,15 @@
+{"case": "f036",
+ "findings": [
+  {"id": "F01", "verdict": "real", "gt": [], "cluster": "c3", "note": "src/canon.rs evaluate_claim: qualitative forces value_derived/unit_derived false, so a statement deriving 0.2 s with authored value: present, unit: none, operator: EQ yields zero flags (unit omission hidden); the value part is a documented stray-number choice but the unit suppression is not."},
+  {"id": "F02", "verdict": "real", "gt": [], "cluster": "c3", "note": "unit_derived = !qualitative && ...: in the qualitative-on-measurable test the parse derives s, author wrote none, and unit_check is Ok rather than Omission; the four-case table says that is a flag."},
+  {"id": "F03", "verdict": "real", "gt": ["G2"], "cluster": "c2", "note": "tests/parity_annotations.rs:444-452 runs canon --fill with cwd = CARGO_MANIFEST_DIR, the real corpus, concurrently with the read-only corpus tests."},
+  {"id": "F04", "verdict": "real", "gt": ["G1"], "cluster": "c1", "note": "classify_slot maps (false,true) to Annotation unconditionally and a numeric authored triple is not qualitative, so an authored LE/0.2/s the parse does not derive is no longer flagged (old authored_is_num gate did flag it)."},
+  {"id": "F05", "verdict": "minor", "gt": [], "cluster": "c5", "note": "tests/parity_annotations.rs:328 contains(\"ann\") is a loose substring check on the REQ-0001 row; true but low consequence."},
+  {"id": "F06", "verdict": "real", "gt": ["G6"], "cluster": "c4", "note": "value_unit_cell returns at the first FLAG or 'ann value' branch, dropping a concurrent unit annotation from the cell."},
+  {"id": "F07", "verdict": "minor", "gt": [], "cluster": "c6", "note": "authored_is_numeric checks only the first char (same as the old gate); a digit-leading state name is an unlikely edge case."},
+  {"id": "F08", "verdict": "real", "gt": ["G4"], "cluster": "c7", "note": "No test in parity_annotations.rs drives unit_check to Contradiction/Omission or op_check to Omission; only value and op contradiction are covered."},
+  {"id": "F09", "verdict": "real", "gt": ["G2"], "cluster": "c2", "note": "Same as F03: fill_accepts_the_corpus_that_only_annotates calls corpus(['canon','--fill']) on the checkout, and nothing proves no write happened."},
+  {"id": "F10", "verdict": "real", "gt": ["G6"], "cluster": "c4", "note": "value_unit_cell lines ~1756-1761: both value and unit Annotation renders only 'ann value', so the unit annotation is invisible in the row."},
+  {"id": "F11", "verdict": "real", "gt": ["G1"], "cluster": "c1", "note": "Same as F04 with a concrete trigger: a numeric authored triple on a statement with no quantity becomes three annotations, zero flags, and --fill accepts it."}
+ ],
+ "missed_gt": ["G3", "G5"]}

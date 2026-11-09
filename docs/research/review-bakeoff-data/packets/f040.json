@@ -1,0 +1,97 @@
+{
+ "case": "f040",
+ "reviewed_state": "66da18bae3bf8e01ae4e1fb2c028ea651d5edd66",
+ "diff_range": "a24dcf7fd46fe0e22d8a4327895d097504a19cf6..66da18bae3bf8e01ae4e1fb2c028ea651d5edd66",
+ "ground_truth": [
+  {
+   "id": "G1",
+   "file": "tests/parity_annotations.rs",
+   "text": "The test helper value_unit_cell slices the row from the cell start to end-of-line, so it also reads the operator and conditions columns; its name and doc overpromise, and a FLAG in a later column would leak into the 'value/unit cell'.",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G2",
+   "file": "tests/parity_annotations.rs",
+   "text": "The cell-delimiter test only asserts the absence of the word 'ann' in the extracted cell, so a reader that landed on the wrong column (e.g. the whole row) would still pass; it never asserts what the cell actually contains.",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G3",
+   "file": "tests/parity_annotations.rs",
+   "text": "The replaced() guard that asserts a fixture mutation's needle is present is used at only two call sites; the other fixture mutations still use bare String::replace, so a drifted needle leaves a green no-op in the unconverted tests.",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G4",
+   "file": "docs/claim-format.md",
+   "text": "Docs (ClaimVerdict doc, AGENTS.md, the claim-format authoring rule, ADR 0014) say the qualitative triple requires operator: EQ, while the code also accepts operator none or absent as the no-operator marker, so the documentation contradicts the widened convention.",
+   "kind": "docs-contradiction"
+  }
+ ],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "tests/parity_annotations.rs",
+   "text": "The offset re-encodes `canon::run_claim_diagnostics_at`'s format widths (`{:<9} {:<9} {:<9} {:<12} \u2026`) with no link to the implementation, and the slice assumes no earlier column *overflows* its width. `mark()` renders `FLAG {detail}` and is not truncated, so one claim whose subject detail exceeds 12 chars (e.g. a subject parse failure) shifts every later column right; the slice at the old offset then lands inside the value/unit cell and the negative assertions (`!cell.contains(\"FLAG\")`, `!starts_with(\"ann\")`) keep passing while reading the wrong span. Positive assertions fail loudly, so only the negatives degrade. Consider deriving the offset from one shared layout definition (or asserting the layout via a header/row shape the product prints) instead of a second copy of the widths.",
+   "title": "test",
+   "lines": [
+    517,
+    518
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "tests/parity_annotations.rs",
+   "text": "This narrows the FLAG half of the REQ-0007 assertion from the whole row to the span starting at the value/unit column, so the first four columns (unstructured, modality, subject markers) are no longer checked at all. REQ-0007 is the sentinel false positive this whole rule exists to prevent, and it is the only corpus-level witness that it reads fully `ok`; a regression that flags its modality/subject (or the unstructured marker) now passes silently. Only the `ann` probe needs delimiting, because `FLAG` cannot be forged by a subject. Suggest keeping the whole-row FLAG check and delimiting only the annotation check.",
+   "title": "test",
+   "lines": [
+    591,
+    591
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "tests/parity_annotations.rs",
+   "text": "The assertion only checks the negative case, so a helper that slices at the wrong boundary (e.g. offset 0, returning the whole row, or a later column) would still pass. Assert positively that the slice begins with the sentinel's value/unit content so a drifted `CELL_START` fails loudly.",
+   "title": "Strengthen column-boundary test",
+   "code": "let cell = value_unit_cell(&row);\nassert!(row.contains(\"ann\"), \"the forged subject carries it: {row}\");\nassert!(\n    !cell.trim_start().starts_with(\"ann\"),\n    \"the sentinel's value/unit cell is `ok`, not the subject column:\\n{row}\"\n);"
+  },
+  {
+   "id": "F04",
+   "file": "tests/parity_annotations.rs",
+   "text": "`value_unit_cell` slices at a hard-coded byte offset (`9+1+9+1+9+1+12+1`) that assumes the four leading `{:<N}` columns occupy exactly those byte widths. Rust's `{:<N}` is a minimum *character* width, so a leading value longer than its column (or containing multi-byte characters) shifts the value/unit cell right; `row.get(CELL_START..)` then returns the wrong columns or `None`, and the panic message incorrectly diagnoses it as a short row. The REQ-0007 negative (`!unstructured_cell.contains(\"FLAG\") && !...starts_with(\"ann\")`) would then inspect the wrong column and could pass without examining the value/unit cell \u2014 the same silent-weakening this PR fixes elsewhere. The current ASCII corpus appears to avoid it (REQ-0001's leading identifier is exactly 12 chars), so it is latent rather than currently failing. Confidence is limited: I could not confirm from the diff whether the report truncates those fields or whether any corpus row overflows its column.",
+   "title": "Fixed-Offset Misread",
+   "lines": [
+    517,
+    521
+   ]
+  },
+  {
+   "id": "F05",
+   "file": "src/canon.rs",
+   "text": "The code now accepts a missing/`null` operator as part of the qualitative shape, but `docs/adr/0014-authored-slots-are-checked-whatever-their-shape.md` still defines it strictly (\"A claim is *qualitative* when it is authored as the corpus's convention \u2014 `operator: EQ`, `unit: none`, a non-numeric `value`. Everything else is *quantity-shaped*.\") and its line 152\u2013155 paragraph discusses a null operator only via REQ-0007. Per the repo's \"docs are claims\" rule this drift is a defect in this same change: a reader (or an agent) applying the ADR as written would reintroduce the contradiction this patch removes. Please amend ADR 0014 (Amendment 2's definition and the falsification list) and the qualitative-triple wording in `AGENTS.md` to state that a missing operator is the no-operator marker, exactly as `operator: none` is.",
+   "title": "documentation",
+   "lines": [
+    1381,
+    1381
+   ]
+  },
+  {
+   "id": "F06",
+   "file": "tests/parity_annotations.rs",
+   "text": "The old false-positive concern was only the `ann` substring (which a subject can carry), not `FLAG`, so narrowing the `FLAG` check to the value/unit slice loses coverage for any flag rendered outside that slice. Keep the `FLAG` assertion over the whole row while scoping only the `ann` check to the cell.",
+   "title": "Restore row-wide flag assertion",
+   "code": "let unstructured = row(&out.stdout, \"REQ-0007\");\nlet unstructured_cell = value_unit_cell(unstructured);\nassert!(\n    !unstructured_cell.contains(\"FLAG\") && !unstructured_cell.trim_start().starts_with(\"ann\"),\n    \"the UNSTRUCTURED claim has nothing to report:\\n{unstructured}\"\n);"
+  },
+  {
+   "id": "F07",
+   "file": "tests/parity_annotations.rs",
+   "text": "This test only exercises the test-local helper: the `format!` string and `CELL_START` are built from the same hardcoded widths, so it stays green no matter what `canon.rs` actually prints \u2014 it cannot catch the drift it appears to guard against (`assert!(row.contains(\"ann\"))` is also true by construction of the format string). Either drop it and rely on the corpus-level assertions against real output (already positive), or make it assert on a row the product actually emits so a column change fails here.",
+   "title": "test",
+   "lines": [
+    527,
+    527
+   ]
+  }
+ ]
+}

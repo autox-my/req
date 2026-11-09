@@ -1,0 +1,14 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/main.rs",
+   "start": 520,
+   "end": 535,
+   "title": "Misleading error",
+   "text": "When `--fail-on-flag` is passed with any additional argument (`req canon --fail-on-flag extra`, `req canon --fail-on-flag --verify`, or the flag twice), the guarded arm (`args.len() == 1`) does not match and the match falls through to `Some(other)`, printing `unrecognized flag: --fail-on-flag`. The exit code 2 is correct, but the message names the one valid flag as unrecognized and points the user at removing it instead of at the bad argument combination. The new `other_arguments_stay_usage_errors` test only asserts the usage line, so it does not catch this wording. Handle `Some(\"--fail-on-flag\")` outside the guard (e.g. an \"unexpected argument\" arm) so the diagnostic names the actual problem.",
+   "tool_severity": null
+  }
+ ]
+}

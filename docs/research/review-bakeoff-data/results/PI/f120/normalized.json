@@ -1,0 +1,26 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "docs/releasing.md",
+   "start": null,
+   "end": null,
+   "title": "Fail fast on a partial release upload",
+   "text": "The upload loop keeps going when a `POST` fails (`cmd && echo` short-circuits without aborting), so a later tarball can upload while an earlier `.build-info`/`.sha256` is missing, making a partial release look complete under the runbook's \"tarball present = complete\" rule. Make each upload fail closed before the next name is attempted.",
+   "existing_code": "for n in req-$REV-$T.build-info req-$REV-$T.tar.gz.sha256 req-$REV-$T.tar.gz; do\n  api -X POST -F \"attachment=@$OUT/$n\" \"$API/releases/$ID/assets?name=$n\" >/dev/null && echo \"uploaded $n\"\ndone",
+   "tool_severity": null,
+   "tool_score": 7
+  },
+  {
+   "file": "docs/releasing.md",
+   "start": null,
+   "end": null,
+   "title": "Make the runbook snippet fail closed",
+   "text": "Without fail-fast shell settings, a failed asset listing (`api \u2026 | python3 \u2026 > \"$OUT/.listed\"`) leaves an empty list and the no-overwrite check silently passes, so the run proceeds to upload a name that may already exist. Run the snippet fail-closed so a failed listing aborts before any `POST`.",
+   "existing_code": "API=https://<private-host>/api/v1/repos/fdx/req\nREV=<REV>; FULL=<full sha>; OUT=<the --out directory>; T=aarch64-apple-darwin\napi() { printf 'Authorization: token %s\\n' \"$RELEASE_TOKEN\" | curl --proto '=https' --tlsv1.2 -fsS -H @- \"$@\"; }",
+   "tool_severity": null,
+   "tool_score": 7
+  }
+ ]
+}

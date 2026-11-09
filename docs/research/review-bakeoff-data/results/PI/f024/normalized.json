@@ -1,0 +1,16 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/loader.rs",
+   "start": null,
+   "end": null,
+   "title": "Mutate the status line, not first match",
+   "text": "`replacing_first` mutates the first textual occurrence of the literal anywhere in the document,\nwhich may be an illustrative prose mention rather than the `Status:` line \u2014 the doc legitimately\nnames formats in prose. Mutate the `Status:` line itself so the mutation cannot land on an\nillustration and leave the declaration it claims to exercise unchanged.",
+   "existing_code": "// Side 2 \u2014 the declaration is what the oracle reads, so mutating it is detected.\nlet mutated_doc = replacing_first(&doc, &format!(\"`{}`\", declared[0]), &format!(\"`{other}`\"));\nlet mutated =\n    declared_schema_literals(&mutated_doc).expect(\"both anchors survive the mutation\");\nassert_ne!(\n    mutated[0], declared[0],\n    \"a mutated `Status:` declaration must be read by the oracle\"\n);\nassert_eq!(\n    mutated[1], declared[1],\n    \"the version-axis table row is a second anchor, not a fallback\"\n);",
+   "tool_severity": null,
+   "tool_score": 5
+  }
+ ]
+}

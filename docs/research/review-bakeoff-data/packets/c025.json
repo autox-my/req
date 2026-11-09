@@ -1,0 +1,55 @@
+{
+ "case": "c025",
+ "reviewed_state": "e8b37950cd8eb19f6bf0c281413774ec77b3cf1e",
+ "diff_range": "475df7ed489248df131fedc16484561414ee819e..e8b37950cd8eb19f6bf0c281413774ec77b3cf1e",
+ "ground_truth": [],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "tests/decision.rs",
+   "text": "The stated security property \u2014 \"the full gate must not honour REQ_GATE_BIN\" \u2014 is not actually pinned here, and the later `!line.contains(\"REQ_GATE_BIN\")` assertion cannot fail either. A planned line is `$*` of the command, and the override is passed via the environment, so the variable *name* never appears in it. If `verify_decision`'s guard were relaxed to honour the override on every step (drop `[ \"$step\" = decision ]`), the plan would print `PLAN /abs/path/req decision --verify`; this `contains(\"decision --verify\")` assertion and the `!contains(\"REQ_GATE_BIN\")` one would both still pass. Assert the cargo form of the decision call instead (and drop the vacuous check).",
+   "title": "test",
+   "lines": [
+    1162,
+    1167
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "build.rs",
+   "text": "This `None => Cleanliness::Unestablished` arm is the load-bearing rule the round-1 defect violated: a probe that answered nothing was reported as clean. But this classification still lives in the build script, which `cargo test` cannot compile as a test. The new unit tests in `src/build_identity.rs` only feed `identity()` an already-constructed `Cleanliness`, and `tests/cli_version.rs` accepts *both* a bare SHA and `unknown`, so a mutation of this arm to `Cleanliness::Clean` (or `Dirty`) would pass the entire suite \u2014 the regression is not pinned. To actually cover the failure direction, move the classification into the testable module, e.g. `fn decide(commit: Option<&str>, status: Option<&str>) -> String` taking the raw `git status` stdout, and test `decide(Some(\"abc1234\"), None)` \u2192 `-cleanliness-unknown`, `decide(Some(\"abc1234\"), Some(\"\"))` \u2192 bare, `decide(Some(\"abc1234\"), Some(\" M f\"))` \u2192 `-dirty`, `decide(None, _)` \u2192 `unknown`.",
+   "title": "test",
+   "lines": [
+    95,
+    95
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "AGENTS.md",
+   "text": "The new `TC` assignment is silent when the glob matches nothing: if the pinned toolchain is not installed on the host (or the `CHANNEL` extraction yields an unexpected value), `ls` prints nothing (its error is suppressed) and `TC` becomes empty. `export PATH=\"$TC:...\"` then starts PATH with a bare `:`, which shells interpret as the current directory, and the rustfmt/clippy/`cargo` lookups fall through to whatever ambient tooling exists instead of the pinned toolchain. The block therefore silently degrades to unpinned tooling and can resolve executables from the checkout directory first. Guard the assignment (e.g. `${TC:+$TC:}` or fail explicitly when `TC` is empty) so a missing toolchain is reported rather than silently expanding the search path.",
+   "title": "Empty toolchain path",
+   "lines": [
+    71,
+    71
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "AGENTS.md",
+   "text": "An unmatched glob leaves `TC` empty, and `export PATH=\"$TC:$PWD/...\"` then begins with a bare `:`, which puts the current directory on `PATH` \u2014 a command-injection hazard. Warn and never prepend an empty component.",
+   "title": "Guard against an empty toolchain path",
+   "code": "TC=\"$(ls -d \"$HOME/.rustup/toolchains/${CHANNEL}-\"*/bin 2>/dev/null | head -1)\"\nexport PATH=\"$TC:$PWD/tools/ocr/node_modules/.bin:$PATH\""
+  },
+  {
+   "id": "F05",
+   "file": "tests/decision.rs",
+   "text": "`workspace_toolchain_home` is copied verbatim from `tests/baseline.rs:1045`, and `check_sh_env` above is the same harness extended with an extra env slice. Both encode `scripts/check.sh`'s toolchain/home resolution and must now be kept in step in two places \u2014 the exact drift `tests/common/mod.rs` exists to prevent (\"three copies of the same fixture would drift apart\"). Consider moving the gate harness (and the toolchain-home lookup) into `tests/common/mod.rs` and having both targets use it.",
+   "title": "maintainability",
+   "lines": [
+    1021,
+    1021
+   ]
+  }
+ ]
+}

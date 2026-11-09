@@ -1,0 +1,22 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "scripts/check.sh",
+   "start": 253,
+   "end": 253,
+   "title": "maintainability",
+   "text": "The fast banner still starts with the exact token sequence `GATE: PASS`, and a fast run exits 0 while `clippy -D warnings`, the external corpora, and the review-rule checks did not run. The repo's own idiom for recognizing a green gate is a substring match (`tests/baseline.rs` and `tests/projection.rs` both assert `contains(\"GATE: PASS\")`), and any CI/wrapper doing the same cannot distinguish this from the merge verdict \u2014 which defeats the stated intent that the fast banner is \"never the plain one\". Use a prefix that does not contain `GATE: PASS` so every prefix/substring consumer sees a distinct verdict.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/baseline.rs",
+   "start": 2326,
+   "end": 2326,
+   "title": "test",
+   "text": "This test only drives `--fast plan`, which exits 3 and takes the `dry` branch of `finish()`. The load-bearing new path is the non-plan fast run: it must exit 0, print the FAST banner (not the plain one), and skip the four checks. A regression that reverted the fast PASS banner to the plain text, or that made a fast run fail unconditionally, would leave this suite green (the plan assertions still pass because `fastskip` runs in plan mode too). The `script_fixture`/`script_banner` harness defined below this test can already drive the copied script to its banner with a stub `cargo`; add a run there (copying `.req/variants` into the fixture so the release step is green) asserting exit 0, the fast banner, the `FAST` lines, and that the dropped `cargo clippy` / corpus / review-rule commands were not executed.",
+   "tool_severity": "medium"
+  }
+ ]
+}

@@ -1,0 +1,11 @@
+{"case": "f123",
+ "findings": [
+  {"id": "F01", "verdict": "noise", "gt": [], "cluster": "c1", "note": "Complains that the exact-prefix trigger pin (tests/diff_template.rs:155) is too strict for future edits; that strictness is by design (the pins are strict on purpose) and nothing fails today."},
+  {"id": "F02", "verdict": "minor", "gt": [], "cluster": "c2", "note": "True that only the first actions/checkout is checked (diff_template.rs:180-194), but the workflow has exactly one checkout, so this only matters if a second one is added later."},
+  {"id": "F03", "verdict": "minor", "gt": [], "cluster": "c3", "note": "req-diff.yml:7-9 does put weakened in the blocking set and then calls it 'not a rejection by req'; the wording could confuse a reader, but the comment does say --fail-on is what blocks."},
+  {"id": "F04", "verdict": "real", "gt": ["G5"], "cluster": "c4", "note": "The install step needs secrets.REQ_RELEASE_TOKEN (req-diff.yml:36,83-85) and refuses without it, so the check is red on fork PRs; neither the header nor the adopting section says so."},
+  {"id": "F05", "verdict": "minor", "gt": [], "cluster": "c5", "note": "out=$(mktemp) (req-diff.yml:181) is never removed; on self-hosted runners that leaves a small temp file per run."},
+  {"id": "F06", "verdict": "real", "gt": ["G1"], "cluster": "c6", "note": "The step runs under set -u and writes >> \"$GITHUB_STEP_SUMMARY\" with no default (req-diff.yml:180,194), and the file says it can be copied to <removed forgejo workflows>; if the variable is unset, a passing diff fails the step."},
+  {"id": "F07", "verdict": "minor", "gt": [], "cluster": "c7", "note": "The section needles (diff_template.rs:476-509) do not pin the exit-code/UNVERIFIABLE wording; the 'why' text says 'shallow clone is UNVERIFIABLE' but only fetch-depth: 0 is checked. A small doc-pin gap."}
+ ],
+ "missed_gt": ["G2", "G3", "G4"]}

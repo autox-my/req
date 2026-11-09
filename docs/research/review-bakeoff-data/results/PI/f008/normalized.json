@@ -1,0 +1,26 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/baseline.rs",
+   "start": null,
+   "end": null,
+   "title": "Narrow stale manifest detection",
+   "text": "Matching on the substring `missing field` conflates a stale v1 Baseline with any truncated/corrupted v2 manifest (or one missing an unrelated field), reporting corruption as \"re-issue and re-sign\". Keep the tri-state honest by deciding from the document's declared `version`, and only offer the re-issue advice when `version` is actually 1.",
+   "existing_code": "pub fn from_json(text: &str) -> Result<Manifest, String> {\n    serde_json::from_str(text).map_err(|e| {\n        let detail = e.to_string();\n        if detail.contains(\"missing field\") {\n            // A manifest without the attested hashes is a v1 Baseline: stale, not corrupt.\n            format!(\n                \"manifest is not readable: {detail} \u2014 a manifest without the attested \\\n                     hashes is a v1 Baseline: re-issue and re-sign (ADR 0013)\"\n            )\n        } else {\n            format!(\"manifest is not readable: {detail}\")\n        }\n    })\n}",
+   "tool_severity": null,
+   "tool_score": 7
+  },
+  {
+   "file": "tests/baseline.rs",
+   "start": null,
+   "end": null,
+   "title": "Make empty-list test meaningful",
+   "text": "This assertion is tautological for any pure function, so it never verifies the stated property that an empty `relations:` list still attests in the manifest. Compare the empty-list digest against a populated one and check the hex length so the empty case is actually exercised.",
+   "existing_code": "assert_eq!(\n    relations_digest(&[]),\n    relations_digest(&[]),\n    \"an empty list still attests\"\n);",
+   "tool_severity": null,
+   "tool_score": 5
+  }
+ ]
+}

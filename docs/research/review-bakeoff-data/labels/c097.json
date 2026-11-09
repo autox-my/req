@@ -1,0 +1,11 @@
+{"case": "c097",
+ "findings": [
+  {"id": "F01", "verdict": "minor", "gt": [], "cluster": "c1", "note": "copytree/makedirs/put in verify_output (migrate_claims.py:418-430) are not wrapped and would print a traceback instead of the documented exit 3. Nothing is written either way, and it needs a scratch-dir I/O failure."},
+  {"id": "F02", "verdict": "noise", "gt": [], "cluster": "c2", "note": "pins_hold is built with an empty unverifiable list (gate.rs:419; PolicyResult::new at :96-110), so its outcome can only be pass or fail; the 'unverifiable → exit 1' case cannot happen."},
+  {"id": "F03", "verdict": "noise", "gt": [], "cluster": "c3", "note": "No timeout on a local deterministic req run (migrate_claims.py:382) is speculative: there is no concrete trigger for a hang."},
+  {"id": "F04", "verdict": "noise", "gt": [], "cluster": "c4", "note": "planned can never be empty at verification: run() returns 1 when no files are found (:467-469) and returns 1 when any file is refused (:485-487)."},
+  {"id": "F05", "verdict": "noise", "gt": [], "cluster": "c2", "note": "Same as F02: pins_hold cannot be unverifiable (gate.rs:419). Treating a non-zero req canon as a refusal is the documented contract (migrate_claims.py:40-43)."},
+  {"id": "F06", "verdict": "minor", "gt": [], "cluster": "c5", "note": "True that tests/migrate.rs:422 asserts only exit 1, which the judged<expected guard (:456) also produces. But a regression in without_applicability would make the valid-selector test at :429-435 (expects 0) fail, so the suite still catches it."},
+  {"id": "F07", "verdict": "minor", "gt": [], "cluster": "c6", "note": "Every nothing-written test uses one claim file, so the all-or-nothing multi-file property (verify all, then write) is unpinned. A reasonable extra test, but the gap is against a hypothetical regression."}
+ ],
+ "missed_gt": []}

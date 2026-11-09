@@ -1,0 +1,133 @@
+{
+ "case": "f120",
+ "reviewed_state": "0eafebe2d5766f3b20e9caa371455ca45f6d1da3",
+ "diff_range": "697bcc9db8bd1d56a1eb24486f8e243319689518..0eafebe2d5766f3b20e9caa371455ca45f6d1da3",
+ "ground_truth": [
+  {
+   "id": "G1",
+   "file": "<removed forgejo workflow>",
+   "text": "The Release workflow does not check the ref it was dispatched from. A dispatch from another branch runs that branch's workflow file and scripts/build-release.sh, so the code that proves the binary and holds the release token is not main's.",
+   "kind": "security"
+  },
+  {
+   "id": "G2",
+   "file": "<removed forgejo workflow>",
+   "text": "The release job does not check that the rev named in the script's build-info equals the rev the job resolved and verified to be on main, so what is published may differ from what was checked.",
+   "kind": "code-bug"
+  },
+  {
+   "id": "G3",
+   "file": "<removed forgejo workflow>",
+   "text": "In the timing workflow's source install the read:repository token stays in the environment while cargo fetches and compiles crates, so every build script and proc-macro of fetched crates can read an instance-wide token.",
+   "kind": "security"
+  },
+  {
+   "id": "G4",
+   "file": "<removed forgejo workflow>",
+   "text": "The Rust toolchain version (1.99.0) is hard-coded in the timing workflow rather than read from rust-toolchain.toml, so a pin bump would silently skew the figure.",
+   "kind": "robustness"
+  },
+  {
+   "id": "G5",
+   "file": "<removed forgejo workflow>",
+   "text": "Timing readings use whole-second 'date +%s' timestamps, giving coarse resolution for the measured install durations.",
+   "kind": "robustness"
+  }
+ ],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "docs/releasing.md",
+   "text": "The upload loop keeps going when a `POST` fails (`cmd && echo` short-circuits without aborting), so a later tarball can upload while an earlier `.build-info`/`.sha256` is missing, making a partial release look complete under the runbook's \"tarball present = complete\" rule. Make each upload fail closed before the next name is attempted.",
+   "title": "Fail fast on a partial release upload",
+   "code": "for n in req-$REV-$T.build-info req-$REV-$T.tar.gz.sha256 req-$REV-$T.tar.gz; do\n  api -X POST -F \"attachment=@$OUT/$n\" \"$API/releases/$ID/assets?name=$n\" >/dev/null && echo \"uploaded $n\"\ndone"
+  },
+  {
+   "id": "F02",
+   "file": "tests/release_workflow.rs",
+   "text": "The pins forbid `continue-on-error`, `|| true`/`||true`, `set +e` and `| tee`, but they never require a step to abort on its first failed command. Delete `set -eu` from `<removed workflow>`'s \"the prebuilt install, timed\" step and `bash \"$dir/install-req.sh\"` can fail yet execution falls through to `echo \"INSTALL prebuilt: \u2026\"` (exit 0) \u2014 the run goes green with a fabricated number and every pin here still passes. The same mutation removes the guard from the `set -euo pipefail` publish step. Also uncaught: `|| :`, `|| exit 0`, and a disabled step (`if: false`). Add a `require`/count assertion tying each `run: |` block to a `set -e` (a single global `require` is too weak because one surviving step satisfies it), and extend the forbidden list with `|| :`, `|| exit 0` and `if: false`.",
+   "title": "test",
+   "lines": [
+    153,
+    158
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "docs/releasing.md",
+   "text": "The macOS API snippet runs under plain bash with no `set -e`/`pipefail` and no HTTP-status checks: `api ... >/dev/null && echo \"uploaded $n\"` merely skips the echo when an upload fails and the loop continues. If the `.sha256` upload fails (e.g. a transient 5xx) and the `.tar.gz` upload then succeeds, the release has the tarball but no checksum, the script exits 0, and the runbook's \"a visible tarball means the other two are there\" invariant is silently broken. The same applies to the asset listing: if it fails, `.listed` is empty and the refusal loop never sees an existing asset, so the no-overwrite rule is not enforced. Start the snippet with `set -euo pipefail` and abort on a non-2xx response for the listing and for each upload, as the workflow does.",
+   "title": "Partial release",
+   "lines": [
+    67,
+    73
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "tests/release_workflow.rs",
+   "text": "This assertion requires the `## Measured` section of `docs/releasing.md` to contain no word starting with a digit, but the runbook and `<removed workflow>` both say the two `INSTALL <n>s` lines are copied into that section after the owner dispatches the timing. When that documented follow-up happens the test fails and the required gate goes red unless the test is edited in the same commit, and nothing tells the owner to do that. If this is a one-time tripwire before the timing exists, record in the runbook that it must be relaxed/removed with the copy; otherwise it blocks the very step it guards.",
+   "title": "Test conflict",
+   "lines": [
+    456,
+    464
+   ]
+  },
+  {
+   "id": "F05",
+   "file": "tests/release_workflow.rs",
+   "text": "Only a line whose trimmed text is exactly `inputs:` starts the block. A trailing comment (`inputs: # the dispatch inputs`) or flow style (`inputs: {}`) leaves `names` empty and produces the misleading \"exactly one input, `rev`\" assertion instead of naming the format problem. Match `trimmed.starts_with(\"inputs:\")` (or assert the block was found) so an innocuous reformat fails with an accurate message.",
+   "title": "maintainability",
+   "lines": [
+    89,
+    89
+   ]
+  },
+  {
+   "id": "F06",
+   "file": "docs/releasing.md",
+   "text": "Without fail-fast shell settings, a failed asset listing (`api \u2026 | python3 \u2026 > \"$OUT/.listed\"`) leaves an empty list and the no-overwrite check silently passes, so the run proceeds to upload a name that may already exist. Run the snippet fail-closed so a failed listing aborts before any `POST`.",
+   "title": "Make the runbook snippet fail closed",
+   "code": "API=https://<private-host>/api/v1/repos/fdx/req\nREV=<REV>; FULL=<full sha>; OUT=<the --out directory>; T=aarch64-apple-darwin\napi() { printf 'Authorization: token %s\\n' \"$RELEASE_TOKEN\" | curl --proto '=https' --tlsv1.2 -fsS -H @- \"$@\"; }"
+  },
+  {
+   "id": "F07",
+   "file": "tests/release_workflow.rs",
+   "text": "The allowlist is substring-based, so a leaking line passes as long as it also contains an allowed fragment. A very plausible debugging edit \u2014 `echo \"::error::RELEASE_TOKEN='$RELEASE_TOKEN' is not set\"` \u2014 contains `::error::RELEASE_TOKEN` and is accepted, printing the token into the log while `require(\"-H @-\")` and `forbid(\"set -x\")` still hold. Likewise `echo \"$RELEASE_TOKEN\"; [ -z \"${RELEASE_TOKEN:-}\" ]` matches the `-z \"${RELEASE_TOKEN:-}\"` alternative. Tighten this: reject any line that both expands `$RELEASE_TOKEN`/`${RELEASE_TOKEN` and matches `::error::` or `-z \"${RELEASE_TOKEN:-}\"` (the current guard line and error line do not interpolate the value), or compare against exact expected lines instead of `contains`.",
+   "title": "security",
+   "lines": [
+    345,
+    346
+   ]
+  },
+  {
+   "id": "F08",
+   "file": "tests/release_workflow.rs",
+   "text": "The oracle \"any token starting with an ASCII digit means a measurement was recorded\" is not the same as \"a timing was recorded\". It fails on legitimate, number-free content the owner may add before dispatching \u2014 an ordered list (`1.`), a date (`2026-11-09`), a bare version \u2014 while a real measurement written as `\u224842 s` or `~42 seconds` slips through. Match the shape the workflow actually emits (`INSTALL source:` / `INSTALL prebuilt:` and an `Ns` token) instead of any digit-leading word. Suggestion:",
+   "title": "test",
+   "lines": [
+    456,
+    458
+   ]
+  },
+  {
+   "id": "F09",
+   "file": "tests/release_workflow.rs",
+   "text": "`unwrap_or(0)` turns a harmless spelling change into a misleading failure: if the upload is later written with `--form`, single quotes, or a variable, `first_upload` becomes 0 and the assertion reports \"the existing-asset check must come before the first upload\" even though the order is correct. It also conflates \"upload form not found\" with \"found at position 0\". Use `expect` so each missing needle fails with the actual reason (and note that this only proves textual order, not runtime ordering). Suggestion:",
+   "title": "maintainability",
+   "lines": [
+    268,
+    269
+   ]
+  },
+  {
+   "id": "F10",
+   "file": "<removed forgejo workflow>",
+   "text": "The source install hardcodes `1.99.0` here and again in `rustup run 1.99.0 cargo install ...` instead of reading the dispatched rev's `rust-toolchain.toml`, unlike `release.yml` which derives the channel from `$full`. If `rust-toolchain.toml` is ever bumped (a routine rules bump) or the timing is dispatched for a rev that pins another channel, the measured compile uses a toolchain the adopter would not use, and nothing fails or flags it. Derive the channel from the rev (as release.yml does) and use it for both the install and the run.",
+   "title": "Stale pin",
+   "lines": [
+    108,
+    109
+   ]
+  }
+ ]
+}

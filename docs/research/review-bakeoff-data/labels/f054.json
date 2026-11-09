@@ -1,0 +1,14 @@
+{"case": "f054",
+ "findings": [
+  {"id": "F01", "verdict": "real", "gt": ["G1"], "cluster": "c1", "note": "<removed workflow>:113-124 and 152 interpolate ${{ inputs.* }} into run: text in steps holding OCR_LLM_TOKEN."},
+  {"id": "F02", "verdict": "real", "gt": ["G3"], "cluster": "c2", "note": "MEASURE step (140-147) runs under set -eu with unguarded python3 json.load, so a truncated/odd result aborts before the echo at 152."},
+  {"id": "F03", "verdict": "real", "gt": ["G1"], "cluster": "c1", "note": "Line 113 interpolates inputs.max_tools into the script (same injection as G1); the unvalidated-number point is an extra."},
+  {"id": "F04", "verdict": "minor", "gt": [], "cluster": "c3", "note": "Line 142 defaults elapsed to 0 when no attempt ran; true, but rc=no-attempt on the same line marks it."},
+  {"id": "F05", "verdict": "real", "gt": ["G1"], "cluster": "c1", "note": "Lines 117-118 (and label/exclude at 124/152) are substituted before bash parses; quoting is no defence."},
+  {"id": "F06", "verdict": "real", "gt": [], "cluster": "c4", "note": "The commit message says the --max-tools floor of 50 and the --tools full-replacement rule are recorded in the AGENTS.md paragraph, but the added paragraph (AGENTS.md +428-436) records neither."},
+  {"id": "F07", "verdict": "real", "gt": ["G3"], "cluster": "c2", "note": "Same as F02: lines 145-147 under set -eu, so a malformed result kills the MEASURE line."},
+  {"id": "F08", "verdict": "real", "gt": ["G5"], "cluster": "c5", "note": "The install step (61-70) has no rm -f $HOME/.opencodereview/config.json, while <removed workflow>:53 does that deletion."},
+  {"id": "F09", "verdict": "real", "gt": ["G3"], "cluster": "c2", "note": "Line 147: x.get on a non-dict comment or a JSONDecodeError aborts the step under set -eu."},
+  {"id": "F10", "verdict": "minor", "gt": [], "cluster": "c6", "note": "Line 146 .get('total_tokens',0) turns an absent field into 0, and nothing in the repo shows the CLI emits it; plausible but unverifiable that it is absent, and it is not the rounds/glyph issue of G4."}
+ ],
+ "missed_gt": ["G2", "G4"]}

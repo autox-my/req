@@ -1,0 +1,26 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/main.rs",
+   "start": null,
+   "end": null,
+   "title": "Only accept leading help flags",
+   "text": "Scanning every argument makes a value like `--help` or `-h` (for `--provider-cmd`, `--baseline`, `compare`, etc.) be treated as a help request, so the command silently exits 0 instead of running. The documented form is `<command> --help`, so only the first argument should be recognized.",
+   "existing_code": "fn help_requested(args: &[String]) -> bool {\n    args.iter().any(|arg| arg == \"--help\" || arg == \"-h\")\n}",
+   "tool_severity": null,
+   "tool_score": 5
+  },
+  {
+   "file": "src/main.rs",
+   "start": null,
+   "end": null,
+   "title": "Keep init root usage error",
+   "text": "This early exit lets `req init --root <dir> --help` (or `req --root <dir> init --help`) answer 0 and silently ignore `cli_root`, despite the documented rule that `--root` on `init` is a usage error (exit 2). Guard the help answer on `cli_root.is_none()` so `init::run` still reports the usage error.",
+   "existing_code": "\"init\" => {\n    rest.remove(0);\n    if help_requested(&rest) {\n        println!(\"{}\", INIT_HELP);\n        exit(0);\n    }\n    exit(init::run(&rest, cli_root.as_deref()));\n}",
+   "tool_severity": null,
+   "tool_score": 3
+  }
+ ]
+}

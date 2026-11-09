@@ -1,0 +1,68 @@
+{
+ "case": "c105",
+ "reviewed_state": "f6552ba4efd1445b00c652a2f71b293950bd01f2",
+ "diff_range": "11b99ca5f549f5f6c407faa8bad12359391fed2e..f6552ba4efd1445b00c652a2f71b293950bd01f2",
+ "ground_truth": [],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "src/baseline.rs",
+   "text": "The success hint embeds the raw `--out` path inside a copy-pasteable shell command. For a path with a space or shell metacharacter (e.g. `--out 'my baselines/release.json'`), the printed line becomes `minisign -Sm my baselines/release.json`, so the operator following the instruction signs the wrong argument or gets a usage error. Print the path separately (it is already in the `wrote {out}` part) instead of splicing it into the command, or shell-quote it.",
+   "title": "bug",
+   "lines": [
+    1609,
+    1609
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "src/baseline.rs",
+   "text": "`--out` does not create the target's parent directory, and `req init` scaffolds `claims/` and `aliases/` but not `baselines/`. So the documented invocation (`docs/adopting.md`: `req baseline --at \"$(date -u ...)\" --out baselines/release.json`) fails on a fresh corpus with exit 3 (`cannot write ... No such file or directory`) until the operator manually runs `mkdir -p baselines`. The missing-dir case is asserted as intended in `tests/baseline_out.rs`, so if auto-creating the parent is unwanted, the docs example needs the `mkdir` step; otherwise create the directory here (as the staging-dir path does).",
+   "title": "bug",
+   "lines": [
+    1606,
+    1606
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "src/baseline.rs",
+   "text": "The staging name embeds the full target file name, so a valid `--out` path whose own name is close to `NAME_MAX` fails with `ENAMETOOLONG` and the manifest is never written. Bound the embedded stem (on a char boundary) since it is only diagnostic.",
+   "title": "Bound staging file name length",
+   "code": "let name = target\n    .file_name()\n    .ok_or_else(|| std::io::Error::other(\"the path names no file\"))?\n    .to_string_lossy()\n    .into_owned();\n// The name carries the clock as well as the pid: a run killed between `open` and `rename`\n// leaves its staging file behind, and a recycled pid (or PID 1 in a container) must not make\n// every later run collide with it.\nlet nanos = std::time::SystemTime::now()\n    .duration_since(std::time::UNIX_EPOCH)\n    .map(|d| d.as_nanos())\n    .unwrap_or_default();\nlet staged = directory.join(format!(\n    \".{name}.req-staging-{}-{nanos}\",\n    std::process::id()\n));"
+  },
+  {
+   "id": "F04",
+   "file": "tests/baseline_out.rs",
+   "text": "Only the UNVERIFIABLE refusal (exit 3, absent decision log) is exercised with `--out`. The third outcome, FAIL (exit 1), is also a refusal that must leave the target untouched \u2014 a tampered `decisions/*.yml` returns 1 from the `Chain::Tampered` arm before the write. That direction is not covered here, so \"write only on success\" is not pinned for FAIL. Add a case that seeds a tampered decision record (as `tests/baseline.rs::emitting_refuses_a_tampered_decision_log` does), runs with `--out` over a seeded target, and asserts exit 1 plus unchanged target bytes.",
+   "title": "test"
+  },
+  {
+   "id": "F05",
+   "file": "src/baseline.rs",
+   "text": "This change updates the inline usage string (here) and `BASELINE_HELP` in `src/main.rs`, but `run`'s own doc comment was left describing the pre-`--out` contract: the signature line still reads `req baseline --at <ts> [--verify <file>] ...` (no `--out`) and the next paragraph says \"With no `--verify`, prints the canonical manifest to stdout\" \u2014 no longer true when `--out` is given. Its `Exit:` summary also omits that a failed `--out` write reports `3`. Since the fn is `pub`, update the rustdoc alongside the usage string and main.rs help.",
+   "title": "documentation",
+   "lines": [
+    1509,
+    1509
+   ]
+  },
+  {
+   "id": "F06",
+   "file": "tests/baseline_out.rs",
+   "text": "This test does not actually pin the temp-file+rename mechanism it is named for: a plain `std::fs::write` to a path that is a directory also fails with EISDIR (exit 3) and leaves the directory as the only entry, satisfying every assertion here. The success test likewise passes for a direct write (one file, no leftovers), and the unwritable-parent test also fails the same way. So replacing `write_manifest_atomically` with an in-place write would not fail any test in this file \u2014 the feature's core guarantee (a refusal or partial write leaves the existing target intact) is mutation-unprotected. Add a case that distinguishes the two implementations, e.g. a symlink target (a plain write follows it and clobbers the linked file, while staging+rename replaces the link) or an existing read-only target that can be renamed over but not opened for writing, and assert the pre-existing bytes survive.",
+   "title": "test",
+   "lines": [
+    284,
+    285
+   ]
+  },
+  {
+   "id": "F07",
+   "file": "src/baseline.rs",
+   "text": "`sync_all` makes the temp file's data durable, but the rename that installs it is only durable after the containing directory is synced; a crash right after success can leave the previous manifest (or none) where the command reported success. Sync the parent directory after the rename, best-effort so a sync error does not turn an already-written target into \"nothing was written\".",
+   "title": "Sync directory after rename",
+   "code": "let finished = written.and_then(|()| std::fs::rename(&staged, target));\nif finished.is_err() {\n    let _ = std::fs::remove_file(&staged);\n}\nfinished"
+  }
+ ]
+}

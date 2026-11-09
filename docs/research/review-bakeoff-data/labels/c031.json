@@ -1,0 +1,8 @@
+{"case": "c031",
+ "findings": [
+  {"id": "F01", "verdict": "noise", "gt": [], "cluster": "c1", "note": "script_banner runs the full gate (no step), and check.sh honours REQ_GATE_BIN only for the standalone baseline/decision steps (lines 151, 186); the stub cargo exits 0, so REQ_ROOT never reaches req. The claimed leak does not happen."},
+  {"id": "F02", "verdict": "real", "gt": [], "cluster": "c2", "note": "AGENTS.md:146-151 says every declared line must decide every dependency key or dependencies_decided refuses (exit 3), but the new .req/variants bullet and check.sh say only corpus_set is guarded and other dropped keys exit 0: the two passages contradict each other."},
+  {"id": "F03", "verdict": "real", "gt": [], "cluster": "c3", "note": "src/gate.rs:313 headline always says '{n} undecided', so out.headline().contains(\"undecided\") in an_incomplete_context_is_not_green cannot fail; the exit-3 check alone does not pin the dependencies_decided cause."},
+  {"id": "F04", "verdict": "minor", "gt": [], "cluster": "c4", "note": "scripts/check.sh [ -r ] is true for a directory; a directory at .req/variants is contrived and still ends in FAIL, only with a less precise message."}
+ ],
+ "missed_gt": []}

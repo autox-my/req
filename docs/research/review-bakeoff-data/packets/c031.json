@@ -1,0 +1,42 @@
+{
+ "case": "c031",
+ "reviewed_state": "1e4adafaced01d6ef7dfb2b1a601235f15cf5105",
+ "diff_range": "b80a2465d2d42e5887921d56bd27977fd630487a..1e4adafaced01d6ef7dfb2b1a601235f15cf5105",
+ "ground_truth": [],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "tests/baseline.rs",
+   "text": "The comment promises \"nothing ambient leaks\", but only `HOME`/`PATH` are overridden; inherited\n`REQ_GATE_BIN` (which `check.sh` is documented to honour) would bypass the stub `cargo` and run the\nreal `req` against an empty fixture, and `REQ_ROOT`/`CARGO_HOME`/`RUSTUP_HOME` can change what the\ncopied script resolves. The sibling `check_sh_env` already removes `REQ_ROOT` for exactly this\nreason \u2014 clear the same variables here so the fixture is the same tree in CI and locally.",
+   "title": "Make gate-script fixture hermetic",
+   "code": "std::process::Command::new(\"bash\")\n    .arg(fixture.path().join(\"scripts/check.sh\"))\n    .current_dir(fixture.path())\n    .env(\"HOME\", fixture.path().join(\"home\"))\n    .env(\n        \"PATH\",\n        format!(\"{}:/usr/bin:/bin:/usr/sbin:/sbin\", bin.display()),\n    )\n    .output()\n    .expect(\"runs the copied scripts/check.sh\")"
+  },
+  {
+   "id": "F02",
+   "file": "AGENTS.md",
+   "text": "The new sentence says `dependencies_decided` refuses (exit 3) whenever a declared line fails to decide \"every key an applying claim depends on\". That is not what the gate does: only `corpus_set` is dependency-guarded (REQ-0009/10/11 refine REQ-0008). Dropping `runs`, `set`, `deployment_mode`, or `field` from a line leaves the affected claim undecided while the gate still exits 0 \u2014 which is precisely why `tests/release_gate.rs::every_declared_release_is_gate_green` has to assert `, 0 undecided` explicitly. The `.req/variants` bullet a few lines below states the opposite (\"the gate will *not* tell you when one does not\"), so the two passages now contradict each other, and a developer could drop a key believing the gate would catch it.",
+   "title": "Misleading gate guarantee",
+   "lines": [
+    149,
+    151
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "tests/release_gate.rs",
+   "text": "This assertion cannot fail: the gate's headline is always `# Release gate: {applying} applying claim(s), {undecided} undecided (an undecided claim is never treated as absent)` (`src/gate.rs`), so `contains(\"undecided\")` is true even for `0 undecided` \u2014 the very case this negative-direction test exists to reject. Pin the mechanism the doc describes instead: the `dependencies_decided` policy refusing (REQ-0009 -> REQ-0008 undecided), or the measured count `16 applying claim(s), 5 undecided`.",
+   "title": "test",
+   "lines": [
+    768,
+    772
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "scripts/check.sh",
+   "text": "`-r` is true for a readable *directory*, so a directory named `.req/variants` passes this guard and\nthen the `done < \"$PWD/.req/variants\"` redirection fails, leaving `variants_gated` at 0 and printing\nthe misleading \"declares no release\" message the loop was meant to prevent. Requiring a regular file\nroutes that case to the `else` branch, whose \"missing or unreadable\" message names the real cause.",
+   "title": "Guard release list as regular file",
+   "code": "if [ -r \"$PWD/.req/variants\" ]; then"
+  }
+ ]
+}

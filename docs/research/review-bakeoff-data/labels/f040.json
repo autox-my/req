@@ -1,0 +1,11 @@
+{"case": "f040",
+ "findings": [
+  {"id": "F01", "verdict": "minor", "gt": [], "cluster": "c1", "note": "The fixed offset repeats canon.rs:1762's widths, and an overflowing leading cell would shift columns. Overflow only happens when a leading column renders 'FLAG …' (mark(), canon.rs:1856), and the same test's 'discrepancy flags: 0 slot(s)' assertion already catches that, so the consequence is negligible."},
+  {"id": "F02", "verdict": "noise", "gt": [], "cluster": "c2", "note": "Says a modality/subject/unstructured flag on REQ-0007 would now pass silently, but the same test asserts 'discrepancy flags: 0 slot(s)', and ClaimVerdict::flags (canon.rs:1296-1311) counts those columns, so the regression is still caught."},
+  {"id": "F03", "verdict": "real", "gt": ["G2"], "cluster": "c3", "note": "the_annotation_cell_is_read_at_its_column test only asserts !cell.starts_with(\"ann\"), so a wrong CELL_START (e.g. 0, whole row starting 'REQ-X') still passes; it never asserts the cell's content."},
+  {"id": "F04", "verdict": "minor", "gt": [], "cluster": "c1", "note": "Same latent fixed-offset/overflow fragility as F01. In the corpus only a FLAG makes a leading cell overflow, and the flags: 0 summary assertion catches that."},
+  {"id": "F05", "verdict": "real", "gt": ["G4"], "cluster": "c4", "note": "is_qualitative_convention now accepts an empty operator (canon.rs:1387), while ADR 0014:193 and docs/claim-format.md:117 still define the triple as operator EQ, so the docs contradict the widened code."},
+  {"id": "F06", "verdict": "noise", "gt": [], "cluster": "c2", "note": "The same claim as F02. Narrowing the REQ-0007 FLAG check loses no coverage, because the 'discrepancy flags: 0 slot(s)' assertion in the same test fails on any flag in any column."},
+  {"id": "F07", "verdict": "real", "gt": [], "cluster": "c5", "note": "The helper test builds its row from the same hardcoded widths as CELL_START, so it exercises nothing canon.rs prints; row.contains(\"ann\") holds by construction. It cannot catch layout drift. It overlaps G2 in weakness but is a different defect (no link to the product)."}
+ ],
+ "missed_gt": ["G1", "G3"]}

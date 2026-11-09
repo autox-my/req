@@ -1,0 +1,22 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/cli_version.rs",
+   "start": 486,
+   "end": 490,
+   "title": "Stale Message",
+   "text": "The new loop checks `page.contains(\"undecided\")` for both `render` and `trace`, but the failure message still says \"{command}'s page says an undecided claim is shown in its own section\". This PR's own correction states that `trace` has no undecided section (only `render` does), so that message is false for `trace`; the assertion passes only because `TRACE_HELP` happens to contain the word \"undecided\" in its edge-naming sentence. The check therefore no longer verifies what its message claims, and it would fail if the trace page is later reworded correctly (e.g., \"one the variant excludes\"). Split the assertion and message so render is checked for its own section and trace for its edge-naming rule.",
+   "tool_severity": null
+  },
+  {
+   "file": "src/main.rs",
+   "start": 148,
+   "end": 152,
+   "title": "Missing Exit",
+   "text": "`CANON_HELP` describes the default `canon` mode as \"0 diagnostics reported\" and attributes \"a claim file this build does not write\" only to `--verify`. Per `AGENTS.md` \u00a7Commands, the plain `canon` command also exits 3 when a claim's declared `schema:` is not `CLAIM_SCHEMA_V` (the loader calls `claim_schema_reason`), so a user reading `canon --help` will not learn that the default mode can exit 3 on a schema mismatch. State the schema condition in the default-mode exit contract (or make clear it applies to all modes), matching the reference this page points to.",
+   "tool_severity": null
+  }
+ ]
+}

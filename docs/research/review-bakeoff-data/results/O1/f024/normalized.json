@@ -1,0 +1,62 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "build.rs",
+   "start": 65,
+   "end": 71,
+   "title": "bug",
+   "text": "`is_some_and` maps `None` \u2014 git missing, a non-zero exit, or (newly likely) a git that predates `--no-optional-locks` and rejects the flag \u2014 to `false`, i.e. \"clean\". So on any such host every build prints a bare `<sha>`, asserting a cleanliness nobody established; the newly added flag turns a working probe into a permanently wrong one there. Contract item 3 requires the separate third outcome: a resolved commit whose probe answered nothing must be `<sha>-cleanliness-unknown`, not a bare SHA. Note that `assert_build_identity` in `tests/cli_version.rs` currently accepts only `unknown` / `<sha>` / `<sha>-dirty`, so it must be widened together with this fix (or fall back to a plain `status` probe when the flag is rejected).",
+   "tool_severity": "high"
+  },
+  {
+   "file": "tests/loader.rs",
+   "start": 590,
+   "end": 592,
+   "title": "test",
+   "text": "The `other =>` arm \u2014 the \"anchor carrying no declaration, or more than one\" loud-`Err` the doc comment above promises \u2014 is never exercised: the two mutation tests only cover the *missing anchor* branches (`!seen_status` / `!seen_row`). Mutation-check: replacing this arm with `other => found.extend(other.iter().cloned())` (i.e. silently taking whatever the anchor carries) leaves the whole file green, so the rule the doc comment declares is untested. Add a case that puts a second literal on an anchor and asserts `Err`, e.g. in `a_missing_declaration_anchor_is_an_error_not_an_empty_oracle`.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/loader.rs",
+   "start": 581,
+   "end": 582,
+   "title": "test",
+   "text": "The exactly-one-literal-per-anchor rule is brittle in the direction this document is guaranteed to move. At the next format bump the `| File format |` row would naturally name the format it migrates *from* (`| File format | `schema: req.claim/1` | a migration from `req.claim/0`; ... |`), and the `Status:` line could add a `(supersedes `req.claim/0`)` clause. Both are correct doc edits, but this helper then returns `Err(\"... found 2\")` and reddens `the_schema_constant_equals_the_documented_literal` on a correct document \u2014 exactly the \"redden on a correct illustrative edit and invite weakening the oracle\" failure the doc comment above says anchoring was chosen to avoid. The declaration is identifiable by position (the first literal on the anchor line, since the row reads `schema: <decl>`, and `Status: <decl>`), so keep `Err` for the zero case and take the first literal rather than demanding uniqueness.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "src/canon.rs",
+   "start": 144,
+   "end": 144,
+   "title": "documentation",
+   "text": "This comment now states that `compare` and the fill path judge a claim file outside the loader, which is true of the code but makes two shipped docs stale: `docs/claim-format.md:34` and `AGENTS.md:102` both still assert \"The judgement lives in the loader, so no command can ignore the declaration.\" Per the review rule that docs are claims, that assertion should be updated in this same change (e.g. \"the judgement is `canon::claim_schema_reason`; the loader and the path-based readers \u2014 `compare`, `--fill`/`--verify` \u2014 all call it\"), otherwise a reader consulting the doc concludes the loader is the only place that can refuse a foreign `schema:` and writes a new reader that skips it.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "tests/compare.rs",
+   "start": 343,
+   "end": 345,
+   "title": "test",
+   "text": "The \"foreign\" side hard-codes `req.claim/1`, which is only foreign while `CLAIM_SCHEMA_V == 0`. On the next format bump the fixture declares the current schema, so this test stops exercising the guard (it fails on the `code == 3` assertion for the wrong reason), and a maintainer may \"fix\" it by relaxing the expectation instead. Derive the value the way `tests/loader.rs` does (`CLAIM_SCHEMA_PREFIX` + `CLAIM_SCHEMA_V + 1`) and use the same value in the `out.contains(...)` assertion below, so the test keeps meaning \"a format this build does not write\" across version bumps.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "src/fill.rs",
+   "start": 206,
+   "end": 208,
+   "title": "bug",
+   "text": "The declaration is judged only after the strict parse, so the guarantee stated here does not hold for a newer-format file the strict parser rejects. `ClaimFile` is `#[serde(deny_unknown_fields)]` and has required slots, so a `req.claim/1` file that adds (or drops, e.g. `quantifier`) a field hits the `Err` arm above and returns `StoredState::Mismatch` (exit 1, a definite finding) before `claim_schema_reason` is consulted \u2014 the exact false FAIL this change is meant to prevent. The production paths are safe (`load_claims` parses first and yields exit 3), but `verify_text` is a public reader that the new test calls directly. Consider returning `Candidate` for a parse failure (the module doc already classes an unreadable file as exit 3) or reading `schema:` leniently before the strict parse, and add a test with a foreign schema plus an unknown/removed field.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/fill.rs",
+   "start": 174,
+   "end": 174,
+   "title": "test",
+   "text": "This pins the `verify_text` guard, but the sibling guard added to `fill_path` (src/fill.rs) has no test: `fill_path` has no callers in `src/` or `tests/`, so deleting those lines would fail nothing. Since the branch exists specifically to bind a future caller, pin it with a temp-root test (`load_registry` needs `aliases/subjects.yml`) asserting `fill_path` returns `Err` for a foreign-schema file; otherwise the contract is only a comment.",
+   "tool_severity": "low"
+  }
+ ]
+}

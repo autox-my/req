@@ -1,0 +1,30 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/audit.rs",
+   "start": 149,
+   "end": 155,
+   "title": "maintainability",
+   "text": "`Coverage.not_judged` stores a pre-rendered `String`, which throws away the structured `RulesMismatch` (`manifest_rules_v`/`build_rules_v`) that `baseline.rs` documents as the *single* home for this wording. As a result the packet header re-states the mismatch in its own `format!` and re-reads `manifest.rules_v`/`crate::canon::RULES_V` instead of the values the guard actually compared. The concrete risk: `RulesMismatch::reason()` is explicitly documented as one function \"rather than a `format!` per call site\" because the wording (and the remedy direction) must not drift; a later reword of the reason leaves this header \u2014 and the Findings line in the same packet \u2014 describing the same state two different ways. Storing `Option<baseline::RulesMismatch>` (it is `Copy`) in `Coverage` lets both places render from one source.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "src/audit.rs",
+   "start": 296,
+   "end": 300,
+   "title": "test",
+   "text": "The precedence this arm documents \u2014 a provenance failure outranks a NOT-JUDGED coverage and therefore exits 1, with both findings printed \u2014 is not exercised by any test: the new CLI test (`an_audit_under_a_misdeclared_rules_version_reports_coverage_not_judged`) uses the committed manifest, whose claims all carry provenance, so it only covers the \"no failures\" branch. A unit test passing a coverage with `not_judged: Some(..)` and a provenance-less applying row would pin `(failed.len(), open.len()) == (1, 1)` and the exit-1-beats-3 routing in `run`.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "tests/baseline.rs",
+   "start": 654,
+   "end": 657,
+   "title": "test",
+   "text": "This test never asserts the per-claim status or the audit verdict, so two load-bearing branches of the new audit behaviour can be deleted while the test stays green: (1) the per-claim `NOT-JUDGED` arm in `packet` \u2014 if it is removed the status falls through to `Some(_) => \"uncovered\"`, and `\"[uncovered]\"` does not contain the substring `\"[covered]\"`, so this assertion still passes while claims are reported as uncovered; (2) the new `verdict:` arm in `audit::run` \u2014 without it the generic \"nothing here is ratified, or something ratified is uncovered\" text is printed, and `stdout.contains(\"NOT JUDGED\")` still matches the packet line. Assert both explicitly so each branch is exercised (mutation-checked).",
+   "tool_severity": "medium"
+  }
+ ]
+}

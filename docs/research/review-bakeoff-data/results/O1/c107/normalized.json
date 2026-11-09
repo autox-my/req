@@ -1,0 +1,14 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/canon_fail_on_flag.rs",
+   "start": 72,
+   "end": 76,
+   "title": "test",
+   "text": "The harness does not clear `REQ_ROOT`. Root resolution is `--root`, then `REQ_ROOT`, then the nearest ancestor of the CWD (`src/root.rs`), so on a machine/CI where `REQ_ROOT` is exported every `req canon` here reads that corpus instead of the scratch dir. The exit-code contract these tests exist to pin then proves nothing: the flagged-pin tests redden or, worse, `a_clean_green_does_not_read_as_a_release_pass` goes green against a foreign clean corpus, and the unreadable-corpus test can exit 2/0 for unrelated reasons. This is exactly why `tests/init.rs` (`run_at`) and the other CLI fixtures call `.env_remove(\"REQ_ROOT\")`.",
+   "tool_severity": "medium"
+  }
+ ]
+}

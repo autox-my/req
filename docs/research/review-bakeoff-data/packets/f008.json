@@ -1,0 +1,155 @@
+{
+ "case": "f008",
+ "reviewed_state": "f4b6502d8db9a2c5027346a3dd0070962b797a60",
+ "diff_range": "c279a908b8bbffe79a3b8dcf66733b38c5189fee..f4b6502d8db9a2c5027346a3dd0070962b797a60",
+ "ground_truth": [
+  {
+   "id": "G1",
+   "file": "src/baseline.rs",
+   "text": "from_json treats any serde 'missing field' error as a v1 Baseline and tells the reader to re-issue and re-sign (ADR 0013). A manifest missing an unrelated field such as claim_id (ordinary corruption) therefore gets the misleading v1 re-sign advice; only a missing relations_hash or rationale_hash should.",
+   "kind": "code-bug"
+  },
+  {
+   "id": "G2",
+   "file": "src/audit.rs",
+   "text": "audit::coverage tests membership in the drift changed / attested_changed / missing lists with Vec::contains, three linear scans per manifest claim, quadratic in the number of claims. The id sets should be built once (e.g. BTreeSet).",
+   "kind": "robustness"
+  },
+  {
+   "id": "G3",
+   "file": "tests/baseline.rs",
+   "text": "The row() fixture helper fills relations_hash and rationale_hash with placeholder strings ('relations-hash', 'rationale-hash') unrelated to the row's own content, a Row state that load_rows can never produce, so tests built on it prove little about the emit/verify round trip.",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G4",
+   "file": "tests/baseline.rs",
+   "text": "The doc comment on the 'edited relation after signing fails verification' test implies the relation itself is edited, but the test only overrides the attested hash (load_rows derives that hash from content), so the comment misdescribes what the test simulates.",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G5",
+   "file": "tests/baseline.rs",
+   "text": "The digest test asserts relations_digest(&[]) == relations_digest(&[]) for the empty case, comparing the implementation with itself; it cannot fail and pins no independent oracle for the empty-list digest.",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G6",
+   "file": "tests/baseline.rs",
+   "text": "No test checks that a manifest missing a field other than the attested hashes (e.g. claim_id) is reported as plainly unreadable rather than with the v1 re-issue advice, so the over-broad 'missing field' branch in from_json is untested.",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G7",
+   "file": "tests/common/mod.rs",
+   "text": "The shared test fixtures in tests/common/mod.rs (and in tests/audit.rs and tests/funnel.rs) build Rows with placeholder hash strings that do not match the Relation or provenance values the rows carry, so helpers like rationale() change the displayed source without updating the attested hash.",
+   "kind": "test-gap"
+  }
+ ],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "src/model.rs",
+   "text": "The digest input is delegated to `serde_json`'s serializer, so the signed bytes are tied to `Rationale`/`Relation` field *declaration order* and to `serde_json`'s escaping rules rather than to a pinned encoding. Concrete failure: reordering the fields in `Rationale` (an innocuous refactor) changes every `rationale_hash`, so every previously signed Baseline re-verifies as `\"<id>: the relations or rationale no longer recompute \u2014 edited after signing\"` (FAIL, exit 1) with no claim edited \u2014 exactly the false-alarm class the address path avoids by using a hand-ordered writer (`canon::canonical_json`, whose comment says byte stability must not depend on a library). Additionally, the ADR promises \"canonical JSON\", but no encoding (key order, escaping of non-ASCII/control chars) is pinned, so the hash is not reproducible by an independent verifier. Suggest hashing an explicitly written body (fixed key order, `json_string`-style escaping) as the rest of the project does, instead of `serde_json::to_string`.",
+   "title": "bug",
+   "lines": [
+    40,
+    42
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "src/baseline.rs",
+   "text": "Diagnosing v1 by substring-matching serde's English error text is over-broad and brittle: any corrupt v2 manifest missing a *different* required field (`version`, `address`, `claim_id`, `selection`) produces `missing field \\`address\\`` and is reported to the human as \"a manifest without the attested hashes is a v1 Baseline: re-issue and re-sign\", masking real corruption; a serde wording change silently drops the hint altogether. A precise check is available: parse to `serde_json::Value` first and branch on `value[\"version\"] == 1` (or on the absence of `relations_hash`), then decode the typed `Manifest`.",
+   "title": "bug",
+   "lines": [
+    126,
+    126
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "tests/baseline.rs",
+   "text": "Every test here injects `\"relations-hash\"`/`\"rationale-hash\"` into `Row` and then derives the manifest from those same rows, so the actual wiring in `view::load_rows` (which slot is hashed, from which parsed value, with which digest function) is never exercised \u2014 swapping `relations_digest`/`rationale_digest` there, or passing `&claim.relations` for both, would leave all tests passing. Likewise `an_edited_relation_after_signing_fails_verification` mutates the hash field directly rather than editing a relation, so it never proves a relation edit moves the hash. Suggest a test that loads real claim text (parsed claim or `view::load_rows`) with non-empty relations/rationale and asserts the row's two hashes equal `relations_digest`/`rationale_digest` of the parsed values and differ from each other.",
+   "title": "test",
+   "lines": [
+    20,
+    21
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "src/audit.rs",
+   "text": "Merging `attested_changed` into `Coverage::drifted` makes the packet reuse the address-drift message. `findings()` renders every `coverage.drifted` id as `\"{id}: edited after signing \u2014 the ratified text is gone\"`, but for an attestation-only drift the statement text is byte-identical (only relations/rationale moved, ADR 0013) \u2014 so the packet asserts something false about the claim it is describing, and gives the auditor no way to tell which surface drifted (the packet does not print the manifest's hashes, and `req baseline --verify` phrases this case as \"the relations or rationale no longer recompute\"). Since the packet is the artifact an auditor files, that is a misleading diagnostic on the one question it exists to answer. Suggest carrying the attestation drift separately (or tagging it) so `findings()` can word it after `Drift::reasons()`; if the merge stays, at least the finding text must not claim the ratified text is gone. Secondary: `changed` then `attested_changed` concatenation is no longer in claim-id order, contradicting this module's stated \"claims in id order\" contract for the Findings section \u2014 sort the merged list.",
+   "title": "bug",
+   "lines": [
+    53,
+    53
+   ]
+  },
+  {
+   "id": "F05",
+   "file": "tests/baseline.rs",
+   "text": "No test pins a known digest value: every assertion compares a digest against another digest produced by the same function, so mutating the domain prefix (`b\"req.relations.v1\\0\"`), dropping it, or changing the hex formatting leaves the whole suite green \u2014 the attestation could silently cover the wrong bytes. `assert_eq!(relations_digest(&[]), relations_digest(&[]))` in particular cannot fail (it re-states the call). Suggest pinning the expected 64-hex literal for a fixed relations/rationale fixture (a golden value, independent of how the implementation computes it), and making the empty case assert separation rather than self-equality.",
+   "title": "test",
+   "lines": [
+    282,
+    286
+   ]
+  },
+  {
+   "id": "F06",
+   "file": "src/baseline.rs",
+   "text": "The change makes the shipped docs stale and they are not updated here (review rule 5): `AGENTS.md` (\"Baselines: ... the **canonical manifest** \u2014 the rules version, the selection, and every applying claim's address \u2014 which is the exact byte string a human signs\") and this module's own header (\"A Baseline is a **manifest** \u2014 the rules version, the selection context, and every applying claim's address \u2014 over which a human places one signature\") no longer describe what is emitted or verified: the signed bytes now also carry `relations_hash`/`rationale_hash`, and an edit to either is FAIL. Please update both in this same change.",
+   "title": "documentation",
+   "lines": [
+    21,
+    21
+   ]
+  },
+  {
+   "id": "F07",
+   "file": "tests/baseline.rs",
+   "text": "This assertion is tautological for any pure function, so it never verifies the stated property that an empty `relations:` list still attests in the manifest. Compare the empty-list digest against a populated one and check the hex length so the empty case is actually exercised.",
+   "title": "Make empty-list test meaningful",
+   "code": "assert_eq!(\n    relations_digest(&[]),\n    relations_digest(&[]),\n    \"an empty list still attests\"\n);"
+  },
+  {
+   "id": "F08",
+   "file": "tests/audit.rs",
+   "text": "No test in this file exercises attested-only drift: every row comes from this helper with the same constant hashes, so `drift.attested_changed` is always empty here. The two new branches in `src/audit.rs` can be deleted with the whole suite green \u2014 drop `!drift.attested_changed.contains(id)` and an edited-after-signing claim is reported as `covered` again (contradicting `req baseline --verify`'s FAIL), drop the `extend` and the packet prints no DRIFTED status for it. Mutation-check the ADR 0013 rule at the audit layer: build the manifest from rows, flip one row's `relations_hash` (and separately `rationale_hash`), then assert `coverage.signed` is empty, `coverage.drifted == [\"REQ-A\"]`, `findings()` returns a FAIL naming REQ-A, and `packet()` shows `DRIFTED`.",
+   "title": "test",
+   "lines": [
+    21,
+    22
+   ]
+  },
+  {
+   "id": "F09",
+   "file": "tests/common/mod.rs",
+   "text": "These two constants make the fixture internally inconsistent with the new attestation semantics: `relations` is derived from `rels`, and the `rationale()` helper rewrites `rationale_source`, but neither hash follows. A row built here can therefore claim an attested surface that does not match its own content, so any future test composing this fixture with `baseline::manifest`/`baseline::drift`/`audit::coverage` would see a clean result even when relations/rationale were edited \u2014 the test could not fail. For `relations_hash`, derive the digest from the relations (e.g. `req::model::relations_digest`) so the fixture stays faithful; for `rationale_hash`, at minimum document that it is an opaque sentinel because the fixture does not model the full `Rationale` (`rejected_alternatives`/`assumptions`).",
+   "title": "test",
+   "lines": [
+    28,
+    29
+   ]
+  },
+  {
+   "id": "F10",
+   "file": "src/baseline.rs",
+   "text": "Stale-format detection is `detail.contains(\"missing field\")` on serde_json's error text, so *any* manifest missing a required field is reported as \"a manifest without the attested hashes is a v1 Baseline: re-issue and re-sign\". A v2 manifest that is truncated or hand-edited to drop `address` (or `rules_v`) therefore tells the human to re-sign a manifest that may actually be corrupt or tampered with, instead of surfacing the real parse error. Conversely, because `relations_hash`/`rationale_hash` are required, a genuine v1 manifest containing any claim fails to deserialize and never reaches the version gate in `verify`, so the documented \"UNVERIFIABLE at the version gate\" path is unreachable for it and the outcome falls back to whatever the caller does with a `from_json` error (whose exit code is not visible in this diff). Consider parsing `version` first, or matching only the two hash field names (or giving them `#[serde(default)]`) so the version gate owns the stale-format decision and genuine corruption keeps its own message.",
+   "title": "Misleading v1 detection",
+   "lines": [
+    124,
+    135
+   ]
+  },
+  {
+   "id": "F11",
+   "file": "src/baseline.rs",
+   "text": "Matching on the substring `missing field` conflates a stale v1 Baseline with any truncated/corrupted v2 manifest (or one missing an unrelated field), reporting corruption as \"re-issue and re-sign\". Keep the tri-state honest by deciding from the document's declared `version`, and only offer the re-issue advice when `version` is actually 1.",
+   "title": "Narrow stale manifest detection",
+   "code": "pub fn from_json(text: &str) -> Result<Manifest, String> {\n    serde_json::from_str(text).map_err(|e| {\n        let detail = e.to_string();\n        if detail.contains(\"missing field\") {\n            // A manifest without the attested hashes is a v1 Baseline: stale, not corrupt.\n            format!(\n                \"manifest is not readable: {detail} \u2014 a manifest without the attested \\\n                     hashes is a v1 Baseline: re-issue and re-sign (ADR 0013)\"\n            )\n        } else {\n            format!(\"manifest is not readable: {detail}\")\n        }\n    })\n}"
+  }
+ ]
+}

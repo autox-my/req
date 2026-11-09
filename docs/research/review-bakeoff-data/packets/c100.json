@@ -1,0 +1,99 @@
+{
+ "case": "c100",
+ "reviewed_state": "1549b6ab877528559d37cde4f9586ddd5a45dfbf",
+ "diff_range": "09e65f9932b3ef8e2745517e9a614d9a722541cc..1549b6ab877528559d37cde4f9586ddd5a45dfbf",
+ "ground_truth": [],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "tests/agent_handoff.rs",
+   "text": "Each `named_commands` call dedupes only within its own file, so the merged vector contains cross-file duplicates. Today the two docs name only three distinct commands (`canon`, `gate`, `render`) and `canon` appears in both files, so `len() >= 4` is satisfied purely by that duplicate: the guard does not guarantee what its message claims, and it would fail spuriously if `canon` were dropped from the brief (a legitimate edit). Dedupe after merging and base the guard on distinct commands.",
+   "title": "test",
+   "lines": [
+    111,
+    114
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "tests/agent_handoff.rs",
+   "text": "The `claim_schema` needle is the bare value (`req.claim/2`), while the `rules_v` needle is anchored to its label. The snippet names `req.claim/2` in **two** places: the precheck (line 7, `` `claim_schema req.claim/2` ``) and the authoring rule (line 10, `` (`req.claim/2`) ``). So if `CLAIM_SCHEMA_V` is bumped and only the authoring mention is updated, the precheck still advertises the stale schema and this test passes \u2014 exactly the drift it exists to catch. Anchor the needle to the label like the `rules_v` needle does.",
+   "title": "test",
+   "lines": [
+    70,
+    70
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "tests/agent_handoff.rs",
+   "text": "Two weaknesses in the brief's precheck assertion: (a) it only checks the bare `claim_schema` value anywhere in the file rather than the `claim_schema <v>` pin; (b) it never checks `rules_v`, although the brief's precheck pins `rules_v 6` in exactly the same sentence (line 11) and the sibling snippet test does check it. A `RULES_V` bump would leave the brief stale with this test green. Assert both label-anchored pins, and check the exit code of the `--version` run.",
+   "title": "test",
+   "lines": [
+    102,
+    106
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "tests/agent_handoff.rs",
+   "text": "The extracted word stops at the first non-lowercase character, so the extractor cannot represent a hyphenated or digit-bearing subcommand. Today every entry in `COMMANDS` (`src/main.rs`) is plain lowercase, so nothing is missed; but if a command is ever renamed to e.g. `render-md`, a doc that still names `req render-md` extracts `render`, which exists, and the stale reference passes silently \u2014 the exact failure this test is supposed to detect. Take the whole token up to whitespace/backtick instead of a lowercase run.",
+   "title": "test",
+   "lines": [
+    54,
+    54
+   ]
+  },
+  {
+   "id": "F05",
+   "file": "tests/agent_handoff.rs",
+   "text": "The brief hardcodes `rules_v 6`, but this test only checks `claim_schema`, so a `RULES_V` bump silently leaves the brief stale \u2014 exactly the drift the module docstring says both files must be guarded against. It also ignores the exit code of `req --version`, so a failing precheck surfaces as a confusing `version_field` panic instead of a clear assertion; tie both values to their key and assert the exit code.",
+   "title": "Guard handoff brief rules_v too",
+   "code": "let (_, version) = run(&[\"--version\"]);\nassert!(\n    brief.contains(&version_field(&version, \"claim_schema\")),\n    \"the brief's precheck must name this build's claim_schema\"\n);"
+  },
+  {
+   "id": "F06",
+   "file": "tests/agent_handoff.rs",
+   "text": "The snippet test asserts `snippet.contains(&version_field(&version, \"claim_schema\"))` over the whole file, but `examples/agents-snippet.md` already contains `req.claim/2` in the bullet \"A claim is authored (`req.claim/2`)...\" (line 10). If the `claim_schema req.claim/2` token is removed or reworded on the `req --version` precheck line, the assertion still passes on that unrelated occurrence, so the test does not actually guard what it claims to. Anchor the check to the precheck, e.g. assert the contiguous string `claim_schema <value>` (or search only the `req --version` bullet).",
+   "title": "Vacuous claim_schema guard",
+   "lines": [
+    68,
+    80
+   ]
+  },
+  {
+   "id": "F07",
+   "file": "tests/agent_handoff.rs",
+   "text": "`the_handoff_brief_names_one_step_its_precheck_and_its_report` verifies only the build's `claim_schema` against `examples/handoff-brief.md`, but the brief hardcodes `rules_v 6` in its precheck (line 11) and nothing checks it. When `RULES_V` is bumped (a normal Tier-1 protocol change), the snippet test will fail and force `examples/agents-snippet.md` to be updated, while the brief silently keeps the old value and stays green; an adopter's agent following the brief then stops and reports a mismatch against a current, correct binary \u2014 the exact confusion this PR is meant to remove. Add `format!(\"rules_v {}\", version_field(&version, \"rules_v\"))` to the brief assertions (or make the brief point at `req --version` instead of embedding the literal).",
+   "title": "Missing rules_v check",
+   "lines": [
+    102,
+    106
+   ]
+  },
+  {
+   "id": "F08",
+   "file": "tests/agent_handoff.rs",
+   "text": "`version_field(&version, \"claim_schema\")` returns just `req.claim/2`, a string that already appears in the unchanged \"A claim is authored (`req.claim/2`)\" line, so this check passes even if the precheck stops naming `claim_schema`. Pair the key with its value so the snippet must actually show `claim_schema req.claim/2`.",
+   "title": "Bind claim_schema key to its value",
+   "code": "\"req --version\".to_string(),\nversion_field(&version, \"claim_schema\"),\nformat!(\"rules_v {}\", version_field(&version, \"rules_v\")),"
+  },
+  {
+   "id": "F09",
+   "file": "tests/agent_handoff.rs",
+   "text": "`run` keeps stdout only, so every failure diagnostic (`unrecognized subcommand: ...`, usage text) is discarded and `assert_eq!(code, 0, ...)` reports nothing actionable about *why* `req <command> --help` failed. Fold stderr into the returned text so a renamed/removed command is debuggable from the test output alone.",
+   "title": "maintainability",
+   "lines": [
+    35,
+    35
+   ]
+  },
+  {
+   "id": "F10",
+   "file": "tests/agent_handoff.rs",
+   "text": "`named_commands` dedupes only within one file, so a command named in both files is counted twice and run twice; the `>= 4` guard can then be satisfied by duplicate names rather than four distinct commands. Sort and dedupe the combined list before the threshold check and the run loop.",
+   "title": "Deduplicate combined command list",
+   "code": "let mut commands = named_commands(&read(\"examples/agents-snippet.md\"));\ncommands.extend(named_commands(&read(\"examples/handoff-brief.md\")));\nassert!(\n    commands.len() >= 4,\n    \"the files name too few commands to be a pointer: {commands:?}\"\n);"
+  }
+ ]
+}

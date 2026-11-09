@@ -1,0 +1,30 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/baseline.rs",
+   "start": 1037,
+   "end": 1065,
+   "title": "Authority rejects appends",
+   "text": "`verify` re-derives the *current* Decision log's head and requires it to equal the head recorded in the manifest. The log is append-only in this project (one Decision per file, chronological), so adding any new `decisions/DEC-*.yml` after the Baseline was signed changes the current head and makes `req baseline --verify` report FAIL \"authority mismatch\" \u2014 the same class as an edit. Scenario: sign the committed `baselines/air-gapped.json` (recorded `entries: 1`), then record and `--fill` a second Decision; verification now fails although nothing was tampered with, and the gate goes red. The newly added `entries` field strongly suggests the intended check is that the log's entry at index `authority.entries` hashes to `authority.head` (an ancestor/prefix check); under plain head equality `entries` is redundant, and appends can never verify. If ADR 0016 really mandates re-signing on every new Decision this may be intended, but that intent is not visible here and the false \"tampered\" outcome is left as-is.",
+   "tool_severity": null
+  },
+  {
+   "file": "src/baseline.rs",
+   "start": 1279,
+   "end": 1286,
+   "title": "Tampered chain mislabeled",
+   "text": "In the emission path, `Chain::Tampered` \u2014 a definite finding (a stored chain hash no longer recomputes) \u2014 is printed with the `[UNVERIFIABLE]` marker and returns exit 3, sharing the branch with the genuinely undecidable `Chain::Unverifiable` case. This contradicts the project's stated rule that FAIL outranks Unverifiable, and it diverges from `req decision --verify`, which exits 1 for the same condition. Scenario: edit a Decision's note without re-filling, then run `req baseline --at <ts>`; the command correctly refuses to emit but classifies the tamper as \"cannot tell\", so any automation keying on exit 3 treats a detected tamper as an inconclusive run.",
+   "tool_severity": null
+  },
+  {
+   "file": "src/baseline.rs",
+   "start": 1367,
+   "end": 1374,
+   "title": "Explicit --now breaks v3 expiry",
+   "text": "`judged_at` lets an explicit `--now` override the key-judgement time even for a v3 manifest, but the v3 `Expired` branch then emits a definite FAIL whose reason asserts \"the manifest's signed_at is outside the key's validity window\". When `--now` is later than `signed_at` that assertion is false: the key was valid at the recorded signing time and only the verification override moved past expiry. Scenario: sign a v3 Baseline at `2026-10-07` with a key `valid_until: \"2026-10-31\"`, then verify with `--now 2026-11-15`; exit 1 claims the Baseline was signed with an expired key. Either the key should remain judged at `signed_at` for v3 (ADR 0016's rule), or the failure text must state that the override, not `signed_at`, is outside the window.",
+   "tool_severity": null
+  }
+ ]
+}
