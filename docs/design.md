@@ -238,11 +238,15 @@ which is measured on `bench/` corpora — an unrelated system's success falsifie
 ## 9. Deferred deliberately
 
 - Tool qualification per standard (DO-330 for airborne; tool-confidence per ISO 26262-8;
-  software-tool validation per IEC 62304) — deferred, not denied. Sequencing: wedge
+  software-tool validation per IEC 62304) — deferred, not denied. A draft `docs/safety-manual.md`
+  (intended use, guarantees and their evidence, limits, failure modes, operating rules) exists as the
+  raw material for that dossier; it is not a qualification. Sequencing: wedge
   revenue first, co-funded qualification with paying design partners when req-generated
   evidence starts feeding *their* audits. The propose-only architecture (ADR 0004) lowers
   the tool's claimed automation impact, which lowers the qualification burden.
-- Production signatures (prototype: HMAC + hash chain; later: Ed25519/minisign).
+- Per-Decision signatures. Baselines are signed with minisign over a committed trust file (ADR 0010),
+  and the signed Baseline attests the decision chain's head and length (ADR 0016); an individual
+  Decision record is hash-chained but not itself signed, and its `actor` is an asserted name.
 - ReqIF interop, federation, PM web UI — after the plumbing gates pass.
 
 The Scion reading in §8 re-opened two deferrals and made a third question answerable. They are
