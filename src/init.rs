@@ -495,7 +495,7 @@ jobs:
           # and nothing here is traced. With no token the header file is empty and no Authorization is sent.
           status=0
           code=$({ if [ -n "${REQ_RELEASE_TOKEN:-}" ]; then printf 'Authorization: token %s\n' "$REQ_RELEASE_TOKEN"; fi; } |
-            curl --proto "$proto" --tlsv1.2 -fsSL -H @- -o "$stage/$asset" -w '%{http_code}' "$url") || status=$?
+            curl --proto "$proto" --tlsv1.2 --retry 3 -fsSL -H @- -o "$stage/$asset" -w '%{http_code}' "$url") || status=$?
           case $code in
             2??)
               if [ "$status" -ne 0 ]; then
