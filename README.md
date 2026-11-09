@@ -96,9 +96,11 @@ Git-native storage is table stakes, not the moat.
 
 ## Install
 
-req is not on crates.io (`publish = false`): you pin a commit, and the commit is the provenance. **The first
-prebuilt release is `rev-ec87808`** (Linux x86_64 only; no macOS tarball is published yet), so for any other
-rev, or any other machine, the install is a build from source at a rev you choose:
+req is not on crates.io (`publish = false`): you pin a commit, and the commit is the provenance. **Two
+prebuilt releases exist: `rev-ec87808` (Linux x86_64) and `rev-6b74f51` (Linux x86_64 and macOS arm64, Apple
+silicon only)**. There is no Intel Mac build and no native Windows build (on Windows, run the Linux tarball under
+WSL2: `docs/adopting.md`, *Windows*). For any other rev, or any other machine, the install is a build from source
+at a rev you choose:
 
 ```bash
 cargo install --git https://github.com/autox-my/req.git --rev <REV> --locked req
