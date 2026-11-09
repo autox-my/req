@@ -19,8 +19,12 @@ rev (below; one release exists so far) and a **build from source** at the rev ([
 > **Status: one release exists, `rev-ec87808`, for Linux x86_64 only.** There is no macOS tarball and no release
 > for any other rev, so for anything else use [From source](#from-source). That release was built on a runner
 > whose libc is glibc 2.43 (its `.build-info` says so); read that line before you rely on it on an older
-> distribution. The installer has been exercised against a local server; it has not yet been run against this
-> release.
+> distribution. `install-req.sh` was run against it on GitHub-hosted Ubuntu 22.04 (glibc 2.35), 24.04 and the latest
+> image (2026-11-09): the right pin installed, `req --version` said `built from ec87808`, and `req init` and
+> `req canon` exited 0; a wrong pin was refused with nothing installed (seen on 24.04 and latest). On 22.04 the
+> binary ran but its loader printed ``weak version `GLIBC_2.39' not found`` on stderr. The installer does not retry:
+> a 504 from GitHub's download host (seen once on 22.04, and by our CI on other downloads) is a refusal, so run it
+> again.
 
 ### Prebuilt
 

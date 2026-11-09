@@ -9,9 +9,9 @@ released until a person asks.
 
 **Status.** `.github/workflows/release.yml` has been dispatched once, on 2026-11-09 for `ec87808`
 (<https://github.com/autox-my/req/actions/runs/42568766890>): both jobs succeeded and the release `rev-ec87808`
-holds the three Linux assets (the tarball's SHA-256 matches the `.sha256` asset). Not yet exercised: running that
-tarball on a Linux host, `examples/install-req.sh` against it, the no-overwrite refusal (a second dispatch for the
-same rev), and the macOS path. `tests/release_workflow.rs` pins the workflow's text and shape (the trigger, the
+holds the three Linux assets (the tarball's SHA-256 matches the `.sha256` asset). `examples/install-req.sh` was then
+run against it on Ubuntu 22.04, 24.04 and latest runners (the floor note below). Not yet exercised: the
+no-overwrite refusal (a second dispatch for the same rev) and the macOS path. `tests/release_workflow.rs` pins the workflow's text and shape (the trigger, the
 permissions, the no-overwrite rule). The workflow fails closed, so a misconfiguration is a red run, never a
 half-published release you cannot tell from a good one.
 
@@ -50,9 +50,11 @@ deleted by hand on purpose: the workflow has no way to delete or replace an asse
 already exists on the release is an error, never a replacement.) A release whose tarball is present is
 complete.
 
-**The Linux floor is the runner's glibc.** `build-info` records the builder's libc line (`ldd --version`); a
-host with an older glibc cannot run the tarball. Read that line in the `.build-info` asset before telling an
-adopter a distribution is supported; a lower floor is a new ADR (musl was rejected in ADR 0025), not a flag.
+**The Linux floor is the runner's glibc, or lower.** `build-info` records the builder's libc line (`ldd --version`).
+For `rev-ec87808` (built on glibc 2.43) the installed binary ran on Ubuntu 24.04 (2.39) cleanly and on 22.04
+(2.35) with a loader warning on stderr (`weak version GLIBC_2.39 not found`); only `--version`, `req init` and
+`req canon` were run there, and nothing older than 2.35 was tried. Read the `.build-info` line, and test a
+distribution, before telling an adopter it is supported; a lower floor is a new ADR (musl was rejected in ADR 0025), not a flag.
 
 ## The macOS path: the same script, on the owner's machine
 
