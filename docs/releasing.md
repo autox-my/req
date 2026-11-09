@@ -69,6 +69,25 @@ For `rev-ec87808` (built on glibc 2.43) the installed binary ran on Ubuntu 24.04
 `req canon` were run there, and nothing older than 2.35 was tried. Read the `.build-info` line, and test a
 distribution, before telling an adopter it is supported; a lower floor is a new ADR (musl was rejected in ADR 0025), not a flag.
 
+## Rebuild a release and compare (ADR 0035)
+
+A release made after ADR 0035 can be derived from its source by anyone with the repository, the pinned toolchain
+(`rust-toolchain.toml`) and `minisign` (the build runs the same proofs as a release). From a checkout of the repository:
+
+```bash
+scripts/reproduce.sh --rev <rev> --against req-<REV>-<TARGET>.tar.gz
+```
+
+It builds the rev in a clean copy, unpacks the given tarball and compares the **binary** by SHA-256. `REPRODUCED` means the
+bytes are the ones this rev builds. `DIFFERS` prints both hashes and this machine's toolchain line: compare it with the
+release's `.build-info` (`rustc`, `cargo`, `libc`) before concluding anything, because the target, the toolchain and, on Linux, the
+linker and C library are inputs, and on macOS so is the path the toolchain is installed at: it reaches the binary's `LC_UUID`,
+so a rebuild with the same toolchain elsewhere differs by 48 bytes (the line `bytes differ in the common prefix` tells that case from a different build). A `DIFFERS` is a finding to report, not a failure to explain away. Releases made before ADR 0035
+(`rev-ec87808`, `rev-6b74f51`) were built the old way and will not reproduce.
+
+`scripts/reproduce.sh --rev <rev>` with no `--against` builds twice, in different directories and two seconds apart, and requires
+the two tarballs to be byte-identical; `scripts/check.sh` runs it on `HEAD` in every full run.
+
 ## The macOS path by hand (a fallback, ADR 0032)
 
 Since ADR 0032 the workflow builds the macOS tarball too. This path remains for two cases: a rev released before that
