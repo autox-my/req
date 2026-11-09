@@ -43,7 +43,9 @@ pub mod model;
 // A consumer repository's pin of an external corpus's commit (ADR 0033): verify the checkout is
 // exactly it, or describe how the corpus moved since. Reads git as a local process (`diff`'s boundary).
 pub mod pin;
+// Known-answer checks of the installed binary (ADR 0034): the project's reference answers, compiled in.
 pub mod propose;
 pub mod root;
 pub mod select;
+pub mod selftest;
 pub mod view;

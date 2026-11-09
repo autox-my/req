@@ -113,6 +113,14 @@ were modified, so the binary is not the commit it names (the output pads its col
 the line needs one or more spaces between the words, not exactly one). This is the **only networked step**; everything
 below runs offline against the corpus (REQ-0012).
 
+Then run `req selftest` (exit 0, any directory, no corpus): known-answer checks compiled into the binary, which show that
+*this build, on this machine,* derives what the project's reference build derives: a SHA-256 test vector, what a few statements
+must derive from the hashing spec, pairs that must and must not share an address, the direction of hand-labelled changes, and the
+seed parity corpus through the false-merge gate (ADR 0034). It prints the build it checked and `selftest: PASS (N checks)`; a `FAIL`
+line says what was derived and what was expected, and the binary should not be used. It is not a defence against a tampered binary
+(the pinned checksum is) and it does not show the rules are right; `info:` lines note whether `git` and `minisign`, which `req diff`,
+`req pin` and `baseline --verify` need, are present.
+
 ### Air-gapped
 
 Clone req once at the rev you want and install from the clone —

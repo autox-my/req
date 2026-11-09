@@ -29,6 +29,7 @@
 //!                                          — the audit packet: coverage, provenance, undecided
 //!   req [--root <dir>] decision [--fill]   — the decision log and its hash chain (step 8)
 //!   req init                               — create a corpus in the working directory
+//!   req selftest                           — known-answer checks of this binary; reads no corpus (ADR 0034)
 //!
 //! The corpus root is resolved at **runtime** (ADR 0012), once, before dispatch: `--root`,
 //! then `REQ_ROOT`, then the nearest ancestor of the working directory holding `claims/`.
@@ -48,7 +49,7 @@
 //! the address computation.
 use req::{
     audit, baseline, bench, canon, check, compare, decision, diff, gate, impact, init, pin,
-    propose, root, select, view,
+    propose, root, select, selftest, view,
 };
 use std::path::Path;
 use std::process::exit;
@@ -71,6 +72,7 @@ usage: req [--root <dir>] <command> [args]
                                   folded into one verdict (ADR 0023)
   impact <claim-id>               what depends on that claim, transitively
   init                            create a corpus in the current directory (no root lookup)
+  selftest                        known-answer checks of this binary; reads no corpus (ADR 0034)
   propose <a.yml> <b.yml>         one pair put to a provider: an unratified proposal (ADR 0021)
   baseline --at <ts>              the manifest a human signs (--at is the signing time)
   baseline --verify <file>        verify one (a v3 manifest's signed_at judges the key)
@@ -215,6 +217,33 @@ classification is for a human to ratify, never an approval.
 exit: 0 classified, 3 UNVERIFIABLE (a side that will not load, or that declares a file
 format this build does not write, so its parse is NOT JUDGED; a pair with no structured form
 to compare), 2 usage.
+
+`docs/adopting.md` for the loop.";
+
+const SELFTEST_HELP: &str = "\
+usage: req selftest
+
+A set of known-answer checks of this binary, the first thing to run after installing it or on a
+machine nobody has run req on. The answers are compiled in: a SHA-256 test vector; what a handful of statements must
+derive (written from the hashing spec: `within 200 ms` is LE, 0.2, s; `less than` is LT, a different
+claim; a prohibition; an enumerated set); pairs that must share an address and pairs that must not;
+address pins frozen at this build's rules version; the direction of six hand-labelled changes; and the
+seed parity corpus through the false-merge gate. It reads no corpus, resolves no root and needs no
+network, so it answers in any directory, and `--root` is a usage error (there is nothing for it to name).
+
+What it tells you: this build, here, derives what the project's reference build derives. What it does
+not: it is not a defence against a tampered binary (one that lies about its own checks passes them), and
+it does not show the rules are right, only that they are the ones the reference answers were taken from.
+After a change of the Tier-1 rules, the address pins are regenerated in the same commit; a build whose
+pins belong to another `rules_v` does not compile.
+
+It prints the build it checked (`rules_v`, `baseline_envelope`, `claim_schema`, `built from`), one
+`PASS`/`FAIL` line per check (a failing line says what was derived and what was expected), then
+`info:` lines for `git` and `minisign`, which the revision and Baseline commands need; these are
+notes, never counted as checks.
+
+exit: 0 every check passed; 1 at least one failed; 3 UNVERIFIABLE (the answers compiled into this build
+cannot be read: a build defect); 2 usage (any argument, or `--root`).
 
 `docs/adopting.md` for the loop.";
 
@@ -725,6 +754,26 @@ fn main() {
         flag if is_help_flag(flag) => {
             println!("{USAGE}");
             exit(0);
+        }
+        // `selftest` reads no corpus, so like `init` it is answered before the root is resolved: it must
+        // work in a directory with no `claims/` above it, which is where a fresh install is. It takes no
+        // argument and no `--root` (a root would name a corpus it does not read), and a help request
+        // is answered only for an otherwise valid invocation, as `init` does.
+        "selftest" => {
+            rest.remove(0);
+            let only_help = !rest.is_empty() && rest.iter().all(|arg| is_help_flag(arg));
+            if cli_root.is_none() && only_help {
+                println!("{}", SELFTEST_HELP);
+                exit(0);
+            }
+            if cli_root.is_some() {
+                eprintln!(
+                    "usage: req selftest\n`--root` names no corpus here: selftest reads none"
+                );
+                exit(2);
+            }
+            rest.retain(|arg| !is_help_flag(arg));
+            exit(selftest::run(&rest));
         }
         // `init` *creates* the root, so it is answered here beside the two flags and for the
         // stronger version of their reason: resolving a corpus would answer a question this

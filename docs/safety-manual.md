@@ -105,7 +105,7 @@ falsification of the bet, and the README says so.
 | a false split | a reworded claim reads `reshaped` or `removed`+`added` | review noise, not loss | none needed; splitting is always allowed |
 | the parse is wrong but confident | a pin disagrees (`pins_hold` exit 1); a lint names the cause | a bound, subject or set means something else than the author intended | pins on load-bearing slots; the coverage rule; read `req canon` for claims that matter |
 | the statement is unstructured | `req canon` shows `unstructured` and a lint | no structural direction analysis for that claim | the lint; re-word, or accept the claim as raw text |
-| the wrong `req` is used | `req --version` `built from` ≠ the rev you pin, or `rules_v` differs | verdicts from another rule set | the installer refuses a `built from` that is not the pinned rev; `baseline --verify` is UNVERIFIABLE on a `rules_v` mismatch |
+| the wrong `req` is used | `req --version` `built from` ≠ the rev you pin, or `rules_v` differs | verdicts from another rule set | the installer refuses a `built from` that is not the pinned rev; `baseline --verify` is UNVERIFIABLE on a `rules_v` mismatch; `req selftest` fails if this build derives something else on this host |
 | the Baseline is stale after a rules change | `baseline --verify` UNVERIFIABLE (rules mismatch) or FAIL (drift) | none, if the gate is required | the owner re-signs; releases flag a `rules_v` change in their notes (ADR 0031) |
 | the trust anchor is swapped in a pull request | CI reads the anchor from `origin/main`, not the PR; rotation is two PRs | a forged baseline verifies | `baselines/trust.yml` is read from main; a key swap without a rotation story is a review finding |
 | a shallow clone or missing report | exit 3 naming the missing revision or report | a gate nobody notices did not run | UNVERIFIABLE blocks, never passes |
@@ -115,7 +115,8 @@ falsification of the bet, and the README says so.
 ## 6. Operating rules for a safety-related project
 
 1. **Pin the rev and its checksum** in your repository (`examples/install-req.sh`); from then on the pin is the authority. After install,
-   `req --version` must say the `built from` you pinned and the `rules_v` your Baseline was signed under.
+   `req --version` must say the `built from` you pinned and the `rules_v` your Baseline was signed under, and `req selftest` must pass
+   (ADR 0034: known-answer checks of this build on this machine; not a defence against a tampered binary).
 2. **Run the full gate in CI** (`req check`, which folds every declared variant and projection), with `fetch-depth: 0`, and make it a
    required check. Treat exit 3 as blocking, exactly like exit 1.
 3. **Give every variant its own gate invocation** and list it in `.req/variants`; a bare gate on a corpus with a selector is UNVERIFIABLE by design (ADR 0015).

@@ -68,6 +68,7 @@ surprises you. Run as `cargo run -q -- <command>`.
 | command | the question it answers |
 | --- | --- |
 | `init` | start a corpus in the working directory |
+| `selftest` | does this binary, here, derive what the project's reference build derives (known answers compiled in; reads no corpus) |
 | `canon` | what each claim's statement derives, and whether each pin holds (diagnostics; `--fill`/`--verify` removed) |
 | `bench [corpus.yml]` | the FMR = 0 gate (seed parity by default); also scores the direction gold set |
 | `compare <a> <b>` | the direction of a change between two claims — for a human to ratify |
