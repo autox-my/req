@@ -826,3 +826,111 @@ fn the_release_notes_are_made_in_the_build_job_and_only_read_by_the_publishing_j
         "the publishing job refuses a release whose notes did not arrive",
     );
 }
+
+#[test]
+fn the_macos_tarball_is_built_by_a_read_only_job_of_the_same_run() {
+    let text = code(RELEASE);
+    let mac = job_block(&text, "build-macos");
+    let publish = job_block(&text, "publish");
+    require(
+        RELEASE,
+        &mac,
+        "runs-on: macos-14",
+        "an Apple-silicon runner: the one macOS target ADR 0025 supports",
+    );
+    // It runs the rev's code, so it holds no write permission and no credential, like the Linux job.
+    require(
+        RELEASE,
+        &mac,
+        "contents: read",
+        "the job that runs the rev's code is read-only",
+    );
+    for forbidden in [": write", "GITHUB_TOKEN", "GH_TOKEN", "secrets."] {
+        forbid(
+            RELEASE,
+            &mac,
+            forbidden,
+            "the macOS job runs the rev's code: no write permission, no token, no secret",
+        );
+    }
+    // It builds the commit the Linux job resolved and proved to be on main, with main's script.
+    require(
+        RELEASE,
+        &mac,
+        "needs: build",
+        "it waits for the resolved SHA",
+    );
+    require(
+        RELEASE,
+        &mac,
+        "needs.build.outputs.full",
+        "both targets are the same commit: a ref input could move between two resolutions",
+    );
+    require(
+        RELEASE,
+        &mac,
+        "!= refs/heads/main",
+        "only main's tooling runs",
+    );
+    require(
+        RELEASE,
+        &mac,
+        "merge-base --is-ancestor",
+        "the commit is re-checked to be on main",
+    );
+    require(
+        RELEASE,
+        &mac,
+        "scripts/build-release.sh",
+        "the same script that proves a binary before it writes a tarball",
+    );
+    require(
+        RELEASE,
+        &mac,
+        "command -v minisign",
+        "the Baseline proof has no SKIP on this runner either",
+    );
+    forbid(
+        RELEASE,
+        &mac,
+        "cargo build",
+        "a build here would bypass the proofs the script runs before writing a tarball",
+    );
+    // Its assets travel under their own artifact name; the publishing job needs both targets.
+    require(
+        RELEASE,
+        &mac,
+        "name: release-out-aarch64-apple-darwin",
+        "the macOS assets are their own artifact",
+    );
+    require(
+        RELEASE,
+        &text,
+        "name: release-out-x86_64-unknown-linux-gnu",
+        "the Linux assets are their own artifact",
+    );
+    require(
+        RELEASE,
+        &publish,
+        "needs: [build, build-macos]",
+        "a release has both targets or none: the publishing job waits for both builds",
+    );
+    require(
+        RELEASE,
+        &publish,
+        "pattern: release-out-*",
+        "it receives both artifacts",
+    );
+    require(
+        RELEASE,
+        &publish,
+        "merge-multiple: true",
+        "into one directory it re-checks",
+    );
+    require(
+        RELEASE,
+        &publish,
+        "for target in x86_64-unknown-linux-gnu aarch64-apple-darwin; do",
+        "both targets are checked before the first write",
+    );
+}
