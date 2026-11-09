@@ -1118,6 +1118,46 @@ request or reading a forge's API is a CI step's job, not req's.
 A pull request from a fork has no access to the repository secrets, so the install step refuses and the check is red on
 it; that is deliberate (the trigger is `pull_request`, never `pull_request_target`).
 
+## A corpus kept in another repository
+
+When the claims live in one repository (the policy) and the code in another, `req --root ../policy gate …` gates the code against the
+policy. Pin the policy's commit in the code repository, so a green run says *which* policy it passed (ADR 0033).
+
+The pin file is two lines, committed in the code repository (`corpus.pin` here; any path works):
+
+```
+# the policy this repository is gated against
+repo: https://github.com/example/policy
+rev: 0123456789abcdef0123456789abcdef01234567
+```
+
+`rev` is the policy's **full** 40-digit commit SHA: a short SHA is ambiguous and a branch or tag moves. `req` never fetches, so your CI
+puts that commit in the checkout and then asks req whether the checkout *is* the pin, before any gate runs:
+
+```bash
+set -euo pipefail
+git clone --quiet https://github.com/example/policy.git ../policy      # a private policy needs the CI's own token
+git -C ../policy checkout --quiet "$(sed -n 's/^rev: *//p' corpus.pin)"
+req --root ../policy pin --verify corpus.pin     # prints "corpus pinned: <repo> @ <sha>"; 1 if not that commit or dirty; 3 if it cannot be told
+req --root ../policy gate --test-report target/nextest/ci/junit.xml deployment_mode=air_gapped
+```
+
+`pin --verify` is exit 0 only when `HEAD` is the pinned commit and `claims/` and `aliases/` have no uncommitted or untracked change;
+the line it prints is the first thing the job's log shows. A pinned commit that is not in the checkout, a pin file that is missing or
+malformed, or a corpus outside a git work tree is exit 3, never a pass.
+
+To see how far the policy has moved on, in a scheduled job or a pull request that wants to move the pin:
+
+```bash
+git -C ../policy fetch --quiet origin main      # a shallow clone needs fetch-depth: 0
+req --root ../policy pin --drift corpus.pin --against origin/main
+```
+
+This is `req diff --base <pin> --head origin/main` in the policy repository: each changed claim with its class (added, removed,
+weakened, tightened, reshaped, …), identical claims counted, no verdict. Moving the pin is then a pull request in the code repository
+that changes one line and carries that output. The pin is not signed; the policy's own Baseline is verified as the policy's, against the
+pinned checkout.
+
 ## The coverage rule
 
 `req gate` checks the **applying claims of its invocation**. A claim the invocation leaves

@@ -300,7 +300,7 @@ fn spawn_failure(error: &std::io::Error) -> String {
 
 /// Run one `git` command to completion. A spawn failure or a non-zero exit is the `Err`, carrying
 /// git's own message.
-fn git_output(cwd: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+pub(crate) fn git_output(cwd: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     let output = git(cwd)
         .args(args)
         .stdin(Stdio::null())
@@ -320,7 +320,7 @@ fn git_output(cwd: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
 
 /// Where the corpus lies in its work tree: the path of the root under the top of the work tree,
 /// with a trailing `/`, or empty when the root is the top.
-fn work_tree_prefix(root: &Path) -> Result<String, String> {
+pub(crate) fn work_tree_prefix(root: &Path) -> Result<String, String> {
     let not_inside = |detail: &str| {
         format!(
             "the corpus root {} is not inside a git work tree — `req diff` reads revisions of a \
@@ -346,9 +346,9 @@ fn work_tree_prefix(root: &Path) -> Result<String, String> {
 }
 
 /// A revision as it was asked for and as it resolved.
-struct Revision {
+pub(crate) struct Revision {
     label: String,
-    sha: String,
+    pub(crate) sha: String,
 }
 
 impl Revision {
@@ -357,7 +357,7 @@ impl Revision {
     }
 }
 
-fn resolve(root: &Path, label: &str) -> Result<Revision, String> {
+pub(crate) fn resolve(root: &Path, label: &str) -> Result<Revision, String> {
     // `label` never begins with `-` (a usage error before this runs), so it cannot be read as an
     // option; `^{commit}` peels a tag and refuses a tree or a blob.
     let spec = format!("{label}^{{commit}}");
@@ -939,6 +939,18 @@ fn render_json(
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
+
+/// The text report `req diff --base <base> --head <head>` prints, with no `--fail-on`, or why it
+/// cannot be produced. Used by `req pin --drift`; nothing is printed from here.
+pub(crate) fn report_text(root: &Path, base: &str, head: &str) -> Result<String, String> {
+    let options = Options {
+        base: base.to_string(),
+        head: Some(head.to_string()),
+        fail_on: None,
+        format: Format::Text,
+    };
+    produce(&options, root).map(|(text, _)| text)
+}
 
 /// `req diff` — see the module doc and `DIFF_HELP` in `main.rs`.
 pub fn run(args: &[String], root: &Path) -> i32 {
