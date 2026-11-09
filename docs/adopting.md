@@ -19,8 +19,8 @@ rev (below; two releases exist so far) and a **build from source** at the rev ([
 > **Status: two releases exist.** `rev-ec87808` (Linux x86_64 only) and `rev-6b74f51` (Linux x86_64 and macOS arm64,
 > Apple silicon only; no Intel Mac, no native Windows: see [Windows](#windows)). For any other rev or machine use
 > [From source](#from-source). Both Linux tarballs were built on a runner whose libc is glibc 2.43 (each `.build-info`
-> says so); read that line before you rely on one on an older distribution. The macOS tarball was built on the owner's
-> machine, not on a runner (`docs/releasing.md`). `install-req.sh` was run against `rev-ec87808` on GitHub-hosted
+> says so); read that line before you rely on one on an older distribution. The macOS tarball of `rev-6b74f51` was built on the
+> owner's machine, not on a runner; from the next release the workflow builds it (ADR 0032, `docs/releasing.md`). `install-req.sh` was run against `rev-ec87808` on GitHub-hosted
 > Ubuntu 22.04 (glibc 2.35), 24.04 and the latest image (2026-11-09): the right pin installed, `req --version` said
 > `built from ec87808`, and `req init` and `req canon` exited 0; a wrong pin was refused with nothing installed (seen
 > on 24.04 and latest). On 22.04 the binary ran but its loader printed ``weak version `GLIBC_2.39' not found`` on

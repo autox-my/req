@@ -32,9 +32,11 @@
 # No repository secret is configured or read: GITHUB_TOKEN is the one credential, minted per run.
 # No `continue-on-error` and no `|| true` anywhere: a failed step fails the release.
 #
-# The macOS tarball is not built here: it is the same script on the owner's machine (docs/releasing.md).
-# The runner is Linux, so the glibc floor of the Linux tarball is this runner's; the script records it
-# in the `.build-info` asset.
+# A release has both targets or none (ADR 0032): the Linux job (`build`) resolves the rev, and the macOS job
+# (`build-macos`, an Apple-silicon runner, `contents: read` like the Linux one) builds the same commit with the
+# same script. The publishing job needs both and checks all six names before it uploads the first. The runner of
+# the Linux job is Linux, so the glibc floor of the Linux tarball is its runner's; the script records it in the
+# `.build-info` asset.
 
 name: Release
 
@@ -192,7 +194,7 @@ jobs:
       - name: hand the three assets to the publishing job
         uses: actions/upload-artifact@v4
         with:
-          name: release-out
+          name: release-out-x86_64-unknown-linux-gnu
           path: ${{ runner.temp }}/release-out
           if-no-files-found: error
           retention-days: 1
@@ -205,18 +207,129 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  publish:
+  build-macos:
     needs: build
+    runs-on: macos-14
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: checkout, with the history the rev is checked against
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: the rev is the one the Linux job resolved, it is on main, and the tooling is main's
+        env:
+          REL_FULL_IN: ${{ needs.build.outputs.full }}
+        run: |
+          set -euo pipefail
+          # The same rules as the Linux job's resolve step, applied to the SHA it reported: this job runs the
+          # checked-out scripts/build-release.sh, so only a dispatch from main may reach it, and the commit
+          # it builds is the one the other job proved to be on main (a ref input could move in between).
+          if [ "${GITHUB_REF:-}" != refs/heads/main ]; then
+            echo "::error::dispatched from '${GITHUB_REF:-}'; dispatch Release from main only (the proofs are main's script, ADR 0025 §2)"
+            exit 1
+          fi
+          case ${REL_FULL_IN:-} in
+            '' | *[!0-9a-f]*)
+              echo "::error::the Linux job did not report a usable full SHA"
+              exit 1
+              ;;
+          esac
+          if [ "${#REL_FULL_IN}" -ne 40 ]; then
+            echo "::error::'$REL_FULL_IN' is not a full 40-digit SHA"
+            exit 1
+          fi
+          if ! git cat-file -e origin/main 2>/dev/null; then
+            echo "::error::origin/main is not in this checkout, so 'the rev is on main' cannot be checked — fail closed"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$REL_FULL_IN" origin/main; then
+            echo "::error::$REL_FULL_IN is not an ancestor of origin/main; only a rev on main is released"
+            exit 1
+          fi
+          channel="$(git show "$REL_FULL_IN:rust-toolchain.toml" | sed -n 's/^channel *= *"\([^"]*\)".*/\1/p')"
+          case $channel in
+            '' | *[!0-9A-Za-z._-]*)
+              echo "::error::$REL_FULL_IN has no usable channel in rust-toolchain.toml"
+              exit 1
+              ;;
+          esac
+          echo "releasing $REL_FULL_IN for aarch64-apple-darwin (toolchain $channel)"
+          echo "REL_FULL=$REL_FULL_IN" >> "$GITHUB_ENV"
+          echo "REL_CHANNEL=$channel" >> "$GITHUB_ENV"
+
+      - name: the C toolchain the build scripts link against
+        run: |
+          set -eu
+          if ! command -v cc >/dev/null 2>&1; then
+            echo "::error::no C linker on this runner (Xcode command line tools), so every Rust build script will fail to link"
+            exit 1
+          fi
+          cc --version | head -1
+
+      - name: minisign, the verifier the Baseline proof needs
+        run: |
+          set -eu
+          # The Baseline proof has no SKIP: no minisign is UNVERIFIABLE (exit 3) and blocks the release.
+          if ! command -v minisign >/dev/null 2>&1; then
+            HOMEBREW_NO_AUTO_UPDATE=1 brew install minisign
+          fi
+          if ! command -v minisign >/dev/null 2>&1; then
+            echo "::error::minisign is not installed, so the Baseline proof cannot verify"
+            exit 1
+          fi
+          minisign -v
+
+      - name: rustup and the toolchain the rev pins
+        run: |
+          set -eu
+          export RUSTUP_HOME="$HOME/.rustup"
+          if ! command -v rustup >/dev/null 2>&1; then
+            installer="$(mktemp)"
+            curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -sSf https://sh.rustup.rs -o "$installer"
+            sh "$installer" -y --profile minimal --default-toolchain none
+            . "$HOME/.cargo/env"
+          fi
+          rustup toolchain install "$REL_CHANNEL" --profile minimal
+          rustup run "$REL_CHANNEL" cargo --version
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "RUSTUP_HOME=$HOME/.rustup" >> "$GITHUB_ENV"
+
+      - name: build, prove and bundle with scripts/build-release.sh
+        run: |
+          set -eu
+          if [ -z "${REL_FULL:-}" ]; then
+            echo "::error::REL_FULL is not set — the runner did not carry $GITHUB_ENV to this step"
+            exit 1
+          fi
+          out="$RUNNER_TEMP/release-out"
+          rm -rf "$out"
+          # Exit 0 released; 1 a check failed; 2 usage or environment; 3 UNVERIFIABLE (no minisign).
+          bash scripts/build-release.sh --rev "$REL_FULL" --out "$out"
+
+      - name: hand the three assets to the publishing job
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-out-aarch64-apple-darwin
+          path: ${{ runner.temp }}/release-out
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: [build, build-macos]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # The only write permission in this workflow, and the only job that holds the token.
     permissions:
       contents: write
     steps:
-      - name: receive the assets
+      - name: receive the assets of both targets
         uses: actions/download-artifact@v4
         with:
-          name: release-out
+          pattern: release-out-*
+          merge-multiple: true
           path: ${{ runner.temp }}/release-out
 
       - name: receive the release notes
@@ -254,65 +367,78 @@ jobs:
               ;;
           esac
 
-          target=x86_64-unknown-linux-gnu
-          set -- "$RELEASE_OUT"/req-*-"$target".tar.gz
-          if [ $# -ne 1 ] || [ ! -f "$1" ]; then
-            echo "::error::expected exactly one req-<REV>-$target.tar.gz in $RELEASE_OUT"
-            exit 1
-          fi
-          tarball="$(basename "$1")"
-          rev="${tarball#req-}"
-          rev="${rev%-"$target".tar.gz}"
-          case $rev in
-            '' | *[!0-9a-f]*)
-              echo "::error::'$rev' is not a bare SHA; a release is named after the rev the binary reports"
-              exit 1
-              ;;
-          esac
-          if [ "${#rev}" -lt 7 ] || [ "${#rev}" -gt 40 ]; then
-            echo "::error::'$rev' is not 7 to 40 hex digits"
-            exit 1
-          fi
-          tag="rev-$rev"
-          # The tarball goes last: a visible tarball means the other two assets are already there.
-          names="req-$rev-$target.build-info req-$rev-$target.tar.gz.sha256 $tarball"
-          for name in $names; do
-            if [ ! -f "$RELEASE_OUT/$name" ]; then
-              echo "::error::the build job did not write $name"
+          # Both targets, each checked the same way, before the first write. A release has both or none.
+          all_names=""
+          pin_lines=""
+          rev_first=""
+          for target in x86_64-unknown-linux-gnu aarch64-apple-darwin; do
+            set -- "$RELEASE_OUT"/req-*-"$target".tar.gz
+            if [ $# -ne 1 ] || [ ! -f "$1" ]; then
+              echo "::error::expected exactly one req-<REV>-$target.tar.gz in $RELEASE_OUT"
               exit 1
             fi
-          done
-          full="$(sed -n 's/^sha=//p' "$RELEASE_OUT/req-$rev-$target.build-info")"
-          case $full in
-            '' | *[!0-9a-f]*)
-              echo "::error::the build-info has no usable full SHA"
+            tarball="$(basename "$1")"
+            rev="${tarball#req-}"
+            rev="${rev%-"$target".tar.gz}"
+            case $rev in
+              '' | *[!0-9a-f]*)
+                echo "::error::'$rev' is not a bare SHA; a release is named after the rev the binary reports"
+                exit 1
+                ;;
+            esac
+            if [ "${#rev}" -lt 7 ] || [ "${#rev}" -gt 40 ]; then
+              echo "::error::'$rev' is not 7 to 40 hex digits"
               exit 1
-              ;;
-          esac
+            fi
+            tag="rev-$rev"
+            # The tarball goes last: a visible tarball means the other two assets are already there.
+            names="req-$rev-$target.build-info req-$rev-$target.tar.gz.sha256 $tarball"
+            for name in $names; do
+              if [ ! -f "$RELEASE_OUT/$name" ]; then
+                echo "::error::the build job did not write $name"
+                exit 1
+              fi
+            done
+            full="$(sed -n 's/^sha=//p' "$RELEASE_OUT/req-$rev-$target.build-info")"
+            case $full in
+              '' | *[!0-9a-f]*)
+                echo "::error::the build-info has no usable full SHA"
+                exit 1
+                ;;
+            esac
 
-          # What is published is what was checked, and this is decided BEFORE the first write (a wrong
-          # release cannot be repaired afterwards: no asset is ever replaced or deleted): the rev the
-          # script built is the rev the build job resolved and required to be on main, and the tag's
-          # short rev is that commit's prefix, whatever the script's output says.
-          if [ "$full" != "$REL_FULL" ]; then
-            echo "::error::the build-info names $full, not the resolved $REL_FULL; refusing to publish"
-            exit 1
-          fi
-          case $full in
-            "$rev"*) ;;
-            *)
-              echo "::error::the tag rev '$rev' is not a prefix of $full; refusing to publish"
+            # What is published is what was checked, and this is decided BEFORE the first write (a wrong
+            # release cannot be repaired afterwards: no asset is ever replaced or deleted): the rev the
+            # script built is the rev the build job resolved and required to be on main, and the tag's
+            # short rev is that commit's prefix, whatever the script's output says.
+            if [ "$full" != "$REL_FULL" ]; then
+              echo "::error::the build-info names $full, not the resolved $REL_FULL; refusing to publish"
               exit 1
-              ;;
-          esac
-          # The bytes crossed an artifact store between the two jobs: the sidecar the script wrote must
-          # still describe the tarball it sits beside.
-          sum="$(cut -d' ' -f1 "$RELEASE_OUT/req-$rev-$target.tar.gz.sha256")"
-          actual="$(sha256sum "$RELEASE_OUT/$tarball" | cut -d' ' -f1)"
-          if [ "$sum" != "$actual" ]; then
-            echo "::error::$tarball hashes to $actual, not the $sum its sidecar names; refusing to publish"
-            exit 1
-          fi
+            fi
+            case $full in
+              "$rev"*) ;;
+              *)
+                echo "::error::the tag rev '$rev' is not a prefix of $full; refusing to publish"
+                exit 1
+                ;;
+            esac
+            # The bytes crossed an artifact store between the two jobs: the sidecar the script wrote must
+            # still describe the tarball it sits beside.
+            sum="$(cut -d' ' -f1 "$RELEASE_OUT/req-$rev-$target.tar.gz.sha256")"
+            actual="$(sha256sum "$RELEASE_OUT/$tarball" | cut -d' ' -f1)"
+            if [ "$sum" != "$actual" ]; then
+              echo "::error::$tarball hashes to $actual, not the $sum its sidecar names; refusing to publish"
+              exit 1
+            fi
+            if [ -z "$rev_first" ]; then
+              rev_first="$rev"
+            elif [ "$rev" != "$rev_first" ]; then
+              echo "::error::the two targets name different revs ($rev_first and $rev); refusing to publish"
+              exit 1
+            fi
+            all_names="$all_names $names"
+            pin_lines="${pin_lines}pin ($target): REV=$rev SHA256=$sum TARGET=$target"$'\n'
+          done
 
           work="$(mktemp -d)"
           trap 'rm -rf "$work"' EXIT
@@ -351,21 +477,21 @@ jobs:
           # Look before writing. An asset name that is already on the release is an error, for all
           # three names, before the first byte is uploaded.
           existing="$(list_assets)"
-          for name in $names; do
+          for name in $all_names; do
             if [ "$(times_listed "$name")" != 0 ]; then
               echo "::error::$name already exists on release $tag — refusing to replace it (a checksum that has been pinned must stay true; ADR 0025 §5)"
               exit 1
             fi
           done
 
-          for name in $names; do
+          for name in $all_names; do
             gh release upload "$tag" "$RELEASE_OUT/$name"
             echo "uploaded $name"
           done
 
           # And count afterwards: each name exactly once. A concurrent run that raced this one shows up here.
           existing="$(list_assets)"
-          for name in $names; do
+          for name in $all_names; do
             n="$(times_listed "$name")"
             if [ "$n" != 1 ]; then
               echo "::error::$name is on release $tag $n times after the upload; expected exactly once"
@@ -374,4 +500,4 @@ jobs:
           done
 
           echo "released $tag"
-          echo "pin (Linux): REV=$rev SHA256=$sum TARGET=$target"
+          printf '%s' "$pin_lines"

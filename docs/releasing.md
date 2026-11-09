@@ -14,7 +14,9 @@ Linux assets (the tarball's SHA-256 matches the `.sha256` asset). `rev-6b74f51` 
 with `scripts/build-release.sh` on the owner's machine and attached with the upload script of the macOS path below (its
 first use). `examples/install-req.sh` was run against `rev-ec87808` on Ubuntu 22.04, 24.04 and latest runners (the floor
 note below) and against `rev-6b74f51`'s macOS tarball on one macOS arm64 machine. Not yet exercised: the
-no-overwrite refusal (a second dispatch for the same rev) and a macOS binary on a second machine. Intel Mac and Windows
+no-overwrite refusal (a second dispatch for the same rev), a macOS binary on a second machine, and the workflow's own
+macOS job and release notes (ADRs 0031 and 0032: their first real run is the next dispatch, which is also why the
+publishing script is run against a fake `gh` in `tests/release_publish.rs`). Intel Mac and Windows
 are not built; a Windows adopter runs the Linux tarball under WSL2 (`docs/adopting.md`, *Windows*). `tests/release_workflow.rs` pins the workflow's text and shape (the trigger, the
 permissions, the no-overwrite rule). The workflow fails closed, so a misconfiguration is a red run, never a
 half-published release you cannot tell from a good one.
@@ -27,7 +29,7 @@ checksums stay true, so there is no reason to make more of them than there are p
 inside the build script uses the trust anchor of the commit it builds (ADR 0010), and a commit off `main`
 could carry its own key.
 
-## The Linux path: dispatch `release.yml`
+## Dispatch `release.yml`: Linux and macOS together
 
 1. Nothing to provision. The workflow publishes with its own `GITHUB_TOKEN`; no repository secret exists or is
    read. Actions must be enabled for the repository.
@@ -36,18 +38,20 @@ could carry its own key.
    copy of itself.
 3. The **build** job (`contents: read`, it runs the rev's code) checks the runner (C linker, `minisign`,
    `rustup` with the toolchain the rev pins), runs `scripts/build-release.sh --rev <full sha> --out …` and hands
-   the three assets to the next job as an artifact.
+   the three assets to the next job as an artifact. The **build-macos** job (`contents: read`, a `macos-14`
+   Apple-silicon runner) takes the SHA the Linux job resolved, re-checks that it is on `main`, and runs the same
+   script for `aarch64-apple-darwin`; its three assets travel as a second artifact (ADR 0032).
 4. The **publish** job (`contents: write`, the only job that holds the token, and it checks out and runs none
-   of the rev's code) re-checks the assets, creates the release `rev-<REV>` if it is absent and uploads
-   `req-<REV>-x86_64-unknown-linux-gnu.build-info`, `….tar.gz.sha256` and `….tar.gz`, in that order, with
-   `gh release upload`.
+   of the rev's code) re-checks the assets of **both** targets, refuses unless all six names are free, creates the
+   release `rev-<REV>` if it is absent and uploads, Linux then macOS, each target's `….build-info`, `….tar.gz.sha256`
+   and `….tar.gz`, in that order, with `gh release upload`. A release has both targets or none.
    The release body is the notes `scripts/release-notes.sh` wrote in the build job (ADR 0031): the previous release and a
    compare link, **whether identity moved** (`RULES_V`, the claim schema, the Baseline envelope, and what an adopter does if
    one did) and the pull requests merged since, grouped by prefix. A release that already exists keeps its body: the
    workflow never edits one. To preview the notes before you dispatch, run
    `bash scripts/release-notes.sh --rev <rev> --repo autox-my/req --out /tmp/notes.md` in a clone with the tags fetched.
-5. The last lines of the log are `released rev-<REV>` and the `pin (Linux): REV=… SHA256=… TARGET=…` line. Use
-   that one: the build job's log also carries the script's own `pin:` line, printed before the upload, which
+5. The last lines of the log are `released rev-<REV>` and one `pin (<target>): REV=… SHA256=… TARGET=…` line per
+   target. Use those: the build job's log also carries the script's own `pin:` line, printed before the upload, which
    after a half-failed upload names a hash that was never published.
 
 The script refuses to write anything unless the binary says `built from` the bare rev, `req baseline
@@ -65,7 +69,11 @@ For `rev-ec87808` (built on glibc 2.43) the installed binary ran on Ubuntu 24.04
 `req canon` were run there, and nothing older than 2.35 was tried. Read the `.build-info` line, and test a
 distribution, before telling an adopter it is supported; a lower floor is a new ADR (musl was rejected in ADR 0025), not a flag.
 
-## The macOS path: the same script, on the owner's machine
+## The macOS path by hand (a fallback, ADR 0032)
+
+Since ADR 0032 the workflow builds the macOS tarball too. This path remains for two cases: a rev released before that
+(`rev-ec87808` has no macOS asset at all; `rev-6b74f51`'s was made this way), and a publish that died after the Linux
+tarball but before the macOS assets were there (the workflow then refuses a second dispatch, because the Linux names are taken).
 
 ```bash
 scripts/build-release.sh --rev <rev> --out "$(mktemp -d)"

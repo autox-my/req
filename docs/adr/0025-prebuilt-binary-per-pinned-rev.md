@@ -1,6 +1,6 @@
 # 0025. A prebuilt, checksummed binary per pinned rev; the install downloads and fails closed
 
-Amended by ADR 0029 §4–§5 and ADR 0031 (the release notes).
+Amended by ADR 0029 §4–§5, ADR 0031 (the release notes) and ADR 0032 (the macOS build).
 
 **Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-05, former Forgejo PR #116); issue #65
 (opened from the Sedia evaluation). Date proposed: 2026-11-05. **Adds an install path; removes none.**
