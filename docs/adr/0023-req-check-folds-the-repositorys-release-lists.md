@@ -1,6 +1,6 @@
 # 0023. `req check` reads the repository's release lists and folds them into one verdict
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it; issue #63 (opened
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-04, former Forgejo PR #108); issue #63 (opened
 from the Sedia evaluation, re-scoped by the owner's comment after ADR 0022). Date proposed: 2026-11-04.
 **Amends one clause of [ADR 0018](0018-documents-are-projections.md)** ("req itself never reads
 `.req/projections`") and the matching sentence in `.req/variants`, `scripts/check.sh` and

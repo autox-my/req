@@ -1,6 +1,6 @@
 # 0027. A Sphinx-Needs `needs.json` reader drafts claims and keeps the need id as provenance
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it; issue #124 (the
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-05, former Forgejo PR #128); issue #124 (the
 second half of the architecture review's finding F8, after `req diff`, ADR 0026). Date proposed: 2026-11-05.
 **Adds a copy-and-adjust script; adds no `req` command and changes no address.** It is the *import* mode
 ADR 0017 named for `needs.json`, built the way `tools/adopt.py` (issue #44) is built.

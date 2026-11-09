@@ -1,6 +1,6 @@
 # 0024. Test evidence is a set of reports, and a command's exit can be one
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it; issue #64
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-04, former Forgejo PR #111); issue #64
 (opened from the Sedia evaluation). Date proposed: 2026-11-04. **Amends [ADR 0019](0019-claims-carry-authored-test-links.md) §6**
 ("`cargo test` is replaced by nextest: one run, one truth"). Nothing else in 0019 moves: the id is still
 `classname::name`, a skipped test is still not a pass, and `tests_linked` still has four outcomes.

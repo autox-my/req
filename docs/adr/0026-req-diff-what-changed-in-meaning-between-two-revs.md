@@ -1,6 +1,6 @@
 # 0026. `req diff` reports what changed in meaning between two revisions, offline, and can fail a pull request on it
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it; issue #123
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-05, former Forgejo PR #125); issue #123
 (from the architecture review, finding F8). Date proposed: 2026-11-05. Adds a command; changes no existing
 contract, no `RULES_V`, no address.
 
