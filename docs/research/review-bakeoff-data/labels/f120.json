@@ -1,0 +1,14 @@
+{"case": "f120",
+ "findings": [
+  {"id": "F01", "verdict": "real", "gt": [], "cluster": "c1", "note": "docs/releasing.md macOS snippet has no set -e and the upload loop uses `api ... && echo`, so a failed .sha256 POST is skipped and the tarball still uploads, breaking the stated 'tarball last' invariant."},
+  {"id": "F02", "verdict": "noise", "gt": [], "cluster": "c2", "note": "The workflows set no `shell:`, so Actions/Forgejo runs each `run:` with `bash -e`; deleting `set -eu` would still abort on a failed install script, so the claimed fabricated-green scenario does not happen; the remaining `|| :`/`if: false` items are hypothetical."},
+  {"id": "F03", "verdict": "real", "gt": [], "cluster": "c1", "note": "Same snippet (docs/releasing.md upload loop and asset listing): no fail-fast, so a partial upload or a failed listing (empty .listed) goes unnoticed and the no-overwrite check is bypassed."},
+  {"id": "F04", "verdict": "minor", "gt": [], "cluster": "c3", "note": "tests/release_workflow.rs:443-465 is a deliberate tripwire whose comment says it holds 'until' the timing is copied in; true that the copy step must also edit the test, but the test documents this, so the impact is small."},
+  {"id": "F05", "verdict": "minor", "gt": [], "cluster": "c4", "note": "input_names matches only an exact `inputs:` line (line 89); a reformat gives a misleading assertion message, but the test still fails closed."},
+  {"id": "F06", "verdict": "real", "gt": [], "cluster": "c1", "note": "Listing pipeline in docs/releasing.md without pipefail/set -e: a failed api call leaves .listed empty and the refusal loop passes; same root cause as F01/F03."},
+  {"id": "F07", "verdict": "minor", "gt": [], "cluster": "c5", "note": "Allowlist at tests/release_workflow.rs:340-351 uses substring `contains`, so a line interpolating the token next to `::error::RELEASE_TOKEN` would pass; this is a real test gap but only for a hypothetical future edit, and secrets are masked in logs."},
+  {"id": "F08", "verdict": "minor", "gt": [], "cluster": "c3", "note": "Digit-leading-word heuristic (lines 456-458) is imprecise (an ordered list or a date would fail it, `~42 s` slips through); true but low consequence."},
+  {"id": "F09", "verdict": "minor", "gt": [], "cluster": "c6", "note": "unwrap_or(0) at line 269 makes a missing upload needle fail with a misleading message; it still fails closed, so this is a diagnostics nit."},
+  {"id": "F10", "verdict": "real", "gt": ["G4"], "cluster": "c7", "note": "<removed workflow>:108-109 and 161 hard-code 1.99.0 while release.yml:91 derives the channel from the rev's rust-toolchain.toml; a pin bump would skew the timing silently."}
+ ],
+ "missed_gt": ["G1", "G2", "G3", "G5"]}

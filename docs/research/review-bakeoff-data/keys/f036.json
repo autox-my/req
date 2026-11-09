@@ -1,0 +1,46 @@
+{
+ "F01": {
+  "arm": "PR",
+  "index": 0
+ },
+ "F02": {
+  "arm": "PI",
+  "index": 0
+ },
+ "F03": {
+  "arm": "PR",
+  "index": 2
+ },
+ "F04": {
+  "arm": "PR",
+  "index": 1
+ },
+ "F05": {
+  "arm": "O1",
+  "index": 2
+ },
+ "F06": {
+  "arm": "PI",
+  "index": 1
+ },
+ "F07": {
+  "arm": "PI",
+  "index": 2
+ },
+ "F08": {
+  "arm": "O1",
+  "index": 1
+ },
+ "F09": {
+  "arm": "O1",
+  "index": 0
+ },
+ "F10": {
+  "arm": "O1",
+  "index": 4
+ },
+ "F11": {
+  "arm": "O1",
+  "index": 3
+ }
+}

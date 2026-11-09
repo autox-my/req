@@ -1,0 +1,26 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/baseline.rs",
+   "start": null,
+   "end": null,
+   "title": "Clean up staging directory after verification",
+   "text": "The old name was reused per process, so at most one directory leaked; the new name is unique per call, so every `verify` now leaves a fresh 0700 directory (with the staged manifest and `req.pub`) behind in the temp dir, and an error path leaves one too. Return a guard that removes the directory on `Drop` so both the success and the failure paths clean up.",
+   "existing_code": "/// One staging directory for this verification, retrying on a name collision (a retry that a\n/// predictable name could not make safe, but a fresh name plus exclusive creation does).\nfn staging_dir() -> std::io::Result<PathBuf> {\n    let base = std::env::temp_dir();\n    let mut attempt = 0;\n    loop {\n        match create_staging_dir(&base, &staging_dir_name(attempt)) {\n            Ok(dir) => return Ok(dir),\n            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 16 => {\n                attempt += 1;\n            }\n            Err(e) => return Err(e),\n        }\n    }\n}",
+   "tool_severity": null,
+   "tool_score": 7
+  },
+  {
+   "file": "tests/baseline.rs",
+   "start": null,
+   "end": null,
+   "title": "Gate owner-only test to unix",
+   "text": "`create_staging_dir` applies mode 0700 only under `#[cfg(unix)]`, but this test uses `std::os::unix::fs::PermissionsExt` unconditionally, so the test target will not compile on non-unix platforms. Gate the test with `#[cfg(unix)]` to match the code it exercises.",
+   "existing_code": "/// F9: mode 0700, so another local user cannot read the staged manifest \u2014 or, worse, replace\n/// the files between staging and the verifier process reading them.\n#[test]\nfn the_staging_dir_is_owner_only() {\n    use std::os::unix::fs::PermissionsExt;",
+   "tool_severity": null,
+   "tool_score": 8
+  }
+ ]
+}

@@ -1,0 +1,26 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tools/migrate_claims.py",
+   "start": null,
+   "end": null,
+   "title": "Report unverifiable pins as exit 3",
+   "text": "This folds a tri-state `pins_hold` result into a refusal: an `unverifiable` outcome becomes exit 1 (\"pins do not\nhold\") instead of exit 3, contradicting the tool's own three-state contract (`docs/claim-format.md`, AGENTS.md).\nSplit `fail` (Refused, exit 1) from any non-`pass`/non-`fail` outcome (Unverifiable, exit 3).",
+   "existing_code": "if policy.get(\"outcome\") != \"pass\":\n    details = \"\\n\".join(f\"  {d}\" for d in policy.get(\"details\") or []) or \"  (no details)\"\n    raise Refused(f\"the migrated pins do not hold (`pins_hold` is {policy.get('outcome')!r}); \"\n                  f\"re-word the statement or fix the authored slot, never edit a pin to fit \"\n                  f\"the parse:\\n{details}\")",
+   "tool_severity": null,
+   "tool_score": 5
+  },
+  {
+   "file": "tools/migrate_claims.py",
+   "start": null,
+   "end": null,
+   "title": "Skip verification for empty migration",
+   "text": "When `planned` is empty (e.g. an empty or already-processed `claims/`), this still demands `req` on `PATH` and\nruns `canon`/`gate` over an empty scratch corpus, so a true no-op can exit 3 or spuriously refuse. Guard the\nverification on `planned` and change the waiver `else` to an explicit `elif not verify:` so an empty verified run\ndoes not print \"NOT VERIFIED\".",
+   "existing_code": "note = \"\"\nif verify:\n    binary = shutil.which(\"req\")\n    if binary is None:\n        print(\"UNVERIFIABLE: `req` is not on PATH, so this tool cannot prove that the \"\n              \"migrated files load and that their pins hold; nothing written. Put a `req` \"\n              \"build on PATH (docs/adopting.md), or pass --no-verify to migrate without the \"\n              \"proof (then run `req canon` and `req gate` yourself).\", file=sys.stderr)\n        return 3\n    try:\n        verify_output(binary, root or default_root(paths), planned)\n    except Refused as why:\n        print(f\"refused: {why}\\nnothing written\", file=sys.stderr)\n        return 1\n    except Unverifiable as why:\n        print(f\"UNVERIFIABLE: {why}; nothing written\", file=sys.stderr)\n        return 3\nelse:\n    note = \" \u2014 NOT VERIFIED (--no-verify: the output was not run through `req`)\"\n    print(\"NOT VERIFIED: --no-verify skipped the load check and the pins check\")",
+   "tool_severity": null,
+   "tool_score": 5
+  }
+ ]
+}

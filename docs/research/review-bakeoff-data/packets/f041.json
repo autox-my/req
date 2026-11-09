@@ -1,0 +1,180 @@
+{
+ "case": "f041",
+ "reviewed_state": "5e411fee3477416ed78e34b893a4e126f634f8e5",
+ "diff_range": "e72ca26485c1afa4e38ac19a053849f0c2631b2e..5e411fee3477416ed78e34b893a4e126f634f8e5",
+ "ground_truth": [
+  {
+   "id": "G1",
+   "file": "src/baseline.rs",
+   "text": "The baseline --now judgement-time override goes unvalidated into TrustFile::state. An empty string or '1' sorts below every trust date, so a revoked or expired key is read as Trusted and the Baseline passes (fail-open). Also, state compares only one side reduced to a date, so timestamp-valued revoked_at/valid_until entries do not fire on their own day.",
+   "kind": "security"
+  },
+  {
+   "id": "G2",
+   "file": "baselines/trust.yml",
+   "text": "baselines/trust.yml and trust.example.yml still document the pre-v3 semantics (expired is UNVERIFIABLE because no trusted signing time exists; revocation non-prospective), contradicting the v3 behaviour that judges at signed_at and treats revocation as prospective; ADR 0010's status line also does not point to ADR 0016.",
+   "kind": "docs-contradiction"
+  },
+  {
+   "id": "G3",
+   "file": "tests/baseline.rs",
+   "text": "The emission test checks only that the attested authority has a non-empty head and entries >= 1, which decision::head satisfies by agreeing with itself. There is no independent oracle for the head or count, no test for a right-head/wrong-entry-count authority, and the emission refusal on a tampered decision log is untested.",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G4",
+   "file": "src/decision.rs",
+   "text": "decision::head reads the stored hash with no stated precondition that the chain was judged first; a stored hash that no longer recomputes is what an edit looks like, so signing it unjudged would attest an edited record as the committed head.",
+   "kind": "robustness"
+  },
+  {
+   "id": "G5",
+   "file": "src/main.rs",
+   "text": "The baseline --verify help line claims the manifest's signed_at judges the key, which is false for a v2 manifest that has no signed_at.",
+   "kind": "docs-contradiction"
+  },
+  {
+   "id": "G6",
+   "file": "src/baseline.rs",
+   "text": "valid_signing_time accepts calendar-impossible dates such as 2026-02-31 because it only checks day in 1..=31; the accepted value is written into signed bytes and cannot be corrected without re-signing. The expired-at-signing reason also always names signed_at even when --now supplied the judged time.",
+   "kind": "code-bug"
+  }
+ ],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "docs/adopting.md",
+   "text": "`AGENTS.md` lists an **empty** Decision log among the emission refusals (exit 3), but this sentence omits it, so a reader with an empty log would expect a manifest instead of a refusal. Add `empty` here to keep the two user-facing docs of the same behavior consistent.",
+   "title": "Align refusal cases between docs",
+   "code": "error (exit 2). A v3 manifest also attests the Decision log's chain head, and emission refuses (exit 3)\nwhen that log is absent, unparsable or tampered \u2014 a head that attests nothing must not be signed."
+  },
+  {
+   "id": "F02",
+   "file": "src/baseline.rs",
+   "text": "`judged_at` lets an explicit `--now` override the key-judgement time even for a v3 manifest, but the v3 `Expired` branch then emits a definite FAIL whose reason asserts \"the manifest's signed_at is outside the key's validity window\". When `--now` is later than `signed_at` that assertion is false: the key was valid at the recorded signing time and only the verification override moved past expiry. Scenario: sign a v3 Baseline at `2026-10-07` with a key `valid_until: \"2026-10-31\"`, then verify with `--now 2026-11-15`; exit 1 claims the Baseline was signed with an expired key. Either the key should remain judged at `signed_at` for v3 (ADR 0016's rule), or the failure text must state that the override, not `signed_at`, is outside the window.",
+   "title": "Explicit --now breaks v3 expiry",
+   "lines": [
+    1367,
+    1374
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "src/baseline.rs",
+   "text": "The head is re-derived from the *entire* current log and compared exactly. Because the decision log is append-only, adding any later decision changes the head and yields an authority-mismatch FAIL (exit 1, `failed` outranks `open`) on a Baseline that was correctly signed over a claim set that still re-derives. It also FAILs an *unsigned* draft emitted before an append, which should read as \"not yet a Baseline\" (UNVERIFIABLE). `authority.entries` already lets you compare the recorded head to the first N records (and still detects truncation below N). Confirm ADR 0016 intends a re-sign on every appended decision; if not, compare against the log prefix rather than the whole log.",
+   "title": "bug",
+   "lines": [
+    1047,
+    1048
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "tests/baseline.rs",
+   "text": "This is the only CLI-level assertion on the emitted authority, but it runs against the real repo `decisions/` and checks only `entries >= 1` / a non-empty head. It cannot detect a wrong head or a committed `baselines/air-gapped.json` that has gone stale (any append changes the head), and it breaks wherever `decisions/` differs. Assert the exact head/entries for a fixture corpus (or against the committed baseline) instead of a lower bound.",
+   "title": "test",
+   "lines": [
+    699,
+    700
+   ]
+  },
+  {
+   "id": "F05",
+   "file": "src/baseline.rs",
+   "text": "`--now` feeds the same lexicographic comparison in `TrustFile::state`; a value such as `--now 0` or an empty string sorts before every date, silently judging an expired or revoked key as trusted. Validate the override when it is parsed (an ISO date or an RFC 3339 timestamp), so a typo cannot change a trust verdict; existing call sites pass plain ISO dates and keep working.",
+   "title": "Reject unreadable --now overrides",
+   "code": "\"--now\" => match take(\"--now\") {\n    Some(value) => {\n        now = value;\n        explicit_now = true;\n    }\n    None => return 2,\n},"
+  },
+  {
+   "id": "F06",
+   "file": "src/decision.rs",
+   "text": "`head` is the authority anchor a v3 Baseline signs (ADR 0016), but nothing pins its value independently, so a mutation would survive the suite:\n\n- `tests/baseline.rs`'s `fixture_head()` builds its expectation by calling `decision::head` itself (the canonical-bytes pin interpolates `head.hash` / `head.entries`), and the CLI emission test only asserts the head is non-empty and `entries >= 1`.\n- Every fixture log is a *single* record, so returning the first record's hash instead of the last is not observable; a wrong `entries` (e.g. `log.len() + 1`) is not observable either \u2014 emission and verification would agree on the same wrong head, so `verify` would still pass.\n\nAdd a test with an independent oracle: a hand-built `Decision` with a literal `hash: Some(\"\u2026\")` (and a second record, so last \u2260 first) asserting `head` returns that literal and `entries == log.len()`, plus `head(&[])` and an unfilled last record \u2192 `None`.",
+   "title": "test",
+   "lines": [
+    133,
+    133
+   ]
+  },
+  {
+   "id": "F07",
+   "file": "tests/baseline.rs",
+   "text": "This assertion compares a value to itself and can never fail; it does not test byte-stability across runs (the earlier `forward`/`backward` equality already proves order-independence). Remove it, or compare two independently materialised manifests.",
+   "title": "test",
+   "lines": [
+    229,
+    229
+   ]
+  },
+  {
+   "id": "F08",
+   "file": "src/baseline.rs",
+   "text": "`verify` re-derives the *current* Decision log's head and requires it to equal the head recorded in the manifest. The log is append-only in this project (one Decision per file, chronological), so adding any new `decisions/DEC-*.yml` after the Baseline was signed changes the current head and makes `req baseline --verify` report FAIL \"authority mismatch\" \u2014 the same class as an edit. Scenario: sign the committed `baselines/air-gapped.json` (recorded `entries: 1`), then record and `--fill` a second Decision; verification now fails although nothing was tampered with, and the gate goes red. The newly added `entries` field strongly suggests the intended check is that the log's entry at index `authority.entries` hashes to `authority.head` (an ancestor/prefix check); under plain head equality `entries` is redundant, and appends can never verify. If ADR 0016 really mandates re-signing on every new Decision this may be intended, but that intent is not visible here and the false \"tampered\" outcome is left as-is.",
+   "title": "Authority rejects appends",
+   "lines": [
+    1037,
+    1065
+   ]
+  },
+  {
+   "id": "F09",
+   "file": "src/baseline.rs",
+   "text": "`from_json` only requires `signed_at` to be present, not well-formed; `run` then feeds it straight to `TrustFile::state`, which truncates it via `at.get(..10)`. A v3 manifest with `\"signed_at\": \"\"` (or any non-date) parses and yields `at_date = \"\"`, which compares below every `revoked_at`/`valid_until` and can be judged `Trusted`, bypassing the key window. Validate the shape here with the existing `valid_signing_time` (already used on the emission path) so parse and emit agree on what a signable timestamp is.",
+   "title": "bug",
+   "lines": [
+    239,
+    240
+   ]
+  },
+  {
+   "id": "F10",
+   "file": "tests/baseline.rs",
+   "text": "The expected authority bytes are built from `fixture_head()`, which calls `decision::head` \u2014 the code under test. The manifest is attested with the same value and the expectation is interpolated with it, so a regression in `head()` (wrong hash or entries) cannot fail this pin, contradicting the surrounding claim that these oracles are computed independently. Pin a literal `hash`/`entries` for the fixture log (or assert `head()` separately against a known-good constant) so the new authority slots are actually pinned.",
+   "title": "test",
+   "lines": [
+    211,
+    211
+   ]
+  },
+  {
+   "id": "F11",
+   "file": "src/baseline.rs",
+   "text": "`TrustFile::state` reduces the judgement time to its first ten bytes and compares it as a string, but `from_json` accepts whatever `signed_at` a v3 manifest carries. A signed manifest with `\"signed_at\": \"\"` (or any unreadable value) sorts before every `revoked_at`/`valid_until`, so the key is silently judged `Trusted` and a revoked or expired key passes. Reject a v3 `signed_at` that `valid_signing_time` does not accept, before it can reach the trust judgement.",
+   "title": "Validate signed_at when parsing v3",
+   "code": "if !missing.is_empty() {\n    return Err(format!(\n        \"manifest is not readable: this manifest declares version {BASELINE_VERSION} but \\\n         does not attest {} \u2014 a v3 envelope carries both `signed_at` and `authority`; \\\n         emit one with `req baseline --at <RFC 3339 UTC timestamp>`, then re-sign\",\n        missing.join(\" or \")\n    ));\n}"
+  },
+  {
+   "id": "F12",
+   "file": "src/baseline.rs",
+   "text": "`state` now judges the key at a possibly historical `signed_at`, but it only consults `revoked_at`/`valid_until`; `TrustedKey::valid_from` (parsed at line 427) is never checked. A v3 Baseline whose `signed_at` precedes the key's `valid_from` is therefore reported `Trusted` even though the key was not trusted yet at that time \u2014 a permissive hole opened by the new historical judgement (before this change `at` was always today, so `valid_from` was vacuously satisfied). Enforce `valid_from` here so the key's whole validity window is judged at `at`.",
+   "title": "bug",
+   "lines": [
+    472,
+    472
+   ]
+  },
+  {
+   "id": "F13",
+   "file": "docs/adopting.md",
+   "text": "The `>` redirect truncates `baselines/release.json` *before* `req` runs, so an emission that refuses (exit 3 \u2014 absent/tampered Decision log, unresolvable root) leaves an empty file that the very next step would hand to `minisign`. Emit to a temp path and move it into place only when `req` succeeds, so a refusal leaves the previous manifest intact.",
+   "title": "Avoid truncating manifest on emission failure",
+   "code": "req baseline --at \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" > baselines/release.json\n                                                # the timestamp is YOUR assertion; the manifest goes to\n                                                # stdout, and the resolved `corpus root:` line to stderr"
+  },
+  {
+   "id": "F14",
+   "file": "src/baseline.rs",
+   "text": "In the emission path, `Chain::Tampered` \u2014 a definite finding (a stored chain hash no longer recomputes) \u2014 is printed with the `[UNVERIFIABLE]` marker and returns exit 3, sharing the branch with the genuinely undecidable `Chain::Unverifiable` case. This contradicts the project's stated rule that FAIL outranks Unverifiable, and it diverges from `req decision --verify`, which exits 1 for the same condition. Scenario: edit a Decision's note without re-filling, then run `req baseline --at <ts>`; the command correctly refuses to emit but classifies the tamper as \"cannot tell\", so any automation keying on exit 3 treats a detected tamper as an inconclusive run.",
+   "title": "Tampered chain mislabeled",
+   "lines": [
+    1279,
+    1286
+   ]
+  },
+  {
+   "id": "F15",
+   "file": "src/baseline.rs",
+   "text": "The day is checked only against `1..=31`, so impossible dates like `2026-02-31T00:00:00Z` are accepted and embedded in the signed bytes. Because expiry/revocation are compared as strings, such a value sorts past the month's real end and can place a Baseline inside a validity window it never occupied. Validate the day against the month, accounting for leap years.",
+   "title": "Reject impossible calendar dates",
+   "code": "(Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) => {\n    year >= 1970\n        && (1..=12).contains(&month)\n        && (1..=31).contains(&day)\n        && hour < 24\n        && minute < 60\n        && second < 60\n}"
+  }
+ ]
+}

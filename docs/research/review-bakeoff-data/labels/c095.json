@@ -1,0 +1,7 @@
+{"case": "c095",
+ "findings": [
+  {"id": "F01", "verdict": "noise", "gt": [], "cluster": "c1", "note": "scale() is called only with factor_power from the static units() table (src/canon.rs:503-565, values -9..6), so 10i64.pow cannot overflow and no input triggers this."},
+  {"id": "F02", "verdict": "minor", "gt": [], "cluster": "c2", "note": "True that load_registry panics on a non-UTF-8 root despite its 'reports UNVERIFIABLE' doc comment, but the change only swapped unwrap for expect (same behaviour), and the trigger, a non-UTF-8 corpus path, is rare."},
+  {"id": "F03", "verdict": "minor", "gt": [], "cluster": "c3", "note": "Same pattern in bench::run: the change turned a pre-existing unwrap into expect, so a non-UTF-8 root still panics with exit 101; the behaviour is unchanged and the trigger is rare."}
+ ],
+ "missed_gt": []}

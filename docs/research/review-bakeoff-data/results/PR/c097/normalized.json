@@ -1,0 +1,14 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tools/migrate_claims.py",
+   "start": 449,
+   "end": 453,
+   "title": "Tri-state conflation",
+   "text": "`pins_hold` is tri-state (PASS / FAIL / UNVERIFIABLE), but this branch folds every\nnon-`pass` outcome into a refusal: when the gate returns `unverifiable` (e.g. a degraded\nregistry, or a pin it cannot judge), the tool prints \"the migrated pins do not hold\n(`pins_hold` is 'unverifiable')\" and exits 1, instead of reporting UNVERIFIABLE and\nexiting 3 as the tool's own documented exit contract promises. The pins were not\nrefuted\u2014they could not be judged\u2014so an adopter is told their content contradicts its\nstatement when the environment merely cannot check it. The same conflation applies to a\nnon-zero `req canon`, which is wrapped as a refusal, so a garbled/incompatible `req` is\nreported as an invalid file rather than an unprovable one. What I could not verify from\nthe diff is whether `pins_hold` can actually return `unverifiable` while `req canon`\nexits 0; if it can, this branch should distinguish `fail` from `unverifiable` and map the\nlatter to exit 3.",
+   "tool_severity": null
+  }
+ ]
+}

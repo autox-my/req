@@ -1,0 +1,69 @@
+{
+ "case": "c058",
+ "reviewed_state": "33a8073015dbb4d382142302780a264c481e78bc",
+ "diff_range": "0684b64c2b2ca04047a36a4bce8497c4289c486c..33a8073015dbb4d382142302780a264c481e78bc",
+ "ground_truth": [],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "tests/funnel_flags.rs",
+   "text": "This equality assertion can become vacuous. Both sides are produced by the code under test, and nothing pins that the two invocations actually select different contexts. If `corpus_set=parity_and_adversarial` stops adding a claim (REQ-0008 edited or removed, selector handling regressed to the default context), both runs report the same count and the test passes even with the swallowing bug restored \u2014 exactly the situation the file's own comment describes as \"15 applying instead of 16\". Anchor one side to an independent oracle: pin the literal count the comment already records (`assert_eq!(applying(&with), 16)`), or cross-check against `req select corpus_set=parity_and_adversarial` (counting its ` applies` lines) so the selection count comes from a different command path.",
+   "title": "test",
+   "lines": [
+    53,
+    55
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "tests/funnel_flags.rs",
+   "text": "This test only proves `--pairs` did not consume `--gold`; it never proves `--gold` was honoured. The `# Tier-2 funnel:` header is printed (funnel.rs:445) *before* the gold file is opened (funnel.rs:484-491), so a run that accepts `--gold` and then fails to read it exits 3 and still passes both assertions \u2014 a `--gold` regression that loses the path or loads nothing stays green. Assert the section that only the honoured path can emit.",
+   "title": "test",
+   "lines": [
+    72,
+    75
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "src/funnel.rs",
+   "text": "The audit claim is inaccurate for `decision`. `decision::run` does not dispatch on `args.first()`; it iterates every argument (`for arg in args`, decision.rs:318-327) and accepts `--fill`/`--verify` with last-one-wins. Only `canon` uses `args.first()` (main.rs:425). Since this comment is the whole substance of the change and reads as a repo-wide audit result, keep it exact so the next maintainer trusting it does not skip re-checking `decision`.",
+   "title": "documentation",
+   "lines": [
+    326,
+    327
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "tests/funnel_flags.rs",
+   "text": "The assertion only catches the regression if `corpus_set=parity_and_adversarial` actually changes the applying count\nversus the default context; if the selector is inert, both runs report the same number and the test passes even with the\nbug reintroduced. Add a bare `propose` run and assert its count differs from the selector run, so the test premise is\nproven rather than assumed.",
+   "title": "Guard against a vacuous selection test",
+   "code": "let (without_code, without) = req(&[\"propose\", \"corpus_set=parity_and_adversarial\"]);\nlet (with_code, with) = req(&[\"propose\", \"--pairs\", \"corpus_set=parity_and_adversarial\"]);\nassert_ne!(without_code, 2, \"the baseline invocation is valid\");"
+  },
+  {
+   "id": "F05",
+   "file": "tests/funnel_flags.rs",
+   "text": "If `bench/corpus/tier2-v1.yml` is missing or untracked, this test fails on the `\"Tier-2 funnel\"` assertion and reports a\nparser failure instead of the real cause. Assert the fixture exists before invoking the binary, using an absolute path\nanchored at `CARGO_MANIFEST_DIR`, so a missing file is diagnosed as a fixture problem.",
+   "title": "Verify gold fixture before invoking",
+   "code": "let (code, stdout) = req(&[\"propose\", \"--pairs\", \"--gold\", \"bench/corpus/tier2-v1.yml\"]);"
+  },
+  {
+   "id": "F06",
+   "file": "tests/funnel_flags.rs",
+   "text": "Adding a dedicated test file for `--pairs` makes AGENTS.md \u00a7Tier-2 funnel stale: it currently records \"The flag is plumbing and carries no test of its own \u2014 recorded rather than implied.\" (AGENTS.md:322-323). Per this repo's rule that docs are claims, that sentence must be corrected in this same change \u2014 either reword it (the *parse* is now tested; the printed-list behaviour still is not) or add the missing positive assertion (with `--pairs` the proposal list is not truncated to 12, funnel.rs:471) and update the record accordingly. Note the test file also does not exercise `list_all` at all, so deleting `list_all = true` keeps every test here green.",
+   "title": "documentation",
+   "lines": [
+    9,
+    9
+   ]
+  },
+  {
+   "id": "F07",
+   "file": "tests/funnel_flags.rs",
+   "text": "The spawned binary inherits the ambient environment, so a CI-provided `REQ_ROOT` would redirect corpus resolution away\nfrom `CARGO_MANIFEST_DIR` and make these tests silently measure a different corpus. Clear `REQ_ROOT` in the helper so\nthe corpus is resolved solely from the crate root, independent of the environment that invoked `cargo test`.",
+   "title": "Make CLI tests hermetic from ambient root",
+   "code": "let output = Command::new(bin)\n    .current_dir(env!(\"CARGO_MANIFEST_DIR\"))\n    .args(args)\n    .output()\n    .expect(\"runs the binary\");"
+  }
+ ]
+}

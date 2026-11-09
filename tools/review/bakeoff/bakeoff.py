@@ -143,7 +143,13 @@ NORMALIZERS = {"O1": normalize_ocr, "PR": normalize_pa_review, "PI": normalize_p
 # --------------------------------------------------------------------------------------
 
 
-def build_packet(case: dict, gt: list[dict], per_arm: dict[str, list[dict]]) -> tuple[dict, dict]:
+def gt_entry(entry: object) -> dict:
+    """A ground-truth entry as a dict, whether the file holds a bare item list or the full record."""
+    return {"ground_truth": entry} if isinstance(entry, list) else (entry if isinstance(entry, dict) else {})
+
+
+def build_packet(case: dict, gt: list[dict], per_arm: dict[str, list[dict]],
+                 known_false: list[dict] | None = None) -> tuple[dict, dict]:
     pool = [(arm, i, f) for arm in sorted(per_arm) for i, f in enumerate(per_arm[arm])]
     rng = random.Random(int(hashlib.sha256(case["id"].encode()).hexdigest(), 16))
     rng.shuffle(pool)
@@ -166,6 +172,9 @@ def build_packet(case: dict, gt: list[dict], per_arm: dict[str, list[dict]]) -> 
         "ground_truth": gt,
         "findings": findings,
     }
+    if known_false:
+        # Findings an earlier reviewer made that the author refuted: independent false positives.
+        packet["known_false"] = known_false
     return packet, key
 
 
@@ -181,7 +190,7 @@ def blind_violations(packet: dict) -> list[str]:
             if isinstance(v, str) and v.strip() in ARMS:
                 bad.append(f"value {v!r} in {k}")
     for k in packet:
-        if k not in ("case", "reviewed_state", "diff_range", "ground_truth", "findings"):
+        if k not in ("case", "reviewed_state", "diff_range", "ground_truth", "findings", "known_false"):
             bad.append(f"packet field {k}")
     return bad
 
@@ -231,7 +240,7 @@ def score(cases: list[dict], gts: dict, keys: dict, labels: dict, runs: dict) ->
                     if f.get("cluster") and f["cluster"] not in clusters_other:
                         t["unique_real"] += 1
             if c["kind"] == "fix":
-                ids = {g["id"] for g in gts.get(cid, [])}
+                ids = {g["id"] for g in gt_entry(gts.get(cid, [])).get("ground_truth", [])}
                 t["gt_total"] += len(ids)
                 t["gt_hit"] += len(ids & hit)
             else:
@@ -405,7 +414,11 @@ def cmd_pack(args: argparse.Namespace) -> int:
         per_arm = per_case.get(c["id"])
         if not per_arm or not any(per_arm.values()):
             continue
-        packet, key = build_packet(c, gts.get(c["id"], []), per_arm)
+        entry = gt_entry(gts.get(c["id"], {}))
+        items = [{k: g[k] for k in ("id", "file", "text", "kind") if k in g}
+                 for g in entry.get("ground_truth", [])]
+        known = [{"text": r["text"], "why_refuted": r.get("why_refuted", "")} for r in entry.get("refuted", [])]
+        packet, key = build_packet(c, items, per_arm, known)
         bad = blind_violations(packet)
         if bad:
             print(f"refusing {c['id']}: packet is not blind: {bad}", file=sys.stderr)
@@ -481,6 +494,12 @@ def self_check() -> int:
     p2, k2 = build_packet(case, [{"id": "G1", "text": "g"}], per_arm)
     check("packet deterministic", (p1, k1), (p2, k2))
     check("packet blind", blind_violations(p1), [])
+    check("gt entry: a bare list is read as the ground-truth items",
+          gt_entry([{"id": "G1"}])["ground_truth"], [{"id": "G1"}])
+    check("gt entry: a full record keeps its items", gt_entry({"ground_truth": [{"id": "G1"}], "finder": "x"})["ground_truth"],
+          [{"id": "G1"}])
+    pk, _ = build_packet(case, [{"id": "G1", "text": "g"}], per_arm, [{"text": "fp", "why_refuted": "w"}])
+    check("known-false findings ride in the packet and stay blind", ("known_false" in pk, blind_violations(pk)), (True, []))
     check("packet ids neutral", sorted(f["id"] for f in p1["findings"]), ["F01", "F02", "F03"])
     check("key covers every arm", sorted(v["arm"] for v in k1.values()), ["O1", "PI", "PR"])
     check("tool score never reaches the judge", "tool_score" in json.dumps(p1) or "tool_severity" in json.dumps(p1), False)
@@ -555,7 +574,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--out", required=True)
     p.add_argument("--packets", required=True)
     p.add_argument("--keys", required=True)
-    p.add_argument("--gt", help="ground-truth JSON: {case: [{id, text}]}")
+    p.add_argument("--gt", help="ground-truth JSON: {case: {ground_truth: [...], refuted: [...]}} (or a bare list)")
     s = sub.add_parser("score", help="aggregate judge labels")
     s.add_argument("--out", required=True)
     s.add_argument("--keys", required=True)

@@ -1,0 +1,78 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/release_bundle.rs",
+   "start": 462,
+   "end": 466,
+   "title": "test",
+   "text": "The build-info assertions are substring checks, so they cannot distinguish fields: `contains(short)` is satisfied by the `sha=<full>` line even if the required `rev=<short>` line is missing, and the spec-mandated `libc=` line (spec \u00a71: \"rev, full SHA, target, rustc -V, cargo -V, the builder's libc line, UTC time\") is never asserted at all, so a build-info that drops it still passes. Assert the exact field lines instead (and that `libc=` is non-empty).",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/release_bundle.rs",
+   "start": 543,
+   "end": 545,
+   "title": "test",
+   "text": "This `String::new()` case does not test an empty `built from` value. The stub interpolates `${STUB_BUILT_FROM:-unknown}`, and `:-` substitutes the default when the variable is *set but empty*, so the empty dial is rendered as `unknown` \u2014 a duplicate of the earlier `\"unknown\"` case. The script has an explicit `'' | *[!0-9a-f]*` branch for an empty value that therefore stays uncovered. Use `${STUB_BUILT_FROM-unknown}` (no colon, so only unset becomes `unknown`) or a dedicated dial to actually exercise the empty case.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/release_bundle.rs",
+   "start": 360,
+   "end": 362,
+   "title": "maintainability",
+   "text": "`asset()` hardcodes the `TARGET` constant even though `World::new` accepts an arbitrary `host` (e.g. the `aarch64-apple-darwin` world). Any future test that calls `asset()` on a non-default world would silently build the wrong path \u2014 the darwin test only works around this by hand-formatting the name. Store the host on `World` and use it here.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "tests/release_bundle.rs",
+   "start": 258,
+   "end": 262,
+   "title": "test",
+   "text": "Missing host tools are silently skipped. Because the script runs with a scrubbed `PATH` containing only these symlinks, a CI image that lacks (say) `sha256sum`/`shasum` or `ldd` makes the script fail with `needed tool not on PATH`, which reads like a script bug rather than an environment gap, and a host with the tool but an unexpected variant can behave differently. Consider asserting that the subset the script requires is present (turning a confusing failure into a clear fixture-setup error).",
+   "tool_severity": "low"
+  },
+  {
+   "file": "tests/release_bundle.rs",
+   "start": 373,
+   "end": 375,
+   "title": "test",
+   "text": "This helper treats an existing-but-empty `--out` as `nothing written`, which is weaker than the file header's contract (\"it is not even created\"). It works today only because the failure-path tests never pre-create `out`, but a regression that creates `--out` early and then cleans it up would pass. For the non-collision failure cases, assert `!out.exists()` directly.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "scripts/build-release.sh",
+   "start": 51,
+   "end": 51,
+   "title": "bug",
+   "text": "No `set -o pipefail`, so pipelines report only the last command's status. Concretely, `libc_line=$(ldd --version 2>&1 | head -n 1) || libc_line=''` can never take the fallback (the status is `head`'s, always 0), so a host without `ldd` records the error text as the libc line; `sha256_of`'s `sha256sum | awk` similarly masks a failing hash tool (only caught later by the empty/hex check). Add `pipefail` so a failing producer is not silently hidden.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "scripts/build-release.sh",
+   "start": 194,
+   "end": 195,
+   "title": "security",
+   "text": "The clean copy carries the repo's `rust-toolchain.toml`, and `rustc -vV`/`cargo -V` plus `cargo build` all run inside it. If the pinned toolchain isn't installed rustup will download it, and cargo will fetch any crates missing from the local cache; neither `--offline` nor `--frozen` is used. For a release that must satisfy REQ-0012's air gap, the script can therefore silently depend on the network (even on the `--bin` path, via the `rustc`/`cargo` version probes). Either build offline with a prefetched toolchain/cache, or fail explicitly when the offline prerequisites are absent.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "scripts/build-release.sh",
+   "start": 310,
+   "end": 311,
+   "title": "bug",
+   "text": "The \"a name that already exists is an error, never an overwrite\" guarantee is only enforced by the earlier `[ -e ... ]` pre-check. `publish` then uses `mv`, which silently replaces an existing destination, so two concurrent runs (or a race after the pre-check) can clobber a pinned asset/checksum. Make the final step non-clobbering (e.g. hard-link the temp to the final name, which fails if it exists, then drop the temp).",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "scripts/build-release.sh",
+   "start": 220,
+   "end": 220,
+   "title": "bug",
+   "text": "The upper bound of 40 assumes a SHA-1 repository. On a `--object-format=sha256` repo the abbreviated and full SHAs are 64 hex characters, so this rejects a perfectly valid binary and blocks every release. Allow up to 64 (and update the message below accordingly).",
+   "tool_severity": "low"
+  }
+ ]
+}

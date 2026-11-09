@@ -1,0 +1,38 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/cli_version.rs",
+   "start": 515,
+   "end": 516,
+   "title": "test",
+   "text": "The non-vacuity guard is circular: `verbs.len() >= ALL_COMMANDS.len()` is satisfied by `0 >= 0`, so emptying `ALL_COMMANDS` lets this test (and every `ALL_COMMANDS`-driven loop: the short-help loop, the usage-line loop, the exit-line loop) run zero iterations and pass. That is exactly the failure mode `ALL_COMMANDS`'s own doc comment claims to prevent. Anchor the guard on a literal lower bound (e.g. `verbs.len() >= 13`) or at minimum require `!ALL_COMMANDS.is_empty()`; the scrape itself already catches a broken verb column as long as `ALL_COMMANDS` is non-empty.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/cli_version.rs",
+   "start": 334,
+   "end": 334,
+   "title": "test",
+   "text": "Coverage gap tied to the implementation's `help_requested(args) = args.iter().any(...)`: every new test passes `--help`/`-h` as the *only* argument (or in the second position). A dispatch that only honored help when it is the first/sole token would satisfy all of them while breaking documented behaviour. In particular, add cases where help must win over a mutating flag and must not execute the command \u2014 e.g. `req canon --fill --help` and `req decision --fill --help` (assert exit 0, the page, and that no derived fields were written), plus `req init --root <dir> --help` (help, not the `--root` usage error) \u2014 so the \"asking for help never runs the command\" property is pinned for more than `init`.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/cli_version.rs",
+   "start": 383,
+   "end": 383,
+   "title": "maintainability",
+   "text": "This test is subsumed by `every_page_starts_with_usage_its_own_name`: both use `NoCorpus` and `help_page`, and its prefix check is the weaker form (`\"usage: req audit\"` matches `\"usage: req auditor\"`), which the other test already tightens with a whitespace boundary. Its doc also claims the check is \"still caught when the corpus exists\", but the fixture here has no corpus, so that stated independence does not hold. Either drop this loop or narrow it to what it uniquely covers (exit 0 / no root line) without duplicating the prefix assertion.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "tests/cli_version.rs",
+   "start": 362,
+   "end": 362,
+   "title": "test",
+   "text": "This parser is tightly coupled to the current two-space column gap and treats *any* all-lowercase token as a verb until the first non-verb. If the layout ever separates a verb from a description with a single space, description words like `the`/`create` become scraped \"verbs\" and `help_page` fails with an unrelated `unrecognized subcommand` error; conversely a verb line written differently (non-`  ` indent) is silently skipped. Since the scrape is the independent oracle for the verb set, make the contract explicit (require the two-space separator to delimit the column, and assert the scraped count matches the expected set) rather than relying on the heuristic.",
+   "tool_severity": "low"
+  }
+ ]
+}

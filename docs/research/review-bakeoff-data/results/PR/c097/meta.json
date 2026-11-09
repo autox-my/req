@@ -1,0 +1,12 @@
+{
+ "arm": "PR",
+ "case": "c097",
+ "model": "deepseek-v4.1-flash",
+ "exit": 0,
+ "attempts": 1,
+ "seconds": 1577,
+ "tokens": 74580,
+ "status": "complete",
+ "complete": true,
+ "findings": 1
+}

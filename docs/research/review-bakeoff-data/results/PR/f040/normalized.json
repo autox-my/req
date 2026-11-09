@@ -1,0 +1,14 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/parity_annotations.rs",
+   "start": 517,
+   "end": 521,
+   "title": "Fixed-Offset Misread",
+   "text": "`value_unit_cell` slices at a hard-coded byte offset (`9+1+9+1+9+1+12+1`) that assumes the four leading `{:<N}` columns occupy exactly those byte widths. Rust's `{:<N}` is a minimum *character* width, so a leading value longer than its column (or containing multi-byte characters) shifts the value/unit cell right; `row.get(CELL_START..)` then returns the wrong columns or `None`, and the panic message incorrectly diagnoses it as a short row. The REQ-0007 negative (`!unstructured_cell.contains(\"FLAG\") && !...starts_with(\"ann\")`) would then inspect the wrong column and could pass without examining the value/unit cell \u2014 the same silent-weakening this PR fixes elsewhere. The current ASCII corpus appears to avoid it (REQ-0001's leading identifier is exactly 12 chars), so it is latent rather than currently failing. Confidence is limited: I could not confirm from the diff whether the report truncates those fields or whether any corpus row overflows its column.",
+   "tool_severity": null
+  }
+ ]
+}

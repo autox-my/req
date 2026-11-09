@@ -1,0 +1,12 @@
+{
+ "arm": "PI",
+ "case": "c031",
+ "model": "deepseek-v4.1-flash",
+ "exit": 0,
+ "attempts": 1,
+ "seconds": 523,
+ "tokens": 96950,
+ "status": "complete",
+ "complete": true,
+ "findings": 2
+}

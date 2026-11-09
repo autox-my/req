@@ -1,0 +1,62 @@
+{
+ "F01": {
+  "arm": "PI",
+  "index": 4
+ },
+ "F02": {
+  "arm": "PR",
+  "index": 2
+ },
+ "F03": {
+  "arm": "O1",
+  "index": 2
+ },
+ "F04": {
+  "arm": "O1",
+  "index": 6
+ },
+ "F05": {
+  "arm": "PI",
+  "index": 1
+ },
+ "F06": {
+  "arm": "O1",
+  "index": 0
+ },
+ "F07": {
+  "arm": "O1",
+  "index": 5
+ },
+ "F08": {
+  "arm": "PR",
+  "index": 0
+ },
+ "F09": {
+  "arm": "O1",
+  "index": 3
+ },
+ "F10": {
+  "arm": "O1",
+  "index": 4
+ },
+ "F11": {
+  "arm": "PI",
+  "index": 0
+ },
+ "F12": {
+  "arm": "O1",
+  "index": 1
+ },
+ "F13": {
+  "arm": "PI",
+  "index": 3
+ },
+ "F14": {
+  "arm": "PR",
+  "index": 1
+ },
+ "F15": {
+  "arm": "PI",
+  "index": 2
+ }
+}

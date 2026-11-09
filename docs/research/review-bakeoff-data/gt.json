@@ -1,0 +1,174 @@
+{
+  "f005": {
+    "finder": "OCR review",
+    "ground_truth": [
+      {"id": "G1", "file": "src/model.rs", "text": "Unknown-key rejection (deny_unknown_fields) is applied only to the top-level ClaimFile, not to the nested structs Rationale, Relation and CanonicalCache. Because Rationale's list fields default to empty, a misspelled nested key such as rejected_alternativs: loads silently as an empty list, losing authored data with no error.", "severity_as_reported": "low", "kind": "robustness"},
+      {"id": "G2", "file": "src/canon.rs", "text": "The loader's candidate gate (looks_like_claim_file) is extension-only (yml/yaml). A claim renamed to REQ-0008.txt, REQ-0008 or REQ-0008.yml.disabled is not considered a candidate, so the requirement silently vanishes from the corpus with exit code 0 instead of failing the load.", "severity_as_reported": "low", "kind": "code-bug"},
+      {"id": "G3", "file": "docs/claim-format.md", "text": "The loader contract does not state how a directory entry whose name is not valid UTF-8 is handled, nor that claim-shaped non-yml names are candidates. The code fails the corpus on such an entry (it could be a claim), but the doc says only that non-claim entries are left alone, leaving the behaviour undocumented or contradicting the stated naming rule.", "severity_as_reported": "low", "kind": "docs-contradiction"},
+      {"id": "G4", "file": "tests/claim_slots.rs", "text": "The test helper with_applicability builds a variant claim with String::replace on the CLAIM template and never checks the replacement happened. If the template drifts and the needle is absent the replace is a silent no-op, the variant equals the base, and the failure is misattributed to the identity logic in evaluate_claim rather than to the helper.", "severity_as_reported": "low", "kind": "test-gap"}
+    ],
+    "refuted": [],
+    "declined_true": [
+      {"text": "PR #4 finding: bench::exit_code is stringly-typed (a string match with a fail-closed default arm), where an enum would be safer. Acknowledged, left for the PR #4 branch."},
+      {"text": "PR #4 finding: the degraded-sentinel string literal is duplicated in tests/gate.rs. Acknowledged, left unfixed because fixing it belongs with the enum refactor on that branch."}
+    ]
+  },
+  "f008": {
+    "finder": "OCR review",
+    "ground_truth": [
+      {"id": "G1", "file": "src/baseline.rs", "text": "from_json treats any serde 'missing field' error as a v1 Baseline and tells the reader to re-issue and re-sign (ADR 0013). A manifest missing an unrelated field such as claim_id (ordinary corruption) therefore gets the misleading v1 re-sign advice; only a missing relations_hash or rationale_hash should.", "severity_as_reported": null, "kind": "code-bug"},
+      {"id": "G2", "file": "src/audit.rs", "text": "audit::coverage tests membership in the drift changed / attested_changed / missing lists with Vec::contains, three linear scans per manifest claim, quadratic in the number of claims. The id sets should be built once (e.g. BTreeSet).", "severity_as_reported": null, "kind": "robustness"},
+      {"id": "G3", "file": "tests/baseline.rs", "text": "The row() fixture helper fills relations_hash and rationale_hash with placeholder strings ('relations-hash', 'rationale-hash') unrelated to the row's own content, a Row state that load_rows can never produce, so tests built on it prove little about the emit/verify round trip.", "severity_as_reported": null, "kind": "test-gap"},
+      {"id": "G4", "file": "tests/baseline.rs", "text": "The doc comment on the 'edited relation after signing fails verification' test implies the relation itself is edited, but the test only overrides the attested hash (load_rows derives that hash from content), so the comment misdescribes what the test simulates.", "severity_as_reported": null, "kind": "test-gap"},
+      {"id": "G5", "file": "tests/baseline.rs", "text": "The digest test asserts relations_digest(&[]) == relations_digest(&[]) for the empty case, comparing the implementation with itself; it cannot fail and pins no independent oracle for the empty-list digest.", "severity_as_reported": null, "kind": "test-gap"},
+      {"id": "G6", "file": "tests/baseline.rs", "text": "No test checks that a manifest missing a field other than the attested hashes (e.g. claim_id) is reported as plainly unreadable rather than with the v1 re-issue advice, so the over-broad 'missing field' branch in from_json is untested.", "severity_as_reported": null, "kind": "test-gap"},
+      {"id": "G7", "file": "tests/common/mod.rs", "text": "The shared test fixtures in tests/common/mod.rs (and in tests/audit.rs and tests/funnel.rs) build Rows with placeholder hash strings that do not match the Relation or provenance values the rows carry, so helpers like rationale() change the displayed source without updating the attested hash.", "severity_as_reported": null, "kind": "test-gap"}
+    ],
+    "refuted": [],
+    "declined_true": []
+  },
+  "f010": {
+    "finder": "OCR review",
+    "ground_truth": [
+      {"id": "G1", "file": "src/baseline.rs", "text": "MinisignCli::verify returns early after creating its per-call staging directory (write failure, minisign not runnable, non-zero exit, parse failure) without removing it. The directory name is fresh on every call, so each failed verification orphans one temp directory.", "severity_as_reported": "medium", "kind": "robustness"},
+      {"id": "G2", "file": "tests/baseline.rs", "text": "The staging-directory mode test uses std::os::unix::fs::PermissionsExt unconditionally, so the test file does not compile on non-Unix targets while the source's mode setting is cfg(unix)-gated.", "severity_as_reported": "medium", "kind": "code-bug"},
+      {"id": "G3", "file": "src/baseline.rs", "text": "The Unverifiable message 'no temporary directory: {e}' misdescribes failures from staging_dir(), which also fails on exhausted AlreadyExists retries and permission errors, not only a missing temp dir.", "severity_as_reported": "low", "kind": "docs-contradiction"},
+      {"id": "G4", "file": "src/baseline.rs", "text": "In create_staging_dir, 'let mut builder' is mutated only inside the cfg(unix) block, so a non-Unix build sees an unused-mut warning and fails under clippy -D warnings.", "severity_as_reported": "low", "kind": "code-bug"}
+    ],
+    "refuted": [],
+    "declined_true": []
+  },
+  "f024": {
+    "finder": "OCR review",
+    "ground_truth": [
+      {"id": "G1", "file": "build.rs", "text": "The dirty-tree probe in build_identity uses git(...).is_some_and(|out| !out.is_empty()), so a failed 'git status' (old git rejecting --no-optional-locks, corrupt index, killed process) maps to 'not dirty' and the build identity is a bare SHA claiming a clean tree, instead of 'unknown' as the build.rs contract promises for a git that errors.", "severity_as_reported": "medium", "kind": "code-bug"},
+      {"id": "G2", "file": "docs/claim-format.md", "text": "docs/claim-format.md and the AGENTS.md canon bullet still say the schema judgement 'lives in the loader', which no longer matches the code: compare and the fill path also judge a claim file read by path, and the judgement is in claim_schema_reason.", "severity_as_reported": "low", "kind": "docs-contradiction"},
+      {"id": "G3", "file": "tests/loader.rs", "text": "The helper replacing_first returns its input unchanged when the needle is absent and relies on the Status literal being the first occurrence, so the 'mutated doc' in the doc-oracle test can silently be a no-op or land on prose while the test passes.", "severity_as_reported": "low", "kind": "test-gap"}
+    ],
+    "refuted": [],
+    "declined_true": []
+  },
+  "f034": {
+    "finder": "independent review (OCR delegation mode)",
+    "ground_truth": [
+      {"id": "G1", "file": "src/init.rs", "text": "The CI snippet's 'while IFS= read -r line' loop over .req/variants drops a final line with no trailing newline (read returns non-zero while assigning it). A release appended without a newline is never gated, and the new fallback removed the bare run that used to be the backstop. The same snippet is copied in docs/adopting.md.", "severity_as_reported": "high", "kind": "code-bug"},
+      {"id": "G2", "file": "src/init.rs", "text": "In the CI snippet a whitespace-only line (e.g. '  # comment') passes the '[ -n \"$variant\" ]' test and is word-split unquoted into a bare gate run beside the declared variants, contradicting docs/adopting.md, which says a line empty after stripping the comment is skipped; the unquoted expansion also risks glob expansion.", "severity_as_reported": "medium", "kind": "code-bug"},
+      {"id": "G3", "file": "review/rule.json", "text": "The review rule for .req/** still teaches the pre-ADR-0015 contract (a dropped context key leaves the gate exiting 0 and 'the gate will not say so'). Since this text is what the reviewer is handed, the review surface asserts a defect that is no longer live.", "severity_as_reported": "medium", "kind": "docs-contradiction"},
+      {"id": "G4", "file": "docs/adopting.md", "text": "The measured-behaviour paragraph promises exit 0 for a comment-only variants file without naming the corpus. On a corpus that has a selector the bare run is UNVERIFIABLE (exit 3), so the claim is unconditionally stated but only true for a fresh 'req init' corpus.", "severity_as_reported": "medium", "kind": "docs-contradiction"}
+    ],
+    "refuted": [],
+    "declined_true": []
+  },
+  "f036": {
+    "finder": "CI review",
+    "ground_truth": [
+      {"id": "G1", "file": "src/canon.rs", "text": "classify_slot treats any authored-but-not-derived slot as an annotation. A quantity-shaped claim such as 'The API shall respond in 200 ms' with authored operator: LE (no comparator word, so the parse derives none) gets zero flags, --fill writes operator: null, and two claims differing only in LE vs GE share one address, a false merge. Only the qualitative triple (operator EQ, unit none, non-numeric value) should be an annotation.", "severity_as_reported": "high", "kind": "code-bug"},
+      {"id": "G2", "file": "tests/parity_annotations.rs", "text": "The test fill_accepts_the_corpus_that_only_annotates runs 'canon --fill' against the real checkout. run_fill writes when a claim is stale, so the test can silently rewrite claims/*.yml and races the parallel canon/--verify tests reading the same files.", "severity_as_reported": "high", "kind": "test-gap"},
+      {"id": "G3", "file": "tests/parity_annotations.rs", "text": "The doc comment of the 'qualitative triple on a measurable statement' test says a qualitative authoring still flags, but the test asserts value_check == Annotation, so the documentation contradicts the assertion (the flag actually comes from the operator slot).", "severity_as_reported": "medium", "kind": "docs-contradiction"},
+      {"id": "G4", "file": "tests/parity_annotations.rs", "text": "Failure-direction coverage is missing: no test exercises a unit contradiction (authored ms over parsed s), an omitted unit (unit: null), or an omitted operator over a parsed LE, so the unit sentinel guard and the 'FLAG missing' rendering arm are reachable by no test.", "severity_as_reported": "medium", "kind": "test-gap"},
+      {"id": "G5", "file": "tests/parity_annotations.rs", "text": "The registry fixture writes its YAML into a predictable per-pid temp directory (parity-registry-<pid>) and never removes it, leaking a directory and reusing a guessable path.", "severity_as_reported": "low", "kind": "robustness"},
+      {"id": "G6", "file": "src/canon.rs", "text": "value_unit_cell returns on the first annotation (value) and so hides a simultaneous unit annotation, joining or short-circuiting the two so one annotation can hide another in the report cell.", "severity_as_reported": "low", "kind": "code-bug"}
+    ],
+    "refuted": [
+      {"text": "Critical: usize::from(verdict.has_annotation()) does not compile because From<bool> exists only for u8.", "why_refuted": "std implements From<bool> for every integer type; clippy and the full test suite pass on the reviewed commit, and a one-line probe 'let _: usize = usize::from(true)' compiles on the pinned toolchain."}
+    ],
+    "declined_true": []
+  },
+  "f040": {
+    "finder": "CI review",
+    "ground_truth": [
+      {"id": "G1", "file": "tests/parity_annotations.rs", "text": "The test helper value_unit_cell slices the row from the cell start to end-of-line, so it also reads the operator and conditions columns; its name and doc overpromise, and a FLAG in a later column would leak into the 'value/unit cell'.", "severity_as_reported": "medium", "kind": "test-gap"},
+      {"id": "G2", "file": "tests/parity_annotations.rs", "text": "The cell-delimiter test only asserts the absence of the word 'ann' in the extracted cell, so a reader that landed on the wrong column (e.g. the whole row) would still pass; it never asserts what the cell actually contains.", "severity_as_reported": "medium", "kind": "test-gap"},
+      {"id": "G3", "file": "tests/parity_annotations.rs", "text": "The replaced() guard that asserts a fixture mutation's needle is present is used at only two call sites; the other fixture mutations still use bare String::replace, so a drifted needle leaves a green no-op in the unconverted tests.", "severity_as_reported": "medium", "kind": "test-gap"},
+      {"id": "G4", "file": "docs/claim-format.md", "text": "Docs (ClaimVerdict doc, AGENTS.md, the claim-format authoring rule, ADR 0014) say the qualitative triple requires operator: EQ, while the code also accepts operator none or absent as the no-operator marker, so the documentation contradicts the widened convention.", "severity_as_reported": "medium", "kind": "docs-contradiction"}
+    ],
+    "refuted": [],
+    "declined_true": []
+  },
+  "f041": {
+    "finder": "unstated (review of PR #41, round 1)",
+    "ground_truth": [
+      {"id": "G1", "file": "src/baseline.rs", "text": "The baseline --now judgement-time override goes unvalidated into TrustFile::state. An empty string or '1' sorts below every trust date, so a revoked or expired key is read as Trusted and the Baseline passes (fail-open). Also, state compares only one side reduced to a date, so timestamp-valued revoked_at/valid_until entries do not fire on their own day.", "severity_as_reported": "medium", "kind": "security"},
+      {"id": "G2", "file": "baselines/trust.yml", "text": "baselines/trust.yml and trust.example.yml still document the pre-v3 semantics (expired is UNVERIFIABLE because no trusted signing time exists; revocation non-prospective), contradicting the v3 behaviour that judges at signed_at and treats revocation as prospective; ADR 0010's status line also does not point to ADR 0016.", "severity_as_reported": "medium", "kind": "docs-contradiction"},
+      {"id": "G3", "file": "tests/baseline.rs", "text": "The emission test checks only that the attested authority has a non-empty head and entries >= 1, which decision::head satisfies by agreeing with itself. There is no independent oracle for the head or count, no test for a right-head/wrong-entry-count authority, and the emission refusal on a tampered decision log is untested.", "severity_as_reported": "medium", "kind": "test-gap"},
+      {"id": "G4", "file": "src/decision.rs", "text": "decision::head reads the stored hash with no stated precondition that the chain was judged first; a stored hash that no longer recomputes is what an edit looks like, so signing it unjudged would attest an edited record as the committed head.", "severity_as_reported": "medium", "kind": "robustness"},
+      {"id": "G5", "file": "src/main.rs", "text": "The baseline --verify help line claims the manifest's signed_at judges the key, which is false for a v2 manifest that has no signed_at.", "severity_as_reported": "low", "kind": "docs-contradiction"},
+      {"id": "G6", "file": "src/baseline.rs", "text": "valid_signing_time accepts calendar-impossible dates such as 2026-02-31 because it only checks day in 1..=31; the accepted value is written into signed bytes and cannot be corrected without re-signing. The expired-at-signing reason also always names signed_at even when --now supplied the judged time.", "severity_as_reported": "low", "kind": "code-bug"}
+    ],
+    "refuted": [],
+    "declined_true": [
+      {"text": "High: the v3 manifest (baselines/air-gapped.json) is committed unsigned, so the gate is red until the maintainer signs it with minisign; the reviewer asks to confirm the re-signed .minisig is in the merge. Acknowledged as the expected stop point and the maintainer's act, not fixed in code."}
+    ]
+  },
+  "f045": {
+    "finder": "OCR review",
+    "ground_truth": [
+      {"id": "G1", "file": "tests/cli_version.rs", "text": "The usage_verbs scrape treats every indented line of the USAGE text as a verb row, so a wrapped description line (indented, no double space) would have its first lowercase words read as verbs, making the oracle for 'every verb in USAGE has a help page' unreliable.", "severity_as_reported": null, "kind": "test-gap"},
+      {"id": "G2", "file": "tests/cli_version.rs", "text": "ALL_COMMANDS is a hand-maintained list checked against USAGE in one direction only (each known command appears in the scrape). A verb added to the table and USAGE but forgotten in ALL_COMMANDS would escape the per-page loops (exit line, -h parity, usage-line shape).", "severity_as_reported": null, "kind": "test-gap"},
+      {"id": "G3", "file": "tests/cli_version.rs", "text": "Some help-page first-line checks use a bare starts_with(\"usage: req {command}\") without a whitespace boundary, unlike its twin check, so 'render' would be satisfied by 'usage: req rendering ...'.", "severity_as_reported": null, "kind": "test-gap"}
+    ],
+    "refuted": [
+      {"text": "`req baseline --verify -h` printing the help page instead of a usage error is a defect.", "why_refuted": "The spec (R2) requires any argument equal to --help or -h to print the page, so this is the specified behaviour."}
+    ],
+    "declined_true": []
+  },
+  "f054": {
+    "finder": "unstated (the review of the measurement workflow)",
+    "ground_truth": [
+      {"id": "G1", "file": "<removed forgejo workflow>", "text": "workflow_dispatch inputs are interpolated directly into the shell script via ${{ inputs.* }} (e.g. --exclude, --from, --to, label). The runner substitutes them before bash parses the script, so a value with a quote, $(...), a backtick or ';' runs commands in a step holding the OCR_LLM_TOKEN secret.", "severity_as_reported": "high", "kind": "security"},
+      {"id": "G2", "file": "<removed forgejo workflow>", "text": "The review CLI is installed with npm ci from the dispatched checkout, so the commit under measurement can supply the tool and have it executed with the provider token. The same hole exists in <removed workflow>. The install should come from origin/main's package.json and lockfile.", "severity_as_reported": "medium", "kind": "security"},
+      {"id": "G3", "file": "<removed forgejo workflow>", "text": "The MEASURE summary step parses ocr-result.json with inline python under set -e; a truncated or missing result, or a comments field of an unexpected shape, aborts the step exactly when the measurement is most useful.", "severity_as_reported": "medium", "kind": "robustness"},
+      {"id": "G4", "file": "<removed forgejo workflow>", "text": "The rounds figure is counted from the CLI's progress glyph, so a formatting change would silently read as zero rounds instead of 'unavailable'; the result's own tool_calls count is not used or labelled as the source.", "severity_as_reported": "low", "kind": "code-bug"},
+      {"id": "G5", "file": "<removed forgejo workflow>", "text": "The measurement workflow lacks the step that deletes a stale $HOME/.opencodereview/config.json, which overrides the environment and makes a good token be reported as missing; <removed workflow> has the deletion.", "severity_as_reported": "low", "kind": "robustness"}
+    ],
+    "refuted": [],
+    "declined_true": []
+  },
+  "f065-a8fc": {
+    "finder": "OCR review",
+    "ground_truth": [
+      {"id": "G1", "file": "<removed forgejo workflow>", "text": "Parameterising the URL scheme in the release workflow's api() helper dropped curl's --tlsv1.2 floor (only --proto \"$proto\" remains), so the request carrying the release token no longer enforces a minimum TLS version.", "severity_as_reported": "high", "kind": "security"},
+      {"id": "G2", "file": "<removed forgejo workflow>", "text": "The install script, the 65 spec and the timing harness say the REQ_RELEASE_BASE and REQ_CURL_PROTO overrides are test-only and never set by any shipped YAML, but the timing harness sets both, and over a LAN http server URL the instance-wide read token crosses that hop in clear. The statements about who may set them are false.", "severity_as_reported": "medium", "kind": "docs-contradiction"}
+    ],
+    "refuted": [],
+    "declined_true": []
+  },
+  "f117": {
+    "finder": "DeepSeek V4.1 Flash review",
+    "ground_truth": [
+      {"id": "G1", "file": "scripts/build-release.sh", "text": "The release proofs (baseline verify and bench) run with the caller's REQ_ROOT still exported, and req resolves its corpus from REQ_ROOT before the working directory, so both proofs can judge (and bench write into) another checkout instead of the clean copy.", "severity_as_reported": null, "kind": "code-bug"},
+      {"id": "G2", "file": "scripts/build-release.sh", "text": "The clean-copy clone inherits the caller's global/system git configuration and template directory (autocrlf, filters, hooks), so files can be rewritten (e.g. CRLF) before the proofs run and the proofs no longer see the commit's exact bytes.", "severity_as_reported": null, "kind": "robustness"},
+      {"id": "G3", "file": "scripts/build-release.sh", "text": "publish() moves the temp file into place with mv, which silently replaces an existing asset, so two runs racing for the same --out can overwrite an asset that another run just published and whose checksum was already printed.", "severity_as_reported": null, "kind": "robustness"}
+    ],
+    "refuted": [],
+    "declined_true": []
+  },
+  "f120": {
+    "finder": "OCR review",
+    "ground_truth": [
+      {"id": "G1", "file": "<removed forgejo workflow>", "text": "The Release workflow does not check the ref it was dispatched from. A dispatch from another branch runs that branch's workflow file and scripts/build-release.sh, so the code that proves the binary and holds the release token is not main's.", "severity_as_reported": "high", "kind": "security"},
+      {"id": "G2", "file": "<removed forgejo workflow>", "text": "The release job does not check that the rev named in the script's build-info equals the rev the job resolved and verified to be on main, so what is published may differ from what was checked.", "severity_as_reported": null, "kind": "code-bug"},
+      {"id": "G3", "file": "<removed forgejo workflow>", "text": "In the timing workflow's source install the read:repository token stays in the environment while cargo fetches and compiles crates, so every build script and proc-macro of fetched crates can read an instance-wide token.", "severity_as_reported": null, "kind": "security"},
+      {"id": "G4", "file": "<removed forgejo workflow>", "text": "The Rust toolchain version (1.99.0) is hard-coded in the timing workflow rather than read from rust-toolchain.toml, so a pin bump would silently skew the figure.", "severity_as_reported": null, "kind": "robustness"},
+      {"id": "G5", "file": "<removed forgejo workflow>", "text": "Timing readings use whole-second 'date +%s' timestamps, giving coarse resolution for the measured install durations.", "severity_as_reported": null, "kind": "robustness"}
+    ],
+    "refuted": [],
+    "declined_true": []
+  },
+  "f123": {
+    "finder": "OCR review",
+    "ground_truth": [
+      {"id": "G1", "file": "examples/github-workflows/req-diff.yml", "text": "The summary step runs under set -u and appends to $GITHUB_STEP_SUMMARY with no fallback. On a runner that sets only <FORGE>_STEP_SUMMARY the variable is unbound, so a passing 'req diff' turns the step red.", "severity_as_reported": "high", "kind": "code-bug"},
+      {"id": "G2", "file": "examples/github-workflows/req-diff.yml", "text": "github.base_ref is interpolated directly into the run script (req diff --base \"origin/${{ github.base_ref }}\"), so a branch name containing $(cmd), backticks or ';' is command-substituted by the shell. It should arrive through env:.", "severity_as_reported": null, "kind": "security"},
+      {"id": "G3", "file": "tests/diff_template.rs", "text": "The test for the job summary checks only the ordering of the write and the exit, not that the summary block holds the captured report and the exit status, so a template that drops the report from the summary would pass.", "severity_as_reported": null, "kind": "test-gap"},
+      {"id": "G4", "file": "tests/diff_template.rs", "text": "No test pins the workflow's token scope: nothing asserts permissions contents: read or the absence of any write scope for a job that runs on every pull request.", "severity_as_reported": null, "kind": "test-gap"},
+      {"id": "G5", "file": "docs/adopting.md", "text": "Neither the template nor docs/adopting.md says that a pull request from a fork has no repository secrets, so the install step refuses and the req-diff check is red on it; this behaviour is deliberate (trigger is pull_request, not pull_request_target) but undocumented.", "severity_as_reported": null, "kind": "docs-contradiction"}
+    ],
+    "refuted": [
+      {"text": "The OCR note that the workflow tests' pins are stricter than a hardening edit would allow.", "why_refuted": "Left as is: they are pins, strict by design."}
+    ],
+    "declined_true": [
+      {"text": "Low: a duplicated helper in the template tests; acknowledged and deliberately not changed."}
+    ]
+  }
+}

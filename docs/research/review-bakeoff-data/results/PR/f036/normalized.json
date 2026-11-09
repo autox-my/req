@@ -1,0 +1,30 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/canon.rs",
+   "start": 1379,
+   "end": 1389,
+   "title": "Hidden Contradiction",
+   "text": "`value_derived`/`unit_derived` are forced to false whenever the authored triple matches `is_qualitative_convention`, even when `form.value`/`form.unit` actually carry a derived quantity. A statement that parses to `value 0.2`, `unit s`, `operator EQ` (e.g. \"... exactly 200 ms\") with an authored `value: present`, `unit: none`, `operator: EQ` yields `value_check = Annotation`, `unit_check = Ok`, `op_check = Ok` \u2014 zero flags \u2014 so `req canon` reports no discrepancy and `canon --fill` accepts a claim whose authored value contradicts the statement. The new test only catches the case where the parsed operator differs (LE vs EQ); when the parsed operator agrees or is absent, nothing flags. The annotation should apply only when the parse did not derive the slot.",
+   "tool_severity": null
+  },
+  {
+   "file": "src/canon.rs",
+   "start": 1321,
+   "end": 1329,
+   "title": "Regression",
+   "text": "`classify_slot` maps every `(derived = false, authored = true)` slot to `Annotation`, but the qualitative convention described in the PR requires a non-numeric value. A numeric authored quantity the parse does not derive (for example `operator: LE`, `value: \"0.2\"`, `unit: s` on a statement that yields no parseable quantity) used to be a flag under the old `authored_is_num` gate; now it shows `ann`, is counted as an annotation, and `--fill` accepts it. If annotation is meant only for the qualitative triple, `classify_slot` or its callers must distinguish a numeric authored value/unit and flag it when the parse derives nothing.",
+   "tool_severity": null
+  },
+  {
+   "file": "tests/parity_annotations.rs",
+   "start": 444,
+   "end": 452,
+   "title": "Test Isolation",
+   "text": "`fill_accepts_the_corpus_that_only_annotates` runs `canon --fill` with the checkout as cwd, so the test fills the repository's real `claims/*.yml`. Unlike the other tests, which use a temp `Fixture`, this writes tracked files during `cargo test`: a developer's in-progress unfilled claim can be modified, and in the same test binary `the_corpus_has_zero_flags_and_sixteen_annotations` and `the_parity_change_moves_no_address` read the corpus concurrently, so a truncate-then-write can make them observe a partial YAML and fail with `[UNVERIFIABLE]`. I am not certain whether `--fill` skips files whose derived fields already match; if it does not, this is flaky and mutates the working tree. Run the accepting case against a `Fixture` corpus instead.",
+   "tool_severity": null
+  }
+ ]
+}

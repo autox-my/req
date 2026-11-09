@@ -1,0 +1,36 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "<removed forgejo workflow>",
+   "start": null,
+   "end": null,
+   "title": "Avoid shell injection from dispatch inputs",
+   "text": "`${{ inputs.* }}` values are substituted into the `run:` script before the shell parses it, so a dispatched value containing `$(...)`, backticks or quotes executes on the runner that holds `OCR_LLM_TOKEN`. Instead, expose the inputs (including `exclude`) through the step's `env:` block and reference them as quoted `$INPUT_*` variables. Apply the same pattern in the `MEASURE` echo and the `--exclude` argument.",
+   "existing_code": "extra=\"\"\nif [ \"${{ inputs.max_tools }}\" != \"0\" ]; then extra=\"$extra --max-tools ${{ inputs.max_tools }}\"; fi\nif [ \"${{ inputs.no_filter }}\" = \"true\" ]; then extra=\"$extra --no-filter\"; fi\n# shellcheck disable=SC2086\nocr review \\\n  --from \"${{ inputs.from_ref }}\" \\\n  --to \"${{ inputs.to_sha }}\" \\",
+   "tool_severity": null,
+   "tool_score": 8
+  },
+  {
+   "file": "<removed forgejo workflow>",
+   "start": null,
+   "end": null,
+   "title": "Guard measurement parsing against malformed results",
+   "text": "The step runs under `set -e`, so if `ocr-result.json` exists but is truncated or malformed (exactly the failed attempt this workflow is meant to record), either `python3` call aborts the step and the `MEASURE` line is never printed. Fall back to an explicit `unreadable` marker instead of letting the parse kill the measurement.",
+   "existing_code": "if [ -f ocr-result.json ]; then\n  tokens=$(python3 -c \"import json;print(json.load(open('ocr-result.json')).get('total_tokens',0))\")\n  findings=$(python3 -c \"import json,collections;d=json.load(open('ocr-result.json'));c=collections.Counter(str(x.get('severity','')).strip().lower() for x in (d.get('comments') or []));print('/'.join(str(c.get(s,0)) for s in ('critical','high','medium','low')))\")\nelse\n  tokens=none\n  findings=none\nfi",
+   "tool_severity": null,
+   "tool_score": 7
+  },
+  {
+   "file": "<removed forgejo workflow>",
+   "start": null,
+   "end": null,
+   "title": "Avoid fabricated elapsed time when unattempted",
+   "text": "When the attempt step dies before writing `/tmp/measure.elapsed`, this prints `elapsed_s=0`, which reads as an instant review rather than no measurement and would enter the comparison table as a duration. Report the same `no-attempt` sentinel used by `rc` so the line never claims a time that was not measured.",
+   "existing_code": "rc=$(cat /tmp/measure.rc 2>/dev/null || echo \"no-attempt\")\nelapsed=$(cat /tmp/measure.elapsed 2>/dev/null || echo \"0\")",
+   "tool_severity": null,
+   "tool_score": 6
+  }
+ ]
+}

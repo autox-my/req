@@ -1,0 +1,26 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/init.rs",
+   "start": null,
+   "end": null,
+   "title": "Guard the generated variants loop",
+   "text": "The new `gated` counter makes the loop responsible for deciding whether the default gate runs, but the reader silently drops a final variant line with no trailing newline (the hazard `scripts/check.sh` already documents) and treats a whitespace-only line as a variant whose unquoted expansion becomes a bare `req gate`. Either case can leave a declared release ungated, or add a bare gate row that is UNVERIFIABLE on any corpus carrying a selector (ADR 0015). Guard the read with `|| [ -n \"$line\" ]` and skip whitespace-only lines; the same snippet is copied in `docs/adopting.md` and needs the same fix.",
+   "existing_code": "while IFS= read -r line; do\n  variant=\"${line%%#*}\"\n  [ -n \"$variant\" ] || continue",
+   "tool_severity": null,
+   "tool_score": 6
+  },
+  {
+   "file": "tests/release_gate.rs",
+   "start": null,
+   "end": null,
+   "title": "Pin selector confirmation in the test",
+   "text": "Changing the expected code from `0` to `3` removed the only assertion that proved `selectors_confirmed` was `PASS`, so this test no longer pins the \"the entry itself stays confirmed\" half of its own name. The other `_is_confirmed` tests in this file add the explicit policy assertion; add it here too, otherwise a regression in `Ge`-by-comparison confirmation would still satisfy a 3 exit code.",
+   "existing_code": "let out = dogfood(&[\"runs=abc\"]);\nassert_eq!(out.code, 3, \"{}\", out.text);\nassert!(\n    out.headline().contains(\"15 applying claim(s), 6 undecided\"),\n    \"{}\",\n    out.headline()\n);",
+   "tool_severity": null,
+   "tool_score": 6
+  }
+ ]
+}

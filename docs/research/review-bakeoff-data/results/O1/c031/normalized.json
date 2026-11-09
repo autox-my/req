@@ -1,0 +1,14 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/release_gate.rs",
+   "start": 768,
+   "end": 772,
+   "title": "test",
+   "text": "This assertion cannot fail: the gate's headline is always `# Release gate: {applying} applying claim(s), {undecided} undecided (an undecided claim is never treated as absent)` (`src/gate.rs`), so `contains(\"undecided\")` is true even for `0 undecided` \u2014 the very case this negative-direction test exists to reject. Pin the mechanism the doc describes instead: the `dependencies_decided` policy refusing (REQ-0009 -> REQ-0008 undecided), or the measured count `16 applying claim(s), 5 undecided`.",
+   "tool_severity": "medium"
+  }
+ ]
+}

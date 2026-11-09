@@ -1,0 +1,29 @@
+{
+ "case": "c095",
+ "reviewed_state": "0812fe0356a5d1f93346050d70eb04254cb1d783",
+ "diff_range": "373d2b9afe980bbd1a343b535492d433c9aec6c0..0812fe0356a5d1f93346050d70eb04254cb1d783",
+ "ground_truth": [],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "src/canon.rs",
+   "text": "`i64::pow` inherits overflow checks, so a large `power` panics under the debug/`nextest` gate but wraps silently in a release build \u2014 two different scaling factors on a canonicalization path, i.e. an address that depends on the profile. Use `checked_pow` so overflow fails identically everywhere (or reject the exponent where it is parsed) rather than producing a wrapped factor in release.",
+   "title": "Make exponent overflow deterministic",
+   "code": "} else if power > 0 {\n    d.checked_mul(Decimal::new(10i64.pow(power.unsigned_abs()), 0))\n        .unwrap_or(d)\n} else {\n    d.checked_div(Decimal::new(10i64.pow(power.unsigned_abs()), 0))\n        .unwrap_or(d)\n}"
+  },
+  {
+   "id": "F02",
+   "file": "src/canon.rs",
+   "text": "The doc comment promises that \"a caller that cannot load it reports UNVERIFIABLE\", but this `expect` panics on a non-UTF-8 `root` instead of returning `Err`, so `canon` can never surface that degradation. Since the function already returns `Result<Registry, String>`, try the conversion and return the error with the offending path so the caller's UNVERIFIABLE path is reached.",
+   "title": "Return an error instead of panicking",
+   "code": "pub fn load_registry(root: &std::path::Path) -> Result<Registry, String> {\n    Registry::load(\n        root.join(\"aliases/subjects.yml\")\n            .to_str()\n            .expect(\"a registry path under the corpus root is valid UTF-8\"),\n    )\n    .map_err(|e| format!(\"registry load failed: {e}\"))\n}"
+  },
+  {
+   "id": "F03",
+   "file": "src/bench.rs",
+   "text": "This `expect` aborts with exit 101 when the resolved root is not valid UTF-8, which breaks `bench`'s exit contract (0/1/3) and the three-state rule that an unreadable corpus is reported as UNVERIFIABLE, never folded into a panic. Convert the path first and fall into the same `[UNVERIFIABLE]`/`return 3` branch already used for a load failure; the registry `to_str().expect(...)` just below has the same problem.",
+   "title": "Report unreadable corpus path as UNVERIFIABLE",
+   "code": "let corpus = match Corpus::load(\n    path.to_str()\n        .expect(\"a corpus path under the repository root is valid UTF-8\"),\n) {"
+  }
+ ]
+}

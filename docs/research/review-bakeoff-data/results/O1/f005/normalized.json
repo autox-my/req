@@ -1,0 +1,54 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/loader.rs",
+   "start": 114,
+   "end": 115,
+   "title": "test",
+   "text": "The `relations` rule has a dropped-key test, but the analogous load-bearing rule for `applicability` is never tested as *omitted*. The typo test replaces `applicability:` with `applicabilty:`, which `deny_unknown_fields` rejects regardless of whether `applicability` still carries `#[serde(default)]` \u2014 so if the default were reintroduced (the exact F2 regression this change prevents), the whole suite would still pass. Add a test that drops the `applicability: []` line entirely and asserts the parse fails naming `applicability`, mirroring the relations case (mutation-check it by restoring `#[serde(default)]`).",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/loader.rs",
+   "start": 207,
+   "end": 207,
+   "title": "maintainability",
+   "text": "Hardcoding `21` couples the test to the current corpus size: any legitimate new claim file turns ordinary growth into a red test, while the assertion adds little over \"the corpus loads\" (`load_claims` errors rather than dropping files). Derive the expectation from the filesystem instead so it still catches a silently-skipped file but survives additions \u2014 e.g. count the `claims/*.yml` files and compare against the returned claim count.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/claim_slots.rs",
+   "start": 40,
+   "end": 45,
+   "title": "maintainability",
+   "text": "`String::replace` silently no-ops if `CLAIM` is ever reformatted, returning an identical variant: the failure then surfaces as the opaque `assert_ne!` in `authored_applicability_is_part_of_identity` rather than as a clear fixture error. Guard that the pattern is present so a refactor of `CLAIM` fails loudly at the helper.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "tests/loader.rs",
+   "start": 164,
+   "end": 166,
+   "title": "test",
+   "text": "The sibling F3 tests (`a_lowercase_claim_file_...`, `a_yaml_extension_...`) also assert `run_claim_diagnostics_at(...) == 3`, but the stem-mismatch and the duplicate-id tests stop at `load_claims`. Since the requirement is that every unreadable-as-a-claim corpus is UNVERIFIABLE (not a pass), add the same exit-3 assertion here and in `duplicate_claim_ids_error_and_the_content_is_compared` to keep the three outcomes covered consistently.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "src/canon.rs",
+   "start": 1323,
+   "end": 1332,
+   "title": "bug",
+   "text": "The non-UTF-8 check fires for every `read_dir` entry before the `looks_like_claim_file` filter. A non-claim file with a non-UTF-8 name (legal on Linux/macOS, e.g. a Latin-1 filename extracted into `claims/`) therefore aborts the whole corpus: `canon`, `fill`, `verify`, `select` and `view` all exit 3 even though the file is not a `.yml`/`.yaml` and is supposed to be left alone. Check the extension on the `OsStr` (or use `to_string_lossy`, which preserves ASCII extensions) first, and only require UTF-8 for actual claim candidates.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "src/canon.rs",
+   "start": 1333,
+   "end": 1334,
+   "title": "bug",
+   "text": "This check (and the UTF-8 check above) runs while iterating `read_dir`, whose order is platform/filesystem-dependent; `paths.sort()` happens only afterwards. With more than one invalid entry, which one is reported depends on iteration order, so the same broken corpus can print different `[UNVERIFIABLE]` messages run to run. Collect candidate entries, sort them, then validate/report so the diagnosis is reproducible. Note also that `is_file()` folds any metadata I/O error into `false`, so a permission/stat failure is reported as \"must be a regular file\" rather than the real cause.",
+   "tool_severity": "low"
+  }
+ ]
+}

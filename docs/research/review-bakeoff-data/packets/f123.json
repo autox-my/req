@@ -1,0 +1,109 @@
+{
+ "case": "f123",
+ "reviewed_state": "365f6ba0fd5b6dd61c3f84778ecf13b4c32050b5",
+ "diff_range": "18f364f8c6a239efefd29cb3cebe3dd5f286f3e7..365f6ba0fd5b6dd61c3f84778ecf13b4c32050b5",
+ "ground_truth": [
+  {
+   "id": "G1",
+   "file": "examples/github-workflows/req-diff.yml",
+   "text": "The summary step runs under set -u and appends to $GITHUB_STEP_SUMMARY with no fallback. On a runner that sets only <FORGE>_STEP_SUMMARY the variable is unbound, so a passing 'req diff' turns the step red.",
+   "kind": "code-bug"
+  },
+  {
+   "id": "G2",
+   "file": "examples/github-workflows/req-diff.yml",
+   "text": "github.base_ref is interpolated directly into the run script (req diff --base \"origin/${{ github.base_ref }}\"), so a branch name containing $(cmd), backticks or ';' is command-substituted by the shell. It should arrive through env:.",
+   "kind": "security"
+  },
+  {
+   "id": "G3",
+   "file": "tests/diff_template.rs",
+   "text": "The test for the job summary checks only the ordering of the write and the exit, not that the summary block holds the captured report and the exit status, so a template that drops the report from the summary would pass.",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G4",
+   "file": "tests/diff_template.rs",
+   "text": "No test pins the workflow's token scope: nothing asserts permissions contents: read or the absence of any write scope for a job that runs on every pull request.",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G5",
+   "file": "docs/adopting.md",
+   "text": "Neither the template nor docs/adopting.md says that a pull request from a fork has no repository secrets, so the install step refuses and the req-diff check is red on it; this behaviour is deliberate (trigger is pull_request, not pull_request_target) but undocumented.",
+   "kind": "docs-contradiction"
+  }
+ ],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "tests/diff_template.rs",
+   "text": "This prefix requires `jobs:` to immediately follow `on: pull_request:`, so it also rejects anything that does not affect the property under test \u2014 e.g. a top-level `permissions: { contents: read }` block (the recommended least-privilege placement, currently job-scoped in the workflow) or a `pull_request:` filter (`types:`/`paths:`/`branches:`). A security improvement or an ordinary PR filter would therefore turn this test red even though the trigger is still `pull_request` only. Consider asserting the `on:` block structurally (contains only `pull_request`, unknown triggers rejected) instead of a fixed textual prefix. Not a current failure: the workflow's `permissions:` is job-level, so this passes today.",
+   "title": "maintainability",
+   "lines": [
+    155,
+    155
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "tests/diff_template.rs",
+   "text": "The test validates only the first `actions/checkout` step, so a second checkout added later without `fetch-depth: 0` would silently pass even though it would make the base revision unavailable. Iterate over every checkout occurrence and apply the same assertions to each.",
+   "title": "Validate every checkout step, not just the first",
+   "code": "let lines = code_lines(&text);\nlet at = lines\n    .iter()\n    .position(|line| line.trim() == \"- uses: actions/checkout@v4\")\n    .expect(\"the workflow checks the repository out with actions/checkout@v4\");\nlet next = &lines[at + 1..];\nassert_eq!(\n    next.first().map(|line| line.trim()),\n    Some(\"with:\"),\n    \"the checkout step carries a `with:` block\"\n);\nassert_eq!(\n    next.get(1).map(|line| line.trim()),\n    Some(\"fetch-depth: 0\"),\n    \"the checkout is `fetch-depth: 0` (the base revision must be in the checkout)\"\n);"
+  },
+  {
+   "id": "F03",
+   "file": "examples/github-workflows/req-diff.yml",
+   "text": "This pair of sentences reads as contradictory for an adopter: `weakened` is put in the `--fail-on` set (so `req diff` exits 1 and, with a required check, blocks the merge), yet the next sentence says it is \"not a rejection by req\". The docs (`docs/adopting.md`) resolve this with the missing nuance -- loosening is sometimes right, and the point is that it is read on purpose. State that here, or adopters cannot tell whether `weakened` is advisory or blocking in the workflow they just copied.",
+   "title": "documentation",
+   "lines": [
+    8,
+    9
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "examples/github-workflows/req-diff.yml",
+   "text": "The workflow triggers on `pull_request`, but its install step requires\n`secrets.REQ_RELEASE_TOKEN`. GitHub does not pass secrets (other than `GITHUB_TOKEN`)\nto a workflow triggered by a pull request from a fork, so the install exits with\n\"REQ_RELEASE_TOKEN is not set\" and the `req-diff` check is red for every external\ncontributor. The adopter section presents `--fail-on` as the merge gate, so a team that\nmarks this check required can never merge a fork PR. This may be the intended\ntrade-off, but neither the workflow header nor the new `## On a pull request` section\nmentions it; document the limitation (and how to handle it) so adopters are not surprised.",
+   "title": "Fork PR failure",
+   "lines": [
+    15,
+    36
+   ]
+  },
+  {
+   "id": "F05",
+   "file": "examples/github-workflows/req-diff.yml",
+   "text": "The captured report file is created per run but never removed, so on a self-hosted runner each invocation leaks a temp file (the install step already cleans up its staging directory). Add an `EXIT` trap right after `mktemp` to remove it; the trailing `exit \"$code\"` still fires the trap and preserves the step's status.",
+   "title": "Clean up the captured report temp file",
+   "code": "set -u\nout=$(mktemp)"
+  },
+  {
+   "id": "F06",
+   "file": "examples/github-workflows/req-diff.yml",
+   "text": "The step runs under `set -u` and appends with `>> \"$GITHUB_STEP_SUMMARY\"` without a\ndefault. GitHub always sets that variable, but the file advertises itself as copyable to\n`<removed forgejo workflow>`, and on a runner that does not set\n`GITHUB_STEP_SUMMARY` (some Forgejo/act_runner versions, or a local `act`) the\nunbound-variable error aborts the shell after `req diff` has already run, so a passing\ndiff (exit 0) still fails the step. Using `>> \"${GITHUB_STEP_SUMMARY:-/dev/null}\"` would\nkeep a missing summary from turning the check red (the pin test still matches the name).\nI could not confirm whether current Forgejo/act_runner sets the variable, so treat this\nas a robustness concern.",
+   "title": "Summary var unset",
+   "lines": [
+    180,
+    194
+   ]
+  },
+  {
+   "id": "F07",
+   "file": "tests/diff_template.rs",
+   "text": "The section is pinned for many prose claims but not for the exit-code contract that the whole workflow rests on: 0 = report produced, 1 = a `--fail-on` class/flag triggered, 3 = UNVERIFIABLE, 2 = usage error. Since the reason `fetch-depth: 0` matters is precisely that a shallow clone yields exit 3 (UNVERIFIABLE) rather than an empty report, a doc edit that drops that distinction (while keeping the `fetch-depth: 0` phrase) would still pass this test. Add a needle for the exit semantics \u2014 e.g. the `UNVERIFIABLE` wording / \u201ccannot be produced\u201d \u2014 so the doc keeps the three outcomes distinct.",
+   "title": "test",
+   "lines": [
+    506,
+    509
+   ]
+  }
+ ],
+ "known_false": [
+  {
+   "text": "The OCR note that the workflow tests' pins are stricter than a hardening edit would allow.",
+   "why_refuted": "Left as is: they are pins, strict by design."
+  }
+ ]
+}

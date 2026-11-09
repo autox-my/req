@@ -1,0 +1,56 @@
+{
+ "case": "f065-a8fc",
+ "findings": [
+  {
+   "id": "F01",
+   "verdict": "real",
+   "gt": [
+    "G1"
+   ],
+   "cluster": "c1",
+   "note": "release.yml api() is now curl --proto \"$proto\" with no --tlsv1.2 (diff line ~261); the http token exposure is documented in the comment, but the lost TLS floor on https is an undocumented weakening."
+  },
+  {
+   "id": "F02",
+   "verdict": "noise",
+   "gt": [],
+   "cluster": "c2",
+   "note": "tests/release_workflow.rs code() removes whole-line comments before forbid/require run, so the host in the YAML comment cannot trip the pin."
+  },
+  {
+   "id": "F03",
+   "verdict": "real",
+   "gt": [
+    "G1"
+   ],
+   "cluster": "c1",
+   "note": "Verified: --tlsv1.2 was removed along with the fixed '=https', while examples/install-req.sh keeps it."
+  },
+  {
+   "id": "F04",
+   "verdict": "noise",
+   "gt": [],
+   "cluster": "c2",
+   "note": "Same misreading as F02: code() filters lines starting with '#', and the host appears only in a comment line."
+  },
+  {
+   "id": "F05",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c3",
+   "note": "True that nothing pins REQ_CURL_PROTO in <removed workflow> (tests/release_workflow.rs ~494-507), and the needle is a verbatim literal; this is a test-strength gap."
+  },
+  {
+   "id": "F06",
+   "verdict": "real",
+   "gt": [
+    "G1"
+   ],
+   "cluster": "c1",
+   "note": "Same defect as F03: the --tlsv1.2 floor on token-bearing requests was dropped."
+  }
+ ],
+ "missed_gt": [
+  "G2"
+ ]
+}

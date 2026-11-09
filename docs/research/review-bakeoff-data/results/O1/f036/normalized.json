@@ -1,0 +1,46 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/parity_annotations.rs",
+   "start": 445,
+   "end": 445,
+   "title": "test",
+   "text": "This runs the mutating writer (`run_fill`) against the checkout itself. `run_fill` rewrites any claim whose `fill_text` output differs from disk (stale `rules_v`, drifted `subject_registry`, an edited statement), so this test can silently modify the repo's real `claims/*.yml` and races with the read-only corpus tests above that read the same files. Nothing here (`code == 0`, `refused 0`) proves no write happened \u2014 even a `filled N` line would still exit 0. Make it hermetic by filling a `Fixture` that carries the qualitative claim (annotations must not block a fill); the fixture is also what the other two fill tests already use.",
+   "tool_severity": "high"
+  },
+  {
+   "file": "tests/parity_annotations.rs",
+   "start": 158,
+   "end": 158,
+   "title": "test",
+   "text": "The rule is only exercised on the `value` slot for the omission direction. No test drives `unit_check` to `Contradiction`/`Omission` (e.g. parse derives `s`, author wrote `ms`), and none drives `op_check` to `Omission` (a measurable statement with `operator: null`). A regression that made `unit_derived`/`classify_slot` return `Ok` for the unit slot would leave every assertion in this file green, because no test expects the unit slot to flag. Add the unit-contradiction and operator-omission cases so both directions of every slot are covered.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/parity_annotations.rs",
+   "start": 328,
+   "end": 328,
+   "title": "test",
+   "text": "`contains(\"ann\")` can be satisfied by any occurrence of that substring in the row and does not pin the column. Assert the exact cells instead so the test fails if the annotation moves to another column or only one of the two annotated slots is rendered.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "src/canon.rs",
+   "start": 1380,
+   "end": 1381,
+   "title": "bug",
+   "text": "An authored *numeric* value/unit that the parse does not derive is classified as `Annotation`, not a flag. `value_derived`/`unit_derived` are false whenever the parse produced nothing, and `classify_slot(false, true, ..)` always yields `Annotation`; the `!qualitative` guard does not help here because a numeric authored value makes `qualitative` false by construction (`is_qualitative_convention` requires `!authored_is_numeric`).\n\nConcrete failure: a structured claim with no quantity in its statement (e.g. `The API shall log every request.`) but `operator: LE`, `value: \"0.2\"`, `unit: s`. The parser derives none of the three slots, so all become annotations: `flags()` is 0, `req canon` prints `discrepancy flags: 0`, and `req canon --fill` writes an address over a lost quantity. Before this change the same claim was flagged (`value_unit_ok`/`op_ok` fired for a numeric authored value), and the `SlotCheck::Annotation` doc itself defines the class as \"a qualitative statement\" \u2014 a number is not qualitative. ADR 0014's Decision (still governing numeric slots) says an authored slot the parse did not derive is a flag. Keep the `!qualitative` guard for the qualitative convention, but a numeric authored value the statement does not support must remain a contradiction.",
+   "tool_severity": "high"
+  },
+  {
+   "file": "src/canon.rs",
+   "start": 1756,
+   "end": 1761,
+   "title": "bug",
+   "text": "When both `value_check` and `unit_check` are `Annotation`, the first branch returns only `ann value \u2026`, so the unit annotation is dropped from the per-claim row; the summary counts *claims* (`has_annotation`), not slots, so that unit annotation is invisible everywhere. Example: `value: claim`, `unit: s`, `operator: EQ` on a qualitative statement makes `qualitative == false` (unit is not `none`), yielding `Annotation` for both value and unit, yet the row never mentions `s`. ADR 0014 requires an annotation to be \"reported and counted, never silent\" in the per-claim cell; render both states instead of returning at the first one.",
+   "tool_severity": "low"
+  }
+ ]
+}

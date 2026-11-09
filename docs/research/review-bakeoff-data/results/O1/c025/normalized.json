@@ -1,0 +1,30 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/decision.rs",
+   "start": 1162,
+   "end": 1167,
+   "title": "test",
+   "text": "The stated security property \u2014 \"the full gate must not honour REQ_GATE_BIN\" \u2014 is not actually pinned here, and the later `!line.contains(\"REQ_GATE_BIN\")` assertion cannot fail either. A planned line is `$*` of the command, and the override is passed via the environment, so the variable *name* never appears in it. If `verify_decision`'s guard were relaxed to honour the override on every step (drop `[ \"$step\" = decision ]`), the plan would print `PLAN /abs/path/req decision --verify`; this `contains(\"decision --verify\")` assertion and the `!contains(\"REQ_GATE_BIN\")` one would both still pass. Assert the cargo form of the decision call instead (and drop the vacuous check).",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/decision.rs",
+   "start": 1021,
+   "end": 1021,
+   "title": "maintainability",
+   "text": "`workspace_toolchain_home` is copied verbatim from `tests/baseline.rs:1045`, and `check_sh_env` above is the same harness extended with an extra env slice. Both encode `scripts/check.sh`'s toolchain/home resolution and must now be kept in step in two places \u2014 the exact drift `tests/common/mod.rs` exists to prevent (\"three copies of the same fixture would drift apart\"). Consider moving the gate harness (and the toolchain-home lookup) into `tests/common/mod.rs` and having both targets use it.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "build.rs",
+   "start": 95,
+   "end": 95,
+   "title": "test",
+   "text": "This `None => Cleanliness::Unestablished` arm is the load-bearing rule the round-1 defect violated: a probe that answered nothing was reported as clean. But this classification still lives in the build script, which `cargo test` cannot compile as a test. The new unit tests in `src/build_identity.rs` only feed `identity()` an already-constructed `Cleanliness`, and `tests/cli_version.rs` accepts *both* a bare SHA and `unknown`, so a mutation of this arm to `Cleanliness::Clean` (or `Dirty`) would pass the entire suite \u2014 the regression is not pinned. To actually cover the failure direction, move the classification into the testable module, e.g. `fn decide(commit: Option<&str>, status: Option<&str>) -> String` taking the raw `git status` stdout, and test `decide(Some(\"abc1234\"), None)` \u2192 `-cleanliness-unknown`, `decide(Some(\"abc1234\"), Some(\"\"))` \u2192 bare, `decide(Some(\"abc1234\"), Some(\" M f\"))` \u2192 `-dirty`, `decide(None, _)` \u2192 `unknown`.",
+   "tool_severity": "medium"
+  }
+ ]
+}

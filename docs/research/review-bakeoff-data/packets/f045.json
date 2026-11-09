@@ -1,0 +1,107 @@
+{
+ "case": "f045",
+ "reviewed_state": "a623e97b162ffa604e764a463c28ff0cdc7deb17",
+ "diff_range": "e769ce4a1820428be76cf22cc1ffac0da6e4f0a4..a623e97b162ffa604e764a463c28ff0cdc7deb17",
+ "ground_truth": [
+  {
+   "id": "G1",
+   "file": "tests/cli_version.rs",
+   "text": "The usage_verbs scrape treats every indented line of the USAGE text as a verb row, so a wrapped description line (indented, no double space) would have its first lowercase words read as verbs, making the oracle for 'every verb in USAGE has a help page' unreliable.",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G2",
+   "file": "tests/cli_version.rs",
+   "text": "ALL_COMMANDS is a hand-maintained list checked against USAGE in one direction only (each known command appears in the scrape). A verb added to the table and USAGE but forgotten in ALL_COMMANDS would escape the per-page loops (exit line, -h parity, usage-line shape).",
+   "kind": "test-gap"
+  },
+  {
+   "id": "G3",
+   "file": "tests/cli_version.rs",
+   "text": "Some help-page first-line checks use a bare starts_with(\"usage: req {command}\") without a whitespace boundary, unlike its twin check, so 'render' would be satisfied by 'usage: req rendering ...'.",
+   "kind": "test-gap"
+  }
+ ],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "tests/cli_version.rs",
+   "text": "This parser is tightly coupled to the current two-space column gap and treats *any* all-lowercase token as a verb until the first non-verb. If the layout ever separates a verb from a description with a single space, description words like `the`/`create` become scraped \"verbs\" and `help_page` fails with an unrelated `unrecognized subcommand` error; conversely a verb line written differently (non-`  ` indent) is silently skipped. Since the scrape is the independent oracle for the verb set, make the contract explicit (require the two-space separator to delimit the column, and assert the scraped count matches the expected set) rather than relying on the heuristic.",
+   "title": "test",
+   "lines": [
+    362,
+    362
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "tests/cli_version.rs",
+   "text": "This test is subsumed by `every_page_starts_with_usage_its_own_name`: both use `NoCorpus` and `help_page`, and its prefix check is the weaker form (`\"usage: req audit\"` matches `\"usage: req auditor\"`), which the other test already tightens with a whitespace boundary. Its doc also claims the check is \"still caught when the corpus exists\", but the fixture here has no corpus, so that stated independence does not hold. Either drop this loop or narrow it to what it uniquely covers (exit 0 / no root line) without duplicating the prefix assertion.",
+   "title": "maintainability",
+   "lines": [
+    383,
+    383
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "tests/cli_version.rs",
+   "text": "The new loop checks `page.contains(\"undecided\")` for both `render` and `trace`, but the failure message still says \"{command}'s page says an undecided claim is shown in its own section\". This PR's own correction states that `trace` has no undecided section (only `render` does), so that message is false for `trace`; the assertion passes only because `TRACE_HELP` happens to contain the word \"undecided\" in its edge-naming sentence. The check therefore no longer verifies what its message claims, and it would fail if the trace page is later reworded correctly (e.g., \"one the variant excludes\"). Split the assertion and message so render is checked for its own section and trace for its edge-naming rule.",
+   "title": "Stale Message",
+   "lines": [
+    486,
+    490
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "src/main.rs",
+   "text": "This early exit lets `req init --root <dir> --help` (or `req --root <dir> init --help`) answer 0 and silently ignore `cli_root`, despite the documented rule that `--root` on `init` is a usage error (exit 2). Guard the help answer on `cli_root.is_none()` so `init::run` still reports the usage error.",
+   "title": "Keep init root usage error",
+   "code": "\"init\" => {\n    rest.remove(0);\n    if help_requested(&rest) {\n        println!(\"{}\", INIT_HELP);\n        exit(0);\n    }\n    exit(init::run(&rest, cli_root.as_deref()));\n}"
+  },
+  {
+   "id": "F05",
+   "file": "src/main.rs",
+   "text": "`CANON_HELP` describes the default `canon` mode as \"0 diagnostics reported\" and attributes \"a claim file this build does not write\" only to `--verify`. Per `AGENTS.md` \u00a7Commands, the plain `canon` command also exits 3 when a claim's declared `schema:` is not `CLAIM_SCHEMA_V` (the loader calls `claim_schema_reason`), so a user reading `canon --help` will not learn that the default mode can exit 3 on a schema mismatch. State the schema condition in the default-mode exit contract (or make clear it applies to all modes), matching the reference this page points to.",
+   "title": "Missing Exit",
+   "lines": [
+    148,
+    152
+   ]
+  },
+  {
+   "id": "F06",
+   "file": "src/main.rs",
+   "text": "Scanning every argument makes a value like `--help` or `-h` (for `--provider-cmd`, `--baseline`, `compare`, etc.) be treated as a help request, so the command silently exits 0 instead of running. The documented form is `<command> --help`, so only the first argument should be recognized.",
+   "title": "Only accept leading help flags",
+   "code": "fn help_requested(args: &[String]) -> bool {\n    args.iter().any(|arg| arg == \"--help\" || arg == \"-h\")\n}"
+  },
+  {
+   "id": "F07",
+   "file": "tests/cli_version.rs",
+   "text": "Coverage gap tied to the implementation's `help_requested(args) = args.iter().any(...)`: every new test passes `--help`/`-h` as the *only* argument (or in the second position). A dispatch that only honored help when it is the first/sole token would satisfy all of them while breaking documented behaviour. In particular, add cases where help must win over a mutating flag and must not execute the command \u2014 e.g. `req canon --fill --help` and `req decision --fill --help` (assert exit 0, the page, and that no derived fields were written), plus `req init --root <dir> --help` (help, not the `--root` usage error) \u2014 so the \"asking for help never runs the command\" property is pinned for more than `init`.",
+   "title": "test",
+   "lines": [
+    334,
+    334
+   ]
+  },
+  {
+   "id": "F08",
+   "file": "tests/cli_version.rs",
+   "text": "The non-vacuity guard is circular: `verbs.len() >= ALL_COMMANDS.len()` is satisfied by `0 >= 0`, so emptying `ALL_COMMANDS` lets this test (and every `ALL_COMMANDS`-driven loop: the short-help loop, the usage-line loop, the exit-line loop) run zero iterations and pass. That is exactly the failure mode `ALL_COMMANDS`'s own doc comment claims to prevent. Anchor the guard on a literal lower bound (e.g. `verbs.len() >= 13`) or at minimum require `!ALL_COMMANDS.is_empty()`; the scrape itself already catches a broken verb column as long as `ALL_COMMANDS` is non-empty.",
+   "title": "test",
+   "lines": [
+    515,
+    516
+   ]
+  }
+ ],
+ "known_false": [
+  {
+   "text": "`req baseline --verify -h` printing the help page instead of a usage error is a defect.",
+   "why_refuted": "The spec (R2) requires any argument equal to --help or -h to print the page, so this is the specified behaviour."
+  }
+ ]
+}

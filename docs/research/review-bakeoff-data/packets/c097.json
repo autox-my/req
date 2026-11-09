@@ -1,0 +1,72 @@
+{
+ "case": "c097",
+ "reviewed_state": "2ae7dc8c3de3a2c77d1f3a53cb7705cb18c617f0",
+ "diff_range": "7c8c0a9761885240cec7af5517ae8e84c298b467..2ae7dc8c3de3a2c77d1f3a53cb7705cb18c617f0",
+ "ground_truth": [],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "tools/migrate_claims.py",
+   "text": "Scratch setup (`copytree`, `makedirs`, and the `open` inside `put`) can raise `OSError` (permissions, disk full, `TemporaryDirectory` cleanup). `run` only catches `Refused`/`Unverifiable`, so those escape as a raw traceback rather than the documented clean refusal/UNVERIFIABLE that writes nothing. Wrap the scratch build (and `put`) in `try/except OSError` and raise `Unverifiable`.",
+   "title": "bug",
+   "lines": [
+    420,
+    423
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "tools/migrate_claims.py",
+   "text": "This folds a tri-state `pins_hold` result into a refusal: an `unverifiable` outcome becomes exit 1 (\"pins do not\nhold\") instead of exit 3, contradicting the tool's own three-state contract (`docs/claim-format.md`, AGENTS.md).\nSplit `fail` (Refused, exit 1) from any non-`pass`/non-`fail` outcome (Unverifiable, exit 3).",
+   "title": "Report unverifiable pins as exit 3",
+   "code": "if policy.get(\"outcome\") != \"pass\":\n    details = \"\\n\".join(f\"  {d}\" for d in policy.get(\"details\") or []) or \"  (no details)\"\n    raise Refused(f\"the migrated pins do not hold (`pins_hold` is {policy.get('outcome')!r}); \"\n                  f\"re-word the statement or fix the authored slot, never edit a pin to fit \"\n                  f\"the parse:\\n{details}\")"
+  },
+  {
+   "id": "F03",
+   "file": "tools/migrate_claims.py",
+   "text": "`run_req` runs an arbitrary `req` found on `PATH` with no `timeout`, and `capture_output=True` buffers unbounded output. A hung `canon`/`gate` (or a corpus large enough to stall the pipe) blocks the migration forever, with no way to tell it apart from a slow run. Pass a `timeout=` and translate `subprocess.TimeoutExpired` (and `UnicodeDecodeError` from `text=True`) into `Unverifiable`, so the tool still exits 3 with \"nothing written\".",
+   "title": "bug",
+   "lines": [
+    382,
+    383
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "tools/migrate_claims.py",
+   "text": "When `planned` is empty (e.g. an empty or already-processed `claims/`), this still demands `req` on `PATH` and\nruns `canon`/`gate` over an empty scratch corpus, so a true no-op can exit 3 or spuriously refuse. Guard the\nverification on `planned` and change the waiver `else` to an explicit `elif not verify:` so an empty verified run\ndoes not print \"NOT VERIFIED\".",
+   "title": "Skip verification for empty migration",
+   "code": "note = \"\"\nif verify:\n    binary = shutil.which(\"req\")\n    if binary is None:\n        print(\"UNVERIFIABLE: `req` is not on PATH, so this tool cannot prove that the \"\n              \"migrated files load and that their pins hold; nothing written. Put a `req` \"\n              \"build on PATH (docs/adopting.md), or pass --no-verify to migrate without the \"\n              \"proof (then run `req canon` and `req gate` yourself).\", file=sys.stderr)\n        return 3\n    try:\n        verify_output(binary, root or default_root(paths), planned)\n    except Refused as why:\n        print(f\"refused: {why}\\nnothing written\", file=sys.stderr)\n        return 1\n    except Unverifiable as why:\n        print(f\"UNVERIFIABLE: {why}; nothing written\", file=sys.stderr)\n        return 3\nelse:\n    note = \" \u2014 NOT VERIFIED (--no-verify: the output was not run through `req`)\"\n    print(\"NOT VERIFIED: --no-verify skipped the load check and the pins check\")"
+  },
+  {
+   "id": "F05",
+   "file": "tools/migrate_claims.py",
+   "text": "`pins_hold` is tri-state (PASS / FAIL / UNVERIFIABLE), but this branch folds every\nnon-`pass` outcome into a refusal: when the gate returns `unverifiable` (e.g. a degraded\nregistry, or a pin it cannot judge), the tool prints \"the migrated pins do not hold\n(`pins_hold` is 'unverifiable')\" and exits 1, instead of reporting UNVERIFIABLE and\nexiting 3 as the tool's own documented exit contract promises. The pins were not\nrefuted\u2014they could not be judged\u2014so an adopter is told their content contradicts its\nstatement when the environment merely cannot check it. The same conflation applies to a\nnon-zero `req canon`, which is wrapped as a refusal, so a garbled/incompatible `req` is\nreported as an invalid file rather than an unprovable one. What I could not verify from\nthe diff is whether `pins_hold` can actually return `unverifiable` while `req canon`\nexits 0; if it can, this branch should distinguish `fail` from `unverifiable` and map the\nlatter to exit 3.",
+   "title": "Tri-state conflation",
+   "lines": [
+    449,
+    453
+   ]
+  },
+  {
+   "id": "F06",
+   "file": "tests/migrate.rs",
+   "text": "This test can pass for the wrong reason. The migrator refuses with exit 1 not only when `pins_hold` flags the contradiction, but also via the `judged < expected` guard (\"only N of M migrated pin(s) were judged\") when `without_applicability` fails to make the claim apply. A regression in that stripping (the exact behavior this test is meant to pin) would still leave exit 1 and an unchanged snapshot, so the stated property (\"the contradiction is found despite the selector\") is not actually asserted. Pin the failure's identity the way test (b) does.",
+   "title": "test",
+   "lines": [
+    422,
+    423
+   ]
+  },
+  {
+   "id": "F07",
+   "file": "tests/migrate.rs",
+   "text": "Every \"nothing written\" proof (tests b, c, d, e) uses a single-file corpus, so the multi-file path is never exercised. The tool currently verifies all planned files in one scratch copy before writing any, which is what makes a refused mixed corpus leave `claims/` untouched; but a regression to per-file verify-and-write would still pass every existing test (the one good file is written, then the bad one aborts). Add a fixture with one valid and one contradicted claim and assert exit 1 plus a whole-directory unchanged snapshot \u2014 that is the case that distinguishes the two designs (and the duplicate-name refusal in `verify_output`).",
+   "title": "test",
+   "lines": [
+    93,
+    94
+   ]
+  }
+ ]
+}

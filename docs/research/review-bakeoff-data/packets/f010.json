@@ -1,0 +1,87 @@
+{
+ "case": "f010",
+ "reviewed_state": "1885a50a13c2c23bff2ac6fcfec71ff600e742c5",
+ "diff_range": "8b9de08a2eb89bd4653470013bd41ed46d655df4..1885a50a13c2c23bff2ac6fcfec71ff600e742c5",
+ "ground_truth": [
+  {
+   "id": "G1",
+   "file": "src/baseline.rs",
+   "text": "MinisignCli::verify returns early after creating its per-call staging directory (write failure, minisign not runnable, non-zero exit, parse failure) without removing it. The directory name is fresh on every call, so each failed verification orphans one temp directory.",
+   "kind": "robustness"
+  },
+  {
+   "id": "G2",
+   "file": "tests/baseline.rs",
+   "text": "The staging-directory mode test uses std::os::unix::fs::PermissionsExt unconditionally, so the test file does not compile on non-Unix targets while the source's mode setting is cfg(unix)-gated.",
+   "kind": "code-bug"
+  },
+  {
+   "id": "G3",
+   "file": "src/baseline.rs",
+   "text": "The Unverifiable message 'no temporary directory: {e}' misdescribes failures from staging_dir(), which also fails on exhausted AlreadyExists retries and permission errors, not only a missing temp dir.",
+   "kind": "docs-contradiction"
+  },
+  {
+   "id": "G4",
+   "file": "src/baseline.rs",
+   "text": "In create_staging_dir, 'let mut builder' is mutated only inside the cfg(unix) block, so a non-Unix build sees an unused-mut warning and fails under clippy -D warnings.",
+   "kind": "code-bug"
+  }
+ ],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "src/baseline.rs",
+   "text": "The retry loop is the load-bearing part of the fix's safety claim, yet nothing exercises it: `staging_dir` is private and derives names from a live clock, so a collision (or exhaustion) cannot be forced. A regression that reused the name per attempt, or that fell back to reuse on `AlreadyExists`, would pass every test. Make the loop injectable (e.g. `fn staging_dir_in(base: &Path, name_for: impl Fn(u32) -> String)`) so a test can pre-create names and assert a fresh attempt is used, plus that the bound terminates with an error.",
+   "title": "test",
+   "lines": [
+    372,
+    372
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "src/baseline.rs",
+   "text": "Each call now gets a *unique* staging path, but the early return below (`could not stage inputs`) still bypasses `remove_dir_all`. Under the old fixed `req-baseline-<pid>` name a leaked directory was reused by the next run; now every staging failure leaves a new `req-baseline-<pid>-<nanos>-<attempt>` directory holding `baseline.json`, the signature and `req.pub` in the temp dir forever. Use an RAII guard so every exit path (including future ones) removes the directory.",
+   "title": "bug",
+   "lines": [
+    392,
+    392
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "tests/baseline.rs",
+   "text": "This test uses `std::os::unix::fs::PermissionsExt`, but unlike every other Unix-only test in this file (see `#[cfg(unix)]` at lines 660, 712, 755, 823, 873, 908, 929, 952) it is not gated. On a non-Unix target the test crate fails to compile rather than reporting a behaviour difference, so the whole suite breaks. Gate it with `#[cfg(unix)]`.",
+   "title": "bug",
+   "lines": [
+    1087,
+    1088
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "tests/baseline.rs",
+   "text": "The security-relevant claim of the change is that a *pre-planted symlink* at the staging name is not followed (the `create_staging_dir` doc comment asserts it yields `AlreadyExists`), but the test only re-creates a real directory. A regression that made `create_staging_dir` tolerate symlinks (or a platform change in `DirBuilder::create`) would go undetected. Add the dangling/real symlink case behind `#[cfg(unix)]`.",
+   "title": "test",
+   "lines": [
+    1068,
+    1068
+   ]
+  },
+  {
+   "id": "F05",
+   "file": "src/baseline.rs",
+   "text": "The old name was reused per process, so at most one directory leaked; the new name is unique per call, so every `verify` now leaves a fresh 0700 directory (with the staged manifest and `req.pub`) behind in the temp dir, and an error path leaves one too. Return a guard that removes the directory on `Drop` so both the success and the failure paths clean up.",
+   "title": "Clean up staging directory after verification",
+   "code": "/// One staging directory for this verification, retrying on a name collision (a retry that a\n/// predictable name could not make safe, but a fresh name plus exclusive creation does).\nfn staging_dir() -> std::io::Result<PathBuf> {\n    let base = std::env::temp_dir();\n    let mut attempt = 0;\n    loop {\n        match create_staging_dir(&base, &staging_dir_name(attempt)) {\n            Ok(dir) => return Ok(dir),\n            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 16 => {\n                attempt += 1;\n            }\n            Err(e) => return Err(e),\n        }\n    }\n}"
+  },
+  {
+   "id": "F06",
+   "file": "tests/baseline.rs",
+   "text": "`create_staging_dir` applies mode 0700 only under `#[cfg(unix)]`, but this test uses `std::os::unix::fs::PermissionsExt` unconditionally, so the test target will not compile on non-unix platforms. Gate the test with `#[cfg(unix)]` to match the code it exercises.",
+   "title": "Gate owner-only test to unix",
+   "code": "/// F9: mode 0700, so another local user cannot read the staged manifest \u2014 or, worse, replace\n/// the files between staging and the verifier process reading them.\n#[test]\nfn the_staging_dir_is_owner_only() {\n    use std::os::unix::fs::PermissionsExt;"
+  }
+ ]
+}

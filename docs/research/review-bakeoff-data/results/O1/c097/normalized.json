@@ -1,0 +1,38 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/migrate.rs",
+   "start": 422,
+   "end": 423,
+   "title": "test",
+   "text": "This test can pass for the wrong reason. The migrator refuses with exit 1 not only when `pins_hold` flags the contradiction, but also via the `judged < expected` guard (\"only N of M migrated pin(s) were judged\") when `without_applicability` fails to make the claim apply. A regression in that stripping (the exact behavior this test is meant to pin) would still leave exit 1 and an unchanged snapshot, so the stated property (\"the contradiction is found despite the selector\") is not actually asserted. Pin the failure's identity the way test (b) does.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/migrate.rs",
+   "start": 93,
+   "end": 94,
+   "title": "test",
+   "text": "Every \"nothing written\" proof (tests b, c, d, e) uses a single-file corpus, so the multi-file path is never exercised. The tool currently verifies all planned files in one scratch copy before writing any, which is what makes a refused mixed corpus leave `claims/` untouched; but a regression to per-file verify-and-write would still pass every existing test (the one good file is written, then the bad one aborts). Add a fixture with one valid and one contradicted claim and assert exit 1 plus a whole-directory unchanged snapshot \u2014 that is the case that distinguishes the two designs (and the duplicate-name refusal in `verify_output`).",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tools/migrate_claims.py",
+   "start": 382,
+   "end": 383,
+   "title": "bug",
+   "text": "`run_req` runs an arbitrary `req` found on `PATH` with no `timeout`, and `capture_output=True` buffers unbounded output. A hung `canon`/`gate` (or a corpus large enough to stall the pipe) blocks the migration forever, with no way to tell it apart from a slow run. Pass a `timeout=` and translate `subprocess.TimeoutExpired` (and `UnicodeDecodeError` from `text=True`) into `Unverifiable`, so the tool still exits 3 with \"nothing written\".",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tools/migrate_claims.py",
+   "start": 420,
+   "end": 423,
+   "title": "bug",
+   "text": "Scratch setup (`copytree`, `makedirs`, and the `open` inside `put`) can raise `OSError` (permissions, disk full, `TemporaryDirectory` cleanup). `run` only catches `Refused`/`Unverifiable`, so those escape as a raw traceback rather than the documented clean refusal/UNVERIFIABLE that writes nothing. Wrap the scratch build (and `put`) in `try/except OSError` and raise `Unverifiable`.",
+   "tool_severity": "medium"
+  }
+ ]
+}

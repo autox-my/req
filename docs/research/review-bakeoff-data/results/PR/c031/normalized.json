@@ -1,0 +1,14 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "AGENTS.md",
+   "start": 149,
+   "end": 151,
+   "title": "Misleading gate guarantee",
+   "text": "The new sentence says `dependencies_decided` refuses (exit 3) whenever a declared line fails to decide \"every key an applying claim depends on\". That is not what the gate does: only `corpus_set` is dependency-guarded (REQ-0009/10/11 refine REQ-0008). Dropping `runs`, `set`, `deployment_mode`, or `field` from a line leaves the affected claim undecided while the gate still exits 0 \u2014 which is precisely why `tests/release_gate.rs::every_declared_release_is_gate_green` has to assert `, 0 undecided` explicitly. The `.req/variants` bullet a few lines below states the opposite (\"the gate will *not* tell you when one does not\"), so the two passages now contradict each other, and a developer could drop a key believing the gate would catch it.",
+   "tool_severity": null
+  }
+ ]
+}

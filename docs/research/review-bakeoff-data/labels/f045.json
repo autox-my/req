@@ -1,0 +1,12 @@
+{"case": "f045",
+ "findings": [
+  {"id": "F01", "verdict": "real", "gt": ["G1"], "cluster": "c1", "note": "usage_verbs (cli_version.rs:355-380) treats every lowercase token of any two-space-indented line as a verb until a non-verb token, so a description line laid out differently is scraped as verbs. Same unreliable-oracle defect as G1. Latent today: the wrapped line at main.rs:55 starts with a run of spaces, so it yields an empty column."},
+  {"id": "F02", "verdict": "real", "gt": ["G3"], "cluster": "c2", "note": "cli_version.rs:391 uses a bare starts_with(\"usage: req {command}\") while its twin at :442-444 requires a whitespace boundary, and the comment at :435-436 claims a with-corpus case that the NoCorpus fixture does not exercise."},
+  {"id": "F03", "verdict": "real", "gt": [], "cluster": "c3", "note": "cli_version.rs:486-490 asserts that trace's page 'says an undecided claim is shown in its own section', but TRACE_HELP has no such section (the reviewed commit a623e97 says exactly that). The check passes only because 'undecided' appears in the edge sentence."},
+  {"id": "F04", "verdict": "noise", "gt": [], "cluster": "c4", "note": "Help winning over other arguments is the specified behaviour (spec R2: any --help/-h argument prints the page), so init --root --help answering the page is correct."},
+  {"id": "F05", "verdict": "minor", "gt": [], "cluster": "c5", "note": "CANON_HELP (main.rs:241-251) lists the schema-mismatch exit 3 only under --verify, while AGENTS.md:133-139 says plain canon also exits 3 on it. The page is incomplete, but it says it is a map that points to AGENTS.md."},
+  {"id": "F06", "verdict": "noise", "gt": [], "cluster": "c4", "note": "help_requested scanning every argument (main.rs:106-108) is the behaviour spec R2 requires (the same point as the known-false item), not a defect."},
+  {"id": "F07", "verdict": "minor", "gt": [], "cluster": "c6", "note": "True that every test passes --help as the first or only argument (cli_version.rs:335,402), so 'help anywhere wins' is not pinned; a useful extra case, not a defect in the change."},
+  {"id": "F08", "verdict": "minor", "gt": [], "cluster": "c7", "note": "verbs.len() >= ALL_COMMANDS.len() (cli_version.rs:515-516) is vacuous if ALL_COMMANDS is emptied. True, but that edit is unrealistic. G2's one-directional check is a different defect, and this finding's proposed fix does not address it."}
+ ],
+ "missed_gt": ["G2"]}

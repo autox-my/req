@@ -1,0 +1,36 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/agent_handoff.rs",
+   "start": null,
+   "end": null,
+   "title": "Guard handoff brief rules_v too",
+   "text": "The brief hardcodes `rules_v 6`, but this test only checks `claim_schema`, so a `RULES_V` bump silently leaves the brief stale \u2014 exactly the drift the module docstring says both files must be guarded against. It also ignores the exit code of `req --version`, so a failing precheck surfaces as a confusing `version_field` panic instead of a clear assertion; tie both values to their key and assert the exit code.",
+   "existing_code": "let (_, version) = run(&[\"--version\"]);\nassert!(\n    brief.contains(&version_field(&version, \"claim_schema\")),\n    \"the brief's precheck must name this build's claim_schema\"\n);",
+   "tool_severity": null,
+   "tool_score": 7
+  },
+  {
+   "file": "tests/agent_handoff.rs",
+   "start": null,
+   "end": null,
+   "title": "Bind claim_schema key to its value",
+   "text": "`version_field(&version, \"claim_schema\")` returns just `req.claim/2`, a string that already appears in the unchanged \"A claim is authored (`req.claim/2`)\" line, so this check passes even if the precheck stops naming `claim_schema`. Pair the key with its value so the snippet must actually show `claim_schema req.claim/2`.",
+   "existing_code": "\"req --version\".to_string(),\nversion_field(&version, \"claim_schema\"),\nformat!(\"rules_v {}\", version_field(&version, \"rules_v\")),",
+   "tool_severity": null,
+   "tool_score": 6
+  },
+  {
+   "file": "tests/agent_handoff.rs",
+   "start": null,
+   "end": null,
+   "title": "Deduplicate combined command list",
+   "text": "`named_commands` dedupes only within one file, so a command named in both files is counted twice and run twice; the `>= 4` guard can then be satisfied by duplicate names rather than four distinct commands. Sort and dedupe the combined list before the threshold check and the run loop.",
+   "existing_code": "let mut commands = named_commands(&read(\"examples/agents-snippet.md\"));\ncommands.extend(named_commands(&read(\"examples/handoff-brief.md\")));\nassert!(\n    commands.len() >= 4,\n    \"the files name too few commands to be a pointer: {commands:?}\"\n);",
+   "tool_severity": null,
+   "tool_score": 5
+  }
+ ]
+}

@@ -1,0 +1,59 @@
+{
+ "case": "c022",
+ "reviewed_state": "58d8ed18981cbeb2cb5c7234722c7f8deb4f2128",
+ "diff_range": "17bc83ca28eab0ebfdb3190982ca2e2503c636ac..58d8ed18981cbeb2cb5c7234722c7f8deb4f2128",
+ "ground_truth": [],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "src/audit.rs",
+   "text": "The precedence this arm documents \u2014 a provenance failure outranks a NOT-JUDGED coverage and therefore exits 1, with both findings printed \u2014 is not exercised by any test: the new CLI test (`an_audit_under_a_misdeclared_rules_version_reports_coverage_not_judged`) uses the committed manifest, whose claims all carry provenance, so it only covers the \"no failures\" branch. A unit test passing a coverage with `not_judged: Some(..)` and a provenance-less applying row would pin `(failed.len(), open.len()) == (1, 1)` and the exit-1-beats-3 routing in `run`.",
+   "title": "test",
+   "lines": [
+    296,
+    300
+   ]
+  },
+  {
+   "id": "F02",
+   "file": "src/audit.rs",
+   "text": "This arm restates the rules-version mismatch that the `coverage:` block and the Findings reason already print, contradicting the comment below that says the reason must have one home. Reduce this arm to the baseline summary so the NOT-JUDGED explanation is stated once (with the versions named in Findings), and drop the now-unused `crate::canon::RULES_V` interpolation.",
+   "title": "Report mismatch once, not three times",
+   "code": "(Some(manifest), Some(coverage)) if coverage.not_judged.is_some() => {\n    out.push_str(&format!(\n        \"baseline: {} claim(s), rules v{} \u2014 coverage NOT JUDGED: the manifest declares a \\\n     different canonical rules version than this build writes (rules v{})\\n\",\n        manifest.claims.len(),\n        manifest.rules_v,\n        crate::canon::RULES_V\n    ))\n}"
+  },
+  {
+   "id": "F03",
+   "file": "tests/baseline.rs",
+   "text": "This test never asserts the per-claim status or the audit verdict, so two load-bearing branches of the new audit behaviour can be deleted while the test stays green: (1) the per-claim `NOT-JUDGED` arm in `packet` \u2014 if it is removed the status falls through to `Some(_) => \"uncovered\"`, and `\"[uncovered]\"` does not contain the substring `\"[covered]\"`, so this assertion still passes while claims are reported as uncovered; (2) the new `verdict:` arm in `audit::run` \u2014 without it the generic \"nothing here is ratified, or something ratified is uncovered\" text is printed, and `stdout.contains(\"NOT JUDGED\")` still matches the packet line. Assert both explicitly so each branch is exercised (mutation-checked).",
+   "title": "test",
+   "lines": [
+    654,
+    657
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "tests/baseline.rs",
+   "text": "The test only asserts the absence of `[covered]`; a regression that prints the `uncovered` arm instead of `NOT-JUDGED` for each applying claim would still pass. Assert the positive per-claim status as well so the new status arm is actually exercised.",
+   "title": "Assert per-claim NOT-JUDGED status explicitly",
+   "code": "assert!(\n    !stdout.contains(\"[covered]\"),\n    \"nothing is reported as covered when nothing was compared:\\n{stdout}\"\n);"
+  },
+  {
+   "id": "F05",
+   "file": "src/audit.rs",
+   "text": "`Coverage.not_judged` stores a pre-rendered `String`, which throws away the structured `RulesMismatch` (`manifest_rules_v`/`build_rules_v`) that `baseline.rs` documents as the *single* home for this wording. As a result the packet header re-states the mismatch in its own `format!` and re-reads `manifest.rules_v`/`crate::canon::RULES_V` instead of the values the guard actually compared. The concrete risk: `RulesMismatch::reason()` is explicitly documented as one function \"rather than a `format!` per call site\" because the wording (and the remedy direction) must not drift; a later reword of the reason leaves this header \u2014 and the Findings line in the same packet \u2014 describing the same state two different ways. Storing `Option<baseline::RulesMismatch>` (it is `Copy`) in `Coverage` lets both places render from one source.",
+   "title": "maintainability",
+   "lines": [
+    149,
+    155
+   ]
+  },
+  {
+   "id": "F06",
+   "file": "src/baseline.rs",
+   "text": "When a signature/trust failure also exists, the mismatch reas\u2026\u2026on is dropped entirely, so `baseline --verify` reports only the failure while `audit --baseline` reports both \u2014 the two surfaces disagree about what they tell a reader. Keep the reason by appending it to `failed` in that branch; the exit class is still FAIL, but the open question is no longer hidden.",
+   "title": "Keep mismatch reason beside other failures",
+   "code": "if let Some(mismatch) = rules_mismatch(manifest) {\n    if !failed.is_empty() {\n        return Outcome::Failed(failed);\n    }\n    open.push(mismatch.reason());\n    return Outcome::Unverifiable(open);\n}"
+  }
+ ]
+}

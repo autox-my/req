@@ -1,0 +1,55 @@
+{
+ "case": "c105",
+ "findings": [
+  {
+   "id": "F01",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c1",
+   "note": "The hint splices {out} unquoted into a minisign command (src/baseline.rs ~1609); it only misleads for paths with spaces, and the path is printed anyway."
+  },
+  {
+   "id": "F02",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c2",
+   "note": "True that --out does not create parent dirs and init does not make baselines/, but the replaced '> baselines/release.json' redirect failed the same way, so the change does not make it worse."
+  },
+  {
+   "id": "F03",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c3",
+   "note": "True edge case: the staging name is '.' + name + ~40 chars, so a name near NAME_MAX gets ENAMETOOLONG; this is negligible in practice."
+  },
+  {
+   "id": "F04",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c4",
+   "note": "The FAIL (tampered log) refusal returns before the write exactly like the exit-3 refusal that is tested; a thin coverage gap."
+  },
+  {
+   "id": "F05",
+   "verdict": "real",
+   "gt": [],
+   "cluster": "c5",
+   "note": "The pub fn run rustdoc (src/baseline.rs ~1438) still shows usage without --out and says no --verify 'prints the canonical manifest to stdout', which --out makes false; the commit that changed the behaviour left it stale."
+  },
+  {
+   "id": "F06",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c6",
+   "note": "Correct that a direct fs::write after success would pass every test in tests/baseline_out.rs (the rename-fails case also fails with EISDIR); the rename mechanism is not pinned, but the observable refusal guarantee is."
+  },
+  {
+   "id": "F07",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c7",
+   "note": "The parent directory is not fsynced after rename; this is a crash-durability nicety for a CLI that writes a file a human then signs."
+  }
+ ],
+ "missed_gt": []
+}

@@ -1,0 +1,9 @@
+{"case": "c025",
+ "findings": [
+  {"id": "F01", "verdict": "real", "gt": [], "cluster": "c1", "note": "tests/decision.rs:1162-1180: check.sh run() prints PLAN $* (the expanded path, not the variable name) and check_sh_step sets REQ_GATE_BIN, so if the step guard were dropped the plan would still contain 'decision --verify' and never 'REQ_GATE_BIN'; both assertions cannot catch it."},
+  {"id": "F02", "verdict": "real", "gt": [], "cluster": "c2", "note": "build.rs resolve_identity: the None => Cleanliness::Unestablished mapping stays in the build script; the unit tests feed identity() an already-built Cleanliness and cli_version accepts any suffix, so mutating that arm to Clean passes the suite."},
+  {"id": "F03", "verdict": "minor", "gt": [], "cluster": "c3", "note": "AGENTS.md:71: an unmatched glob leaves TC empty and PATH begins with ':' (cwd); true, but this is a by-hand doc snippet run in one's own checkout."},
+  {"id": "F04", "verdict": "minor", "gt": [], "cluster": "c3", "note": "Same empty-TC point as F03; calling it command injection overstates it."},
+  {"id": "F05", "verdict": "minor", "gt": [], "cluster": "c4", "note": "workspace_toolchain_home is duplicated in tests/decision.rs:1021 and tests/baseline.rs:1045; a maintainability point only."}
+ ],
+ "missed_gt": []}

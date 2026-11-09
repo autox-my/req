@@ -1,0 +1,16 @@
+{"case": "f117",
+ "findings": [
+  {"id": "F01", "verdict": "real", "gt": ["G3"], "cluster": "c1", "note": "build-release.sh:265-269 is only a pre-check; publish() at 309-312 uses mv, which silently replaces an existing $out/$1."},
+  {"id": "F02", "verdict": "minor", "gt": [], "cluster": "c2", "note": "release_bundle.rs:463-474 uses substring checks (short is a prefix of the sha= value) and never asserts libc=; a weak informational-file test."},
+  {"id": "F03", "verdict": "real", "gt": [], "cluster": "c3", "note": "build-release.sh:20 says the environment cannot change codegen, but only RUSTFLAGS/CARGO_BUILD_TARGET are unset (193); RUSTUP_TOOLCHAIN overrides rust-toolchain.toml and RUSTC_WRAPPER/CARGO_PROFILE_RELEASE_* are untouched."},
+  {"id": "F04", "verdict": "minor", "gt": [], "cluster": "c4", "note": "True that no --offline/--frozen is used (194), but REQ-0012 governs req's runtime, not the owner's release build; network on a build host is not a product defect."},
+  {"id": "F05", "verdict": "noise", "gt": [], "cluster": "c5", "note": "Missing tools make the script die 2 naming the tool (150-158), a clear message; a fixture-setup suggestion with no defect."},
+  {"id": "F06", "verdict": "minor", "gt": [], "cluster": "c6", "note": "The 40 bound (220) would reject a SHA-256 object-format repo, but this repo is SHA-1; hypothetical."},
+  {"id": "F07", "verdict": "real", "gt": [], "cluster": "c7", "note": "The stub prints ${STUB_BUILT_FROM:-unknown} (release_bundle.rs:54), so the String::new() case (544) duplicates \"unknown\" and the script's empty-value branch (215) is never exercised."},
+  {"id": "F08", "verdict": "minor", "gt": [], "cluster": "c8", "note": "cleanup (66-82) keeps errexit and INT/TERM traps armed; a second signal mid-cleanup could abort it, but this is a narrow edge case."},
+  {"id": "F09", "verdict": "minor", "gt": [], "cluster": "c9", "note": "Without pipefail, line 287's fallback is dead (head's status) so a missing ldd records the shell error text; it only affects the informational libc line, and the sha256 path is caught by the hex check (280-283)."},
+  {"id": "F10", "verdict": "minor", "gt": [], "cluster": "c10", "note": "assert_nothing_written (373-384) accepts an empty existing --out, weaker than the header's 'not even created'; a test-strength nit."},
+  {"id": "F11", "verdict": "real", "gt": ["G3"], "cluster": "c1", "note": "Same as F01: publish() at 310-311 mv-replaces an existing destination, so the pre-check at 265-269 is TOCTOU."},
+  {"id": "F12", "verdict": "minor", "gt": [], "cluster": "c11", "note": "asset() (360-363) hardcodes TARGET while World::new takes a host; a maintainability nit with no current failing test."}
+ ],
+ "missed_gt": ["G1", "G2"]}

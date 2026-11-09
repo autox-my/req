@@ -1,0 +1,62 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/decision.rs",
+   "start": 133,
+   "end": 133,
+   "title": "test",
+   "text": "`head` is the authority anchor a v3 Baseline signs (ADR 0016), but nothing pins its value independently, so a mutation would survive the suite:\n\n- `tests/baseline.rs`'s `fixture_head()` builds its expectation by calling `decision::head` itself (the canonical-bytes pin interpolates `head.hash` / `head.entries`), and the CLI emission test only asserts the head is non-empty and `entries >= 1`.\n- Every fixture log is a *single* record, so returning the first record's hash instead of the last is not observable; a wrong `entries` (e.g. `log.len() + 1`) is not observable either \u2014 emission and verification would agree on the same wrong head, so `verify` would still pass.\n\nAdd a test with an independent oracle: a hand-built `Decision` with a literal `hash: Some(\"\u2026\")` (and a second record, so last \u2260 first) asserting `head` returns that literal and `entries == log.len()`, plus `head(&[])` and an unfilled last record \u2192 `None`.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "src/baseline.rs",
+   "start": 472,
+   "end": 472,
+   "title": "bug",
+   "text": "`state` now judges the key at a possibly historical `signed_at`, but it only consults `revoked_at`/`valid_until`; `TrustedKey::valid_from` (parsed at line 427) is never checked. A v3 Baseline whose `signed_at` precedes the key's `valid_from` is therefore reported `Trusted` even though the key was not trusted yet at that time \u2014 a permissive hole opened by the new historical judgement (before this change `at` was always today, so `valid_from` was vacuously satisfied). Enforce `valid_from` here so the key's whole validity window is judged at `at`.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "src/baseline.rs",
+   "start": 1047,
+   "end": 1048,
+   "title": "bug",
+   "text": "The head is re-derived from the *entire* current log and compared exactly. Because the decision log is append-only, adding any later decision changes the head and yields an authority-mismatch FAIL (exit 1, `failed` outranks `open`) on a Baseline that was correctly signed over a claim set that still re-derives. It also FAILs an *unsigned* draft emitted before an append, which should read as \"not yet a Baseline\" (UNVERIFIABLE). `authority.entries` already lets you compare the recorded head to the first N records (and still detects truncation below N). Confirm ADR 0016 intends a re-sign on every appended decision; if not, compare against the log prefix rather than the whole log.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "src/baseline.rs",
+   "start": 239,
+   "end": 240,
+   "title": "bug",
+   "text": "`from_json` only requires `signed_at` to be present, not well-formed; `run` then feeds it straight to `TrustFile::state`, which truncates it via `at.get(..10)`. A v3 manifest with `\"signed_at\": \"\"` (or any non-date) parses and yields `at_date = \"\"`, which compares below every `revoked_at`/`valid_until` and can be judged `Trusted`, bypassing the key window. Validate the shape here with the existing `valid_signing_time` (already used on the emission path) so parse and emit agree on what a signable timestamp is.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "tests/baseline.rs",
+   "start": 211,
+   "end": 211,
+   "title": "test",
+   "text": "The expected authority bytes are built from `fixture_head()`, which calls `decision::head` \u2014 the code under test. The manifest is attested with the same value and the expectation is interpolated with it, so a regression in `head()` (wrong hash or entries) cannot fail this pin, contradicting the surrounding claim that these oracles are computed independently. Pin a literal `hash`/`entries` for the fixture log (or assert `head()` separately against a known-good constant) so the new authority slots are actually pinned.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/baseline.rs",
+   "start": 229,
+   "end": 229,
+   "title": "test",
+   "text": "This assertion compares a value to itself and can never fail; it does not test byte-stability across runs (the earlier `forward`/`backward` equality already proves order-independence). Remove it, or compare two independently materialised manifests.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "tests/baseline.rs",
+   "start": 699,
+   "end": 700,
+   "title": "test",
+   "text": "This is the only CLI-level assertion on the emitted authority, but it runs against the real repo `decisions/` and checks only `entries >= 1` / a non-empty head. It cannot detect a wrong head or a committed `baselines/air-gapped.json` that has gone stale (any append changes the head), and it breaks wherever `decisions/` differs. Assert the exact head/entries for a fixture corpus (or against the committed baseline) instead of a lower bound.",
+   "tool_severity": "low"
+  }
+ ]
+}

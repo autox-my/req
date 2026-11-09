@@ -1,0 +1,36 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/funnel_flags.rs",
+   "start": null,
+   "end": null,
+   "title": "Guard against a vacuous selection test",
+   "text": "The assertion only catches the regression if `corpus_set=parity_and_adversarial` actually changes the applying count\nversus the default context; if the selector is inert, both runs report the same number and the test passes even with the\nbug reintroduced. Add a bare `propose` run and assert its count differs from the selector run, so the test premise is\nproven rather than assumed.",
+   "existing_code": "let (without_code, without) = req(&[\"propose\", \"corpus_set=parity_and_adversarial\"]);\nlet (with_code, with) = req(&[\"propose\", \"--pairs\", \"corpus_set=parity_and_adversarial\"]);\nassert_ne!(without_code, 2, \"the baseline invocation is valid\");",
+   "tool_severity": null,
+   "tool_score": 7
+  },
+  {
+   "file": "tests/funnel_flags.rs",
+   "start": null,
+   "end": null,
+   "title": "Make CLI tests hermetic from ambient root",
+   "text": "The spawned binary inherits the ambient environment, so a CI-provided `REQ_ROOT` would redirect corpus resolution away\nfrom `CARGO_MANIFEST_DIR` and make these tests silently measure a different corpus. Clear `REQ_ROOT` in the helper so\nthe corpus is resolved solely from the crate root, independent of the environment that invoked `cargo test`.",
+   "existing_code": "let output = Command::new(bin)\n    .current_dir(env!(\"CARGO_MANIFEST_DIR\"))\n    .args(args)\n    .output()\n    .expect(\"runs the binary\");",
+   "tool_severity": null,
+   "tool_score": 4
+  },
+  {
+   "file": "tests/funnel_flags.rs",
+   "start": null,
+   "end": null,
+   "title": "Verify gold fixture before invoking",
+   "text": "If `bench/corpus/tier2-v1.yml` is missing or untracked, this test fails on the `\"Tier-2 funnel\"` assertion and reports a\nparser failure instead of the real cause. Assert the fixture exists before invoking the binary, using an absolute path\nanchored at `CARGO_MANIFEST_DIR`, so a missing file is diagnosed as a fixture problem.",
+   "existing_code": "let (code, stdout) = req(&[\"propose\", \"--pairs\", \"--gold\", \"bench/corpus/tier2-v1.yml\"]);",
+   "tool_severity": null,
+   "tool_score": 5
+  }
+ ]
+}

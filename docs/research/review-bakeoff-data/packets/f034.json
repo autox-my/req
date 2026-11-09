@@ -1,0 +1,87 @@
+{
+ "case": "f034",
+ "reviewed_state": "a4a638ebb974999e2bba2bdc5d20161b8703cf27",
+ "diff_range": "59bc75855986837e8854174c5084747e473e7625..a4a638ebb974999e2bba2bdc5d20161b8703cf27",
+ "ground_truth": [
+  {
+   "id": "G1",
+   "file": "src/init.rs",
+   "text": "The CI snippet's 'while IFS= read -r line' loop over .req/variants drops a final line with no trailing newline (read returns non-zero while assigning it). A release appended without a newline is never gated, and the new fallback removed the bare run that used to be the backstop. The same snippet is copied in docs/adopting.md.",
+   "kind": "code-bug"
+  },
+  {
+   "id": "G2",
+   "file": "src/init.rs",
+   "text": "In the CI snippet a whitespace-only line (e.g. '  # comment') passes the '[ -n \"$variant\" ]' test and is word-split unquoted into a bare gate run beside the declared variants, contradicting docs/adopting.md, which says a line empty after stripping the comment is skipped; the unquoted expansion also risks glob expansion.",
+   "kind": "code-bug"
+  },
+  {
+   "id": "G3",
+   "file": "review/rule.json",
+   "text": "The review rule for .req/** still teaches the pre-ADR-0015 contract (a dropped context key leaves the gate exiting 0 and 'the gate will not say so'). Since this text is what the reviewer is handed, the review surface asserts a defect that is no longer live.",
+   "kind": "docs-contradiction"
+  },
+  {
+   "id": "G4",
+   "file": "docs/adopting.md",
+   "text": "The measured-behaviour paragraph promises exit 0 for a comment-only variants file without naming the corpus. On a corpus that has a selector the bare run is UNVERIFIABLE (exit 3), so the claim is unconditionally stated but only true for a fresh 'req init' corpus.",
+   "kind": "docs-contradiction"
+  }
+ ],
+ "findings": [
+  {
+   "id": "F01",
+   "file": "src/gate.rs",
+   "text": "This new exit contract leaves `review/rule.json`'s `.req/**` entry stale: that custom checklist \u2014 the one handed to the reviewer of `.req/variants` \u2014 still asserts \u201cdropping any other key leaves that claim undecided while the gate exits 0\u201d and \u201cthe gate will not say so, because only `corpus_set` is dependency-guarded\u201d. `.req/variants` and `scripts/check.sh` were updated in this change but that rule was not, so the review rubric now contradicts the code and would mislead the next reviewer of `.req/variants` into accepting a line that leaves a claim undecided. Update it in the same change (docs are claims).",
+   "title": "documentation",
+   "lines": [
+    287,
+    287
+   ]
+  },
+  {
+   "id": "F02",
+   "file": ".req/variants",
+   "text": "This prose is now inconsistent with the `src/gate.rs` change in the same update. It says \"the code says only *that* something is undecided\" and credits `tests/release_gate.rs` with naming the claim, but the gate now prints `undecided (not examined by this invocation): REQ-\u2026` plus a `remedy:` line naming every undecided claim (see `src/gate.rs:339`). A reader would wrongly conclude the test is the only mechanism that identifies which claim a dropped key cost. Reword to attribute the naming to the gate and keep the test's distinct role (per-declared-line completeness).",
+   "title": "documentation",
+   "lines": [
+    10,
+    16
+   ]
+  },
+  {
+   "id": "F03",
+   "file": "scripts/check.sh",
+   "text": "Same inconsistency as `.req/variants`: the gate now emits `undecided (not examined by this invocation): REQ-\u2026` (and a `remedy:` line), and `run` prints the command's output, so this step does surface which claim is undecided \u2014 not only \"that\" one is. The closing clause then credits `tests/release_gate.rs` with the naming, which is no longer the only place the claim is identified. Reword so the gate's naming line is acknowledged and the test's role is stated as the per-line completeness guard.",
+   "title": "documentation",
+   "lines": [
+    285,
+    288
+   ]
+  },
+  {
+   "id": "F04",
+   "file": "src/init.rs",
+   "text": "The new `gated` counter makes the loop responsible for deciding whether the default gate runs, but the reader silently drops a final variant line with no trailing newline (the hazard `scripts/check.sh` already documents) and treats a whitespace-only line as a variant whose unquoted expansion becomes a bare `req gate`. Either case can leave a declared release ungated, or add a bare gate row that is UNVERIFIABLE on any corpus carrying a selector (ADR 0015). Guard the read with `|| [ -n \"$line\" ]` and skip whitespace-only lines; the same snippet is copied in `docs/adopting.md` and needs the same fix.",
+   "title": "Guard the generated variants loop",
+   "code": "while IFS= read -r line; do\n  variant=\"${line%%#*}\"\n  [ -n \"$variant\" ] || continue"
+  },
+  {
+   "id": "F05",
+   "file": "tests/release_gate.rs",
+   "text": "Changing the expected code from `0` to `3` removed the only assertion that proved `selectors_confirmed` was `PASS`, so this test no longer pins the \"the entry itself stays confirmed\" half of its own name. The other `_is_confirmed` tests in this file add the explicit policy assertion; add it here too, otherwise a regression in `Ge`-by-comparison confirmation would still satisfy a 3 exit code.",
+   "title": "Pin selector confirmation in the test",
+   "code": "let out = dogfood(&[\"runs=abc\"]);\nassert_eq!(out.code, 3, \"{}\", out.text);\nassert!(\n    out.headline().contains(\"15 applying claim(s), 6 undecided\"),\n    \"{}\",\n    out.headline()\n);"
+  },
+  {
+   "id": "F06",
+   "file": "src/gate.rs",
+   "text": "The remedy promises that a variant context decides every claim named above, but a claim can be `Unknown` for a cause no context can fix: `select.rs` maps any selector outside the `==`/`>=` grammar to `Predicate::Unsupported` \u2192 `Applies::Unknown` permanently (the case pinned by `an_unparsed_selector_is_quoted_rather_than_asserted_absent`). Such a corpus prints this remedy on every run while staying at exit 3, so the actionable fix (rewrite/remove the selector) is never named. Also note this hard-codes `.req/variants`, a project-local file that `req` itself never reads (`.req/variants` header: \u201creq itself knows nothing about this file\u201d), so an adopter using another mechanism is pointed at a file that may not exist. Consider qualifying the remedy (e.g. naming the unparsed-selector case) rather than promising a context decides every listed claim.",
+   "title": "bug",
+   "lines": [
+    343,
+    343
+   ]
+  }
+ ]
+}

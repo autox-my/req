@@ -1,0 +1,59 @@
+{
+ "case": "f010",
+ "findings": [
+  {
+   "id": "F01",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c3",
+   "note": "staging_dir (src/baseline.rs ~369) is private and clock-named, so the 16-attempt retry is untested; a test gap, not a behaviour defect."
+  },
+  {
+   "id": "F02",
+   "verdict": "real",
+   "gt": [
+    "G1"
+   ],
+   "cluster": "c1",
+   "note": "verify returns 'could not stage inputs' before remove_dir_all (src/baseline.rs ~396-399), and the per-call unique name means each failure orphans a new directory."
+  },
+  {
+   "id": "F03",
+   "verdict": "real",
+   "gt": [
+    "G2"
+   ],
+   "cluster": "c2",
+   "note": "tests/baseline.rs the_staging_dir_is_owner_only uses std::os::unix::fs::PermissionsExt with no #[cfg(unix)], while create_staging_dir gates mode under cfg(unix)."
+  },
+  {
+   "id": "F04",
+   "verdict": "minor",
+   "gt": [],
+   "cluster": "c4",
+   "note": "The exclusive-creation test only re-creates a real directory; the symlink case the doc comment asserts is untested, but DirBuilder::create already fails on any existing path."
+  },
+  {
+   "id": "F05",
+   "verdict": "real",
+   "gt": [
+    "G1"
+   ],
+   "cluster": "c1",
+   "note": "Overstated: remove_dir_all does run after minisign on success and on minisign failure, but the error path it also names (staging write failure) does leak a fresh directory, which is G1."
+  },
+  {
+   "id": "F06",
+   "verdict": "real",
+   "gt": [
+    "G2"
+   ],
+   "cluster": "c2",
+   "note": "Same as F03: an ungated unix-only import in tests/baseline.rs breaks compilation of the test crate on non-unix targets."
+  }
+ ],
+ "missed_gt": [
+  "G3",
+  "G4"
+ ]
+}

@@ -1,0 +1,7 @@
+{"case": "c107",
+ "findings": [
+  {"id": "F01", "verdict": "real", "gt": [], "cluster": "c1", "note": "The req() helper in tests/canon_fail_on_flag.rs:72-76 sets only current_dir and never calls env_remove(\"REQ_ROOT\"), which other CLI tests (tests/init.rs, adopt.rs, cli_version.rs) do, so an exported REQ_ROOT redirects every run to a foreign corpus."},
+  {"id": "F02", "verdict": "minor", "gt": [], "cluster": "c2", "note": "Correct: with args such as ['--fail-on-flag','x'] the guarded arm fails and Some(other) prints 'unrecognized flag: --fail-on-flag' (src/main.rs:520-535); exit 2 is still right, so only the message is misleading."},
+  {"id": "F03", "verdict": "minor", "gt": [], "cluster": "c3", "note": "The exit line says 'it never gates' and then qualifies the --fail-on-flag case in the same sentence; awkward wording, but the opt-in is described right there, so it does not mislead about behaviour."}
+ ],
+ "missed_gt": []}

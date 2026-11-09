@@ -1,0 +1,26 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "tests/diff_template.rs",
+   "start": null,
+   "end": null,
+   "title": "Validate every checkout step, not just the first",
+   "text": "The test validates only the first `actions/checkout` step, so a second checkout added later without `fetch-depth: 0` would silently pass even though it would make the base revision unavailable. Iterate over every checkout occurrence and apply the same assertions to each.",
+   "existing_code": "let lines = code_lines(&text);\nlet at = lines\n    .iter()\n    .position(|line| line.trim() == \"- uses: actions/checkout@v4\")\n    .expect(\"the workflow checks the repository out with actions/checkout@v4\");\nlet next = &lines[at + 1..];\nassert_eq!(\n    next.first().map(|line| line.trim()),\n    Some(\"with:\"),\n    \"the checkout step carries a `with:` block\"\n);\nassert_eq!(\n    next.get(1).map(|line| line.trim()),\n    Some(\"fetch-depth: 0\"),\n    \"the checkout is `fetch-depth: 0` (the base revision must be in the checkout)\"\n);",
+   "tool_severity": null,
+   "tool_score": 4
+  },
+  {
+   "file": "examples/github-workflows/req-diff.yml",
+   "start": null,
+   "end": null,
+   "title": "Clean up the captured report temp file",
+   "text": "The captured report file is created per run but never removed, so on a self-hosted runner each invocation leaks a temp file (the install step already cleans up its staging directory). Add an `EXIT` trap right after `mktemp` to remove it; the trailing `exit \"$code\"` still fires the trap and preserves the step's status.",
+   "existing_code": "set -u\nout=$(mktemp)",
+   "tool_severity": null,
+   "tool_score": 5
+  }
+ ]
+}

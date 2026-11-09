@@ -1,0 +1,14 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "AGENTS.md",
+   "start": 71,
+   "end": 71,
+   "title": "Empty toolchain path",
+   "text": "The new `TC` assignment is silent when the glob matches nothing: if the pinned toolchain is not installed on the host (or the `CHANNEL` extraction yields an unexpected value), `ls` prints nothing (its error is suppressed) and `TC` becomes empty. `export PATH=\"$TC:...\"` then starts PATH with a bare `:`, which shells interpret as the current directory, and the rustfmt/clippy/`cargo` lookups fall through to whatever ambient tooling exists instead of the pinned toolchain. The block therefore silently degrades to unpinned tooling and can resolve executables from the checkout directory first. Guard the assignment (e.g. `${TC:+$TC:}` or fail explicitly when `TC` is empty) so a missing toolchain is reported rather than silently expanding the search path.",
+   "tool_severity": null
+  }
+ ]
+}

@@ -1,0 +1,36 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "scripts/build-release.sh",
+   "start": null,
+   "end": null,
+   "title": "Clear toolchain override environment variables",
+   "text": "The comment claims the environment cannot change codegen, but `RUSTUP_TOOLCHAIN` (and `RUSTC`/`RUSTC_WRAPPER`, `CARGO_PROFILE_RELEASE_*`) still override the pinned `rust-toolchain.toml` and release codegen. An inherited `RUSTUP_TOOLCHAIN` would silently build the released binary with a different toolchain, breaking the pin.",
+   "existing_code": "unset RUSTFLAGS CARGO_ENCODED_RUSTFLAGS CARGO_BUILD_RUSTFLAGS CARGO_BUILD_TARGET",
+   "tool_severity": null,
+   "tool_score": 7
+  },
+  {
+   "file": "scripts/build-release.sh",
+   "start": null,
+   "end": null,
+   "title": "Harden cleanup against interruptions",
+   "text": "`cleanup` runs under `set -e`, and the INT/TERM/HUP traps are still armed while it runs, so a failure or second signal in the middle of cleanup can abort it and violate the \"no temp dir left behind / exact exit code\" contract. Disable errexit and reset all traps before doing the removal work.",
+   "existing_code": "cleanup() {\n  rc=$?\n  trap - EXIT",
+   "tool_severity": null,
+   "tool_score": 6
+  },
+  {
+   "file": "scripts/build-release.sh",
+   "start": null,
+   "end": null,
+   "title": "Make asset publication atomic",
+   "text": "The \"never overwrite\" guarantee is only a TOCTOU pre-check: `mv` replaces an existing `$out/$1` unconditionally, so a concurrent release can silently pair one run's tarball with another run's checksum. Publish with a hardlink (which fails if the name exists) and clean the temp file, preserving a pinned checksum atomically.",
+   "existing_code": "publish() {\n  cp \"$work/$1\" \"$out/.req-$1$tmp_suffix\" || die 1 \"cannot write into $out\"\n  mv \"$out/.req-$1$tmp_suffix\" \"$out/$1\" || die 1 \"cannot move $1 into place\"\n}",
+   "tool_severity": null,
+   "tool_score": 7
+  }
+ ]
+}

@@ -1,0 +1,38 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/baseline.rs",
+   "start": 392,
+   "end": 392,
+   "title": "bug",
+   "text": "Each call now gets a *unique* staging path, but the early return below (`could not stage inputs`) still bypasses `remove_dir_all`. Under the old fixed `req-baseline-<pid>` name a leaked directory was reused by the next run; now every staging failure leaves a new `req-baseline-<pid>-<nanos>-<attempt>` directory holding `baseline.json`, the signature and `req.pub` in the temp dir forever. Use an RAII guard so every exit path (including future ones) removes the directory.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/baseline.rs",
+   "start": 1087,
+   "end": 1088,
+   "title": "bug",
+   "text": "This test uses `std::os::unix::fs::PermissionsExt`, but unlike every other Unix-only test in this file (see `#[cfg(unix)]` at lines 660, 712, 755, 823, 873, 908, 929, 952) it is not gated. On a non-Unix target the test crate fails to compile rather than reporting a behaviour difference, so the whole suite breaks. Gate it with `#[cfg(unix)]`.",
+   "tool_severity": "medium"
+  },
+  {
+   "file": "tests/baseline.rs",
+   "start": 1068,
+   "end": 1068,
+   "title": "test",
+   "text": "The security-relevant claim of the change is that a *pre-planted symlink* at the staging name is not followed (the `create_staging_dir` doc comment asserts it yields `AlreadyExists`), but the test only re-creates a real directory. A regression that made `create_staging_dir` tolerate symlinks (or a platform change in `DirBuilder::create`) would go undetected. Add the dangling/real symlink case behind `#[cfg(unix)]`.",
+   "tool_severity": "low"
+  },
+  {
+   "file": "src/baseline.rs",
+   "start": 372,
+   "end": 372,
+   "title": "test",
+   "text": "The retry loop is the load-bearing part of the fix's safety claim, yet nothing exercises it: `staging_dir` is private and derives names from a live clock, so a collision (or exhaustion) cannot be forced. A regression that reused the name per attempt, or that fell back to reuse on `AlreadyExists`, would pass every test. Make the loop injectable (e.g. `fn staging_dir_in(base: &Path, name_for: impl Fn(u32) -> String)`) so a test can pre-create names and assert a fresh attempt is used, plus that the bound terminates with an error.",
+   "tool_severity": "low"
+  }
+ ]
+}

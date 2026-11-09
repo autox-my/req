@@ -1,0 +1,36 @@
+{
+ "status": "complete",
+ "complete": true,
+ "findings": [
+  {
+   "file": "src/baseline.rs",
+   "start": null,
+   "end": null,
+   "title": "Keep mismatch reason beside other failures",
+   "text": "When a signature/trust failure also exists, the mismatch reas\u2026\u2026on is dropped entirely, so `baseline --verify` reports only the failure while `audit --baseline` reports both \u2014 the two surfaces disagree about what they tell a reader. Keep the reason by appending it to `failed` in that branch; the exit class is still FAIL, but the open question is no longer hidden.",
+   "existing_code": "if let Some(mismatch) = rules_mismatch(manifest) {\n    if !failed.is_empty() {\n        return Outcome::Failed(failed);\n    }\n    open.push(mismatch.reason());\n    return Outcome::Unverifiable(open);\n}",
+   "tool_severity": null,
+   "tool_score": 4
+  },
+  {
+   "file": "src/audit.rs",
+   "start": null,
+   "end": null,
+   "title": "Report mismatch once, not three times",
+   "text": "This arm restates the rules-version mismatch that the `coverage:` block and the Findings reason already print, contradicting the comment below that says the reason must have one home. Reduce this arm to the baseline summary so the NOT-JUDGED explanation is stated once (with the versions named in Findings), and drop the now-unused `crate::canon::RULES_V` interpolation.",
+   "existing_code": "(Some(manifest), Some(coverage)) if coverage.not_judged.is_some() => {\n    out.push_str(&format!(\n        \"baseline: {} claim(s), rules v{} \u2014 coverage NOT JUDGED: the manifest declares a \\\n     different canonical rules version than this build writes (rules v{})\\n\",\n        manifest.claims.len(),\n        manifest.rules_v,\n        crate::canon::RULES_V\n    ))\n}",
+   "tool_severity": null,
+   "tool_score": 4
+  },
+  {
+   "file": "tests/baseline.rs",
+   "start": null,
+   "end": null,
+   "title": "Assert per-claim NOT-JUDGED status explicitly",
+   "text": "The test only asserts the absence of `[covered]`; a regression that prints the `uncovered` arm instead of `NOT-JUDGED` for each applying claim would still pass. Assert the positive per-claim status as well so the new status arm is actually exercised.",
+   "existing_code": "assert!(\n    !stdout.contains(\"[covered]\"),\n    \"nothing is reported as covered when nothing was compared:\\n{stdout}\"\n);",
+   "tool_severity": null,
+   "tool_score": 6
+  }
+ ]
+}
