@@ -152,6 +152,11 @@ _Avoid_: softening, downgrade
 **Numeric loosening**:
 An edit that widens a bound, such as 200 ms to 500 ms.
 
+**Membership**:
+An obligation to choose from an enumerated set — "name one of the four sources: A, B, C or D".
+Its operator is `IN` and its members are a set, so reordering them is cosmetic, removing one is a
+narrowing and adding one a widening (ADR 0030). An unenumerated "one of" is not a membership.
+
 **Cosmetic change**:
 An edit with the same canonical form as its predecessor; auto-mergeable.
 

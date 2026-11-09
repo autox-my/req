@@ -220,7 +220,7 @@ pub struct Pins {
     /// The registered subject id the statement's subject must resolve to.
     #[serde(default)]
     pub subject: Option<String>,
-    /// `LT`, `LE`, `EQ`, `GE`, `GT` or `NE`.
+    /// `LT`, `LE`, `EQ`, `GE`, `GT`, `NE` or `IN`.
     #[serde(default)]
     pub operator: Option<String>,
     /// The bound, as a canonical exact decimal string in the parse's canonical unit (`"0.2"`
@@ -251,7 +251,7 @@ impl Pins {
 /// The modality words a pin may state — the canonicalizer's own spellings.
 pub const PIN_MODALITIES: &[&str] = &["SHALL", "SHALL-NOT", "SHOULD", "MAY"];
 /// The comparators a pin may state — the canonicalizer's own spellings (T1.5).
-pub const PIN_OPERATORS: &[&str] = &["LT", "LE", "EQ", "GE", "GT", "NE"];
+pub const PIN_OPERATORS: &[&str] = &["LT", "LE", "EQ", "GE", "GT", "NE", "IN"];
 
 /// The file contract for `pins:` values. A pin that cannot be compared — a misspelled modality,
 /// an operator outside T1.5, a non-canonical decimal — is refused where the file can be named,

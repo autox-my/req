@@ -123,7 +123,7 @@ that **derives**: the canonical form, its canonical bytes (T1.9), the address
 | structure | `structured`, or `unstructured` when no deterministic parse exists (the raw form is hashed) |
 | modality | SHALL / SHALL-NOT / MAY / SHOULD — hashing spec T1.6 |
 | subject | the registry id the subject span resolves to (whole span only, T1.7); an unregistered surface stays literal |
-| operator / value / unit | the bound — operator per T1.5 {LT, LE, EQ, GE, GT, NE}; value a canonical exact decimal in canonical SI (`200 ms` → `0.2` `s`) |
+| operator / value / unit | the bound — operator per T1.5 {LT, LE, EQ, GE, GT, NE, IN}; value a canonical exact decimal in canonical SI (`200 ms` → `0.2` `s`), or for `IN` the sorted members of an enumerated "one of …" (no number) |
 | conditions | guard clauses parsed from the statement (when/if/unless/during), sorted at T1.8 — part of identity |
 | lints | what the rules could not decide (`untestable_comparator`, `uncovered_content`, …) — reported, never guessed (REQ-0019) |
 
