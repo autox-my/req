@@ -25,6 +25,10 @@
 #            there; if a run dies before it, nothing is pinnable yet, and docs/releasing.md says what
 #            to clear.
 #
+# The release notes (ADR 0031) are made in the build job, by main's scripts/release-notes.sh, from git history
+# alone, and travel to the publish job as a second artifact. The publish job only reads that file into
+# `gh release create --notes-file`; it never edits a release, so an existing release keeps the notes it has.
+#
 # No repository secret is configured or read: GITHUB_TOKEN is the one credential, minted per run.
 # No `continue-on-error` and no `|| true` anywhere: a failed step fails the release.
 #
@@ -110,6 +114,18 @@ jobs:
           echo "REL_FULL=$full" >> "$GITHUB_ENV"
           echo "REL_CHANNEL=$channel" >> "$GITHUB_ENV"
 
+      - name: the release notes, from history, by main's script
+        run: |
+          set -eu
+          if [ -z "${REL_FULL:-}" ]; then
+            echo "::error::REL_FULL is not set — the runner did not carry $GITHUB_ENV to this step"
+            exit 1
+          fi
+          # Reads git history only (tags came with fetch-depth: 0). A failure here fails the release
+          # before anything is built: notes that cannot be written are not skipped.
+          mkdir "$RUNNER_TEMP/release-notes"
+          bash scripts/release-notes.sh --rev "$REL_FULL" --repo "$GITHUB_REPOSITORY" --out "$RUNNER_TEMP/release-notes/notes.md"
+
       - name: the C toolchain the build scripts link against
         run: |
           set -eu
@@ -181,6 +197,14 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: hand the release notes to the publishing job
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/release-notes
+          if-no-files-found: error
+          retention-days: 1
+
   publish:
     needs: build
     runs-on: ubuntu-latest
@@ -195,14 +219,30 @@ jobs:
           name: release-out
           path: ${{ runner.temp }}/release-out
 
+      - name: receive the release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/release-notes
+
       - name: publish the release rev-REV, refusing to replace any asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           REL_FULL: ${{ needs.build.outputs.full }}
           RELEASE_OUT: ${{ runner.temp }}/release-out
+          NOTES_FILE: ${{ runner.temp }}/release-notes/notes.md
         run: |
           set -euo pipefail
+          # The notes are data: a regular, non-empty file well under GitHub's body limit, or no release.
+          if [ -z "${NOTES_FILE:-}" ] || [ ! -f "$NOTES_FILE" ] || [ ! -s "$NOTES_FILE" ]; then
+            echo "::error::the build job did not hand over release notes; refusing to publish without them"
+            exit 1
+          fi
+          if [ "$(wc -c < "$NOTES_FILE")" -gt 60000 ]; then
+            echo "::error::the release notes are over 60000 bytes; refusing to publish them"
+            exit 1
+          fi
           if [ -z "${RELEASE_OUT:-}" ] || [ ! -d "$RELEASE_OUT" ]; then
             echo "::error::RELEASE_OUT is not set or is not a directory — the build job did not hand over its assets"
             exit 1
@@ -288,8 +328,7 @@ jobs:
             fi
             echo "release $tag exists"
           elif grep -qi 'release not found' "$work/view.err"; then
-            gh release create "$tag" --target "$full" --title "$tag" \
-              --notes "Prebuilt req for the pinned rev $rev (ADR 0025). Pin the .sha256 of the tarball in your own repository."
+            gh release create "$tag" --target "$full" --title "$tag" --notes-file "$NOTES_FILE"
             echo "created release $tag"
           else
             echo "::error::looking up the release $tag failed:"

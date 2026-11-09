@@ -41,6 +41,11 @@ could carry its own key.
    of the rev's code) re-checks the assets, creates the release `rev-<REV>` if it is absent and uploads
    `req-<REV>-x86_64-unknown-linux-gnu.build-info`, `….tar.gz.sha256` and `….tar.gz`, in that order, with
    `gh release upload`.
+   The release body is the notes `scripts/release-notes.sh` wrote in the build job (ADR 0031): the previous release and a
+   compare link, **whether identity moved** (`RULES_V`, the claim schema, the Baseline envelope, and what an adopter does if
+   one did) and the pull requests merged since, grouped by prefix. A release that already exists keeps its body: the
+   workflow never edits one. To preview the notes before you dispatch, run
+   `bash scripts/release-notes.sh --rev <rev> --repo autox-my/req --out /tmp/notes.md` in a clone with the tags fetched.
 5. The last lines of the log are `released rev-<REV>` and the `pin (Linux): REV=… SHA256=… TARGET=…` line. Use
    that one: the build job's log also carries the script's own `pin:` line, printed before the upload, which
    after a half-failed upload names a hash that was never published.
@@ -91,6 +96,9 @@ for n in req-$REV-$T.build-info req-$REV-$T.tar.gz.sha256 req-$REV-$T.tar.gz; do
   echo "uploaded $n"
 done
 ```
+
+Dispatch the Linux workflow first when you can: the release it creates carries the generated notes (ADR 0031), whereas
+the `gh release create` line above, used when no release exists yet, gives a one-line body, and nothing rewrites a body later.
 
 There is no `--clobber` here, on purpose. If the Linux release for the same rev exists already, the release is
 simply reused, and the macOS names differ from the Linux ones, so the two paths never contend for a name.
