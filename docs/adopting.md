@@ -416,7 +416,7 @@ failure case `--check` exists to catch.
 
 Pin the paths your project commits in **`.req/projections`** — one repo-relative path per line,
 `#` comments, blank lines skipped, the same grammar as `.req/variants` — and `req check` (see *CI*)
-runs `req render --check` for each in the same step that gates your releases. A listed path that is
+runs `req render --check` for each (or `req trace --check`, for a traceability matrix written with `req trace --out`) in the same step that gates your releases. A listed path that is
 missing is a failure (a projection that vanished is silent decay), and a list that checked nothing is
 not a pass. The list
 is deliberately small: a projection is committed where it is a **deliverable**, not as a cache of

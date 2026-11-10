@@ -170,6 +170,7 @@ nothing, and prints `projections checked: N`. This repository's first instance i
 generated with no context (15 applying, 6 undecided). req itself never reads `.req/projections`: the
 list and its reader belong to the repository, like `.req/variants`.
 *Amended by ADR 0023: req reads `.req/projections` through `req check`.*
+*Amended 2026-11-10: `req check` judges a listed `trace` projection with `trace --check`, chosen by the generator its header names, and reports the step as kind `trace`. A listed path is no longer render-only; `render --check` on a `trace` file is still 3, and a header `req check` cannot read at all is still judged (and refused) by `render`.*
 
 **Deliberately not here.** `--format json` waits for workstream C — markdown is the only format, and
 the header names the generator so a JSON artefact can arrive without re-reading this decision.

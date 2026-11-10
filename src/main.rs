@@ -470,7 +470,8 @@ gate is this command and not a shell loop that has to get the fold right.
 repeated, and every gate step judges the union of the reports (the gate's rule: an id with
 different outcomes in two, or one report that cannot be read, is UNVERIFIABLE, naming the
 file). `.req/projections`: one
-repo-relative path per line, run as `req render --check <path>`. The grammar is the same for
+repo-relative path per line, run as `req render --check <path>` (or `req trace --check <path>` for a trace projection: the
+generator the file's header names decides, and each is judged under the selection its header records). The grammar is the same for
 both: `#` starts a comment, an empty line is skipped, a trailing CR is stripped, a line is split
 on blanks with no pathname expansion (a `*` in a value is data), and a final line without a
 newline counts. A variants line is never an option, a word without `=` or an empty key; a

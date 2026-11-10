@@ -811,21 +811,93 @@ fn a_comment_only_projections_list_is_exit_1() {
     );
 }
 
-/// (j) A `trace` projection is not `render`'s to judge: `render --check` answers 3, so the step
-/// is 3 and nothing is green.
+/// (j) A `trace` projection is judged by `trace --check`, under the selection its own header records
+/// (ADR 0018 amended): current is a PASS step of kind `trace`, and the standalone commands agree.
 #[test]
-fn a_trace_projection_listed_is_exit_3_as_render_check_answers() {
+fn a_current_trace_projection_is_a_passing_trace_step() {
     let s = with_projection("j-trace");
     let wrote = s.req(&["trace", "--out", "docs/trace.md"]);
     assert_eq!(wrote.code, 0, "setup: {}", wrote.all());
-    s.projections("docs/trace.md\n");
+    s.projections("docs/spec.md\ndocs/trace.md\n");
+    assert_eq!(
+        s.req(&["trace", "--check", "docs/trace.md"]).code,
+        0,
+        "setup: the standalone oracle"
+    );
     assert_eq!(
         s.req(&["render", "--check", "docs/trace.md"]).code,
         3,
-        "setup: the standalone oracle"
+        "setup: render --check still refuses another command's artefact"
     );
     let out = s.req(&["check"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(
+        out.stdout.contains("[PASS] trace docs/trace.md (exit 0)"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("[PASS] render docs/spec.md (exit 0)"),
+        "the render step is unchanged: {}",
+        out.stdout
+    );
+    assert!(
+        out.stdout
+            .starts_with("# req check: 2 variant step(s), 2 projection(s)"),
+        "both kinds are projections: {}",
+        out.stdout
+    );
+}
+
+/// (j) An edited or stale trace projection is exit 1 with the first differing line named, and the
+/// note says which command regenerates it.
+#[test]
+fn a_stale_trace_projection_is_exit_1_naming_the_command_that_regenerates_it() {
+    let s = with_projection("j-trace-stale");
+    let wrote = s.req(&["trace", "--out", "docs/trace.md"]);
+    assert_eq!(wrote.code, 0, "setup: {}", wrote.all());
+    s.projections("docs/trace.md\n");
+    let mut text = fs::read_to_string(s.path().join("docs/trace.md")).expect("reads it");
+    text.push_str("a hand edit\n");
+    s.write("docs/trace.md", text.as_bytes());
+    assert_eq!(
+        s.req(&["trace", "--check", "docs/trace.md"]).code,
+        1,
+        "setup"
+    );
+    let out = s.req(&["check"]);
+    assert_eq!(out.code, 1, "{}", out.all());
+    assert!(
+        out.stdout.contains("[FAIL] trace docs/trace.md (exit 1)"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.all().contains("trace --out docs/trace.md"),
+        "the remedy names `trace`, not `render`: {}",
+        out.all()
+    );
+}
+
+/// (j) A trace projection built under another `rules_v`, or a file with no projection header, is
+/// still 3 (the comparison is void), never a pass and never a crash.
+#[test]
+fn a_trace_projection_from_another_rules_version_is_exit_3() {
+    let s = with_projection("j-trace-rules");
+    let wrote = s.req(&["trace", "--out", "docs/trace.md"]);
+    assert_eq!(wrote.code, 0, "setup: {}", wrote.all());
+    let text = fs::read_to_string(s.path().join("docs/trace.md")).expect("reads it");
+    assert!(text.contains("generator=req trace"), "setup: {text}");
+    let moved = text.replacen("rules_v=", "rules_v=1", 1);
+    s.write("docs/trace.md", moved.as_bytes());
+    s.projections("docs/trace.md\n");
+    let out = s.req(&["check"]);
     assert_eq!(out.code, 3, "{}", out.all());
+    assert!(
+        out.stdout.contains("[UNVERIFIABLE] trace docs/trace.md"),
+        "{}",
+        out.stdout
+    );
 }
 
 /// (j) The projection paths are the corpus's, not the working directory's: a check run from a
