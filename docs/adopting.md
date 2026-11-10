@@ -453,6 +453,12 @@ including the tri-state — and `req <command> --help` works before a corpus exi
 6. **A `req.claim/1` file is NOT JUDGED (exit 3).** Migrate it with `tools/migrate_claims.py` from
    req's repository — a dry run by default that prints every key it drops and every pin it creates;
    `--write` rewrites the file. A format bump moves no address.
+7. **Several authors, one id space: `req next-id`.** `req next-id --count 5` prints the next five free ids
+   (highest existing number + 1; a gap is never refilled, and it reads file names, so it answers while a
+   sibling claim is half-written). To hand a block to a branch, `req next-id --count 5 --reserve` also appends
+   it to `.req/reserved` (`REQ-0143..REQ-0147`, committed with the branch): later calls, on any branch that has
+   merged it, start after the block. Two branches that reserve at the same time edit the end of one file and
+   git reports a merge conflict: that is the signal, there is no lock. See `req next-id --help`.
 
 ## Sign the Baseline
 

@@ -761,7 +761,12 @@ fn gate_json_has_the_pinned_shape() {
             assert_eq!(policy["outcome"], "pass");
             continue;
         }
-        assert_keys(policy, &["details", "outcome", "policy"]);
+        // `counts` (the claims by verdict, issue #20) is on `tests_linked` alone.
+        if policy["policy"] == "tests_linked" {
+            assert_keys(policy, &["counts", "details", "outcome", "policy"]);
+        } else {
+            assert_keys(policy, &["details", "outcome", "policy"]);
+        }
         assert_eq!(policy["outcome"], "pass");
         assert_eq!(policy["details"], serde_json::json!([]));
     }
