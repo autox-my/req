@@ -90,6 +90,48 @@ pub struct PolicyResult {
     /// It is in the JSON document too, so a pass over zero pins is distinguishable from a pass
     /// that held some for a consumer that never reads the text form.
     pub checked: Option<usize>,
+    /// For `tests_linked` only: how many applying claims are linked, unlinked, process-evidenced
+    /// and, when a usable report was supplied, passed, failed or missing from it (issue #20).
+    pub counts: Option<TestsLinkedCounts>,
+}
+
+/// The `tests_linked` policy's machine-readable totals, so a consumer never counts prose.
+///
+/// `applying = linked + unlinked + process_evidenced`: the first two split the machine-evidenced
+/// claims, the third is the declared ones. `passed + failed + not_in_report = linked` when the
+/// report was usable; otherwise those three are `None` (serialized `null`): a claim that was not
+/// judged is not counted as judged, and zero would read as "none failed".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct TestsLinkedCounts {
+    pub applying: usize,
+    pub linked: usize,
+    pub unlinked: usize,
+    pub process_evidenced: usize,
+    pub passed: Option<usize>,
+    pub failed: Option<usize>,
+    pub not_in_report: Option<usize>,
+}
+
+impl TestsLinkedCounts {
+    /// The one-line summary the text report prints under the policy.
+    pub fn summary(&self) -> String {
+        let mut head = format!(
+            "counts: {} applying · {} linked · {} unlinked",
+            self.applying, self.linked, self.unlinked
+        );
+        // Named only when there are some: the words "process-evidenced" in a report mean a claim
+        // declares it, and a zero must not read as if the gate had found a process section (the
+        // JSON carries the zero).
+        if self.process_evidenced > 0 {
+            head.push_str(&format!(" · {} process-evidenced", self.process_evidenced));
+        }
+        match (self.passed, self.failed, self.not_in_report) {
+            (Some(passed), Some(failed), Some(missing)) => {
+                format!("{head} · {passed} passed · {failed} failed · {missing} not in the report")
+            }
+            _ => format!("{head} · passed/failed/not in the report: not judged (no usable report)"),
+        }
+    }
 }
 
 impl PolicyResult {
@@ -115,12 +157,19 @@ impl PolicyResult {
             offenders,
             process: Vec::new(),
             checked: None,
+            counts: None,
         }
     }
 
     /// Attach the process-evidenced claims the policy reports beside its outcome.
     fn with_process(mut self, process: Vec<String>) -> Self {
         self.process = process;
+        self
+    }
+
+    /// Attach the `tests_linked` totals.
+    fn with_counts(mut self, counts: TestsLinkedCounts) -> Self {
+        self.counts = Some(counts);
         self
     }
 }
@@ -285,10 +334,26 @@ fn tests_linked(applying: &[&Row], evidence: TestEvidence<'_>) -> PolicyResult {
         .partition(|row| row.evidence == Evidence::Process);
     let process_ids: Vec<String> = process.iter().map(|row| row.claim_id.clone()).collect();
 
+    let linked = machine.iter().filter(|row| !row.tests.is_empty()).count();
+    let mut counts = TestsLinkedCounts {
+        applying: applying.len(),
+        linked,
+        unlinked: machine.len() - linked,
+        process_evidenced: process_ids.len(),
+        passed: None,
+        failed: None,
+        not_in_report: None,
+    };
+
     // Nothing machine-evidenced here: the declarations are the answer, and no report is needed.
+    // There is nothing to judge, so the verdict counts are zero, not "not judged".
     if machine.is_empty() {
+        counts.passed = Some(0);
+        counts.failed = Some(0);
+        counts.not_in_report = Some(0);
         return PolicyResult::new("tests_linked", DETAIL, Vec::new(), Vec::new())
-            .with_process(process_ids);
+            .with_process(process_ids)
+            .with_counts(counts);
     }
 
     let mut failed: Vec<String> = Vec::new();
@@ -305,6 +370,8 @@ fn tests_linked(applying: &[&Row], evidence: TestEvidence<'_>) -> PolicyResult {
         TestEvidence::Report(report) if report.is_empty() => unverifiable
             .push("the test report carries no test cases, so it verifies nothing".to_string()),
         TestEvidence::Report(report) => {
+            // A usable report judges every linked claim into exactly one of three buckets.
+            let (mut passed, mut failed_claims, mut missing) = (0usize, 0usize, 0usize);
             for row in machine {
                 if row.tests.is_empty() {
                     // The flagship answer. "No link" is never a pass, however green the suite is.
@@ -326,12 +393,14 @@ fn tests_linked(applying: &[&Row], evidence: TestEvidence<'_>) -> PolicyResult {
                 }
                 if !failed_tests.is_empty() {
                     // A failure outranks any unverifiable, whatever else is missing.
+                    failed_claims += 1;
                     failed.push(format!(
                         "{}: linked test failed: {}",
                         row.claim_id,
                         failed_tests.join(", ")
                     ));
                 } else if !absent.is_empty() {
+                    missing += 1;
                     // The rename defence: a linked test the report no longer carries is not a
                     // test that passed.
                     unverifiable.push(format!(
@@ -341,17 +410,25 @@ fn tests_linked(applying: &[&Row], evidence: TestEvidence<'_>) -> PolicyResult {
                     ));
                 } else if !saw_pass {
                     // Every linked test present and none passed: skipped is not a pass.
+                    failed_claims += 1;
                     failed.push(format!(
                         "{}: every linked test is present and none passed — a skipped test is \
                          not a pass ({})",
                         row.claim_id,
                         row.tests.join(", ")
                     ));
+                } else {
+                    passed += 1;
                 }
             }
+            counts.passed = Some(passed);
+            counts.failed = Some(failed_claims);
+            counts.not_in_report = Some(missing);
         }
     }
-    PolicyResult::new("tests_linked", DETAIL, failed, unverifiable).with_process(process_ids)
+    PolicyResult::new("tests_linked", DETAIL, failed, unverifiable)
+        .with_process(process_ids)
+        .with_counts(counts)
 }
 
 /// Evaluate every policy over a selection's applying claims, and the invocation that made it.
@@ -504,6 +581,9 @@ struct PolicyDocument {
     /// `pins_hold` only: the number of pins judged. Absent for every other policy.
     #[serde(skip_serializing_if = "Option::is_none")]
     checked: Option<usize>,
+    /// `tests_linked` only (issue #20): the claims by verdict. Absent for every other policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    counts: Option<TestsLinkedCounts>,
 }
 
 /// One claim the invocation left undecided, and what a caller would have to supply to decide it.
@@ -740,6 +820,7 @@ pub fn evaluate_selection(
                 outcome: result.outcome.as_json(),
                 details: result.offenders.clone(),
                 checked: result.checked,
+                counts: result.counts,
             })
             .collect(),
         // A process declaration is an answer, so it is not an offender; it is still a fact a
@@ -851,6 +932,9 @@ fn print_text(evaluation: &Evaluation) {
         println!("  {}", result.detail);
         for offender in &result.offenders {
             println!("  - {offender}");
+        }
+        if let Some(counts) = &result.counts {
+            println!("  {}", counts.summary());
         }
         if !result.process.is_empty() {
             // Named, not folded into the pass: a declaration is evidence of a different kind.
