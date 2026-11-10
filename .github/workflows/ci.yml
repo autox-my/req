@@ -189,6 +189,41 @@ jobs:
           install -m 0755 "$tmp/cargo-nextest" "$GITHUB_WORKSPACE/.cargo-home/bin/cargo-nextest"
           "$GITHUB_WORKSPACE/.cargo-home/bin/cargo-nextest" --version
 
+      - name: the pinned dependency checker — a prebuilt binary, never a compile
+        run: |
+          set -eu
+          # ADR 0036: cargo-deny judges the dependency graph (bans, licences, sources) in the gate. Pinned in
+          # version AND in the tarball's SHA-256, as nextest is above: the hash is provenance (taken from the
+          # release on 2026-11-10 and checked against the digest GitHub shows for that asset), and a swapped
+          # artefact must fail HERE rather than become the judge. scripts/check.sh re-verifies the version.
+          VERSION=0.20.2
+          TARGET=x86_64-unknown-linux-musl
+          SHA256=9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f
+          url="https://github.com/EmbarkStudios/cargo-deny/releases/download/${VERSION}/cargo-deny-${VERSION}-${TARGET}.tar.gz"
+          api="https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/471598214"
+          tmp="$(mktemp -d)"
+          if ! curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -fsSL "$url" -o "$tmp/deny.tar.gz"; then
+            echo "the release URL failed; trying the API asset route for the same pinned file"
+            curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -fsSL -H "Accept: application/octet-stream" "$api" -o "$tmp/deny.tar.gz"
+          fi
+          echo "${SHA256}  $tmp/deny.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/deny.tar.gz" -C "$tmp"
+          # One directory holding `cargo-deny` (0755); absent = a layout change, named here.
+          test -x "$tmp/cargo-deny-${VERSION}-${TARGET}/cargo-deny"
+          mkdir -p "$GITHUB_WORKSPACE/.cargo-home/bin"
+          install -m 0755 "$tmp/cargo-deny-${VERSION}-${TARGET}/cargo-deny" "$GITHUB_WORKSPACE/.cargo-home/bin/cargo-deny"
+          "$GITHUB_WORKSPACE/.cargo-home/bin/cargo-deny" --version
+
+      - name: every crate in the lock, for every target
+        run: |
+          set -eu
+          # The gate reads the whole dependency graph OFFLINE (cargo deny --offline, tools/sbom.py). A build
+          # downloads only the crates this runner compiles; the graph of the other release target needs the
+          # rest, so fetch them all once, here, from the lock (--locked: the lock is not rewritten).
+          export CARGO_HOME="$GITHUB_WORKSPACE/.cargo-home"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cargo fetch --locked
+
       - name: the gate — the exit code and the log both count
         run: |
           set -o pipefail

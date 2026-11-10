@@ -3016,6 +3016,9 @@ fn script_fixture(tag: &str) -> Fixture {
     std::fs::write(bin.join("minisign"), "#!/bin/sh\nexit 0\n").expect("writes the stub minisign");
     std::fs::set_permissions(bin.join("minisign"), std::fs::Permissions::from_mode(0o755))
         .expect("makes the stub executable");
+    // `cargo deny --version` answers the pinned version (scripts/check.sh DENY_PIN) for the same reason:
+    // the gate's dependency step probes it, and a real cargo-deny found through the shared cargo home
+    // would otherwise be judged by this stub.
     // The stub answers the test runner two ways: `nextest --version` for the pin probe, and the
     // run itself (writes the JUnit artefact the gate step will read). `cargo-nextest` exists on
     // PATH too, so the script's "is the tooling there" probe answers yes — a SKIP would make the
@@ -3023,6 +3026,10 @@ fn script_fixture(tag: &str) -> Fixture {
     let stub = "#!/bin/sh\n\
         if [ \"$1\" = nextest ] && [ \"$2\" = --version ]; then\n\
           echo 'cargo-nextest 0.9.149 (stub)'\n\
+          exit 0\n\
+        fi\n\
+        if [ \"$1\" = deny ] && [ \"$2\" = --version ]; then\n\
+          echo 'cargo-deny 0.20.2 (stub)'\n\
           exit 0\n\
         fi\n\
         if [ \"$1\" = nextest ]; then\n\

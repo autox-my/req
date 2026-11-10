@@ -1,0 +1,65 @@
+# Advisories: is any crate in req's dependency graph the subject of a published security advisory? (ADR 0036)
+#
+# Scheduled and manual, never on a pull request. The RustSec database changes without any commit of ours, so a
+# check that ran on every pull request would turn an unrelated change red on the day an advisory is filed, and
+# the gate (scripts/check.sh) must stay runnable offline (REQ-0012: no claim operation needs the network).
+# This workflow is where the network is used, for this one question, in a job that holds no secret.
+#
+# A failing run is the notification: GitHub emails the repository owner. It does not open an issue, change a
+# file or block anything; the response to an advisory is a human decision (update, accept, or `ignore` it in
+# deny.toml with a reason).
+#
+# Read-only, no secret, no `pull_request_target`. The tool is the same pinned cargo-deny as the gate's
+# (version and SHA-256), downloaded as a prebuilt binary.
+name: Audit
+
+on:
+  schedule:
+    # Mondays, 06:17 UTC: an arbitrary off-the-hour minute, so it does not queue with every other cron at :00.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  advisories:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: the pinned dependency checker — a prebuilt binary, never a compile
+        run: |
+          set -eu
+          # The same pin as .github/workflows/ci.yml (kept in step by hand; tests/audit_workflow.rs fails if the
+          # two disagree): version AND tarball SHA-256, with the API asset route as the fallback for the same file.
+          VERSION=0.20.2
+          TARGET=x86_64-unknown-linux-musl
+          SHA256=9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f
+          url="https://github.com/EmbarkStudios/cargo-deny/releases/download/${VERSION}/cargo-deny-${VERSION}-${TARGET}.tar.gz"
+          api="https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/471598214"
+          tmp="$(mktemp -d)"
+          if ! curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -fsSL "$url" -o "$tmp/deny.tar.gz"; then
+            echo "the release URL failed; trying the API asset route for the same pinned file"
+            curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -fsSL -H "Accept: application/octet-stream" "$api" -o "$tmp/deny.tar.gz"
+          fi
+          echo "${SHA256}  $tmp/deny.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/deny.tar.gz" -C "$tmp"
+          test -x "$tmp/cargo-deny-${VERSION}-${TARGET}/cargo-deny"
+          mkdir -p "$RUNNER_TEMP/bin"
+          install -m 0755 "$tmp/cargo-deny-${VERSION}-${TARGET}/cargo-deny" "$RUNNER_TEMP/bin/cargo-deny"
+          "$RUNNER_TEMP/bin/cargo-deny" --version
+
+      - name: cargo-deny check advisories
+        env:
+          # Advisories are about the lock, not the compiler. rust-toolchain.toml would make rustup download the
+          # pinned channel just so cargo-deny can run `cargo metadata`; the runner's own stable does that job.
+          RUSTUP_TOOLCHAIN: stable
+        run: |
+          set -eu
+          export PATH="$RUNNER_TEMP/bin:$HOME/.cargo/bin:$PATH"
+          # Fetches the RustSec database (the network use this workflow exists for), then judges Cargo.lock.
+          # A non-zero exit fails the run; there is no `|| true` and no `continue-on-error`.
+          cargo deny --locked check advisories
