@@ -1,5 +1,11 @@
 # 0032. The macOS tarball is built by the release workflow, and a release has both targets or none
 
+**Amended 2026-11-10:** the runner is `macos-15`, not `macos-14`. GitHub retired every macOS 14 image on 2026-11-02, and the first dispatch after that
+(run 42756154639) failed in two seconds with "The configuration 'macos-14-arm64-us-default' is not supported" before any step ran. `macos-15` is the oldest
+Apple-silicon image still offered; it is pinned, not `macos-latest`, so a runner migration cannot change the toolchain environment of a release unannounced.
+A different macOS or Xcode can change the binary (ADR 0035 describes the toolchain-path stamp), so the first release built on `macos-15` is not byte-comparable
+with one built on `macos-14`.
+
 **Status: proposed** — the owner ratifies it by merging the pull request that carries it; asked for by the owner on
 2026-11-09 (no issue). Date proposed: 2026-11-09. **Amends [ADR 0025](0025-prebuilt-binary-per-pinned-rev.md) §1, §2 and §5**
 (who builds the macOS tarball, and what a release is); the assets, their names, the proofs of §2 and the no-overwrite rule of §5

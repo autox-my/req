@@ -835,7 +835,7 @@ fn the_macos_tarball_is_built_by_a_read_only_job_of_the_same_run() {
     require(
         RELEASE,
         &mac,
-        "runs-on: macos-14",
+        "runs-on: macos-15",
         "an Apple-silicon runner: the one macOS target ADR 0025 supports",
     );
     // It runs the rev's code, so it holds no write permission and no credential, like the Linux job.

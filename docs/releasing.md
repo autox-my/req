@@ -40,7 +40,7 @@ could carry its own key.
    `rustup` with the toolchain the rev pins), runs `scripts/build-release.sh --rev <full sha> --out …`, then
    `scripts/reproduce.sh --rev <full sha> --against <the tarball it just wrote>` (ADR 0035: a binary the runner cannot
    derive again from the rev fails the job, and nothing is published), and hands the three assets to the next job as an
-   artifact. The **build-macos** job (`contents: read`, a `macos-14`
+   artifact. The **build-macos** job (`contents: read`, a `macos-15`
    Apple-silicon runner) takes the SHA the Linux job resolved, re-checks that it is on `main`, and runs the same
    script for `aarch64-apple-darwin`; its three assets travel as a second artifact (ADR 0032).
 4. The **publish** job (`contents: write`, the only job that holds the token, and it checks out and runs none
