@@ -39,6 +39,7 @@ pub mod impact;
 pub mod init;
 pub mod junit;
 pub mod model;
+pub mod next_id;
 // The single-pair Tier-2 seam (ADR 0021); the funnel it replaced lives in `experiments/tier2/`.
 // A consumer repository's pin of an external corpus's commit (ADR 0033): verify the checkout is
 // exactly it, or describe how the corpus moved since. Reads git as a local process (`diff`'s boundary).

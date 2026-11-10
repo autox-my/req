@@ -48,8 +48,8 @@
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
 use req::{
-    audit, baseline, bench, canon, check, compare, decision, diff, gate, impact, init, pin,
-    propose, root, select, selftest, view,
+    audit, baseline, bench, canon, check, compare, decision, diff, gate, impact, init, next_id,
+    pin, propose, root, select, selftest, view,
 };
 use std::path::Path;
 use std::process::exit;
@@ -71,6 +71,7 @@ usage: req [--root <dir>] <command> [args]
   check [--test-report <file>]    may this repository ship: every declared variant and projection,
                                   folded into one verdict (ADR 0023)
   impact <claim-id>               what depends on that claim, transitively
+  next-id [--count N]             the next free claim id(s); --reserve holds them (parallel authors)
   init                            create a corpus in the current directory (no root lookup)
   selftest                        known-answer checks of this binary; reads no corpus (ADR 0034)
   propose <a.yml> <b.yml>         one pair put to a provider: an unratified proposal (ADR 0021)
@@ -508,6 +509,28 @@ shortened says so instead of reading as complete), 2 usage.
 
 `docs/adopting.md` for the loop.";
 
+const NEXT_ID_HELP: &str = "\
+usage: req next-id [--count N] [--prefix PREFIX] [--reserve]
+
+Prints the next N free claim ids (default 1), one per line, so claims authored in parallel
+worktrees do not collide. It is the highest existing number + 1: a gap left by a retired or never-used
+number is not refilled (a number once seen in a review or a Baseline must not come to mean another
+claim). It reads file names, not claim contents: `claims/<id>.yml` is the id, so it answers while a
+sibling claim is half-written or fails a pin. The prefix is the corpus's own (`REQ` when it has
+several, or none); `--prefix` chooses, and several prefixes without `--prefix` or `REQ` is a usage error.
+
+`.req/reserved` lists blocks taken but not yet written, one id or one range per line
+(`REQ-0010..REQ-0019`, `#` starts a comment); they count as taken. `--reserve` appends the block it
+hands out, so the next author is given the next one. Two branches that reserve at the same time both
+edit the end of that file, and the merge conflict is the signal. There is no locking across machines;
+a reservation is a file in git. A file that cannot be read or understood is UNVERIFIABLE and prints no id.
+Without `--reserve` nothing is written.
+
+exit: 0 ids printed, 2 usage (including `--count` outside 1 to 10000), 3 UNVERIFIABLE (no `claims/`,
+or `.req/reserved` unreadable, malformed or not writable).
+
+`docs/adopting.md` for the loop.";
+
 const PROPOSE_HELP: &str = "\
 usage: req propose <a.yml> <b.yml> [--provider-cmd <cmd>]
 
@@ -661,6 +684,11 @@ const COMMANDS: &[Command] = &[
         name: "check",
         run: |args, corpus| check::run(args, corpus),
         help: CHECK_HELP,
+    },
+    Command {
+        name: "next-id",
+        run: |args, corpus| next_id::run(args, corpus),
+        help: NEXT_ID_HELP,
     },
     Command {
         name: "propose",
