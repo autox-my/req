@@ -65,10 +65,12 @@ For an adopter who must justify a tool, "I can derive the binary from the source
 - `reproduce.sh --against` is the first piece of evidence an assessor can produce without trusting the maintainer. It is **evidence of the
   build process, not of the correctness of the rules**: a reproducible binary that canonicalizes wrongly reproduces perfectly. The correctness
   evidence is `req selftest`, the corpora and the signed Baseline (ADR 0034, ADR 0010).
-- The release workflow itself is unchanged here (it calls `build-release.sh`, which is now deterministic). Having the workflow also run
-  `reproduce.sh` on each runner before it publishes is a possible later step; it was not taken here because a mismatch on the first dispatch
-  would block the owner's releases on a Linux behaviour that this change can only exercise in CI, and the gate step already exercises it
-  on every pull request.
+- The release workflow runs `reproduce.sh --against` on each runner, after `build-release.sh` and before the hand-over to the publishing job
+  (added after the owner asked for it, in a follow-up to the first change). It compares the tarball about to be uploaded with one more build
+  of the same rev made in another directory and at another time, on the same runner. A `DIFFERS` fails the job and nothing is published. It
+  adds one build per target to a dispatch (a few minutes) and adds no trust: it is the same script the gate runs on every pull request, and
+  it cannot show that another machine would get the same bytes. The first dispatch after it merges is its first run on a macOS runner, so a
+  red run there is read as information about the build (the `DIFFERS` output counts the differing bytes) before it is read as a workflow fault.
 
 ## Rejected
 

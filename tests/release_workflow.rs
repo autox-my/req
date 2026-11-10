@@ -934,3 +934,53 @@ fn the_macos_tarball_is_built_by_a_read_only_job_of_the_same_run() {
         "both targets are checked before the first write",
     );
 }
+
+#[test]
+fn each_build_job_reproduces_its_tarball_before_handing_it_on() {
+    // ADR 0035: a binary the runner cannot derive again from the rev is not released. The step sits
+    // between the build and the artifact upload of the same job, so a DIFFERS verdict fails the job
+    // before the publishing job can receive the assets.
+    let text = code(RELEASE);
+    for (job, target, artifact) in [
+        (
+            "build",
+            "x86_64-unknown-linux-gnu",
+            "release-out-x86_64-unknown-linux-gnu",
+        ),
+        (
+            "build-macos",
+            "aarch64-apple-darwin",
+            "release-out-aarch64-apple-darwin",
+        ),
+    ] {
+        let block = job_block(&text, job);
+        let built = block
+            .find("bash scripts/build-release.sh")
+            .unwrap_or_else(|| panic!("{job}: no build step"));
+        let reproduced = block
+            .find("bash scripts/reproduce.sh --rev \"$REL_FULL\" --against")
+            .unwrap_or_else(|| {
+                panic!("{job}: does not run scripts/reproduce.sh --against the tarball it built")
+            });
+        let handed = block
+            .find(&format!("name: {artifact}"))
+            .unwrap_or_else(|| panic!("{job}: no hand-over of {artifact}"));
+        assert!(
+            built < reproduced && reproduced < handed,
+            "{job}: the reproduction check must run after the build and before the hand-over to the publishing job"
+        );
+        require(
+            RELEASE,
+            &block,
+            &format!("req-*-{target}.tar.gz"),
+            "the check compares the tarball of this job's own target",
+        );
+    }
+    // The publishing job runs none of the rev's code, so the check cannot live there.
+    forbid(
+        RELEASE,
+        &job_block(&text, "publish"),
+        "reproduce.sh",
+        "the publishing job runs none of the rev's code",
+    );
+}

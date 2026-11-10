@@ -13,8 +13,10 @@
 #            rustup with the toolchain the rev pins), and runs scripts/build-release.sh. The script, not
 #            this file, builds from a clean copy of the rev with `--locked`, proves `built from` is the
 #            bare rev, `baseline --verify` is [VERIFIED] and the FMR gate passes, and only then writes
-#            the three assets. Nothing is built or packed here. It runs the rev's code, so it holds no
-#            write permission and no secret.
+#            the three assets. Nothing is built or packed here. Before the hand-over it runs
+#            scripts/reproduce.sh --against the tarball it just wrote (ADR 0035): the rev is built once more, in
+#            another directory and at another time, and a binary that differs fails the job, so the publishing job
+#            never receives it. It runs the rev's code, so it holds no write permission and no secret.
 #   publish  `contents: write`, and ONLY this job. It checks out nothing and runs none of the rev's
 #            code: it takes the three assets as an artifact, re-checks them, creates the release
 #            `rev-<REV>` if it is absent and uploads the assets with the `gh` CLI, authenticated by
@@ -191,6 +193,24 @@ jobs:
           # Any non-zero fails this step, and the script has then written nothing.
           bash scripts/build-release.sh --rev "$REL_FULL" --out "$out"
 
+      - name: the tarball reproduces on this runner (ADR 0035)
+        run: |
+          set -eu
+          if [ -z "${REL_FULL:-}" ]; then
+            echo "::error::REL_FULL is not set — the runner did not carry $GITHUB_ENV to this step"
+            exit 1
+          fi
+          # Build the rev once more, in another directory and at another time, and compare the binary with the
+          # one about to be uploaded. A binary that this runner cannot derive again is not released: the exit
+          # code is the verdict (0 REPRODUCED; 1 DIFFERS or a build failed; 3 UNVERIFIABLE) and any non-zero
+          # fails the job before the artifact is handed on.
+          set -- "$RUNNER_TEMP"/release-out/req-*-x86_64-unknown-linux-gnu.tar.gz
+          if [ $# -ne 1 ] || [ ! -f "$1" ]; then
+            echo "::error::expected exactly one req-<REV>-x86_64-unknown-linux-gnu.tar.gz to compare"
+            exit 1
+          fi
+          bash scripts/reproduce.sh --rev "$REL_FULL" --against "$1"
+
       - name: hand the three assets to the publishing job
         uses: actions/upload-artifact@v4
         with:
@@ -308,6 +328,24 @@ jobs:
           rm -rf "$out"
           # Exit 0 released; 1 a check failed; 2 usage or environment; 3 UNVERIFIABLE (no minisign).
           bash scripts/build-release.sh --rev "$REL_FULL" --out "$out"
+
+      - name: the tarball reproduces on this runner (ADR 0035)
+        run: |
+          set -eu
+          if [ -z "${REL_FULL:-}" ]; then
+            echo "::error::REL_FULL is not set — the runner did not carry $GITHUB_ENV to this step"
+            exit 1
+          fi
+          # Build the rev once more, in another directory and at another time, and compare the binary with the
+          # one about to be uploaded. A binary that this runner cannot derive again is not released: the exit
+          # code is the verdict (0 REPRODUCED; 1 DIFFERS or a build failed; 3 UNVERIFIABLE) and any non-zero
+          # fails the job before the artifact is handed on.
+          set -- "$RUNNER_TEMP"/release-out/req-*-aarch64-apple-darwin.tar.gz
+          if [ $# -ne 1 ] || [ ! -f "$1" ]; then
+            echo "::error::expected exactly one req-<REV>-aarch64-apple-darwin.tar.gz to compare"
+            exit 1
+          fi
+          bash scripts/reproduce.sh --rev "$REL_FULL" --against "$1"
 
       - name: hand the three assets to the publishing job
         uses: actions/upload-artifact@v4
