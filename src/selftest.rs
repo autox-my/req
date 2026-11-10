@@ -27,7 +27,7 @@ const PARITY_YAML: &str = include_str!("../bench/corpus/parity.yml");
 const REGISTRY_YAML: &str = include_str!("../aliases/subjects.yml");
 
 /// The rules version the address goldens below were recorded under.
-const GOLDEN_RULES_V: u32 = 7;
+const GOLDEN_RULES_V: u32 = 8;
 const _: () = assert!(
     GOLDEN_RULES_V == RULES_V,
     "RULES_V moved: regenerate the address goldens in src/selftest.rs deliberately, in the same commit (hashing spec section 5)"
