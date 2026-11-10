@@ -92,8 +92,10 @@ falsification of the bet, and the README says so.
   implemented; an unenumerated "one of the target countries" still derives the quantity `1` (ADR 0030); ambiguous comparators are
   linted, not guessed; the closed tables cover what they list and nothing else.
 - **Environment limits.** Windows is untested (WSL2 is expected, not verified). The macOS binary is unsigned and not notarized; the
-  Linux binary was built on glibc 2.43 and ran with a loader warning on 2.35. Release tarballs are **not reproducible** (two builds of one
-  rev gave different hashes), so a release is verified by its pinned checksum, never by rebuilding it.
+  Linux binary was built on glibc 2.43 and ran with a loader warning on 2.35. Releases made before ADR 0035 are **not reproducible** (two builds of one
+  rev gave different hashes); from it, two builds of a rev on one builder give identical bytes (the gate checks it), and a rebuild elsewhere is
+  evidence, not a promise: `scripts/reproduce.sh --rev <rev> --against <tarball>` compares the binary inside, and a `DIFFERS` is reported, not
+  explained away (the target, the pinned toolchain and, on Linux, the linker and libc must match). The pinned checksum stays the authority.
 - **One maintainer, early software.** Version `0.1.0`; the tool's own development uses AI coding agents under a human owner who merges
   every change (`AGENTS.md`, *Review* and *SDLC*). An automated review run by hand is an unverified lead, not a verdict
   (`docs/research/review-bakeoff.md`: unaudited, one model).

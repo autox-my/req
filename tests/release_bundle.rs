@@ -103,9 +103,10 @@ const CARGO_SHIM: &str = r#"#!/bin/sh
 case "$1" in
   -V) echo 'cargo 1.99.0 (shim 2026-01-01)' ;;
   build)
-    [ -z "${CARGO_SHIM_LOG:-}" ] || { printf 'argv=%s\ncwd=%s\n' "$*" "$(pwd -P)" >> "$CARGO_SHIM_LOG"; }
+    [ -z "${CARGO_SHIM_LOG:-}" ] || { printf 'argv=%s\ncwd=%s\nencoded_rustflags=%s\nrustflags=%s\nsource_date_epoch=%s\n' "$*" "$(pwd -P)" "$(printf '%s' "${CARGO_ENCODED_RUSTFLAGS:-}" | tr '\037' '|')" "${RUSTFLAGS:-}" "${SOURCE_DATE_EPOCH:-}" >> "$CARGO_SHIM_LOG"; }
     mkdir -p "${CARGO_TARGET_DIR:-target}/release"
     cp stub-req "${CARGO_TARGET_DIR:-target}/release/req"
+    [ -z "${CARGO_SHIM_NOISE:-}" ] || printf '# %s\n' "$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')" >> "${CARGO_TARGET_DIR:-target}/release/req"
     chmod 755 "${CARGO_TARGET_DIR:-target}/release/req"
     ;;
   *) echo "cargo shim: $*" >&2; exit 64 ;;
@@ -309,9 +310,13 @@ impl World {
 
     /// Run the script with the given arguments and stub dials, in a cleared environment.
     fn run(&self, args: &[&str], dials: &[(&str, &str)]) -> Run {
+        self.run_script(&script_path(), args, dials)
+    }
+
+    fn run_script(&self, script: &Path, args: &[&str], dials: &[(&str, &str)]) -> Run {
         let mut command = Command::new("/bin/bash");
         command
-            .arg(script_path())
+            .arg(script)
             .args(args)
             .current_dir(&self.root)
             .env_clear()
@@ -900,4 +905,339 @@ fn without_bin_the_build_runs_in_the_clean_copy_and_packages_the_committed_binar
         STUB_REQ,
         "the artifact holds the committed binary, not the caller's edit"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// reproducibility (ADR 0035): the same rev and the same bytes give the same tarball, wherever and
+// whenever it is made
+// ---------------------------------------------------------------------------------------------
+
+/// A second `--out` beside the world's own, so one fixture can be released twice.
+fn release_into(world: &World, out: &Path, dials: &[(&str, &str)]) -> Run {
+    let bin = world.bin.to_string_lossy().into_owned();
+    let repo = world.repo.to_string_lossy().into_owned();
+    let out = out.to_string_lossy().into_owned();
+    world.run(
+        &[
+            "--rev", "HEAD", "--repo", &repo, "--out", &out, "--bin", &bin,
+        ],
+        dials,
+    )
+}
+
+/// The first 512 bytes of the tar inside a `.tar.gz`: one member's header, decoded by hand from the
+/// ustar layout (an independent oracle: the script writes it with `tar`, this reads the bytes).
+fn first_tar_header(tarball: &Path) -> Vec<u8> {
+    let out = Command::new("gzip")
+        .args(["-dc"])
+        .arg(tarball)
+        .output()
+        .expect("runs gzip");
+    assert!(out.status.success(), "gzip -dc failed");
+    out.stdout[..512].to_vec()
+}
+
+/// A NUL- or space-terminated octal field of a ustar header.
+fn octal_field(header: &[u8], from: usize, len: usize) -> u64 {
+    let text: String = header[from..from + len]
+        .iter()
+        .take_while(|b| **b != 0 && **b != b' ')
+        .map(|b| char::from(*b))
+        .collect();
+    u64::from_str_radix(text.trim(), 8).unwrap_or_else(|_| panic!("not octal: {text:?}"))
+}
+
+fn text_field(header: &[u8], from: usize, len: usize) -> String {
+    header[from..from + len]
+        .iter()
+        .take_while(|b| **b != 0)
+        .map(|b| char::from(*b))
+        .collect()
+}
+
+#[test]
+fn one_rev_and_one_binary_give_byte_identical_tarballs_at_any_time_and_in_any_directory() {
+    let world = World::standard("repro-bytes");
+    let first = release_into(&world, &world.root.join("out-a"), &[world.built_from()]);
+    assert_eq!(first.code, Some(0), "stderr: {}", first.stderr);
+    // Clock moves, the temp dir and the output directory change, and the binary is a new file with
+    // a new modification time: none of it may reach the archive.
+    std::thread::sleep(std::time::Duration::from_millis(2100));
+    let other_tmp = world.root.join("a-much-longer-temporary-directory-name");
+    fs::create_dir_all(&other_tmp).expect("creates the second temp dir");
+    let bin = world.bin.to_string_lossy().into_owned();
+    let repo = world.repo.to_string_lossy().into_owned();
+    let out_b = world
+        .root
+        .join("elsewhere/out-b")
+        .to_string_lossy()
+        .into_owned();
+    let mut command = Command::new("/bin/bash");
+    command
+        .arg(script_path())
+        .args([
+            "--rev", "HEAD", "--repo", &repo, "--out", &out_b, "--bin", &bin,
+        ])
+        .current_dir(&world.root)
+        .env_clear()
+        .env("PATH", &world.shims)
+        .env("HOME", world.root.join("home"))
+        .env("TMPDIR", &other_tmp)
+        .env("LC_ALL", "C")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("STUB_BUILT_FROM", &world.short);
+    let second = command.output().expect("runs the script");
+    assert!(
+        second.status.success(),
+        "{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+
+    let name = format!("req-{}-{TARGET}.tar.gz", world.short());
+    let a = fs::read(world.root.join("out-a").join(&name)).expect("reads the first tarball");
+    let b = fs::read(Path::new(&out_b).join(&name)).expect("reads the second tarball");
+    assert_eq!(
+        hex_sha256(&a),
+        hex_sha256(&b),
+        "the same rev and binary must give the same archive bytes"
+    );
+    let sum_a = fs::read_to_string(world.root.join("out-a").join(format!("{name}.sha256")))
+        .expect("reads the checksum");
+    assert_eq!(sum_a, format!("{}  {name}\n", hex_sha256(&a)));
+}
+
+#[test]
+fn the_member_header_holds_no_clock_no_user_and_no_group_of_the_builder() {
+    let world = World::standard("repro-header");
+    let run = world.release(&[world.built_from()]);
+    assert_eq!(run.code, Some(0), "stderr: {}", run.stderr);
+    let header = first_tar_header(&world.asset(".tar.gz"));
+
+    assert_eq!(text_field(&header, 0, 100), "req");
+    assert_eq!(octal_field(&header, 100, 8), 0o755, "mode");
+    assert_eq!(octal_field(&header, 108, 8), 0, "uid is not the builder's");
+    assert_eq!(octal_field(&header, 116, 8), 0, "gid is not the builder's");
+    for (what, name) in [
+        ("uname", text_field(&header, 265, 32)),
+        ("gname", text_field(&header, 297, 32)),
+    ] {
+        assert!(
+            name.is_empty() || name == "root",
+            "{what} is the builder's ({name:?}); one name for every builder is empty or root"
+        );
+    }
+    // The modification time is the commit's own (SOURCE_DATE_EPOCH's convention): a fact of the rev.
+    let commit_time: u64 = git(&world.repo, &["log", "-1", "--format=%ct", "HEAD"])
+        .parse()
+        .expect("a commit time");
+    assert_eq!(
+        octal_field(&header, 136, 12),
+        commit_time,
+        "mtime is the commit time, not the build time"
+    );
+    // ustar, so no per-run extended header (pax) can carry a sub-second clock or a path.
+    assert_eq!(&header[257..262], b"ustar", "the archive is ustar");
+}
+
+#[test]
+fn the_build_maps_the_builders_paths_away_and_ignores_a_rustflags_in_the_environment() {
+    let world = World::standard("repro-flags");
+    let repo = world.repo.to_string_lossy().into_owned();
+    let out = world.out.to_string_lossy().into_owned();
+    let run = world.run(
+        &["--rev", "HEAD", "--repo", &repo, "--out", &out],
+        &[
+            world.built_from(),
+            ("RUSTFLAGS", "-Cdebuginfo=2"),
+            ("CARGO_ENCODED_RUSTFLAGS", "-Cdebuginfo=2"),
+        ],
+    );
+    assert_eq!(run.code, Some(0), "stderr: {}", run.stderr);
+    let log = fs::read_to_string(&world.cargo_log).expect("cargo build ran");
+    let encoded = log
+        .lines()
+        .find_map(|line| line.strip_prefix("encoded_rustflags="))
+        .expect("the build logged its flags");
+    let flags: Vec<&str> = encoded.split('|').collect();
+    assert!(
+        !flags.iter().any(|flag| flag.contains("debuginfo")),
+        "an exported RUSTFLAGS changed the codegen of a released binary: {flags:?}"
+    );
+    let home = world.root.join("home").join(".cargo");
+    let home = format!("--remap-path-prefix={}=/cargo", home.display());
+    assert!(
+        flags.contains(&home.as_str()),
+        "the registry path ({home}) must be mapped, or every dependency's source path carries the builder's home: {flags:?}"
+    );
+    assert!(
+        flags
+            .iter()
+            .any(|flag| flag.starts_with("--remap-path-prefix=") && flag.ends_with("/src=/req")),
+        "the clean copy's own path must be mapped: {flags:?}"
+    );
+    assert_eq!(
+        log.lines().find_map(|l| l.strip_prefix("rustflags=")),
+        Some(""),
+        "plain RUSTFLAGS must not be set (the encoded form is used, so a path with a space survives)"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// scripts/reproduce.sh: rebuild and compare (ADR 0035)
+// ---------------------------------------------------------------------------------------------
+
+fn reproduce_path() -> PathBuf {
+    script_path().with_file_name("reproduce.sh")
+}
+
+impl World {
+    fn reproduce(&self, extra: &[&str], dials: &[(&str, &str)]) -> Run {
+        let repo = self.repo.to_string_lossy().into_owned();
+        let mut args = vec!["--rev", "HEAD", "--repo", repo.as_str()];
+        args.extend_from_slice(extra);
+        self.run_script(&reproduce_path(), &args, dials)
+    }
+}
+
+#[test]
+fn two_builds_of_one_rev_are_reproduced_and_the_binary_hash_is_the_independent_one() {
+    let world = World::standard("rep-ok");
+    let run = world.reproduce(&[], &[world.built_from()]);
+    assert_eq!(
+        run.code,
+        Some(0),
+        "stdout: {} stderr: {}",
+        run.stdout,
+        run.stderr
+    );
+    assert!(run.stdout.starts_with("REPRODUCED"), "{}", run.stdout);
+    let expected = hex_sha256(STUB_REQ.as_bytes());
+    assert!(
+        run.stdout.contains(&format!("binary   {expected}")),
+        "the hash printed for the binary is the SHA-256 of the binary's bytes: {}",
+        run.stdout
+    );
+    assert!(
+        !world.out.exists(),
+        "reproduce.sh writes nothing the caller has to clean up"
+    );
+}
+
+#[test]
+fn a_builder_whose_output_varies_is_reported_as_differing_with_both_hashes() {
+    let world = World::standard("rep-noisy");
+    let run = world.reproduce(&[], &[world.built_from(), ("CARGO_SHIM_NOISE", "1")]);
+    assert_eq!(
+        run.code,
+        Some(1),
+        "stdout: {} stderr: {}",
+        run.stdout,
+        run.stderr
+    );
+    assert!(run.stdout.starts_with("DIFFERS"), "{}", run.stdout);
+    let hashes: Vec<&str> = run
+        .stdout
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("binary   "))
+        .collect();
+    assert_eq!(hashes.len(), 2, "both binaries are named: {}", run.stdout);
+    assert_ne!(hashes[0], hashes[1], "{}", run.stdout);
+    assert!(
+        hashes.iter().all(|h| h.len() == 64),
+        "full SHA-256 values: {hashes:?}"
+    );
+}
+
+#[test]
+fn a_release_is_reproduced_against_when_its_binary_is_the_one_the_rev_builds() {
+    let world = World::standard("rep-against");
+    let released = world.release(&[world.built_from()]);
+    assert_eq!(released.code, Some(0), "stderr: {}", released.stderr);
+    let tarball = world.asset(".tar.gz").to_string_lossy().into_owned();
+    let run = world.reproduce(&["--against", &tarball], &[world.built_from()]);
+    assert_eq!(
+        run.code,
+        Some(0),
+        "stdout: {} stderr: {}",
+        run.stdout,
+        run.stderr
+    );
+    assert!(run.stdout.starts_with("REPRODUCED"), "{}", run.stdout);
+}
+
+#[test]
+fn a_tarball_holding_another_binary_is_not_reproduced() {
+    let world = World::standard("rep-tamper");
+    let dir = world.root.join("other");
+    fs::create_dir_all(&dir).expect("creates the dir");
+    write_executable(
+        &dir.join("req"),
+        &format!("{STUB_REQ}# not the built one\n"),
+    );
+    let tarball = world.root.join("other.tar.gz");
+    let status = Command::new("tar")
+        .arg("-czf")
+        .arg(&tarball)
+        .arg("-C")
+        .arg(&dir)
+        .arg("req")
+        .status()
+        .expect("runs tar");
+    assert!(status.success());
+    let tarball = tarball.to_string_lossy().into_owned();
+    let run = world.reproduce(&["--against", &tarball], &[world.built_from()]);
+    assert_eq!(
+        run.code,
+        Some(1),
+        "stdout: {} stderr: {}",
+        run.stdout,
+        run.stderr
+    );
+    assert!(run.stdout.starts_with("DIFFERS"), "{}", run.stdout);
+    assert!(
+        run.stdout.contains(&hex_sha256(STUB_REQ.as_bytes())),
+        "the hash this machine built is shown: {}",
+        run.stdout
+    );
+    // How far apart the two are: the given binary has the build's bytes plus 24 more.
+    assert!(
+        run.stdout.contains(&format!(
+            "built {} bytes, given {} bytes; 0 bytes differ in the common prefix",
+            STUB_REQ.len(),
+            STUB_REQ.len() + "# not the built one\n".len()
+        )),
+        "the distance between the two binaries is shown: {}",
+        run.stdout
+    );
+}
+
+#[test]
+fn without_minisign_reproduction_is_unverifiable_never_a_pass() {
+    let world = World::new("rep-nominisign", false, TARGET);
+    let run = world.reproduce(&[], &[world.built_from()]);
+    assert_eq!(
+        run.code,
+        Some(3),
+        "stdout: {} stderr: {}",
+        run.stdout,
+        run.stderr
+    );
+    assert!(!run.stdout.contains("REPRODUCED"), "{}", run.stdout);
+    assert!(run.stderr.contains("UNVERIFIABLE"), "{}", run.stderr);
+}
+
+#[test]
+fn reproduce_usage_errors_are_exit_2() {
+    let world = World::standard("rep-usage");
+    for args in [
+        vec![],
+        vec!["--rev"],
+        vec!["--rev", "HEAD", "--against", "/no/such/file.tar.gz"],
+        vec!["--rev", "HEAD", "stray"],
+        vec!["--rev", "HEAD", "--no-such-flag"],
+    ] {
+        let run = world.run_script(&reproduce_path(), &args, &[]);
+        assert_eq!(run.code, Some(2), "{args:?}: {} {}", run.stdout, run.stderr);
+    }
 }

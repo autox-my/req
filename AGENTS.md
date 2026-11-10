@@ -90,8 +90,8 @@ SKIP). It runs every check whose tooling exists, prints `SKIP` (never `PASS`) fo
 the first non-zero status; the Baseline step has no SKIP (no minisign is UNVERIFIABLE, exit 3, and blocks).
 **Green before every commit and merge**; state any skip or `UNVERIFIABLE` in the commit message. Order: build →
 `cargo nextest run --profile ci` (writes `target/nextest/ci/junit.xml`) → `req gate --test-report <it>` once per
-`.req/variants` line. `--fast` is the iteration mode (~20s against ~34s; drops clippy, the external corpora and the
-direction gold set): **the full run is required before a commit**, and CI always runs it. `cargo nextest run
+`.req/variants` line. `--fast` is the iteration mode (~20s against a longer full run; drops clippy, the external corpora, the
+direction gold set and the reproducible-build check): **the full run is required before a commit**, and CI always runs it. `cargo nextest run
 --profile ci` replaces `cargo test` (nextest pinned 0.9.149, a CI-side pin and not a `Cargo.lock` change; profile in
 `.config/nextest.toml`; doctests are the named gap). **Never pipe a check through `tail`/`grep`**: the pipeline's
 status is not the command's — check `$?` on the cargo command.

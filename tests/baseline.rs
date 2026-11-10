@@ -3004,6 +3004,18 @@ fn script_fixture(tag: &str) -> Fixture {
     .expect("copies check.sh");
     let bin = fixture.path().join("home/.rustup/toolchains/fake/bin");
     std::fs::create_dir_all(&bin).expect("creates the fake toolchain");
+    // The reproducible-build step (ADR 0035) runs `scripts/reproduce.sh`, which does two real release
+    // builds: the fixture stands it in with a script that reports REPRODUCED, and puts a `minisign` on
+    // PATH so the step runs on a laptop that has none on the fixture's PATH exactly as it does in CI
+    // (where /usr/bin has one). Without both, the fixture would pass here and fail there.
+    std::fs::write(
+        fixture.path().join("scripts/reproduce.sh"),
+        "#!/bin/sh\necho 'REPRODUCED  (fixture stand-in)'\nexit 0\n",
+    )
+    .expect("writes the stand-in reproduce.sh");
+    std::fs::write(bin.join("minisign"), "#!/bin/sh\nexit 0\n").expect("writes the stub minisign");
+    std::fs::set_permissions(bin.join("minisign"), std::fs::Permissions::from_mode(0o755))
+        .expect("makes the stub executable");
     // `cargo deny --version` answers the pinned version (scripts/check.sh DENY_PIN) for the same reason:
     // the gate's dependency step probes it, and a real cargo-deny found through the shared cargo home
     // would otherwise be judged by this stub.

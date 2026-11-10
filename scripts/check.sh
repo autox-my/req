@@ -21,8 +21,9 @@
 #                      against a tampered and an empty log, and it reports
 #                      `DECISION STEP: PASS/FAIL`, never the gate's banner.
 #   --fast             run the full gate without the checks that cost the most to *run*
-#                      and tell you the least mid-iteration: `clippy`, and the external
-#                      corpora (v1-v3) with the direction gold set. **Iteration only.**
+#                      and tell you the least mid-iteration: `clippy`, the external
+#                      corpora (v1-v3) with the direction gold set, and the reproducible
+#                      release build (two clean builds). **Iteration only.**
 #                      The banner reads `GATE: PASS (FAST …)`, never the plain one, and a
 #                      commit still requires the full run — a fast green is not a merge
 #                      verdict. Rejected beside `baseline`/`decision` (one check is not the
@@ -263,9 +264,9 @@ finish() {
   fi
   if [ $fail -eq 0 ]; then
     if [ "$fast" -eq 1 ]; then
-      # Not the plain banner: a fast run did not check clippy, the external corpora or the
-      # direction gold set, so it is an iteration verdict and must not be quoted as a merge one.
-      printf 'GATE: PASS (FAST: iteration only — clippy, the external corpora and direction bench did not run; a full scripts/check.sh is required before a commit)\n'
+      # Not the plain banner: a fast run did not check clippy, the external corpora, the
+      # direction gold set or the reproducible release build, so it is an iteration verdict and must not be quoted as a merge one.
+      printf 'GATE: PASS (FAST: iteration only — clippy, the external corpora, direction bench and the reproducible build did not run; a full scripts/check.sh is required before a commit)\n'
     else
       printf 'GATE: PASS (skips above are not passes)\n'
     fi
@@ -344,6 +345,20 @@ if [ "$fast" -eq 1 ]; then
 else
   run cargo check --locked --manifest-path experiments/tier2/Cargo.toml --all-targets
   run cargo test --locked --manifest-path experiments/tier2/Cargo.toml
+fi
+# The release build is reproducible (ADR 0035): scripts/reproduce.sh builds HEAD twice from clean copies,
+# in different directories and two seconds apart, with the real toolchain, and the two tarballs must be
+# byte-identical. It is the check that the pinned toolchain, the path mapping and the archive normalisation
+# still do what the ADR says; it builds the last COMMIT, so before a commit it checks the release process
+# and the pinned toolchain, and in CI (where HEAD is the merge) it checks the change itself. It costs two
+# clean release builds, so a full run only: `--fast` prints a `FAST` line. No minisign is a SKIP here (the
+# Baseline step above has no SKIP and fails the gate on its own).
+if [ "$fast" -eq 1 ]; then
+  fastskip "reproducible release build: scripts/reproduce.sh --rev HEAD"
+elif [ "$dry" -eq 1 ] || command -v minisign >/dev/null 2>&1; then
+  run bash scripts/reproduce.sh --rev HEAD
+else
+  skip "minisign not installed (scripts/reproduce.sh runs the release proofs)"
 fi
 # The corpus loads under the strict req.claim/2 loader and every claim's parse is derived
 # (exit 3 = UNVERIFIABLE, never a pass). Nothing derived is stored in a claim file (ADR 0022),

@@ -898,6 +898,17 @@ impl ScriptFixture {
         fs::write(bin.join("cargo"), stub).expect("writes the stub cargo");
         fs::set_permissions(bin.join("cargo"), fs::Permissions::from_mode(0o755))
             .expect("makes the stub executable");
+        // The reproducible-build step (ADR 0035) needs `minisign` on PATH and runs scripts/reproduce.sh,
+        // two real release builds: both are stood in, so the fixture behaves the same on a laptop whose
+        // PATH has no minisign and in CI (whose /usr/bin has one).
+        fs::write(
+            dir.join("scripts/reproduce.sh"),
+            "#!/bin/sh\necho 'REPRODUCED  (fixture stand-in)'\nexit 0\n",
+        )
+        .expect("writes the stand-in reproduce.sh");
+        fs::write(bin.join("minisign"), "#!/bin/sh\nexit 0\n").expect("writes the stub minisign");
+        fs::set_permissions(bin.join("minisign"), fs::Permissions::from_mode(0o755))
+            .expect("makes the stub executable");
         ScriptFixture(dir)
     }
 

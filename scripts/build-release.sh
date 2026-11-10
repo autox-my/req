@@ -193,6 +193,12 @@ case $host in
   x86_64-unknown-linux-gnu | aarch64-apple-darwin) ;;
   *) die 2 "unsupported host '$host': releases are built for x86_64-unknown-linux-gnu and aarch64-apple-darwin only" ;;
 esac
+# The one clock an artifact may carry: the commit's own (SOURCE_DATE_EPOCH's convention). The archive's
+# member time and any stamp the build makes come from it, never from the builder's clock.
+epoch=$(git -C "$src" log -1 --format=%ct "$full") || die 1 'cannot read the commit time'
+case $epoch in
+  '' | *[!0-9]*) die 1 "the commit time '$epoch' is not a number of seconds" ;;
+esac
 rustc_v=$(cd "$src" && rustc -V) || die 2 'rustc -V failed'
 cargo_v=$(cd "$src" && cargo -V) || die 2 'cargo -V failed'
 
@@ -200,8 +206,21 @@ cargo_v=$(cd "$src" && cargo -V) || die 2 'cargo -V failed'
 if [ -z "$bin" ]; then
   say "cargo build --release --locked ($host)"
   unset RUSTFLAGS CARGO_ENCODED_RUSTFLAGS CARGO_BUILD_RUSTFLAGS CARGO_BUILD_TARGET
+  # The builder's paths must not reach the binary (ADR 0035): panic messages and debug paths carry
+  # the source path of every file, and a dependency's lives under the builder's CARGO_HOME. Both are
+  # mapped to fixed names. The encoded form (flags joined by 0x1f) keeps a path with a space whole.
+  # These are the only flags: nothing here changes what the code does, only what it says about where
+  # it was built.
+  sep=$(printf '\037')
+  cargo_home=${CARGO_HOME:-${HOME:-/nonexistent}/.cargo}
+  CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$cargo_home=/cargo${sep}--remap-path-prefix=$src=/req"
+  export CARGO_ENCODED_RUSTFLAGS
+  # The convention for "the time of this source": the commit's own time, for any tool that stamps one.
+  SOURCE_DATE_EPOCH=$epoch
+  export SOURCE_DATE_EPOCH
   (cd "$src" && CARGO_TARGET_DIR="$src/target" cargo build --release --locked) >&2 ||
     die 1 'cargo build --release --locked failed'
+  unset CARGO_ENCODED_RUSTFLAGS SOURCE_DATE_EPOCH
   bin=$src/target/release/req
   { [ -f "$bin" ] && [ -x "$bin" ]; } || die 1 "the build produced no executable at $bin"
 fi
@@ -280,7 +299,19 @@ done
 # macOS tar would add AppleDouble `._req` members for extended attributes; the archive is `req` only.
 COPYFILE_DISABLE=1
 export COPYFILE_DISABLE
-tar -cf "$work/req.tar" -C "$stage" req || die 1 'tar failed'
+# Nothing of the builder in the member: owner 0:0 with no name, the commit's time, ustar (no per-run
+# extended header), so one binary at one rev is one archive whoever packs it and whenever (ADR 0035).
+if tar --version 2>/dev/null | grep -q 'GNU tar'; then
+  tar --format=ustar --owner=0 --group=0 --numeric-owner --mtime="@$epoch" \
+    -cf "$work/req.tar" -C "$stage" req || die 1 'tar failed'
+else
+  # bsdtar has no --mtime: the staged file carries the time instead.
+  stamp=$(date -u -r "$epoch" +%Y%m%d%H%M.%S 2>/dev/null || date -u -d "@$epoch" +%Y%m%d%H%M.%S) ||
+    die 1 "cannot format the commit time $epoch"
+  TZ=UTC touch -t "$stamp" "$stage/req" || die 1 'cannot set the staged binary time'
+  tar --format ustar --uid 0 --gid 0 --uname '' --gname '' \
+    -cf "$work/req.tar" -C "$stage" req || die 1 'tar failed'
+fi
 gzip -n -c "$work/req.tar" >"$work/$tarball" || die 1 'gzip failed'
 members=$(tar -tzf "$work/$tarball") || die 1 'cannot list the archive just written'
 [ "$members" = req ] || die 1 "the archive must hold exactly one member 'req', it holds: $members"
