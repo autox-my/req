@@ -96,6 +96,10 @@ falsification of the bet, and the README says so.
   rev gave different hashes); from it, two builds of a rev on one builder give identical bytes (the gate checks it), and a rebuild elsewhere is
   evidence, not a promise: `scripts/reproduce.sh --rev <rev> --against <tarball>` compares the binary inside, and a `DIFFERS` is reported, not
   explained away (the target, the pinned toolchain and, on Linux, the linker and libc must match). The pinned checksum stays the authority.
+- **A release's record is self-attestation.** From ADR 0037 each release's `.build-info` lists the proofs its build ran on the bytes it shipped
+  (the bare rev, the Baseline verification, the FMR gate, `req selftest`) with the binary's SHA-256. It is written by the release runner, is not
+  signed and is not independent evidence; it does not claim the test suite, the gate, the mutation run or the reproduction check, which are not
+  run in that job. Re-run `req selftest` and `req baseline --verify` on the downloaded binary rather than trusting the file.
 - **One maintainer, early software.** Version `0.1.0`; the tool's own development uses AI coding agents under a human owner who merges
   every change (`AGENTS.md`, *Review* and *SDLC*). An automated review run by hand is an unverified lead, not a verdict
   (`docs/research/review-bakeoff.md`: unaudited, one model).

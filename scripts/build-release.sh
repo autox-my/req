@@ -28,19 +28,21 @@
 #        bench-gate       `req bench` (seed parity) exits 0 and its JSON `fmr.hard_gate` is `PASS`.
 #                         The `direction` block is UNVERIFIABLE by design on this corpus and is not
 #                         judged here.
+#        selftest         `req selftest` exits 0 and prints `selftest: PASS (N checks)` (ADR 0034).
 #      The checks run on a private copy of the binary, and that copy is what is packaged: the bytes
 #      that passed are the bytes that ship.
 #   5. Writes to <dir>: `req-<REV>-<TARGET>.tar.gz` (one member, `req`, mode 0755, at the root),
 #      `req-<REV>-<TARGET>.tar.gz.sha256` (`<hex>  <asset name>`) and `req-<REV>-<TARGET>.build-info`
-#      (informational: rev, full sha, target, `rustc -V`, `cargo -V`, the builder's libc line, UTC
-#      time). Each file goes to a temporary name in <dir> and is moved into place; a name that
+#      (rev, full sha, target, `rustc -V`, `cargo -V`, the builder's libc line, UTC
+#      time, and since ADR 0037 the record of the four proofs above: the binary's SHA-256, `rules_v`,
+#      the Baseline line, the corpus hash, the selftest line and an `attestation=` saying it is self-made). Each file goes to a temporary name in <dir> and is moved into place; a name that
 #      already exists is an error, never an overwrite (a checksum that was pinned must stay true).
 #      Prints the three paths and a line for an adopter's CI file:
 #        pin: REV=<REV> SHA256=<hex> TARGET=<target>
 #
 # Exit codes (three-state, AGENTS.md; a check that cannot run is never a pass):
 #   0  released
-#   1  a check failed (built-from, baseline-verify, bench-gate), a build or git step failed, or an
+#   1  a check failed (built-from, baseline-verify, bench-gate, selftest), a build or git step failed, or an
 #      output file already exists
 #   2  usage, an unresolvable <rev>, an unsupported host, or a tool the script needs is missing
 #   3  UNVERIFIABLE: `minisign` is not on PATH (the Baseline step has no SKIP)
@@ -285,6 +287,37 @@ if [ "$fmr_gate" != PASS ]; then
   die 1 'FAIL bench-gate: fmr.hard_gate is not PASS'
 fi
 
+# The binary's own known answers (ADR 0034): a build that cannot derive what the reference build derives
+# is not released. It reads no corpus, so it runs outside the clean copy, as an adopter would run it.
+say 'check selftest'
+rc=0
+(cd "$work" && "$stage/req" selftest) >"$work/selftest.out" 2>"$work/selftest.err" || rc=$?
+if [ "$rc" -ne 0 ]; then
+  show 'stdout' "$work/selftest.out"
+  show 'stderr' "$work/selftest.err"
+  die 1 "FAIL selftest: req selftest exited $rc"
+fi
+selftest_line=$(grep -E '^selftest: PASS \([0-9]+ checks\)$' "$work/selftest.out" | tail -n 1) || selftest_line=''
+if [ -z "$selftest_line" ]; then
+  show 'stdout' "$work/selftest.out"
+  die 1 'FAIL selftest: req selftest did not print "selftest: PASS (N checks)"'
+fi
+
+# What the record (the build-info asset) quotes from the proofs above: taken from the binary's own output,
+# never typed here, and a value that cannot be read is a failure, not a blank (a record never claims
+# what it did not see).
+baseline_line=$(grep -m 1 '^# Baseline ' "$work/verify.out") || baseline_line=''
+[ -n "$baseline_line" ] || die 1 'FAIL baseline-verify: no "# Baseline ..." line to record'
+corpus_sha=$(awk -F'"' '/^  "corpus_sha256": "/ { print $4; exit }' "$work/bench.out")
+case $corpus_sha in
+  *[!0-9a-f]* | '') die 1 "FAIL bench-gate: no usable corpus_sha256 to record ('$corpus_sha')" ;;
+esac
+[ "${#corpus_sha}" -eq 64 ] || die 1 "FAIL bench-gate: corpus_sha256 '$corpus_sha' is not 64 hex digits"
+rules_v=$(awk '$1 == "rules_v" { print $2; exit }' "$work/version.out")
+claim_schema=$(awk '$1 == "claim_schema" { print $2; exit }' "$work/version.out")
+[ -n "$rules_v" ] && [ -n "$claim_schema" ] || die 1 'FAIL built-from: req --version printed no rules_v or claim_schema to record'
+binary_sha=$(sha256_of "$stage/req")
+
 # --- the assets ------------------------------------------------------------------------------
 asset="req-$built-$host"
 tarball="$asset.tar.gz"
@@ -339,6 +372,20 @@ fi
   printf 'cargo=%s\n' "$cargo_v"
   printf 'libc=%s\n' "$libc_line"
   printf 'built_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  # The record of what this script proved about these bytes (ADR 0037). Only what ran is claimed: the
+  # gate, the test suite and the reproduction check are not run here and are not named here.
+  printf 'record=req.release-record/1\n'
+  printf 'binary_sha256=%s\n' "$binary_sha"
+  printf 'rules_v=%s\n' "$rules_v"
+  printf 'claim_schema=%s\n' "$claim_schema"
+  printf 'proof_built_from=pass\n'
+  printf 'proof_baseline_verify=pass\n'
+  printf 'proof_bench_fmr=pass\n'
+  printf 'proof_selftest=pass\n'
+  printf 'baseline=%s\n' "$baseline_line"
+  printf 'bench_corpus_sha256=%s\n' "$corpus_sha"
+  printf 'selftest=%s\n' "$selftest_line"
+  printf 'attestation=self: made by the release runner from this rev'"'"'s own scripts and binary; not independent evidence and not signed\n'
 } >"$work/$infofile"
 
 # Nothing above touched <out>. From here each file is written under a temporary name and moved.
