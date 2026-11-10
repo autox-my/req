@@ -782,6 +782,34 @@ pub struct Evaluation {
     pub document: GateDocument,
 }
 
+/// Add the line-anchor findings of [`crate::sources`] to `rationale_present`: a defect is one of its
+/// offenders (the policy fails), a file that cannot be read makes it UNVERIFIABLE (a defect still
+/// outranks that), and `checked` counts the sources that were judged.
+fn fold_source_anchors(results: &mut [PolicyResult], rows: &[Row], root: &std::path::Path) {
+    let applying: Vec<&Row> = rows
+        .iter()
+        .filter(|row| row.applies == Applies::Yes)
+        .collect();
+    let report = crate::sources::check(&applying, &crate::sources::roots_for(root));
+    let Some(slot) = results.iter_mut().find(|r| r.name == "rationale_present") else {
+        return;
+    };
+    // The base policy only ever fails (a missing source or date), so its offenders are all defects.
+    let mut failed = std::mem::take(&mut slot.offenders);
+    failed.extend(report.failed);
+    let detail = if report.checked == 0 {
+        slot.detail.clone()
+    } else {
+        format!(
+            "{}; {} source line anchor(s) checked against their files",
+            slot.detail, report.checked
+        )
+    };
+    let mut folded = PolicyResult::new("rationale_present", detail, failed, report.unverifiable);
+    folded.checked = Some(report.checked);
+    *slot = folded;
+}
+
 /// Select over the corpus, evaluate every policy and fold the exit. `Err` is a corpus that will
 /// not load — the caller owns how that is reported (`gate` prints it and exits 3).
 pub fn evaluate_selection(
@@ -797,7 +825,11 @@ pub fn evaluate_selection(
         .collect();
     // Evaluated once, before either rendering: the verdict is the same fold in both, and the
     // exit code is returned from it in both.
-    let results = evaluate(&rows, &context, evidence);
+    let mut results = evaluate(&rows, &context, evidence);
+    // Provenance, beyond "a source and a date exist" (issue #19): a source that is a repo path with a
+    // line anchor is checked against the file. It needs the corpus root, which the pure policy seam
+    // (`evaluate_claims`) does not have, so it is folded into `rationale_present` here.
+    fold_source_anchors(&mut results, &rows, root);
     let code = exit_code(&results, undecided.len());
     // The process-evidenced claims, sorted once: they are reported beside the outcome (never as
     // offenders, because a declaration is a pass-as-declared) and must be visible as a count.

@@ -48,8 +48,8 @@
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
 use req::{
-    audit, baseline, bench, canon, check, compare, decision, diff, gate, impact, init, pin,
-    propose, root, select, selftest, view,
+    audit, baseline, bench, canon, check, compare, decision, diff, gate, impact, init, next_id,
+    pin, propose, root, select, selftest, view,
 };
 use std::path::Path;
 use std::process::exit;
@@ -71,6 +71,7 @@ usage: req [--root <dir>] <command> [args]
   check [--test-report <file>]    may this repository ship: every declared variant and projection,
                                   folded into one verdict (ADR 0023)
   impact <claim-id>               what depends on that claim, transitively
+  next-id [--count N]             the next free claim id(s); --reserve holds them (parallel authors)
   init                            create a corpus in the current directory (no root lookup)
   selftest                        known-answer checks of this binary; reads no corpus (ADR 0034)
   propose <a.yml> <b.yml>         one pair put to a provider: an unratified proposal (ADR 0021)
@@ -411,6 +412,13 @@ refused, naming the values it does; a `>=` key is confirmed by comparison. A rea
 corpus does not describe is refused on purpose — the gate clears only what the model describes,
 and the friction belongs at the decision boundary (ADR 0006).
 
+`rationale_present` also checks a `rationale.source` that is a repository path with a line anchor
+(`docs/plan.md#L390`, `#L390-L395`): the file must exist, be a file and have that many lines, else the
+policy FAILS naming the claim; a file that exists but cannot be read is UNVERIFIABLE. Prose, URLs, absolute
+or `..` paths, heading anchors and a path without an anchor are not judged (a line count cannot tell whether a
+claim still matches the text it was written from; that stays a human reading). Paths are looked up from the
+corpus root and, if it sits in a subdirectory of a git checkout, from the checkout's root.
+
 `tests_linked` answers four ways over machine-evidenced claims, and there is no fifth: PASS (a
 linked test passed), FAIL (every linked test is in the report and none passed — a skipped test
 is not a pass, and a failed one outranks a passing one on the same claim), UNVERIFIABLE *no
@@ -432,7 +440,7 @@ because a test absent from the union might be in the one that failed to load.
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 answers as a `req.gate/2` document on stdout: schema, generator, `rules_v`, the selection, the
 folded verdict, the six policies (`pins_hold` also carries `checked`, the number of pins it judged,
-so a pass over zero pins is told from one that held some; `tests_linked` carries `counts`, below) and the undecided claims with what each is missing. The
+so a pass over zero pins is told from one that held some; `rationale_present` carries it too, as the number of source line anchors it judged; `tests_linked` carries `counts`, below) and the undecided claims with what each is missing. The
 verdict is the same fold the exit code applies, so the document and the process cannot disagree.
 
 `tests_linked`'s `counts` (also printed as a `counts:` line under the policy in the text report) are the
@@ -505,6 +513,28 @@ claim nearest-first, with its state in the selection.
 exit: 0 complete and settled, 3 UNVERIFIABLE (a missing target, an undecided target or
 dependent, or a relation that does not resolve — an answer a broken relation could have
 shortened says so instead of reading as complete), 2 usage.
+
+`docs/adopting.md` for the loop.";
+
+const NEXT_ID_HELP: &str = "\
+usage: req next-id [--count N] [--prefix PREFIX] [--reserve]
+
+Prints the next N free claim ids (default 1), one per line, so claims authored in parallel
+worktrees do not collide. It is the highest existing number + 1: a gap left by a retired or never-used
+number is not refilled (a number once seen in a review or a Baseline must not come to mean another
+claim). It reads file names, not claim contents: `claims/<id>.yml` is the id, so it answers while a
+sibling claim is half-written or fails a pin. The prefix is the corpus's own (`REQ` when it has
+several, or none); `--prefix` chooses, and several prefixes without `--prefix` or `REQ` is a usage error.
+
+`.req/reserved` lists blocks taken but not yet written, one id or one range per line
+(`REQ-0010..REQ-0019`, `#` starts a comment); they count as taken. `--reserve` appends the block it
+hands out, so the next author is given the next one. Two branches that reserve at the same time both
+edit the end of that file, and the merge conflict is the signal. There is no locking across machines;
+a reservation is a file in git. A file that cannot be read or understood is UNVERIFIABLE and prints no id.
+Without `--reserve` nothing is written.
+
+exit: 0 ids printed, 2 usage (including `--count` outside 1 to 10000), 3 UNVERIFIABLE (no `claims/`,
+or `.req/reserved` unreadable, malformed or not writable).
 
 `docs/adopting.md` for the loop.";
 
@@ -661,6 +691,11 @@ const COMMANDS: &[Command] = &[
         name: "check",
         run: |args, corpus| check::run(args, corpus),
         help: CHECK_HELP,
+    },
+    Command {
+        name: "next-id",
+        run: |args, corpus| next_id::run(args, corpus),
+        help: NEXT_ID_HELP,
     },
     Command {
         name: "propose",

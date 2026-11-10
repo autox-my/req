@@ -108,6 +108,12 @@ pins:
 Reference types (`to`, `source`) use `claim_id`s, addresses, or repo paths —
 whatever stays stable under rewording.
 
+A `rationale.source` that is a repo path **with a line anchor** (`docs/plan.md#L390`, `#L390-L395`, `#L390-395`) is checked by
+`req gate` (`rationale_present`): the file must exist and have that many lines, because a plan that shrinks leaves the anchor
+pointing at nothing. That is all it can check; whether the line still says what the claim was written from is a human reading.
+A source with no anchor, a heading anchor, a URL, prose or a path outside the repository is not judged. A line anchor survives
+edits no better than the line does: prefer the path alone, or a heading, where the claim comes from a section and not a line.
+
 A condition may come first or last: "When X, the pump shall stop" and "The pump shall stop when X" are one claim (rules v8,
 ADR 0038). Put a **comma after a leading condition**: without one there is nothing marking where the condition ends, the whole clause is
 read as the subject, and rewording only the trigger would then look like a new subject.
