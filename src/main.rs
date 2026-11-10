@@ -432,8 +432,16 @@ because a test absent from the union might be in the one that failed to load.
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 answers as a `req.gate/2` document on stdout: schema, generator, `rules_v`, the selection, the
 folded verdict, the six policies (`pins_hold` also carries `checked`, the number of pins it judged,
-so a pass over zero pins is told from one that held some) and the undecided claims with what each is missing. The
+so a pass over zero pins is told from one that held some; `tests_linked` carries `counts`, below) and the undecided claims with what each is missing. The
 verdict is the same fold the exit code applies, so the document and the process cannot disagree.
+
+`tests_linked`'s `counts` (also printed as a `counts:` line under the policy in the text report) are the
+applying claims by evidence: `applying`, of which `process_evidenced` (declared) and the rest machine-evidenced,
+split into `linked` (at least one `tests:` entry) and `unlinked`, so `applying = linked + unlinked +
+process_evidenced`. A linked claim is `passed`, `failed` (a linked test failed, or every linked test was skipped)
+or `not_in_report` (a linked test the report lacks, with no failure), once each. Those three are `null`, and
+the text says `not judged`, when no usable report was supplied: a claim that was not judged is not counted as
+judged.
 
 exit: 0 every policy passed and every claim decided, 1 a defect (a flagged pin among them), 3
 something that cannot be confirmed (a relation that does not resolve, a dependency left
