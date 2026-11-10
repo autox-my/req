@@ -3004,6 +3004,18 @@ fn script_fixture(tag: &str) -> Fixture {
     .expect("copies check.sh");
     let bin = fixture.path().join("home/.rustup/toolchains/fake/bin");
     std::fs::create_dir_all(&bin).expect("creates the fake toolchain");
+    // The reproducible-build step (ADR 0035) runs `scripts/reproduce.sh`, which does two real release
+    // builds: the fixture stands it in with a script that reports REPRODUCED, and puts a `minisign` on
+    // PATH so the step runs on a laptop that has none on the fixture's PATH exactly as it does in CI
+    // (where /usr/bin has one). Without both, the fixture would pass here and fail there.
+    std::fs::write(
+        fixture.path().join("scripts/reproduce.sh"),
+        "#!/bin/sh\necho 'REPRODUCED  (fixture stand-in)'\nexit 0\n",
+    )
+    .expect("writes the stand-in reproduce.sh");
+    std::fs::write(bin.join("minisign"), "#!/bin/sh\nexit 0\n").expect("writes the stub minisign");
+    std::fs::set_permissions(bin.join("minisign"), std::fs::Permissions::from_mode(0o755))
+        .expect("makes the stub executable");
     // The stub answers the test runner two ways: `nextest --version` for the pin probe, and the
     // run itself (writes the JUnit artefact the gate step will read). `cargo-nextest` exists on
     // PATH too, so the script's "is the tooling there" probe answers yes — a SKIP would make the
