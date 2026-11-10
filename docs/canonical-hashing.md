@@ -127,6 +127,13 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
 - **T1.8 Conditions** — guard clauses (``when``/``while``/``if``/``unless``/``during``)
   extract to predicate slots; ``unless`` negates the guard; conditions get **sorted**
   for assembly. A claim that *gains* a condition is a different claim (a trap case).
+  **A leading condition** (rules v8, ADR 0038) — a sentence that *starts* with a guard word
+  (``when``/``while``/``if``/``unless``/``during``, and ``where`` in this position only) reads
+  ``<guard> <condition>, <subject> <modal> …``: the condition is what lies between the guard word and
+  the **last comma before the subject**, the subject is the noun phrase after that comma, and the
+  form is the one the same obligation has with its condition last. Only an unambiguous sentence is
+  read: with no comma separating the condition from the subject, or an empty condition or subject,
+  the statement parses as it did before (the whole clause in the subject), not guessed.
 - **T1.9 Assembly + digest** — fixed schema
   ``{action, applicability, conditions, exception, modality, operator, qualifier, raw,
   subject, temporal, unstructured, unit, value}``: every key always present (null when
@@ -313,6 +320,21 @@ as `req gate` lets Fail outrank Unverifiable.
 
 #### Recorded runs (append-only)
 
+- **Rules v8** — a leading condition (T1.8, ADR 0038; issue #18). Found on an adopter's second
+  pilot: "When a document is sent to a third-party provider, the provider shall be recorded …"
+  read the whole clause as the subject, so rewording only the trigger moved the subject and
+  `req compare` called the pair `unrelated`. Per corpus, never pooled, against the recorded v7 numbers:
+  - **parity** — 29 pairs (the four new ones are hand-written from the spec: one equivalent,
+    three not-equivalent): FMR 0/18, FSR 0/8, 2 structurally unverifiable (was 25 pairs, 0/15, 0/7).
+  - **external-v1/v2/v3/v4** and the **direction gold set** — every count is identical to v7
+    (FMR 0/160, 0/227, 0/625, 0/1595; direction hard gate PASS). 66 statements in v3, v4 and the
+    direction set start with a guard word, but **none of them has a comma before its subject**
+    ("When a game is ended the product shall …"), so none is read as a leading condition and no pair
+    moved. The new rule has teeth only in the parity pairs and `tests/leading_condition.rs`; it is not
+    an external result, and the common no-comma spelling is **not** covered by it (see ADR 0038).
+  - **dogfood** — no claim starts with a guard word: `req canon` 0 flags, only `rules_v` 7 → 8
+    differs in the re-emitted manifest. The Baseline therefore needs the owner's re-signature and
+    nothing else (no re-canonicalization candidate).
 - **Rules v7** — the `IN` operator (T1.5, ADR 0030; issue #17). Found on an adopter's statements
   ("one of the four sources, …"), which parsed `value "1"` with the members as free text in the
   qualifier: reordering them moved the address and dropping one was only `scope_divergence`.

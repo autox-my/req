@@ -108,6 +108,10 @@ pins:
 Reference types (`to`, `source`) use `claim_id`s, addresses, or repo paths —
 whatever stays stable under rewording.
 
+A condition may come first or last: "When X, the pump shall stop" and "The pump shall stop when X" are one claim (rules v8,
+ADR 0038). Put a **comma after a leading condition**: without one there is nothing marking where the condition ends, the whole clause is
+read as the subject, and rewording only the trigger would then look like a new subject.
+
 ## The derived view (computed at load, stored nowhere)
 
 When a claim is loaded, `canonicalize_statement` parses its `statement` against the corpus's

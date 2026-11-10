@@ -34,10 +34,11 @@ use crate::model::Registry;
 /// coverage invariant (T1.10: no statement word leaves identity silently) and the whole-span
 /// subject match (T1.7 as written) after two false merges in this repository's own corpus;
 /// 6 -> 7 added the `IN` operator (ADR 0030): an enumerated "one of {A, B, C}" is a set in the
-/// value slot and no longer the bound `1`.
+/// value slot and no longer the bound `1`; 7 -> 8 read a leading condition (`When X, the pump shall
+/// stop`) as a condition, not as part of the subject (ADR 0038, issue #18).
 /// Addresses computed under older rules are re-canonicalization candidates, never silently
 /// rewritten (hashing spec §5).
-pub const RULES_V: u32 = 7;
+pub const RULES_V: u32 = 8;
 /// The claim **file format's** own version (`docs/claim-format.md`), an axis that moves
 /// independently of the normalization rules: a schema bump is a migration and moves no
 /// address, while a rules bump re-derives every address. Named here, beside the other
@@ -862,9 +863,56 @@ fn find_last_guard(text: &str) -> Option<(usize, usize)> {
     best
 }
 
+/// Guard words that open a sentence as a condition (rules v8, issue #18): the trailing set, plus
+/// `where` — which is *not* a trailing guard, because "log the change where it is configured" is a
+/// place or a relative pronoun far more often than a condition, but a sentence that **starts** with
+/// "Where" is the EARS optional-feature condition.
+const LEADING_GUARD_WORDS: &[&str] = &["when", "while", "unless", "during", "if", "where"];
+
+/// A leading condition, `<guard> <condition>, <subject> <modal> …` (rules v8, issue #18): the guard word,
+/// the condition (between the guard and the last comma before the subject, the comma dropped) and the
+/// rest of the sentence, starting at the subject.
+///
+/// Only read when the sentence is unambiguous: it starts with a guard word, has a modal phrase, and a
+/// comma ends the condition with **both** a non-empty condition and a non-empty subject on either side.
+/// The condition ends at the **last** comma before the modal phrase, so a list inside the condition
+/// ("When the door, the lock or the alarm fails, the pump shall stop") stays inside it. A sentence with
+/// no such comma is left exactly as rules v7 read it (the whole clause in the subject): not guessed.
+fn split_leading_condition(text: &str) -> Option<(String, String, String)> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let guard = *words.first()?;
+    if !LEADING_GUARD_WORDS.contains(&guard) {
+        return None;
+    }
+    // Scanned for the position only: the lints it may raise belong to the real scan, later.
+    let (modality, modal_start, _) = scan_modality(&words, &mut Vec::new());
+    modality?;
+    // The last comma-ended word before the modal, past the guard word, leaving a subject after it.
+    let end = (1..modal_start.saturating_sub(1))
+        .rev()
+        .find(|&i| words[i].ends_with(','))?;
+    let condition = words[1..=end].join(" ");
+    let condition = condition.trim_end_matches(',').trim();
+    if condition.is_empty() {
+        return None;
+    }
+    Some((
+        guard.to_string(),
+        condition.to_string(),
+        words[end + 1..].join(" "),
+    ))
+}
+
 fn extract_conditions(body: &str, lints: &mut Vec<Lint>) -> (String, BTreeSet<String>) {
-    let mut remainder = body.to_string();
     let mut conditions: BTreeSet<String> = BTreeSet::new();
+    // The leading condition first: a guard word inside it must not be taken for the trailing one.
+    let mut remainder = match split_leading_condition(body) {
+        Some((guard, condition, rest)) => {
+            conditions.insert(format!("{guard}: {}", normalize_text(&condition)));
+            rest
+        }
+        None => body.to_string(),
+    };
     while let Some((pos, word_len)) = find_last_guard(&remainder) {
         let head = remainder[..pos].trim().to_string();
         let guard_text = remainder[pos..].to_string();
