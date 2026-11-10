@@ -24,3 +24,9 @@
 # `selection=none` is the empty context, so the projection is the whole corpus (15 applying
 # claims, and the 6 the empty context leaves undecided are shown in their own section).
 docs/spec.md
+#
+# `docs/trace.md` is the traceability matrix of the release context in `.req/variants` (line 1), the same
+# artefact `req trace` prints; `req check` judges it with `req trace --check` (ADR 0018, amended 2026-11-10):
+#
+#   cargo run -q -- trace --out docs/trace.md corpus_set=parity_and_adversarial set=direction_gold_structural deployment_mode=air_gapped field=value
+docs/trace.md

@@ -875,6 +875,25 @@ pub fn check_render_projection(path: &Path, root: &Path) -> ProjectionCheck {
     check_projection(GENERATOR_RENDER, "render", path, &Context::new(), root)
 }
 
+/// The judgement of one projection **listed in `.req/projections`**, by whichever command made it
+/// (ADR 0018 amended): the generator its header names picks `render --check` or `trace --check`, each
+/// judging the file under its own recorded selection, and the kind (`"render"` or `"trace"`) names the
+/// step. A file whose header cannot be read at all falls to `render`'s judgement, which says why it is
+/// not a projection (3) in the words it always used.
+pub fn check_listed_projection(path: &Path, root: &Path) -> (&'static str, ProjectionCheck) {
+    let generator = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| text.lines().next().and_then(|line| parse_header(line).ok()))
+        .map(|header| header.generator);
+    match generator.as_deref() {
+        Some(GENERATOR_TRACE) => (
+            "trace",
+            check_projection(GENERATOR_TRACE, "trace", path, &Context::new(), root),
+        ),
+        _ => ("render", check_render_projection(path, root)),
+    }
+}
+
 fn check_projection(
     generator: &str,
     command: &str,

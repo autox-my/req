@@ -45,7 +45,7 @@ where it can be tested once.
    missing is exit 1 (a projection that vanished is silent decay, ADR 0018); a present list that yields no
    path is exit 1.
 4. **A step's exit is the command's exit.** A variant step exits exactly as `req gate --test-report <file>
-   <line>` would, and a projection step exactly as `req render --check <path>` would; `check` calls the
+   <line>` would, and a projection step exactly as `req render --check <path>` would (as `req trace --check <path>` would, for a trace projection, chosen by the generator the file's header names; amended 2026-11-10, ADR 0018); `check` calls the
    same code, it does not re-implement a policy or shell out. **One stated exception:** a listed projection
    path that does not exist or is not a regular file is exit 1 (§3), where `render --check` can only say it
    cannot read the file (3). The listing is what makes its absence a defect, and a FIFO is never opened. Its text and JSON say which step produced

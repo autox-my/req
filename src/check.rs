@@ -54,8 +54,8 @@ pub fn fold(exits: &[i32]) -> i32 {
 
 /// One thing the run examined, with the exit it earned.
 struct Step {
-    /// `gate` (a variants line), `render` (a projections path) or `list` (the list itself could
-    /// not be used as a list).
+    /// `gate` (a variants line), `render` or `trace` (a projections path, by the generator its
+    /// header names) or `list` (the list itself could not be used as a list).
     kind: &'static str,
     /// The variants line, or the path.
     label: String,
@@ -338,7 +338,8 @@ fn variant_step(label: String, context: Context, root: &Path, evidence: TestEvid
     }
 }
 
-/// One projection step: `req render --check <path>`'s judgement, with the path resolved against
+/// One projection step: `req render --check <path>`'s judgement (or `req trace --check`'s, for a
+/// trace projection), with the path resolved against
 /// the corpus root (the list is the repository's, so its paths are repo-relative wherever the
 /// command is run from).
 fn projection_step(path: &str, root: &Path) -> Step {
@@ -384,7 +385,7 @@ fn projection_step(path: &str, root: &Path) -> Step {
             );
         }
     }
-    let judged = crate::view::check_render_projection(&full, root);
+    let (kind, judged) = crate::view::check_listed_projection(&full, root);
     let shown = full.display().to_string();
     let notes: Vec<String> = if judged.code == 0 {
         Vec::new()
@@ -396,7 +397,7 @@ fn projection_step(path: &str, root: &Path) -> Step {
             .map(str::to_string)
             .collect()
     };
-    Step::new("render", path.to_string(), judged.code, notes, None)
+    Step::new(kind, path.to_string(), judged.code, notes, None)
 }
 
 fn exit_word(exit: i32) -> &'static str {
@@ -462,7 +463,10 @@ fn print_json(steps: &[Step], code: i32, projections_pinned: bool) {
 
 fn print_text(steps: &[Step], code: i32, projections_pinned: bool) {
     let variants = steps.iter().filter(|step| step.kind == "gate").count();
-    let projections = steps.iter().filter(|step| step.kind == "render").count();
+    let projections = steps
+        .iter()
+        .filter(|step| step.kind == "render" || step.kind == "trace")
+        .count();
     let lists = steps.iter().filter(|step| step.kind == "list").count();
     if lists == 0 {
         println!("# req check: {variants} variant step(s), {projections} projection(s)");
