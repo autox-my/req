@@ -411,6 +411,13 @@ refused, naming the values it does; a `>=` key is confirmed by comparison. A rea
 corpus does not describe is refused on purpose — the gate clears only what the model describes,
 and the friction belongs at the decision boundary (ADR 0006).
 
+`rationale_present` also checks a `rationale.source` that is a repository path with a line anchor
+(`docs/plan.md#L390`, `#L390-L395`): the file must exist, be a file and have that many lines, else the
+policy FAILS naming the claim; a file that exists but cannot be read is UNVERIFIABLE. Prose, URLs, absolute
+or `..` paths, heading anchors and a path without an anchor are not judged (a line count cannot tell whether a
+claim still matches the text it was written from; that stays a human reading). Paths are looked up from the
+corpus root and, if it sits in a subdirectory of a git checkout, from the checkout's root.
+
 `tests_linked` answers four ways over machine-evidenced claims, and there is no fifth: PASS (a
 linked test passed), FAIL (every linked test is in the report and none passed — a skipped test
 is not a pass, and a failed one outranks a passing one on the same claim), UNVERIFIABLE *no
@@ -432,7 +439,7 @@ because a test absent from the union might be in the one that failed to load.
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 answers as a `req.gate/2` document on stdout: schema, generator, `rules_v`, the selection, the
 folded verdict, the six policies (`pins_hold` also carries `checked`, the number of pins it judged,
-so a pass over zero pins is told from one that held some) and the undecided claims with what each is missing. The
+so a pass over zero pins is told from one that held some; `rationale_present` carries it too, as the number of source line anchors it judged) and the undecided claims with what each is missing. The
 verdict is the same fold the exit code applies, so the document and the process cannot disagree.
 
 exit: 0 every policy passed and every claim decided, 1 a defect (a flagged pin among them), 3

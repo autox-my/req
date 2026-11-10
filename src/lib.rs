@@ -48,4 +48,5 @@ pub mod propose;
 pub mod root;
 pub mod select;
 pub mod selftest;
+pub mod sources;
 pub mod view;

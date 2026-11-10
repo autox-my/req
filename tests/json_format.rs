@@ -746,11 +746,19 @@ fn gate_json_has_the_pinned_shape() {
         "the policies keep the order the text report and the docs name"
     );
     for policy in policies {
-        // `checked` (the number of pins judged) is on `pins_hold` alone.
+        // `checked` is on `pins_hold` (the pins judged) and `rationale_present` (the sources with a
+        // line anchor, issue #19) alone.
         if policy["policy"] == "pins_hold" {
             assert_keys(policy, &["checked", "details", "outcome", "policy"]);
             // The starter claim pins three keys (operator, value, unit); nothing else here pins.
             assert_eq!(policy["checked"], 3, "{policy}");
+            continue;
+        }
+        if policy["policy"] == "rationale_present" {
+            assert_keys(policy, &["checked", "details", "outcome", "policy"]);
+            // No fixture source carries a line anchor: a pass over zero sources says so.
+            assert_eq!(policy["checked"], 0, "{policy}");
+            assert_eq!(policy["outcome"], "pass");
             continue;
         }
         assert_keys(policy, &["details", "outcome", "policy"]);
