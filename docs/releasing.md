@@ -37,8 +37,10 @@ could carry its own key.
    The workflow and `scripts/build-release.sh` come from the dispatched ref; the rev is built from a clean
    copy of itself.
 3. The **build** job (`contents: read`, it runs the rev's code) checks the runner (C linker, `minisign`,
-   `rustup` with the toolchain the rev pins), runs `scripts/build-release.sh --rev <full sha> --out …` and hands
-   the three assets to the next job as an artifact. The **build-macos** job (`contents: read`, a `macos-14`
+   `rustup` with the toolchain the rev pins), runs `scripts/build-release.sh --rev <full sha> --out …`, then
+   `scripts/reproduce.sh --rev <full sha> --against <the tarball it just wrote>` (ADR 0035: a binary the runner cannot
+   derive again from the rev fails the job, and nothing is published), and hands the three assets to the next job as an
+   artifact. The **build-macos** job (`contents: read`, a `macos-14`
    Apple-silicon runner) takes the SHA the Linux job resolved, re-checks that it is on `main`, and runs the same
    script for `aarch64-apple-darwin`; its three assets travel as a second artifact (ADR 0032).
 4. The **publish** job (`contents: write`, the only job that holds the token, and it checks out and runs none
@@ -62,6 +64,9 @@ the release, delete the leftover `.build-info`/`.sha256` assets of that rev, and
 deleted by hand on purpose: the workflow has no way to delete or replace an asset, and an asset name that
 already exists on the release is an error, never a replacement.) A release whose tarball is present is
 complete.
+A `DIFFERS` from the reproduction step (ADR 0035) also fails the job and publishes nothing: read its output, which names
+both hashes and how many bytes differ. A handful of bytes is a stamp (on macOS the linker's UUID); thousands is a different
+build. Either way the rev is not released from that run; do not work around it by editing the workflow.
 
 **The Linux floor is the runner's glibc, or lower.** `build-info` records the builder's libc line (`ldd --version`).
 For `rev-ec87808` (built on glibc 2.43) the installed binary ran on Ubuntu 24.04 (2.39) cleanly and on 22.04
