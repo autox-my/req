@@ -57,7 +57,7 @@ could carry its own key.
    after a half-failed upload names a hash that was never published.
 
 The script refuses to write anything unless the binary says `built from` the bare rev, `req baseline
---verify baselines/air-gapped.json` prints `[VERIFIED]` and `req bench` passes its FMR gate (exit 1 names
+--verify baselines/air-gapped.json` prints `[VERIFIED]`, `req bench` passes its FMR gate and `req selftest` passes (exit 1 names
 the check; exit 3 is `minisign` missing, which is UNVERIFIABLE and blocks). A failed proof leaves nothing
 published. If a run dies **during the upload**, before the tarball is there, nothing is pinnable yet: open
 the release, delete the leftover `.build-info`/`.sha256` assets of that rev, and dispatch again. (They are
@@ -67,6 +67,12 @@ complete.
 A `DIFFERS` from the reproduction step (ADR 0035) also fails the job and publishes nothing: read its output, which names
 both hashes and how many bytes differ. A handful of bytes is a stamp (on macOS the linker's UUID); thousands is a different
 build. Either way the rev is not released from that run; do not work around it by editing the workflow.
+
+**The record in `.build-info` (ADR 0037).** Besides the toolchain lines, each release's `.build-info` has `record=req.release-record/1`, the SHA-256 of
+the binary (`binary_sha256`), `rules_v`, one `proof_…=pass` line per proof the script ran (built-from, baseline-verify, bench FMR gate, selftest)
+and the Baseline, corpus and selftest lines they printed, ending in an `attestation=self…` line. It is a record of what the runner did, bound to
+the rev and the bytes; it is not signed and not independent. The script now also refuses to release a binary whose `req selftest` fails
+(exit 1 naming `selftest`). Releases made before ADR 0037 have the shorter file.
 
 **The Linux floor is the runner's glibc, or lower.** `build-info` records the builder's libc line (`ldd --version`).
 For `rev-ec87808` (built on glibc 2.43) the installed binary ran on Ubuntu 24.04 (2.39) cleanly and on 22.04

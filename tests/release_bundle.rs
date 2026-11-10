@@ -37,6 +37,7 @@ const COMMITTED_BASELINE: &str = "COMMITTED\n";
 
 /// The stub `req`. Configured by the environment of each run: `STUB_BUILT_FROM` (the value after
 /// `built from`), `STUB_VERIFY` (what `baseline --verify` does), `STUB_BENCH` (what `bench` does),
+/// `STUB_SELFTEST` (what `selftest` does),
 /// `STUB_LOG` (a file it appends its working directory to). It insists on being invoked the way the
 /// ADR says (`baseline --verify baselines/air-gapped.json`, `bench` with no argument) and on being
 /// run in the clean copy: the committed Baseline text present, no stray file from the caller's tree.
@@ -44,7 +45,7 @@ const STUB_REQ: &str = r##"#!/bin/sh
 log() { [ -z "${STUB_LOG:-}" ] || printf '%s\n' "$*" >> "$STUB_LOG"; }
 emit_bench() {
   printf 'E-001    equivalent      collapsed=true  structured=true\nN-001    not_equivalent  collapsed=false\n'
-  printf '{\n  "corpus": "bench/corpus/parity.yml",\n  "degraded": [],\n  "direction": {\n    "accuracy": null,\n    "hard_gate": "%s"\n  },\n  "fmr": {\n    "collapses": 0,\n    "hard_gate": "%s",\n    "rate": 0.0\n  }\n}\n' "$1" "$2"
+  printf '{\n  "corpus": "bench/corpus/parity.yml",\n  "corpus_sha256": "4a1727af8631325b190fda8921390b7c559215bb0edc9f00079edf1c2f0c9889",\n  "degraded": [],\n  "direction": {\n    "accuracy": null,\n    "hard_gate": "%s"\n  },\n  "fmr": {\n    "collapses": 0,\n    "hard_gate": "%s",\n    "rate": 0.0\n  }\n}\n' "$1" "$2"
 }
 tree_is_the_clean_copy() {
   [ -f baselines/air-gapped.json ] && [ "$(cat baselines/air-gapped.json)" = COMMITTED ] && [ ! -e stray.txt ]
@@ -68,6 +69,18 @@ case "${1:-}" in
       unverifiable) echo "[UNVERIFIABLE]"; exit 3 ;;
       verified-but-exit1) echo "[VERIFIED]"; exit 1 ;;
       no-brackets) echo "VERIFIED"; exit 0 ;;
+      silent) exit 0 ;;
+    esac
+    ;;
+  selftest)
+    log "selftest ran"
+    if [ $# -ne 1 ]; then echo "stub: wrong selftest invocation: $*" >&2; exit 64; fi
+    case "${STUB_SELFTEST:-pass}" in
+      pass) echo "PASS digest: sha256(\"abc\")"; echo "selftest: PASS (26 checks)"; exit 0 ;;
+      fail) echo "FAIL address: x"; echo "selftest: FAIL (1 of 26 checks failed)"; exit 1 ;;
+      fail-exit0) echo "selftest: FAIL (1 of 26 checks failed)"; exit 0 ;;
+      pass-but-exit1) echo "selftest: PASS (26 checks)"; exit 1 ;;
+      unverifiable) echo "selftest: UNVERIFIABLE"; exit 3 ;;
       silent) exit 0 ;;
     esac
     ;;
@@ -524,6 +537,10 @@ fn the_checks_run_with_the_clean_copy_as_the_working_directory() {
     assert_eq!(cwds.len(), 2, "baseline --verify and bench both ran: {log}");
     assert_eq!(cwds[0], cwds[1], "both checks ran in the same copy");
     assert!(
+        log.lines().any(|line| line == "selftest ran"),
+        "the binary's selftest ran too: {log}"
+    );
+    assert!(
         !Path::new(cwds[0]).starts_with(&repo),
         "the checks must not run in the caller's repository ({repo:?}): {cwds:?}"
     );
@@ -689,6 +706,110 @@ fn the_direction_block_being_unverifiable_does_not_block_a_passing_fmr_gate() {
     let world = World::standard("direction-unverifiable");
     let run = world.release(&[world.built_from(), ("STUB_BENCH", "pass")]);
     assert_eq!(run.code, Some(0), "stderr: {}", run.stderr);
+}
+
+// ---------------------------------------------------------------------------------------------
+// (d2) the binary's own known answers must hold (ADR 0034, ADR 0037)
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn a_selftest_that_does_not_pass_blocks_the_release() {
+    let world = World::standard("selftest");
+    for selftest in [
+        "fail",
+        "fail-exit0",
+        "pass-but-exit1",
+        "unverifiable",
+        "silent",
+    ] {
+        let run = world.release(&[world.built_from(), ("STUB_SELFTEST", selftest)]);
+        assert_eq!(
+            run.code,
+            Some(1),
+            "selftest {selftest} must block; stderr: {}",
+            run.stderr
+        );
+        assert!(
+            run.stderr.contains("selftest"),
+            "the failure names the check (selftest): {}",
+            run.stderr
+        );
+        assert_nothing_written(&world.out);
+    }
+}
+
+#[test]
+fn the_build_info_is_a_record_of_the_proofs_that_ran_and_says_it_is_self_attestation() {
+    let world = World::standard("record");
+    let run = world.release(&[world.built_from()]);
+    assert_eq!(run.code, Some(0), "stderr: {}", run.stderr);
+    let info = fs::read_to_string(world.asset(".build-info")).expect("reads the build info");
+    let value = |key: &str| -> String {
+        let prefix = format!("{key}=");
+        let hits: Vec<&str> = info
+            .lines()
+            .filter_map(|line| line.strip_prefix(prefix.as_str()))
+            .collect();
+        assert_eq!(hits.len(), 1, "exactly one {key}= line in:\n{info}");
+        hits[0].to_string()
+    };
+    assert_eq!(value("record"), "req.release-record/1");
+    // The binary that passed, by an independent hash of the member (not of the archive).
+    let unpacked = world.root.join("record-unpacked");
+    fs::create_dir_all(&unpacked).expect("creates the unpack dir");
+    let status = Command::new("tar")
+        .args(["-xzf"])
+        .arg(world.asset(".tar.gz"))
+        .arg("-C")
+        .arg(&unpacked)
+        .status()
+        .expect("runs tar");
+    assert!(status.success());
+    assert_eq!(
+        value("binary_sha256"),
+        hex_sha256(&fs::read(unpacked.join("req")).expect("reads the member"))
+    );
+    // Every proof the script ran, by name, as the script judged it.
+    for proof in [
+        "proof_built_from",
+        "proof_baseline_verify",
+        "proof_bench_fmr",
+        "proof_selftest",
+    ] {
+        assert_eq!(value(proof), "pass", "{proof}");
+    }
+    // The numbers an assessor reads, taken from the binary's own output, not typed here.
+    assert_eq!(value("rules_v"), "6");
+    assert_eq!(value("claim_schema"), "req.claim/2");
+    assert_eq!(
+        value("baseline"),
+        "# Baseline baselines/air-gapped.json: 18 claim(s)"
+    );
+    assert_eq!(
+        value("bench_corpus_sha256"),
+        "4a1727af8631325b190fda8921390b7c559215bb0edc9f00079edf1c2f0c9889"
+    );
+    assert_eq!(value("selftest"), "selftest: PASS (26 checks)");
+    // What the record is NOT: said in the record itself, where an assessor reads it.
+    let attestation = value("attestation");
+    for needle in ["self", "not independent"] {
+        assert!(
+            attestation.contains(needle),
+            "the attestation says {needle:?}: {attestation}"
+        );
+    }
+    // And it records no claim about what did not run here.
+    for absent in [
+        "proof_gate",
+        "proof_tests",
+        "proof_reproduce",
+        "proof_mutation",
+    ] {
+        assert!(
+            !info.contains(absent),
+            "{absent} did not run in this script, so the record cannot claim it:\n{info}"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
