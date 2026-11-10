@@ -108,6 +108,12 @@ pins:
 Reference types (`to`, `source`) use `claim_id`s, addresses, or repo paths —
 whatever stays stable under rewording.
 
+A `rationale.source` that is a repo path **with a line anchor** (`docs/plan.md#L390`, `#L390-L395`, `#L390-395`) is checked by
+`req gate` (`rationale_present`): the file must exist and have that many lines, because a plan that shrinks leaves the anchor
+pointing at nothing. That is all it can check; whether the line still says what the claim was written from is a human reading.
+A source with no anchor, a heading anchor, a URL, prose or a path outside the repository is not judged. A line anchor survives
+edits no better than the line does: prefer the path alone, or a heading, where the claim comes from a section and not a line.
+
 ## The derived view (computed at load, stored nowhere)
 
 When a claim is loaded, `canonicalize_statement` parses its `statement` against the corpus's
