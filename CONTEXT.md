@@ -110,8 +110,14 @@ _Avoid_: version, release, snapshot
 
 **Conflict**:
 Two claims that cannot both hold in the same scope, recorded as a first-class object that
-preserves the losing side. It is information, not an error.
+preserves the losing side. It is information, not an error. Recorded as a `conflicts-with` relation (ADR 0043).
 _Avoid_: merge conflict, clash, error
+
+**Contradiction**:
+Two claims applying in the same selection whose obligations admit no common value — same subject,
+action, qualifier and unit, nested conditions, disjoint feasible sets; found structurally at Tier 1
+(ADR 0043). Unrecorded, it is a defect; recorded, it is a Conflict.
+_Avoid_: inconsistency (the corpus is never shown consistent, only free of what was checked)
 
 **Proposal**:
 A change to a claim that has not yet been accepted; what an edit from a non-engineer
