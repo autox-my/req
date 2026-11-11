@@ -18,8 +18,8 @@
 //! or flag present; 3 UNVERIFIABLE (it cannot be produced); 2 usage. The words PASS, FAIL and
 //! UNVERIFIABLE never reach stdout: this describes a change, `req check` is the release verdict.
 
-use crate::canon::{self, LoadedClaim};
-use crate::compare::{self, Direction};
+use crate::canon::{self, LoadedClaim, Modality};
+use crate::compare::{self, Direction, Effect};
 use crate::format::{self, Format};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
@@ -83,28 +83,18 @@ impl Class {
         }
     }
 
-    /// The class a changed meaning earns from its direction (ADR 0026 §2).
-    fn of_direction(direction: Direction) -> Class {
-        if direction.is_loosening() {
-            return Class::Weakened;
-        }
-        match direction {
-            Direction::ModalityStrengthening
-            | Direction::NumericTightening
-            | Direction::MembershipNarrowing
-            | Direction::ScopeNarrowing => Class::Tightened,
-            Direction::Unclassifiable => Class::NotJudged,
-            // A different obligation rather than a stronger or weaker one; and `Identical`, which
-            // cannot reach here (identical canonical forms share an address, and an address that
-            // differs is a form that differs) — a human reads it rather than trusting that proof.
-            Direction::PolarityFlip
-            | Direction::ScopeDivergence
-            | Direction::Unrelated
-            | Direction::Identical => Class::Reshaped,
-            Direction::ModalityWeakening
-            | Direction::NumericLoosening
-            | Direction::MembershipWidening
-            | Direction::ScopeWidening => Class::Weakened,
+    /// The class a changed meaning earns from its direction and the claim's modality (ADR 0026
+    /// §2 as amended by ADR 0041: a guard added to an obligation is a weakening).
+    fn of_direction(direction: Direction, modality: Option<Modality>) -> Class {
+        match direction.effect(modality) {
+            Effect::PermitsMore => Class::Weakened,
+            Effect::PermitsLess => Class::Tightened,
+            Effect::NoDirection if direction == Direction::Unclassifiable => Class::NotJudged,
+            // A different obligation rather than a stronger or weaker one, a guard on a permission,
+            // and `Identical`, which cannot reach here (identical canonical forms share an address,
+            // and an address that differs is a form that differs) — a human reads it rather than
+            // trusting that proof.
+            Effect::NoDirection => Class::Reshaped,
         }
     }
 }
@@ -706,7 +696,10 @@ fn classify_pair(base: &LoadedClaim, head: &LoadedClaim) -> Entry {
             (Class::Reworded, None)
         } else {
             let direction = compare::compare(&base.derived.form, &head.derived.form);
-            (Class::of_direction(direction), Some(direction))
+            (
+                Class::of_direction(direction, base.derived.form.modality),
+                Some(direction),
+            )
         }
     } else if metadata_differs(base, head) || (flagged(head) && !flagged(base)) {
         // Same statement and applicability: the claim's own text did not move, so a different

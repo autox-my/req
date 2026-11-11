@@ -7,8 +7,9 @@
 //! and loosens the other is no direction at all. Each expectation below is written from the definitions in
 //! `compare.rs`'s own doc and `docs/canonical-hashing.md`, never read back from a run.
 
+use req::canon::Modality;
 use req::canon::{CanonicalForm, canonicalize_statement};
-use req::compare::{Direction, compare};
+use req::compare::{Direction, Effect, compare};
 use req::model::Registry;
 
 fn form(statement: &str) -> CanonicalForm {
@@ -56,24 +57,90 @@ fn the_opposite_of_a_direction_is_its_mirror_and_only_axes_have_one() {
     }
 }
 
+/// What each direction does to what complies, per modality (ADR 0041). Written from the deontic reading, not from a
+/// run: a guard added to an obligation or a prohibition makes it bind less often, so more behaviour complies; a guard
+/// on a permission is either a narrower grant or no change to any obligation, so no direction is claimed.
 #[test]
-fn exactly_four_directions_permit_more_than_before() {
+fn what_complies_moves_by_direction_and_a_guard_reads_against_the_modality() {
     use Direction::*;
-    let loosening: Vec<Direction> = ALL
-        .iter()
-        .chain([Unrelated, Unclassifiable].iter())
-        .copied()
-        .filter(Direction::is_loosening)
-        .collect();
+    use Effect::*;
+    let obligations = [
+        Some(Modality::Shall),
+        Some(Modality::Should),
+        Some(Modality::ShallNot),
+    ];
+    let table = [
+        (ModalityWeakening, PermitsMore),
+        (NumericLoosening, PermitsMore),
+        (MembershipWidening, PermitsMore),
+        (ScopeNarrowing, PermitsMore),
+        (ModalityStrengthening, PermitsLess),
+        (NumericTightening, PermitsLess),
+        (MembershipNarrowing, PermitsLess),
+        (ScopeWidening, PermitsLess),
+        (Identical, NoDirection),
+        (PolarityFlip, NoDirection),
+        (ScopeDivergence, NoDirection),
+        (Unrelated, NoDirection),
+        (Unclassifiable, NoDirection),
+    ];
+    // The table covers every direction, so a new class cannot slip past this test.
+    for d in ALL.iter().chain([Unrelated, Unclassifiable].iter()) {
+        assert!(
+            table.iter().any(|(t, _)| t == d),
+            "{d:?} is not in the table"
+        );
+    }
+    for m in obligations {
+        for (d, e) in table {
+            assert_eq!(d.effect(m), e, "{d:?} under {m:?}");
+        }
+    }
+    for m in [Some(Modality::May), None] {
+        assert_eq!(ScopeNarrowing.effect(m), NoDirection, "a guard under {m:?}");
+        assert_eq!(ScopeWidening.effect(m), NoDirection, "a guard under {m:?}");
+        assert_eq!(
+            NumericLoosening.effect(m),
+            PermitsMore,
+            "a bound is not a guard"
+        );
+    }
+}
+
+#[test]
+fn adding_a_guard_is_scope_narrowing_and_permits_more() {
+    // The probe that found the inversion (2026-11-11).
+    let plain = "The pump shall stop within 2 s.";
+    let guarded = "The pump shall stop within 2 s when the tank is full.";
+    assert_eq!(dir(plain, guarded), "scope_narrowing");
+    assert_eq!(dir(guarded, plain), "scope_widening");
+    let effect = |a: &str, b: &str| compare(&form(a), &form(b)).effect(form(a).modality);
+    assert_eq!(effect(plain, guarded), Effect::PermitsMore);
+    assert_eq!(effect(guarded, plain), Effect::PermitsLess);
+    // A prohibition that binds less often forbids less.
+    let never = "The pump shall not start.";
+    let never_when = "The pump shall not start when the tank is empty.";
+    assert_eq!(effect(never, never_when), Effect::PermitsMore);
+    assert_eq!(effect(never_when, never), Effect::PermitsLess);
+    // A guard on a permission: no direction claimed.
     assert_eq!(
-        loosening,
-        [
-            ModalityWeakening,
-            NumericLoosening,
-            MembershipWidening,
-            ScopeWidening
-        ]
+        effect(
+            "The operator may stop the pump.",
+            "The operator may stop the pump when the tank is full."
+        ),
+        Effect::NoDirection
     );
+}
+
+#[test]
+fn only_when_is_not_read_as_a_guard_added() {
+    // "X only when Y" forbids X outside Y: a restriction. Tier 1 keeps "only" in the action, so the pair is a
+    // different predicate (reshaped), never a scope direction that would be read as a loosening.
+    let d = dir(
+        "The system shall allow export.",
+        "The system shall allow export only when the operator is signed in.",
+    );
+    assert!(!matches!(d, "scope_narrowing" | "scope_widening"), "{d}");
 }
 
 #[test]
@@ -463,6 +530,68 @@ mod cli {
         assert!(
             !out.contains("permits strictly more"),
             "a tightening permits less: {out}"
+        );
+    }
+
+    #[test]
+    fn a_guard_added_says_it_permits_strictly_more_and_a_guard_removed_does_not() {
+        // ADR 0041: the obligation binds less often, so more behaviour complies.
+        let c = Corpus::new("guard");
+        let plain = c.write(
+            "a.yml",
+            &claim("REQ-9001", "The system shall stop within 2 s.", ""),
+        );
+        let guarded = c.write(
+            "b.yml",
+            &claim(
+                "REQ-9001",
+                "The system shall stop within 2 s when the tank is full.",
+                "",
+            ),
+        );
+        let (code, out) = c.compare(&plain, &guarded);
+        assert_eq!(code, 0, "{out}");
+        assert!(out.contains("scope_narrowing"), "{out}");
+        assert!(
+            out.contains("this change permits strictly more than before"),
+            "{out}"
+        );
+        let (code, out) = c.compare(&guarded, &plain);
+        assert_eq!(code, 0, "{out}");
+        assert!(out.contains("scope_widening"), "{out}");
+        assert!(
+            !out.contains("permits strictly more"),
+            "removing a guard binds more often: {out}"
+        );
+        assert!(
+            out.contains("this change permits less than before"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_guard_on_a_permission_claims_no_direction() {
+        let c = Corpus::new("guard-may");
+        let plain = c.write(
+            "a.yml",
+            &claim("REQ-9001", "The system may stop within 2 s.", ""),
+        );
+        let guarded = c.write(
+            "b.yml",
+            &claim(
+                "REQ-9001",
+                "The system may stop within 2 s when the tank is full.",
+                "",
+            ),
+        );
+        let (code, out) = c.compare(&plain, &guarded);
+        assert_eq!(code, 0, "{out}");
+        assert!(out.contains("scope_narrowing"), "{out}");
+        assert!(!out.contains("permits strictly more"), "{out}");
+        assert!(!out.contains("permits less"), "{out}");
+        assert!(
+            out.contains("a condition on a permission"),
+            "the reader is told why no direction is claimed: {out}"
         );
     }
 

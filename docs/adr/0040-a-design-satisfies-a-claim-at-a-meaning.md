@@ -3,7 +3,7 @@
 Extends ADR 0019 (claims carry authored test links), ADR 0020 (the address is a meaning fingerprint) and ADR 0039 (structural
 omissions). Nothing is superseded. No rules change, no claim-schema change, no Baseline envelope change.
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it. Asked for by the owner on 2026-11-11
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-11, GitHub PR #49). Asked for by the owner on 2026-11-11
 ("give me suggestion for design satisfaction. what is standard practice out there, if there is none, we should come up with
 innovative solution"). Date proposed: 2026-11-11. This ADR decides the contract; the code follows in its own pull request, test
 first, and only after the measurement in decision 5 exists.
@@ -92,6 +92,7 @@ the classifier is right about the direction, which is a measured property, not a
   within 2 s" → "… when the tank is full" obligates *less*, yet is reported `tightened` — the dangerous direction, a weakening
   shown as a tightening. Probed on 2026-11-11 with `req compare` (rules v8). It needs its own decision (an ADR 0026 amendment,
   with the gold-set labels re-read against the spec); decision 6 keeps this ADR independent of it.
+  *Decided by ADR 0041: a guard added to an obligation now reads as permitting more.*
 
 ## Falsification
 

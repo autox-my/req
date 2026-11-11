@@ -333,6 +333,56 @@ fn shall_to_should_is_weakened_and_the_reverse_is_tightened() {
     );
 }
 
+#[test]
+fn a_guard_added_is_weakened_and_a_guard_removed_is_tightened() {
+    // ADR 0041 amends ADR 0026 §2: a condition makes an obligation bind less often.
+    let plain = "The system shall stop within 2 s.";
+    let guarded = "The system shall stop within 2 s when the tank is full.";
+    let run = diff(
+        &one_claim_change("guard-added", plain, guarded),
+        &["--base", "base", "--head", "head"],
+    );
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert_eq!(class_of(&run, "REQ-0001"), "weakened", "{}", run.stdout);
+    assert!(
+        has_word(&run, "REQ-0001", "scope_narrowing"),
+        "{}",
+        run.stdout
+    );
+
+    let run = diff(
+        &one_claim_change("guard-removed", guarded, plain),
+        &["--base", "base", "--head", "head"],
+    );
+    assert_eq!(class_of(&run, "REQ-0001"), "tightened", "{}", run.stdout);
+    assert!(
+        has_word(&run, "REQ-0001", "scope_widening"),
+        "{}",
+        run.stdout
+    );
+
+    // `--fail-on weakened` catches the added guard: the change this amendment exists for.
+    let run = diff(
+        &one_claim_change("guard-fail-on", plain, guarded),
+        &["--base", "base", "--head", "head", "--fail-on", "weakened"],
+    );
+    assert_eq!(run.code, 1, "{}{}", run.stdout, run.stderr);
+}
+
+#[test]
+fn a_guard_on_a_permission_is_reshaped() {
+    let run = diff(
+        &one_claim_change(
+            "guard-may",
+            "The system may stop within 2 s.",
+            "The system may stop within 2 s when the tank is full.",
+        ),
+        &["--base", "base", "--head", "head"],
+    );
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert_eq!(class_of(&run, "REQ-0001"), "reshaped", "{}", run.stdout);
+}
+
 // (c) ------------------------------------------------------------------------------------------
 
 #[test]
