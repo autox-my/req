@@ -382,7 +382,9 @@ fn the_nextest_download_falls_back_to_the_api_asset_route_and_is_still_hash_chec
     let fallback = text
         .find("releases/assets/660814555")
         .expect("fallback url");
-    let check = text.find("sha256sum -c -").expect("hash check");
+    // The first hash check AFTER the primary: another tool's step (minisign's) may check its own
+    // tarball earlier in the file.
+    let check = primary + text[primary..].find("sha256sum -c -").expect("hash check");
     assert!(
         primary < fallback && fallback < check,
         "{CI}: the primary is tried first and the hash is checked after BOTH routes, never between"
@@ -983,4 +985,43 @@ fn each_build_job_reproduces_its_tarball_before_handing_it_on() {
         "reproduce.sh",
         "the publishing job runs none of the rev's code",
     );
+}
+
+/// 2026-11-11: the runners could not resolve any Ubuntu archive host for over half an hour, so `apt-get
+/// install minisign` failed every pull request for a reason that was not the change. Both workflows now
+/// take the pinned prebuilt release, hash-checked after either download route, as nextest is.
+#[test]
+fn minisign_is_the_pinned_release_hash_checked_never_apt() {
+    for file in [CI, RELEASE] {
+        let text = code(file);
+        forbid(
+            file,
+            &text,
+            "apt-get install -y -o Acquire::Retries=3 minisign",
+            "a package mirror outage must not make the verifier unavailable",
+        );
+        require(
+            file,
+            &text,
+            "SHA256=9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73",
+            "the tarball is pinned by hash: a swapped artefact must not become the verifier",
+        );
+        let primary = text
+            .find("releases/download/${VERSION}/minisign-")
+            .expect("primary url");
+        let fallback = text
+            .find("releases/assets/220886623")
+            .expect("fallback url");
+        let check = primary + text[primary..].find("sha256sum -c -").expect("hash check");
+        assert!(
+            primary < fallback && fallback < check,
+            "{file}: the hash is checked after BOTH routes, never between"
+        );
+        require(
+            file,
+            &text,
+            "command -v minisign",
+            "the effect is verified after the install, naming the reason when it is absent",
+        );
+    }
 }
