@@ -24,7 +24,7 @@ against what was signed.
 > Deterministic canonicalization yields **zero false merges** on the corpora that measured it:
 > the seed parity corpus with its adversarial traps, and the external families
 > (`external-v1` to `external-v4`, other projects' real requirements prose, pinned by commit).
-> At rules v8 no not-equivalent pair in those corpora shares an address.
+> At rules v9 no not-equivalent pair in those corpora shares an address.
 
 A false merge silently deletes a requirement. A false split is noise. That asymmetry shapes
 everything: the gate is zero false merges, it runs on every commit, and it has never been
