@@ -42,7 +42,7 @@ something, and reports it; it does **not** build satisfaction links (ADR 0040's 
    verdict**: the existing direction gate already fails a mirrored strengthening read as its weakening (a dangerous
    confusion), and admission is ADR 0040's input, not a bench failure.
 3. **Record and wire.** Run `req bench bench/corpus/direction-v2.yml` and commit its record
-   `bench/results/direction-v2-rules-v8.json` (append-only: a new file, v1 records untouched). Add the v2 bench to the full
+   `bench/results/direction-v2-rules-v8.json` (append-only: a new file; the existing records gain only the new block — see *Allowed paths*). Add the v2 bench to the full
    `scripts/check.sh` run beside v1 (skipped by `--fast`, as v1 is). A new `check.sh` step must be stubbed in the fixtures
    that drive `check.sh` (`tests/baseline.rs`, `tests/projection.rs`; find any other the same way) or CI fails where local
    does not.
@@ -77,10 +77,12 @@ v1 bench numbers (1016 checked, 1012 correct, 0 dangerous at rules v8) are uncha
 ## Allowed paths
 
 `tools/corpus/build_direction.py`, `bench/corpus/direction-v2.yml` (new), `bench/results/direction-v2-rules-v8.json`
-(new), `src/bench.rs`, `src/main.rs` (the bench help sentence only), `tests/**` (new tests; check.sh fixture stubs),
+(new), the six existing `bench/results/*-rules-v8.json` records **additively** (amended 2026-11-11 after review
+S-1-review-1: `req bench` rewrites a record in place, so the always-present `false_carry` block must be committed once;
+every existing number unchanged, +20/-0 each), `src/bench.rs`, `src/main.rs` (the bench help sentence only), `tests/**` (new tests; check.sh fixture stubs),
 `scripts/check.sh` (the v2 bench step only), `docs/canonical-hashing.md`, `docs/adr/0040-a-design-satisfies-a-claim-at-a-meaning.md`
 (the implementation note only).
 
-Forbidden: `bench/corpus/direction-v1.yml` and every other existing corpus or result record, `src/canon.rs`,
+Forbidden: `bench/corpus/direction-v1.yml` and every other existing corpus, any change to an existing number in a result record, `src/canon.rs`,
 `src/compare.rs` (the classifier is what is measured — if it is wrong, report it, do not fix it here), `RULES_V`,
 `claims/**`, `baselines/**`, `decisions/**`, `aliases/**`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`.

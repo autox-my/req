@@ -202,3 +202,64 @@ fn an_unclassifiable_pair_is_neither_a_carry_nor_support() {
         assert_eq!((c.count, c.support), (0, 0), "{name}: {c:?}");
     }
 }
+
+/// The record `req bench` writes carries the block for every class, with the four keys ADR 0040 reads
+/// (review S-1-review-1, finding 2: `evaluate` was tested, the JSON wiring in `bench::run` was not).
+/// A renamed key or a dropped class would otherwise pass the gate and only dirty the tree.
+#[test]
+fn the_written_record_carries_false_carry_for_every_class() {
+    let root = std::env::temp_dir().join(format!("req-false-carry-record-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("aliases")).expect("creates aliases/");
+    std::fs::create_dir_all(root.join("claims")).expect("creates claims/ (marks the corpus root)");
+    std::fs::write(
+        root.join("aliases/subjects.yml"),
+        "schema: req.subject_registry/0\nversion: 1\nsubjects: {}\n",
+    )
+    .expect("writes the registry");
+    // One strengthening labelled as such but read as a weakening would need a classifier defect;
+    // a deliberately mislabelled pair stands in for it (the label is the test's, not the classifier's).
+    let corpus = root.join("fc-probe.yml");
+    std::fs::write(
+        &corpus,
+        "schema: req.bench.corpus/0\nversion: 1\nequivalent: []\nnot_equivalent:\n  \
+         - id: FC-1\n    a: \"The system shall log each command.\"\n    \
+         b: \"The system may log each command.\"\n    source: tests/false_carry.rs\n    \
+         direction: \"modality_strengthening\"\n",
+    )
+    .expect("writes the corpus");
+    let status = std::process::Command::new(env!("CARGO_BIN_EXE_req"))
+        .arg("--root")
+        .arg(&root)
+        .arg("bench")
+        .arg(&corpus)
+        .env_remove("REQ_ROOT")
+        .output()
+        .expect("runs req bench");
+    // The mislabel is also a dangerous confusion, so the gate fails (1) — and still writes the record.
+    assert_eq!(status.status.code(), Some(1), "{status:?}");
+    let record = std::fs::read_dir(root.join("bench/results"))
+        .expect("bench/results exists")
+        .map(|e| e.expect("reads an entry").path())
+        .find(|p| p.to_string_lossy().contains("fc-probe-rules-v"))
+        .expect("the record is written");
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&record).expect("reads the record"))
+            .expect("the record is JSON");
+    let block = &json["direction"]["false_carry"];
+    for class in WEAKENING {
+        let entry = &block[class];
+        for key in ["count", "support", "admitted", "pairs"] {
+            assert!(!entry[key].is_null(), "{class}.{key} missing: {block}");
+        }
+    }
+    assert_eq!(block["modality_weakening"]["count"], 1, "{block}");
+    assert_eq!(block["modality_weakening"]["admitted"], false, "{block}");
+    assert!(
+        block["modality_weakening"]["pairs"][0]
+            .as_str()
+            .is_some_and(|p| p.starts_with("FC-1:")),
+        "{block}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
