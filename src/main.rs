@@ -212,8 +212,10 @@ const COMPARE_HELP: &str = "\
 usage: req compare <a.yml> <b.yml>
 
 Classifies the direction of change between two claims — modality weakening, numeric
-tightening or loosening, polarity flip, scope divergence — from their canonical forms. A
-classification is for a human to ratify, never an approval.
+tightening or loosening, polarity flip, scope divergence — from their canonical forms, and
+says whether the change permits more or less. A condition added (`scope_narrowing`) makes a
+SHALL, SHOULD or SHALL NOT bind less often, so it permits more; on a MAY no direction is
+claimed. A classification is for a human to ratify, never an approval.
 
 exit: 0 classified, 3 UNVERIFIABLE (a side that will not load, or that declares a file
 format this build does not write, so its parse is NOT JUDGED; a pair with no structured form
@@ -286,9 +288,10 @@ usage: req diff --base <rev> [--head <rev>] [--fail-on <classes>] [--format text
 What changed in meaning between two revisions of this corpus? `--base` is a git revision;
 `--head` is a git revision, or the working tree when absent (an uncommitted edit is read).
 Claims are matched by claim_id; each id on either side gets one class: `added`, `removed`,
-`weakened` (strictly more complies: modality weakening, numeric loosening, scope widening),
-`tightened` (the reverse), `reshaped` (a different obligation: polarity flip, scope
-divergence, unrelated), `not-judged` (the meaning changed but a side has no structured
+`weakened` (strictly more complies: modality weakening, numeric loosening, membership
+widening, a condition added to a SHALL, SHOULD or SHALL NOT), `tightened` (the reverse),
+`reshaped` (a different obligation: polarity flip, scope divergence, unrelated, a condition
+changed on a MAY), `not-judged` (the meaning changed but a side has no structured
 form), `reworded` (the text changed, the meaning fingerprint did not) or `metadata` (only
 relations, rationale, tests, evidence or pins changed). Identical claims are counted, not
 listed. A claim also carries flags: `pins-changed` (the authored pins differ, structurally),

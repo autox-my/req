@@ -3,7 +3,7 @@
 Extends ADR 0023 (`req check` folds the repository's release lists) and ADR 0015 (an undecided claim is not a pass). Nothing
 is superseded. No rules change, no claim-schema change, no Baseline envelope change.
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it. Asked for by the owner on 2026-11-11
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-11, GitHub PR #46). Asked for by the owner on 2026-11-11
 ("do req help to address incomplete requirements and silent omissions; if not should we?" → "completeness checks"). Date
 proposed: 2026-11-11. This ADR decides the contract; the code follows in its own pull request, test first.
 

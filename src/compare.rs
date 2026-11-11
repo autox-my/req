@@ -31,9 +31,10 @@ pub enum Direction {
     MembershipNarrowing,
     /// Members joined an `IN` set (or left a forbidden one): more values comply.
     MembershipWidening,
-    /// A condition was added: the claim applies less often.
+    /// A condition was added: the claim applies less often. For an obligation or a prohibition
+    /// that is a **loosening** — it binds in fewer situations (ADR 0041); see [`Direction::effect`].
     ScopeNarrowing,
-    /// A condition was removed: it applies more often.
+    /// A condition was removed: it applies more often, so an obligation binds more (ADR 0041).
     ScopeWidening,
     /// Same subject and predicate, different thing bounded or different qualifier.
     ScopeDivergence,
@@ -83,15 +84,37 @@ impl Direction {
         .find(|d| d.as_str() == label)
     }
 
-    /// True when the change permits strictly more than before.
-    pub fn is_loosening(&self) -> bool {
-        matches!(
-            self,
+    /// What the change does to what complies, given the claim's modality (both sides share it:
+    /// a modality change is classified before conditions are looked at).
+    ///
+    /// The scope classes name how often a claim *applies*; their effect on what complies depends
+    /// on what kind of statement applies (ADR 0041, amending ADR 0026 §2). An obligation (SHALL,
+    /// SHOULD) or a prohibition (SHALL NOT) that applies less often binds in fewer situations, so
+    /// more behaviour complies: a guard added is a loosening, a guard removed a tightening. A
+    /// permission (MAY) obligates nothing; a guard on it is a narrower grant or no change, so no
+    /// direction is claimed — and none is claimed without a modality.
+    pub fn effect(&self, modality: Option<Modality>) -> Effect {
+        let binding = matches!(
+            modality,
+            Some(Modality::Shall | Modality::Should | Modality::ShallNot)
+        );
+        match self {
             Direction::ModalityWeakening
-                | Direction::NumericLoosening
-                | Direction::MembershipWidening
-                | Direction::ScopeWidening
-        )
+            | Direction::NumericLoosening
+            | Direction::MembershipWidening => Effect::PermitsMore,
+            Direction::ModalityStrengthening
+            | Direction::NumericTightening
+            | Direction::MembershipNarrowing => Effect::PermitsLess,
+            Direction::ScopeNarrowing if binding => Effect::PermitsMore,
+            Direction::ScopeWidening if binding => Effect::PermitsLess,
+            Direction::ScopeNarrowing
+            | Direction::ScopeWidening
+            | Direction::Identical
+            | Direction::PolarityFlip
+            | Direction::ScopeDivergence
+            | Direction::Unrelated
+            | Direction::Unclassifiable => Effect::NoDirection,
+        }
     }
 
     /// Classes where a wrong answer misleads a ratifier about whether an obligation
@@ -129,6 +152,17 @@ impl Direction {
     }
 }
 
+/// What a change does to the set of behaviours that comply (ADR 0041).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Effect {
+    /// Strictly more complies: a weakening, the change a ratifier must not miss.
+    PermitsMore,
+    /// Strictly less complies.
+    PermitsLess,
+    /// No direction is claimed: a different obligation, no change, or a guard on a permission.
+    NoDirection,
+}
+
 /// Classify the change from `a` to `b`.
 pub fn compare(a: &CanonicalForm, b: &CanonicalForm) -> Direction {
     use Direction::*;
@@ -157,7 +191,8 @@ pub fn compare(a: &CanonicalForm, b: &CanonicalForm) -> Direction {
         _ => {}
     }
 
-    // Conditions: added narrows, removed widens, replaced diverges.
+    // Conditions: added narrows where the claim applies, removed widens it, replaced diverges.
+    // Which of those loosens the obligation is `Direction::effect`'s answer, not this one's.
     if a.conditions != b.conditions {
         if b.conditions.is_superset(&a.conditions) {
             return ScopeNarrowing;
@@ -313,8 +348,20 @@ pub fn run(path_a: &str, path_b: &str, root: &std::path::Path) -> i32 {
     );
     let direction = compare(&va.form, &vb.form);
     println!("{} -> {}: {}", a.claim_id, b.claim_id, direction.as_str());
-    if direction.is_loosening() {
-        println!("  this change permits strictly more than before");
+    match direction.effect(va.form.modality) {
+        Effect::PermitsMore => println!("  this change permits strictly more than before"),
+        Effect::PermitsLess => println!("  this change permits less than before"),
+        Effect::NoDirection
+            if matches!(
+                direction,
+                Direction::ScopeNarrowing | Direction::ScopeWidening
+            ) =>
+        {
+            println!(
+                "  a condition on a permission: whether it permits more or less is for a human to read"
+            );
+        }
+        Effect::NoDirection => {}
     }
     if direction == Direction::Unclassifiable {
         println!("  one side has no structured form, so there is nothing to compare");

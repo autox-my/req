@@ -4,6 +4,10 @@
 (from the architecture review, finding F8). Date proposed: 2026-11-05. Adds a command; changes no existing
 contract, no `RULES_V`, no address.
 
+Amended by [ADR 0041](0041-a-condition-added-to-an-obligation-weakens-it.md) (§2): a guard added to an obligation or a
+prohibition is `weakened` and a guard removed is `tightened`, the reverse of what §2 says below; a guard changed on a
+permission is `reshaped`.
+
 ## Context
 
 The review's strategic finding: the wedge is a check a team can run on a pull request, not a new authoring

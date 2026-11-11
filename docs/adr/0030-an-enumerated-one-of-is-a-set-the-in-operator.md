@@ -53,7 +53,8 @@ one claim per member loses "one of".
    A member removed from a required set narrows it; added, widens it. For a **prohibition** the set is what is
    forbidden, so the senses swap (a member added to a forbidden set narrows what may be done). Members both added and
    removed, or a set against a non-set, is `scope_divergence` — never "no change". `req diff` classes them
-   `tightened` / `weakened` with the numeric and scope directions; `is_loosening` includes the widening.
+   `tightened` / `weakened` with the numeric and scope directions; `is_loosening` includes the widening
+   (*amended by ADR 0041: `is_loosening` is replaced by `Direction::effect`, which still counts the widening as permitting more*).
 7. **`RULES_V` 6 → 7.** Per the rules-change protocol. Addresses computed under v6 are re-canonicalization
    candidates, never silently rewritten; the only claims whose address can move are those holding an enumerated
    "one of", and the committed corpus holds none.

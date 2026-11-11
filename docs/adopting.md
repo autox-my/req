@@ -1086,9 +1086,9 @@ that is identical on both sides is counted, not listed.
 | class | meaning |
 | --- | --- |
 | `added`, `removed` | the id exists on one side only |
-| `weakened` | the meaning moved so that strictly more complies: modality weakening, numeric loosening, scope widening |
-| `tightened` | the reverse: modality strengthening, numeric tightening, scope narrowing |
-| `reshaped` | a different obligation, not a stronger or weaker one (polarity flip, scope divergence, unrelated subject or predicate): read it |
+| `weakened` | the meaning moved so that strictly more complies: modality weakening, numeric loosening, membership widening, a condition added to a SHALL, SHOULD or SHALL NOT (it binds less often: `scope_narrowing`) |
+| `tightened` | the reverse: modality strengthening, numeric tightening, membership narrowing, a condition removed (`scope_widening`) |
+| `reshaped` | a different obligation, not a stronger or weaker one (polarity flip, scope divergence, unrelated subject or predicate, a condition changed on a MAY): read it |
 | `not-judged` | the meaning changed but one side has no structured form, so no direction is claimed |
 | `reworded` | the statement text changed and the meaning fingerprint did not |
 | `metadata` | only fields outside identity changed: relations, rationale, tests, evidence, pins |

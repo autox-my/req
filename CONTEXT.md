@@ -155,6 +155,11 @@ _Avoid_: diff, delta
 An edit that drops obligation — SHALL to MAY or SHOULD. The most dangerous class.
 _Avoid_: softening, downgrade
 
+**Scope narrowing**:
+An edit that adds a condition, so the claim applies less often. On an obligation or a prohibition it
+is a weakening — the claim binds in fewer situations (ADR 0041); its mirror is scope widening.
+_Avoid_: tightening (for an added condition)
+
 **Numeric loosening**:
 An edit that widens a bound, such as 200 ms to 500 ms.
 
