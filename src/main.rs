@@ -28,6 +28,8 @@
 //!   req [--root <dir>] audit [--baseline F] [--format text|json]
 //!                                          — the audit packet: coverage, provenance, undecided
 //!   req [--root <dir>] decision [--fill]   — the decision log and its hash chain (step 8)
+//!   req [--root <dir>] satisfy [--format text|json] | --record <element> <claim-id>
+//!                                          — design satisfaction links, judged by direction (ADR 0040)
 //!   req init                               — create a corpus in the working directory
 //!   req selftest                           — known-answer checks of this binary; reads no corpus (ADR 0034)
 //!
@@ -49,7 +51,7 @@
 //! the address computation.
 use req::{
     audit, baseline, bench, canon, check, compare, decision, diff, gate, impact, init, next_id,
-    pin, propose, root, select, selftest, view,
+    pin, propose, root, satisfy, select, selftest, view,
 };
 use std::path::Path;
 use std::process::exit;
@@ -71,6 +73,7 @@ usage: req [--root <dir>] <command> [args]
   check [--test-report <file>]    may this repository ship: every declared variant and projection,
                                   folded into one verdict (ADR 0023)
   impact <claim-id>               what depends on that claim, transitively
+  satisfy [--record <el> <id>]    do the design elements still satisfy their claims (ADR 0040)
   next-id [--count N]             the next free claim id(s); --reserve holds them (parallel authors)
   init                            create a corpus in the current directory (no root lookup)
   selftest                        known-answer checks of this binary; reads no corpus (ADR 0034)
@@ -403,8 +406,8 @@ const GATE_HELP: &str = "\
 usage: req gate [--format text|json] [--test-report <file>]... [key=value ...]
 
 Runs the release policies over the claims a variant leaves applying — pins hold, relations
-resolve, dependencies decided, rationale present, and (with `--test-report <file>`) tests
-linked — and confirms the invocation itself. A claim the invocation leaves undecided was
+resolve, dependencies decided, rationale present, design satisfied (ADR 0040), and (with
+`--test-report <file>`) tests linked — and confirms the invocation itself. A claim the invocation leaves undecided was
 not examined, and that is not a pass: a bare gate on a corpus carrying a selector is
 UNVERIFIABLE.
 
@@ -424,6 +427,14 @@ policy FAILS naming the claim; a file that exists but cannot be read is UNVERIFI
 or `..` paths, heading anchors and a path without an anchor are not judged (a line count cannot tell whether a
 claim still matches the text it was written from; that stays a human reading). Paths are looked up from the
 corpus root and, if it sits in a subdirectory of a git checkout, from the checkout's root.
+
+`design_satisfied` (ADR 0040) judges the satisfaction links `req satisfy` lists — a design element's
+`req-satisfies: <claim-id>` against the statement a human recorded in `.req/satisfied` — for the applying
+claims, plus any link naming a claim the corpus does not hold. PASS when every link holds or holds
+weakened under an admitted class (the line names the counts: links judged, holding, weakened); UNVERIFIABLE
+when one is suspect (the claim changed in a direction that is not carried), unratified (never recorded) or
+names an unknown claim. It never FAILs — a suspect link may still comply; nobody has shown it — and with no
+`.req/design` it passes over zero links and says so.
 
 `tests_linked` answers four ways over machine-evidenced claims, and there is no fifth: PASS (a
 linked test passed), FAIL (every linked test is in the report and none passed — a skipped test
@@ -445,8 +456,8 @@ because a test absent from the union might be in the one that failed to load.
 
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 answers as a `req.gate/2` document on stdout: schema, generator, `rules_v`, the selection, the
-folded verdict, the six policies (`pins_hold` also carries `checked`, the number of pins it judged,
-so a pass over zero pins is told from one that held some; `rationale_present` carries it too, as the number of source line anchors it judged; `tests_linked` carries `counts`, below) and the undecided claims with what each is missing. The
+folded verdict, the seven policies (`pins_hold` also carries `checked`, the number of pins it judged,
+so a pass over zero pins is told from one that held some; `rationale_present` carries it too, as the number of source line anchors it judged; `design_satisfied` carries it as the number of links; `tests_linked` carries `counts`, below) and the undecided claims with what each is missing. The
 verdict is the same fold the exit code applies, so the document and the process cannot disagree.
 
 `tests_linked`'s `counts` (also printed as a `counts:` line under the policy in the text report) are the
@@ -502,15 +513,17 @@ these files. `in_no_release` — a claim every declared release excludes — is 
 claim a release ships that no signed Baseline under `baselines/` names (a manifest counts only with its
 `.minisig` beside it; verifying the signature is `req baseline --verify`'s) — is 3, so a repository
 with no signed Baseline is 3. `unrelated` — a claim with no relation in or out — is listed and changes
-nothing, unless `.req/completeness` says `strict unrelated` (then 1). That optional file lists, one per
-line, root claim ids `unrelated` spares and `strict unrelated`; an unknown word or an id the corpus does
-not hold is exit 2 naming `<file>:<line>`. A claim a line leaves undecided is that gate's 3, never named
+nothing, unless `.req/completeness` says `strict unrelated` (then 1). `need design` in that file adds
+`unsatisfied` (ADR 0040) — a claim a release applies that no design element declares `req-satisfies:`
+for — which is 3. That optional file lists, one per line, root claim ids `unrelated` spares,
+`strict unrelated` and `need design`; an unknown word or an id the corpus does not hold is exit 2 naming
+`<file>:<line>`. A malformed `.req/design` line is exit 2 too. A claim a line leaves undecided is that gate's 3, never named
 here. Nothing says the requirements are complete: req holds nothing to be complete against.
 
 `verdict: PASS` is printed only when every declared step ran and passed. There is no `--only`,
 no `--skip` and no flag that narrows what is examined. `--format json` prints one `req.check/1`
 document on stdout — the folded verdict and, per step, its kind, its line or path, its exit and,
-for a gate step, the whole `req.gate/2` document, and for the completeness step its three lists —
+for a gate step, the whole `req.gate/2` document, and for the completeness step its lists (three, and `unsatisfied` with `need design`) —
 with the same fold and the same exit as the text.
 
 exit: 0 every declared step ran and passed; 1 a defect in any step (a gate that fails, a stale or
@@ -519,6 +532,43 @@ that cannot be confirmed — an undecided claim, a missing test report, a list t
 be read, a projection `render --check` cannot judge, a shipped claim no signed Baseline names); 2
 usage or a malformed list, decided before any step runs.
 Fail outranks Unverifiable.
+
+`docs/adopting.md` for the loop.";
+
+const SATISFY_HELP: &str = "\
+usage: req satisfy [--format text|json]
+       req satisfy --record <element> <claim-id>
+
+Do the design elements still satisfy the claims they were recorded against (ADR 0040)? A design
+element is any file under a root listed in `.req/design` (optional; one repo-relative directory or
+file per line, `#` comments and blank lines skipped, an absolute path or `..` is exit 2 naming
+`<file>:<line>`; directories are read recursively, symlinks and `.git` are not followed). It
+declares a link with a line `req-satisfies: <claim-id>` — in a comment or front matter; req reads the
+token, not the file format. The element's id is its repo-relative path.
+
+`req satisfy` lists every declared link with its outcome. A link is judged by the *direction* of the
+claim's change since it was recorded, both statements re-derived under the current rules:
+HOLDS (same meaning fingerprint: a cosmetic edit, or none); HOLDS (weakened) (the change is a class
+the measurement admitted — today `modality_weakening` — named, and the link is not re-opened);
+SUSPECT (any other direction: a strengthening, a tightening, a polarity flip, a scope change, an
+unclassifiable change, or a weakening class not admitted; UNVERIFIABLE, naming the element, the claim
+and the direction); UNRATIFIED (declared, never recorded: UNVERIFIABLE); UNKNOWN CLAIM (a declared id
+the corpus does not hold: UNVERIFIABLE); ORPHANED (recorded, no longer declared: listed, not a
+finding). A file under a root that is not UTF-8, or a root that does not exist, is UNVERIFIABLE and
+named. Scope changes are never carried (adding a guard and removing one are both suspect).
+
+`req satisfy --record <element> <claim-id>` is the human act (ADR 0004): it writes or replaces that one
+link in `.req/satisfied` (`schema: req.satisfied/1`, `links:` sorted by element and claim), storing the
+claim's statement **verbatim** — no address, no rules version, no date, so a record survives a rules bump
+and needs no git history. req never records a link on its own. It refuses a link no element declares and
+a claim the corpus does not hold (exit 2), and an unreadable record (exit 3).
+
+`--format json` prints a `req.satisfy/1` document: the links, each with its element, claim, outcome
+(`holds`, `holds_weakened`, `suspect`, `unratified`, `unknown_claim`, `orphaned`), direction and line.
+The release gate's `design_satisfied` policy and `.req/completeness`'s `need design` build on this.
+
+exit: 0 every declared link holds (or there are none, said so), 3 UNVERIFIABLE (a suspect, unratified
+or unknown-claim link, an unreadable design file or record), 2 usage or a malformed `.req/design`.
 
 `docs/adopting.md` for the loop.";
 
@@ -627,8 +677,9 @@ whether anything is ratified, the coverage lists (`not_judged` as its reason str
 findings in order, each carrying the class the text packet prints, and `unrelated`.
 
 An applying claim with no relation in or out (minus the roots `.req/completeness` lists) is printed
-under *Structural omissions* (ADR 0039). It is reported and never part of the verdict; the
-release-wide omissions are `req check`'s.
+under *Structural omissions* (ADR 0039), and so is an applying claim no design element declares a link
+for when `.req/completeness` says `need design` (`unsatisfied`, ADR 0040; `req check` judges it
+UNVERIFIABLE). It is reported and never part of the verdict; the release-wide omissions are `req check`'s.
 
 exit: 0 every applying claim covered and still matching, 1 a defect (drift, or no
 provenance), 3 nothing ratified, something uncovered, or coverage NOT JUDGED because the
@@ -703,6 +754,11 @@ const COMMANDS: &[Command] = &[
         name: "impact",
         run: |args, corpus| impact::run(args, corpus),
         help: IMPACT_HELP,
+    },
+    Command {
+        name: "satisfy",
+        run: |args, corpus| satisfy::run(args, corpus),
+        help: SATISFY_HELP,
     },
     Command {
         name: "gate",

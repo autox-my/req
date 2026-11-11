@@ -24,6 +24,7 @@ use crate::canon::RULES_V;
 use crate::completeness::{self, COMPLETENESS, Findings, Policy};
 use crate::format::{self, Format};
 use crate::gate::{self, Evaluation, GateDocument, Outcome, TestEvidence};
+use crate::satisfy;
 use crate::select::Context;
 use serde::Serialize;
 use std::path::Path;
@@ -426,7 +427,7 @@ fn completeness_step(
         Ok(findings) => {
             let mut step = Step::new(
                 "completeness",
-                Findings::label(),
+                Findings::label_for(policy.need_design),
                 findings.exit(),
                 findings.notes(),
                 None,
@@ -590,6 +591,11 @@ pub fn run(args: &[String], root: &Path) -> i32 {
     }
     if let Some(Err(errors)) = &projections {
         malformed.extend(errors.iter().cloned());
+    }
+    // `.req/design` is a list of paths: a malformed line is refused before any step runs, as the
+    // other lists are. An unreadable one is left to the gate steps, which answer 3 naming it.
+    if let Err(satisfy::LinkError::Malformed(errors)) = satisfy::read_roots(root) {
+        malformed.extend(errors);
     }
     // `.req/completeness` names claim ids, so it is validated against the corpus. A corpus that
     // cannot be loaded leaves it unvalidated here; the completeness step then answers 3 with the

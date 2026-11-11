@@ -48,6 +48,9 @@ pub mod pin;
 // Known-answer checks of the installed binary (ADR 0034): the project's reference answers, compiled in.
 pub mod propose;
 pub mod root;
+// Satisfaction links (ADR 0040): a design element declares the claims it satisfies, a human records
+// the meaning each was judged against, and a later change is judged by its direction.
+pub mod satisfy;
 pub mod select;
 pub mod selftest;
 pub mod sources;

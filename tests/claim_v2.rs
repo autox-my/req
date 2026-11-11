@@ -557,6 +557,7 @@ fn the_gate_document_is_req_gate_2_with_pins_hold_first() {
             "dependencies_decided",
             "rationale_present",
             "tests_linked",
+            "design_satisfied",
             "selectors_confirmed"
         ],
         "a rename in place: the list keeps its order"
