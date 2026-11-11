@@ -106,7 +106,7 @@ A perfect tool is defined by the tensions it resolves, not the features it lists
 | 23 | AI accelerates prose rot | AI as quality gate + semantic engine — never author of record | built — `req propose`, one pair, never author of record (ADR 0021) |
 | 24 | Roadmap vs spec | Views compiled over the same graph | **not built** |
 | 25 | Incomplete requirements, silent omissions | Report what req can prove structurally: a claim no release examines, no Baseline covers, or no relation joins; never assert "complete" | built — `req check`'s `completeness` step and the audit's *Structural omissions* (ADR 0039) |
-| 26 | Design satisfaction unverified | A design or code element states which claims it satisfies; the link is checked against meaning drift | **not built** — §6 item 7 |
+| 26 | Design satisfaction unverified | A design or code element states which claims it satisfies; the link is checked against meaning drift | **proposed** — ADR 0040 (meaning-stamped satisfaction links, judged by direction) |
 | 27 | Multi-party co-development (OEM ↔ supplier) | Signed, pinned snapshots exchanged between repositories; sign-off by named parties | **not built** — §6 item 8; ADR 0033 is the one building block |
 
 ## 5. Build order and gates
