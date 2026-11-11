@@ -88,7 +88,7 @@ A perfect tool is defined by the tensions it resolves, not the features it lists
 | 5 | Concurrent-edit data loss | Claim-level granularity + explicit proposal state; no last-write-wins | partial — one claim per file, `req next-id --reserve`; no explicit proposal state |
 | 6 | Textual merge on prose | Structural merge + semantic proposals, human-ratified | **not built** — §5 step 6 |
 | 7 | Duplicate requirements | Semantic content-addressing (the technical bet) | built — the meaning fingerprint, FMR = 0 measured by `req bench` (drift signal, not a paraphrase collapser: README *Status*) |
-| 8 | Contradictions found in the field | Graph contradiction queries; Conflict is a first-class object | **proposed** — ADR 0043 (Tier-1 contradictions per selection; a Conflict is a `conflicts-with` relation) |
+| 8 | Contradictions found in the field | Graph contradiction queries; Conflict is a first-class object | **not built** — accepted as ADR 0043 (Tier-1 contradictions per selection; a Conflict is a `conflicts-with` relation) |
 | 9 | Ambiguous / untestable claims | Testability lint: unmeasurable bound, vague verbs, unquantified ``shall`` | built — `req canon` lints (`untestable_comparator`, `untestable_qualifier`, `ambiguous_modality`, `uncovered_content`) |
 | 10 | Rationale rot | Rationale is an object: source, date, rejected alternatives, assumptions | built — `rationale_present`, line anchors checked |
 | 11 | Stale traceability matrices | Trace is a query; never stale by construction | built — `req trace`; `docs/trace.md` checked (ADR 0018 amendment) |
@@ -107,7 +107,7 @@ A perfect tool is defined by the tensions it resolves, not the features it lists
 | 24 | Roadmap vs spec | Views compiled over the same graph | **not built** |
 | 25 | Incomplete requirements, silent omissions | Report what req can prove structurally: a claim no release examines, no Baseline covers, or no relation joins; never assert "complete" | built — `req check`'s `completeness` step and the audit's *Structural omissions* (ADR 0039) |
 | 26 | Design satisfaction unverified | A design or code element states which claims it satisfies; the link is checked against meaning drift | **not built** — accepted as ADR 0040 (meaning-stamped satisfaction links, judged by direction) |
-| 27 | Multi-party co-development (OEM ↔ supplier) | Signed, pinned snapshots exchanged between repositories; sign-off by named parties | **proposed** — ADR 0042 (keys carry party and role; detached signatures per party; `.req/signing`); not built |
+| 27 | Multi-party co-development (OEM ↔ supplier) | Signed, pinned snapshots exchanged between repositories; sign-off by named parties | **not built** — accepted as ADR 0042 (keys carry party and role; detached signatures per party; `.req/signing`) |
 
 ## 5. Build order and gates
 
