@@ -4,6 +4,8 @@
 proposed: 2026-11-09. Extends T1.5 of `docs/canonical-hashing.md` (the closed comparator table); nothing else in it, and no
 ADR, is superseded. ADR 0014's concern — a wrong slot is least visible where it is most consequential — is the reason.
 
+Amended by [ADR 0044](0044-a-change-on-several-axes-has-a-direction-only-when-they-agree.md) (§6): the prohibition sense swap also applies to a numeric bound, not only to a set.
+
 ## Context
 
 An adopter's evaluation of req (2026-11, rules v5, measured again on rules v6) found a shape the operator table

@@ -1129,7 +1129,7 @@ that is identical on both sides is counted, not listed.
 | `added`, `removed` | the id exists on one side only |
 | `weakened` | the meaning moved so that strictly more complies: modality weakening, numeric loosening, membership widening, a condition added to a SHALL, SHOULD or SHALL NOT (it binds less often: `scope_narrowing`) |
 | `tightened` | the reverse: modality strengthening, numeric tightening, membership narrowing, a condition removed (`scope_widening`) |
-| `reshaped` | a different obligation, not a stronger or weaker one (polarity flip, scope divergence, unrelated subject or predicate, a condition changed on a MAY): read it |
+| `reshaped` | a different obligation, not a stronger or weaker one (polarity flip, scope divergence, unrelated subject or predicate, a condition changed on a MAY, a change on several axes that point different ways): read it |
 | `not-judged` | the meaning changed but one side has no structured form, so no direction is claimed |
 | `reworded` | the statement text changed and the meaning fingerprint did not |
 | `metadata` | only fields outside identity changed: relations, rationale, tests, evidence, pins |

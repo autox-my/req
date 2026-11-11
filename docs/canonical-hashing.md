@@ -286,6 +286,16 @@ unauditable.
    `modality_strengthening` and 9 `numeric_tightening` pairs, so its zero false carries is vacuous. The
    pinned sources hold no enumerated `one of {…}` statement, so v2 carries **0** membership pairs
    (none was synthesised); v1 regenerates byte-identical from the same generator.
+   **Version 3** (`bench/corpus/direction-v3.yml`, `build_direction.py --version 3`; R-2, ADR 0044
+   decision 7) is every v2 pair plus two families whose pairs carry more than the single mutation v1 and v2
+   have: **compound** pairs (two mutations on one statement: modality × bound, modality × guard, guard ×
+   bound; each also swapped), labelled by the rule of ADR 0044 decisions 3–4 from the two mutations' own
+   labels — a modality change beside a guard has no direction, otherwise a direction only when both axes
+   agree — and **numeric mutations on a prohibition**, labelled with the swapped sense (decision 5). The
+   sources hold no `shall not` statement with one bound, so the prohibition base is a source SHALL statement
+   flipped to SHALL NOT (the base is synthesised; the label is the numeric mutation's, swapped). Only
+   single-sentence statements with one quantity and no other negation enter the new families. v1 and v2
+   regenerate byte-identical, and their records are unchanged.
 4. **Natural duplicate run** — whole real documents; measures collapse of true
    duplicates vs near-duplicates. Not yet implemented.
 5. **Evaluated and excluded — Sphinx-Needs.** Its own documentation uses standard
@@ -331,6 +341,24 @@ cannot read as a clean gate. A definite defect still outranks the open question,
 as `req gate` lets Fail outrank Unverifiable.
 
 #### Recorded runs (append-only)
+
+- **Direction gold set v3, rules v9** (R-2; `bench/results/direction-v3-rules-v9.json`; ADR 0044) — 1827 pairs
+  (v2's plus 436 compound and 16 prohibition-bound pairs, each also swapped): FMR 0/1548 (240 structurally
+  unverifiable), FSR 0/199, hard gate PASS, **0 dangerous confusions**, accuracy 0.9849 over 1587 classified
+  pairs (1563 correct, v2's 1193 plus 370 new). No `RULES_V` bump: the classifier is not on the address path, and
+  the v1 and v2 records are byte-identical before and after the change (every single-axis pair keeps its class).
+  - **compound** (436 pairs: modality × bound 16 — all four sense combinations, the strengthened ones through
+    the swapped mirrors, because no bounded source statement says "may" or "should" (11 say "should", none with a single bound; measured by review R-2-review-1) — modality × guard 404, guard ×
+    bound 16): 370 scored, 362 correct, 66 unclassifiable. The 8 mismatches are the two PROMISE statements
+    `P8:r375` and `P8:r380`, whose scaled number is not the value slot (the same parse-coverage fact as their
+    v1 `numeric_*` pairs: reported `scope_divergence`, never a direction).
+  - **prohibition bound** (16 pairs from 4 bases, **0 of them native `shall not` statements**: the sources hold
+    none with one bound, so the bases are flipped SHALLs): 8 correct (the two bases whose number is the value
+    slot, `P14:r600` and `P14:r605`, in both senses and both directions), 8 read `scope_divergence` (the same
+    `P8` statements as above). The swapped sense is therefore measured on **two statements**, and by
+    `tests/compare.rs`; do not read 8 correct as a population.
+  - **false carry**: not recomputed as an admission input — it stays v2's (ADR 0040's note; v3's support is
+    not single-axis).
 
 - **Rules v9** — a negated upper bound is an upper bound (T1.5; R-1). Found while checking parser coverage for
   the numeric direction pairs: `no more than 3 seconds` derived `op GT`, because the table had `no less than`

@@ -408,3 +408,327 @@ fn a_side_declaring_the_current_schema_is_still_classified() {
         "two identical statements are `identical`, and the exit code is 0:\n{out}"
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// ADR 0044 (R-2): a change on several axes has a direction only when every axis agrees, and a
+// bound under a prohibition swaps its senses. Every expectation is derived from the ADR's
+// decisions and from English: which way each single mutation points is the label, and the
+// compound's label is the rule of decisions 3–4 applied to those two, never `compare`'s output.
+// ---------------------------------------------------------------------------------------------
+
+use req::compare::{Effect, axes};
+
+fn axes_of(a: &str, b: &str) -> Vec<Direction> {
+    let r = Registry::empty();
+    let (fa, _) = canonicalize_statement(a, &r);
+    let (fb, _) = canonicalize_statement(b, &r);
+    axes(&fa, &fb)
+}
+
+/// Decision 3, the case that motivated it: SHOULD→SHALL strengthens, 10→100 ms loosens tenfold.
+/// Reporting the modality alone told `--fail-on weakened` that nothing was loosened.
+#[test]
+fn a_strengthened_modality_with_a_loosened_bound_has_no_direction() {
+    let (a, b) = (
+        "The system should respond within 10 ms.",
+        "The system shall respond within 100 ms.",
+    );
+    assert_eq!(dir(a, b), Direction::ScopeDivergence);
+    assert_eq!(
+        axes_of(a, b),
+        vec![
+            Direction::ModalityStrengthening,
+            Direction::NumericLoosening
+        ]
+    );
+    // The mirror: the same two mutations the other way round are still a compound of opposites.
+    assert_eq!(
+        dir(b, a),
+        Direction::ScopeDivergence,
+        "SHALL→SHOULD weakens, 100→10 ms tightens"
+    );
+}
+
+/// Decision 3, agreeing axes: the class is the first moved axis's, and the other is named.
+#[test]
+fn a_weakened_modality_with_a_loosened_bound_is_a_weakening_naming_both_axes() {
+    let (a, b) = (
+        "The system shall respond within 100 ms.",
+        "The system should respond within 200 ms.",
+    );
+    assert_eq!(dir(a, b), Direction::ModalityWeakening);
+    assert_eq!(
+        axes_of(a, b),
+        vec![Direction::ModalityWeakening, Direction::NumericLoosening]
+    );
+    // And both axes tightening is a strengthening.
+    assert_eq!(dir(b, a), Direction::ModalityStrengthening);
+    assert_eq!(
+        axes_of(b, a),
+        vec![
+            Direction::ModalityStrengthening,
+            Direction::NumericTightening
+        ]
+    );
+}
+
+/// The agreeing compound's effect is right: it permits more.
+#[test]
+fn an_agreeing_compound_keeps_its_effect() {
+    let r = Registry::empty();
+    let (fa, _) = canonicalize_statement("The system shall respond within 100 ms.", &r);
+    let (fb, _) = canonicalize_statement("The system should respond within 200 ms.", &r);
+    assert_eq!(
+        compare(&fa, &fb).effect(fa.modality),
+        Effect::PermitsMore,
+        "SHALL→SHOULD and 100→200 ms both permit more"
+    );
+}
+
+#[test]
+fn a_weakened_modality_with_a_tightened_bound_has_no_direction() {
+    assert_eq!(
+        dir(
+            "The system shall respond within 100 ms.",
+            "The system should respond within 50 ms."
+        ),
+        Direction::ScopeDivergence
+    );
+}
+
+/// Decision 4: a guard that moves together with the modality is read against no single
+/// modality, so the pair has no direction — whichever way the modality moved.
+#[test]
+fn a_modality_change_with_a_guard_is_scope_divergence() {
+    let guarded = "when the brake is engaged";
+    for (a, b) in [
+        (
+            "The system shall stop within 2 s.".to_string(),
+            format!("The system should stop within 2 s {guarded}."),
+        ),
+        (
+            "The system should stop within 2 s.".to_string(),
+            format!("The system shall stop within 2 s {guarded}."),
+        ),
+        (
+            format!("The system shall stop within 2 s {guarded}."),
+            "The system should stop within 2 s.".to_string(),
+        ),
+    ] {
+        assert_eq!(dir(&a, &b), Direction::ScopeDivergence, "{a} -> {b}");
+    }
+}
+
+/// Decision 3 over a scope axis that does carry an effect: a guard added to an obligation permits
+/// more (ADR 0041), so it agrees with a loosened bound and opposes a tightened one.
+#[test]
+fn a_guard_agrees_or_disagrees_with_the_bound_by_effect() {
+    let plain = "The system shall stop within 2 s.";
+    assert_eq!(
+        dir(
+            plain,
+            "The system shall stop within 3 s when the brake is engaged."
+        ),
+        Direction::ScopeNarrowing,
+        "guard added (permits more) + bound loosened (permits more)"
+    );
+    assert_eq!(
+        dir(
+            plain,
+            "The system shall stop within 1 s when the brake is engaged."
+        ),
+        Direction::ScopeDivergence,
+        "guard added (permits more) + bound tightened (permits less)"
+    );
+    // A guard on a permission claims no direction, so it cannot agree with anything.
+    assert_eq!(
+        dir(
+            "The system may stop within 2 s.",
+            "The system may stop within 3 s when the brake is engaged."
+        ),
+        Direction::ScopeDivergence
+    );
+}
+
+/// An identity field that moves beside a directed axis leaves the pair with no direction.
+#[test]
+fn a_changed_qualifier_beside_a_loosened_bound_is_scope_divergence() {
+    assert_eq!(
+        dir(
+            "The system shall not exceed 2.5 A of standby current.",
+            "The system shall not exceed 3 A of surge current."
+        ),
+        Direction::ScopeDivergence
+    );
+}
+
+/// Decision 5: under SHALL NOT the bound's senses swap. "more than 3 s" is the forbidden region;
+/// raising it to 4 forbids less.
+#[test]
+fn a_bound_under_a_prohibition_swaps_its_senses() {
+    let (three, four) = (
+        "The system shall not be more than 3 s late.",
+        "The system shall not be more than 4 s late.",
+    );
+    assert_eq!(dir(three, four), Direction::NumericLoosening);
+    assert_eq!(dir(four, three), Direction::NumericTightening);
+    // The lower-bound twin: "less than" forbidden, so lowering the number forbids less.
+    let (two, one) = (
+        "The system shall not be less than 2 s late.",
+        "The system shall not be less than 1 s late.",
+    );
+    assert_eq!(dir(two, one), Direction::NumericLoosening);
+    assert_eq!(dir(one, two), Direction::NumericTightening);
+}
+
+/// Decision 5, the other half: an absorbed negation is an obligation and keeps its senses.
+#[test]
+fn an_absorbed_negation_is_an_obligation_and_keeps_its_senses() {
+    let (a, b) = (
+        "The system shall not exceed 200 ms.",
+        "The system shall not exceed 300 ms.",
+    );
+    assert_eq!(dir(a, b), Direction::NumericLoosening);
+    assert_eq!(dir(b, a), Direction::NumericTightening);
+}
+
+/// The invariant behind decision 3, over a spread of compound pairs: whenever the moved axes
+/// do not share one effect, the class is never a direction.
+#[test]
+fn a_pair_whose_axes_disagree_is_never_given_a_direction() {
+    let pairs = [
+        (
+            "The system should respond within 10 ms.",
+            "The system shall respond within 100 ms.",
+        ),
+        (
+            "The system shall respond within 100 ms.",
+            "The system may respond within 50 ms.",
+        ),
+        (
+            "The system may respond within 50 ms.",
+            "The system shall respond within 100 ms.",
+        ),
+        (
+            "The system shall not be more than 3 s late.",
+            "The system shall not be more than 2 s late when the brake is engaged.",
+        ),
+    ];
+    let r = Registry::empty();
+    for (a, b) in pairs {
+        let (fa, _) = canonicalize_statement(a, &r);
+        let moved = axes_of(a, b);
+        assert!(moved.len() >= 2, "{a} -> {b}: {moved:?}");
+        let effects: Vec<Effect> = moved.iter().map(|d| d.effect(fa.modality)).collect();
+        let agree = effects.iter().all(|e| *e == effects[0]) && effects[0] != Effect::NoDirection;
+        if !agree {
+            assert!(
+                matches!(
+                    dir(a, b),
+                    Direction::ScopeDivergence | Direction::PolarityFlip
+                ),
+                "{a} -> {b}: axes {moved:?} disagree but the class is {:?}",
+                dir(a, b)
+            );
+        }
+    }
+}
+
+/// A single-axis pair has one axis, and it is the class: decision 2.
+#[test]
+fn a_single_axis_pair_has_exactly_its_own_class_as_its_axes() {
+    for (a, b) in [
+        (
+            "The system shall log each command.",
+            "The system may log each command.",
+        ),
+        (
+            "The system shall respond within 200 ms.",
+            "The system shall respond within 300 ms.",
+        ),
+        (
+            "The system shall stop within 2 s.",
+            "The system shall stop within 2 s when the tank is full.",
+        ),
+    ] {
+        assert_eq!(axes_of(a, b), vec![dir(a, b)], "{a} -> {b}");
+    }
+}
+
+#[test]
+fn the_cli_names_every_moved_axis_beside_the_class() {
+    let claim = |id: &str, statement: &str| {
+        format!(
+            "schema: {}\nclaim_id: {id}\nstatement: {statement:?}\napplicability: []\nrationale:\n  \
+             source: tests/compare.rs\n  date: 2026-11-11\n  rejected_alternatives: []\n  assumptions: []\n\
+             relations: []\n",
+            claim_schema()
+        )
+    };
+    let f = Fixture::new("r2-also")
+        .claim(
+            "REQ-0001.yml",
+            &claim("REQ-0001", "The req tool shall respond within 100 ms."),
+        )
+        .claim(
+            "REQ-0002.yml",
+            &claim("REQ-0002", "The req tool should respond within 200 ms."),
+        )
+        .claim(
+            "REQ-0003.yml",
+            &claim("REQ-0003", "The req tool shall respond within 300 ms."),
+        )
+        .claim(
+            "REQ-0004.yml",
+            &claim("REQ-0004", "The req tool should respond within 10 ms."),
+        )
+        .claim(
+            "REQ-0005.yml",
+            &claim("REQ-0005", "The req tool shall respond within 100 ms."),
+        );
+
+    let (code, out) = f.compare("REQ-0001.yml", "REQ-0002.yml");
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains(": modality_weakening"), "{out}");
+    assert!(out.contains("also: numeric_loosening"), "{out}");
+    assert!(out.contains("permits strictly more"), "{out}");
+
+    // A single axis names nothing beside itself.
+    let (code, out) = f.compare("REQ-0001.yml", "REQ-0003.yml");
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains(": numeric_loosening"), "{out}");
+    assert!(!out.contains("also:"), "{out}");
+
+    // A mixed compound is `scope_divergence`, with both of its axes named and no effect claimed.
+    let (code, out) = f.compare("REQ-0004.yml", "REQ-0005.yml");
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains(": scope_divergence"), "{out}");
+    assert!(
+        out.contains("also: modality_strengthening, numeric_loosening"),
+        "{out}"
+    );
+    assert!(!out.contains("permits"), "{out}");
+}
+
+/// Review R-2-review-1 (low): `also:` dropped a moved axis whose class happened to equal the reported
+/// class, so a mixed compound with a qualifier change hid that axis while the JSON `axes` named it.
+/// Only the axis the class *is* (the first moved axis, when they agree) is left out.
+#[test]
+fn also_names_every_moved_axis_but_the_one_the_class_is() {
+    use req::compare::{Direction::*, also_axes};
+    // Mixed: the class is synthesised, so every axis is named, the divergent qualifier included.
+    assert_eq!(
+        also_axes(
+            ScopeDivergence,
+            &[ScopeWidening, ScopeDivergence, NumericLoosening]
+        )
+        .as_deref(),
+        Some("scope_widening, scope_divergence, numeric_loosening")
+    );
+    // Agreeing: the class is the first axis; the rest are named.
+    assert_eq!(
+        also_axes(ModalityWeakening, &[ModalityWeakening, NumericLoosening]).as_deref(),
+        Some("numeric_loosening")
+    );
+    assert_eq!(also_axes(NumericLoosening, &[NumericLoosening]), None);
+}
