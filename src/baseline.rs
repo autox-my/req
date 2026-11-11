@@ -1592,18 +1592,22 @@ fn verify_inner(
             } else {
                 // One key counts towards one line only (TUF's rule): a key is assigned to the
                 // first line with room that its party and role match, and then it is spent.
-                let mut spent: BTreeSet<&str> = BTreeSet::new();
+                // "One key" is one piece of key MATERIAL, not one id: two trust entries holding the
+                // same public key under different ids verify the same signing act, and must not
+                // meet two lines (review A-1-review-1). A key is spent by its material.
+                let mut spent: BTreeSet<String> = BTreeSet::new();
                 for line in parties.policy {
-                    let holder = verified.iter().find(|id| {
-                        !spent.contains(id.as_str())
-                            && trust.key(id).is_some_and(|key| {
-                                key.party.as_deref() == Some(line.party.as_str())
-                                    && key.role.as_deref() == Some(line.role.as_str())
-                            })
+                    let holder = verified.iter().find_map(|id| {
+                        let key = trust.key(id)?;
+                        let material = key_material(&key.public_key);
+                        (!spent.contains(&material)
+                            && key.party.as_deref() == Some(line.party.as_str())
+                            && key.role.as_deref() == Some(line.role.as_str()))
+                        .then_some(material)
                     });
                     match holder {
-                        Some(id) => {
-                            spent.insert(id.as_str());
+                        Some(material) => {
+                            spent.insert(material);
                         }
                         None => open.push(format!(
                             "awaiting {} {}: no verified signature from a distinct key holding \
@@ -2071,6 +2075,17 @@ fn read_signing_policy(root: &Path) -> Result<Vec<PolicyLine>, PolicyRefusal> {
     }
 }
 
+/// The key itself, without minisign's `untrusted comment:` line or surrounding whitespace: two trust
+/// entries whose material is equal are the same key, whatever their ids or comments say.
+fn key_material(public_key: &str) -> String {
+    public_key
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with("untrusted comment:"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Every `<manifest>.<key-id>.minisig` beside `manifest`, in key-id order. The default
 /// `<manifest>.minisig` is not among them (it is the `--key` key's signature). A file whose id is
 /// not a signing token is kept, as an unreadable signature that names it: never ignored.
@@ -2094,7 +2109,12 @@ pub(crate) fn keyed_signatures(manifest: &Path) -> Vec<KeyedSignature> {
         .filter_map(|entry| {
             let file = entry.file_name().to_string_lossy().into_owned();
             let id = file.strip_prefix(&prefix)?.strip_suffix(".minisig")?;
-            Some((id.to_string(), entry.path()))
+            // A signature is a regular file: a directory of that name must not make a manifest
+            // count as signed (review A-1-review-1).
+            entry
+                .path()
+                .is_file()
+                .then(|| (id.to_string(), entry.path()))
         })
         .collect();
     found.sort();

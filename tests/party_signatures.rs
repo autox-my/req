@@ -272,6 +272,52 @@ fn one_key_counts_once_towards_a_repeated_line() {
     assert_eq!(both, Outcome::Verified, "{both:?}");
 }
 
+/// Review A-1-review-1 (MEDIUM): two trust entries holding the SAME public key under different ids
+/// both verify one signing act, so a doubled line was met by one key. "One key counts once" is about
+/// key material, not ids.
+#[test]
+fn one_public_key_under_two_ids_counts_once() {
+    let trust = TrustFile::load(
+        "keys:\n\
+         \x20 - id: \"oem-a\"\n    scheme: \"minisign\"\n    public_key: \"PK-shared\"\n    \
+         valid_from: \"2026-01-01\"\n    party: \"oem\"\n    role: \"requirements-owner\"\n\
+         \x20 - id: \"oem-b\"\n    scheme: \"minisign\"\n    public_key: \"untrusted comment: same key, another id\\nPK-shared\"\n    \
+         valid_from: \"2026-01-01\"\n    party: \"oem\"\n    role: \"requirements-owner\"\n",
+    )
+    .expect("the fixture trust file parses");
+    let same_act: Vec<KeyedSignature> = ["oem-a", "oem-b"]
+        .iter()
+        .map(|id| KeyedSignature {
+            key_id: (*id).to_string(),
+            signature: Ok("sig-by:PK-shared".to_string()),
+        })
+        .collect();
+    struct Shared;
+    impl SignatureVerifier for Shared {
+        fn scheme(&self) -> &'static str {
+            "minisign"
+        }
+        fn verify(&self, _: &[u8], signature: &str, public_key: &str) -> SignatureOutcome {
+            if signature == "sig-by:PK-shared" && public_key.ends_with("PK-shared") {
+                SignatureOutcome::Valid
+            } else {
+                SignatureOutcome::Invalid("not this key's signature".to_string())
+            }
+        }
+    }
+    let lines = policy(&[("oem", "requirements-owner"), ("oem", "requirements-owner")]);
+    let outcome = judge(&trust, &Shared, None, &same_act, &lines);
+    assert_eq!(outcome.exit_code(), 3, "{outcome:?}");
+    assert_eq!(
+        text(&outcome)
+            .matches("awaiting oem requirements-owner")
+            .count(),
+        1,
+        "{}",
+        text(&outcome)
+    );
+}
+
 #[test]
 fn a_repeated_line_with_no_signature_is_awaited_once_per_line() {
     let two_oem_keys = trust(&[("oem-a", OEM, None), ("oem-b", OEM, None)]);
@@ -1026,4 +1072,20 @@ fn a_decision_signature_by_an_unknown_key_is_unverifiable() {
     let out = corpus.req(&["decision", "--verify"]);
     assert_eq!(out.code, 3, "{}", out.all());
     assert!(out.stdout.contains("stranger"), "{}", out.all());
+}
+
+/// Review A-1-review-1 (low): `DEC-NNNN.yml.minisig` — the spelling a Baseline's default signature
+/// uses — names no key, so it cannot be judged; it must say so, never print "asserted (no
+/// signature file…)", which would be false.
+#[test]
+fn a_decision_signature_that_names_no_key_is_unverifiable_not_asserted() {
+    let corpus = decision_corpus("dec-no-id", "requirements-owner", false);
+    corpus.write(
+        "decisions/DEC-0001.yml.minisig",
+        "untrusted comment: no key id\n",
+    );
+    let out = corpus.req(&["decision", "--verify"]);
+    assert_eq!(out.code, 3, "{}", out.all());
+    assert!(!out.stdout.contains("asserted"), "{}", out.all());
+    assert!(out.all().contains("DEC-0001.yml.minisig"), "{}", out.all());
 }

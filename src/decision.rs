@@ -589,9 +589,29 @@ impl SignedDecisions {
                 .unwrap_or_default();
             Some(crate::baseline::TrustFile::load(&text))
         };
-        for ((_, decision), signatures) in log.iter().zip(files) {
+        for ((record_path, decision), signatures) in log.iter().zip(files) {
             let mut lines = Vec::new();
-            if signatures.is_empty() {
+            // `DEC-NNNN.yml.minisig` — the spelling a Baseline's default signature uses — names no
+            // key, so no key can judge it. Saying "asserted (no signature file)" beside it would be
+            // false (review A-1-review-1): it is a signature req cannot attribute, UNVERIFIABLE.
+            let unnamed = {
+                let mut spelled = record_path.as_os_str().to_owned();
+                spelled.push(".minisig");
+                std::path::PathBuf::from(spelled)
+            };
+            if unnamed.is_file() {
+                lines.push(format!(
+                    "a signature that names no key: {} (sign as <record>.<key-id>.minisig)",
+                    unnamed.display()
+                ));
+                out.open.push(format!(
+                    "{}: {} names no key, so it cannot be judged — rename it \
+                     {}.<key-id>.minisig",
+                    decision.id,
+                    unnamed.display(),
+                    decision.id
+                ));
+            } else if signatures.is_empty() {
                 lines.push(
                     "asserted (no signature file: its role is a claim, not a proof)".to_string(),
                 );
