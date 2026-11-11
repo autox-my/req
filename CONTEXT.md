@@ -186,6 +186,12 @@ Traceability answered as a query over relations and evidence, never as a maintai
 artifact.
 _Avoid_: traceability matrix
 
+**Structural omission**:
+A gap req can prove from its own files: a claim no declared release examines, one no Baseline
+covers, or one with no relation. Reported by name; it never certifies the requirements complete,
+because req holds nothing to be complete against (ADR 0039).
+_Avoid_: completeness (as a verdict), coverage gap
+
 ### Authority
 
 **Authoring**:
