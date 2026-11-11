@@ -163,66 +163,112 @@ pub enum Effect {
     NoDirection,
 }
 
-/// Classify the change from `a` to `b`.
+/// Classify the change from `a` to `b` (ADR 0044).
+///
+/// Every axis that moved is classified on its own ([`axes`]) and the results are combined: one axis
+/// moved → that axis's class; several → a direction only if every one of them has the same effect
+/// (all permit more, or all permit less), reported as the first moved axis's class; otherwise
+/// [`Direction::ScopeDivergence`], so a human reads it. A compound change is never classed by one
+/// axis while another points the other way.
 pub fn compare(a: &CanonicalForm, b: &CanonicalForm) -> Direction {
+    let moved = axes(a, b);
+    let Some(&first) = moved.first() else {
+        return Direction::Identical;
+    };
+    if moved.len() == 1 {
+        return first;
+    }
+    // Decision 4: a guard read against the modality needs one modality, and this change has two.
+    let scope_moved = moved.iter().any(|d| {
+        matches!(
+            d,
+            Direction::ScopeNarrowing | Direction::ScopeWidening | Direction::ScopeDivergence
+        )
+    });
+    if scope_moved && a.modality != b.modality {
+        return Direction::ScopeDivergence;
+    }
+    let effects: Vec<Effect> = moved.iter().map(|d| d.effect(a.modality)).collect();
+    if effects[0] != Effect::NoDirection && effects.iter().all(|e| *e == effects[0]) {
+        first
+    } else {
+        Direction::ScopeDivergence
+    }
+}
+
+/// The class of the change on **each axis that moved**, in a fixed order: modality, conditions,
+/// qualifier and unit, the bound or the set, then the identity fields (exception, temporal,
+/// applicability). Empty only for identical forms. A pair with nothing to compare on its axes
+/// (an unparseable side, a different subject or predicate, obligation ↔ prohibition) is one
+/// entry — its own class — whatever else differs: polarity first and alone (ADR 0044 decision 1).
+/// A form that differs on no axis named here still differs, and that is `scope_divergence`: the
+/// entry that keeps a new field from silently passing.
+pub fn axes(a: &CanonicalForm, b: &CanonicalForm) -> Vec<Direction> {
     use Direction::*;
 
     if crate::canon::canonical_json(a) == crate::canon::canonical_json(b) {
-        return Identical;
+        return Vec::new();
     }
     // One unparseable side: no structural comparison is possible, and saying
     // "identical" or a direction here would be a guess about a claim we cannot read.
     if a.unstructured || b.unstructured {
-        return Unclassifiable;
+        return vec![Unclassifiable];
     }
     // A different subject or predicate is not a change to *this* requirement.
     if a.subject != b.subject || a.action != b.action {
-        return Unrelated;
+        return vec![Unrelated];
     }
-
-    // Modality. Polarity first: forbidding X is a different obligation, and calling it a
+    // Polarity first: forbidding X is a different obligation, and calling it a
     // "strengthening" would tell a reviewer the wrong thing.
     if prohibition(a.modality) != prohibition(b.modality) {
-        return PolarityFlip;
-    }
-    match (rank(a.modality), rank(b.modality)) {
-        (Some(x), Some(y)) if y < x => return ModalityWeakening,
-        (Some(x), Some(y)) if y > x => return ModalityStrengthening,
-        _ => {}
+        return vec![PolarityFlip];
     }
 
+    let mut moved = Vec::new();
+    if a.modality != b.modality {
+        moved.push(match (rank(a.modality), rank(b.modality)) {
+            (Some(x), Some(y)) if y < x => ModalityWeakening,
+            (Some(x), Some(y)) if y > x => ModalityStrengthening,
+            // A modality appeared or disappeared: no rank to compare.
+            _ => ScopeDivergence,
+        });
+    }
     // Conditions: added narrows where the claim applies, removed widens it, replaced diverges.
     // Which of those loosens the obligation is `Direction::effect`'s answer, not this one's.
     if a.conditions != b.conditions {
-        if b.conditions.is_superset(&a.conditions) {
-            return ScopeNarrowing;
-        }
-        if a.conditions.is_superset(&b.conditions) {
-            return ScopeWidening;
-        }
-        return ScopeDivergence;
+        moved.push(if b.conditions.is_superset(&a.conditions) {
+            ScopeNarrowing
+        } else if a.conditions.is_superset(&b.conditions) {
+            ScopeWidening
+        } else {
+            ScopeDivergence
+        });
     }
-
     // The qualifier is an identity field: "2.5 A of standby current" and "2.5 A of surge
     // current" are the same number bounding different things.
     if a.qualifier != b.qualifier || a.unit != b.unit {
-        return ScopeDivergence;
+        moved.push(ScopeDivergence);
     }
-
     if a.operator != b.operator || a.value != b.value || a.members != b.members {
-        if a.operator == Some(Comp::In) || b.operator == Some(Comp::In) {
-            return membership_direction(a, b);
-        }
-        return numeric_direction(a, b);
+        moved.push(
+            if a.operator == Some(Comp::In) || b.operator == Some(Comp::In) {
+                membership_direction(a, b)
+            } else {
+                numeric_direction(a, b)
+            },
+        );
     }
-
-    if a.exception != b.exception || a.temporal != b.temporal {
-        return ScopeDivergence;
+    if a.exception != b.exception || a.temporal != b.temporal || a.applicability != b.applicability
+    {
+        moved.push(ScopeDivergence);
     }
-    // Same subject, predicate, modality, conditions, qualifier, bound — yet a different
-    // canonical form. Something in identity is not accounted for above; divergence is
-    // the honest answer, and this arm is what keeps a new field from silently passing.
-    ScopeDivergence
+    if moved.is_empty() {
+        // Same subject, predicate, modality, conditions, qualifier, bound — yet a different
+        // canonical form. Something in identity is not accounted for above; divergence is
+        // the honest answer.
+        moved.push(ScopeDivergence);
+    }
+    moved
 }
 
 /// Which way a set moved (ADR 0030). A removed member means fewer values comply: a narrowing. For
@@ -257,6 +303,22 @@ fn membership_direction(a: &CanonicalForm, b: &CanonicalForm) -> Direction {
 /// upper bound (`≤`, `<`) a larger number permits more; for a lower bound (`≥`, `>`) a
 /// larger number demands more.
 fn numeric_direction(a: &CanonicalForm, b: &CanonicalForm) -> Direction {
+    let obligation_sense = obligation_numeric_direction(a, b);
+    if !prohibition(a.modality) {
+        return obligation_sense;
+    }
+    // ADR 0044 decision 5, as ADR 0030 §6 does for a set: under `SHALL NOT` the bound is the
+    // *forbidden* region ("not more than 3 s" is `GT 3`), so what would tighten an obligation's
+    // bound loosens the prohibition, and the reverse. Divergence has no sense to swap.
+    match obligation_sense {
+        Direction::NumericLoosening => Direction::NumericTightening,
+        Direction::NumericTightening => Direction::NumericLoosening,
+        other => other,
+    }
+}
+
+/// The bound's movement read as an obligation's bound (see [`numeric_direction`] for the prohibition).
+fn obligation_numeric_direction(a: &CanonicalForm, b: &CanonicalForm) -> Direction {
     use Direction::*;
 
     let (Some(op_a), Some(op_b)) = (a.operator, b.operator) else {
@@ -348,6 +410,9 @@ pub fn run(path_a: &str, path_b: &str, root: &std::path::Path) -> i32 {
     );
     let direction = compare(&va.form, &vb.form);
     println!("{} -> {}: {}", a.claim_id, b.claim_id, direction.as_str());
+    if let Some(also) = also_axes(direction, &axes(&va.form, &vb.form)) {
+        println!("  also: {also}");
+    }
     match direction.effect(va.form.modality) {
         Effect::PermitsMore => println!("  this change permits strictly more than before"),
         Effect::PermitsLess => println!("  this change permits less than before"),
@@ -377,6 +442,20 @@ pub fn run(path_a: &str, path_b: &str, root: &std::path::Path) -> i32 {
     let (addr_a, addr_b) = (va.address, vb.address);
     println!("  {} -> {}", &addr_a[..12], &addr_b[..12]);
     0
+}
+
+/// The moved axes a reader should see beside the class (ADR 0044 decision 6): every axis's own
+/// class, less the one the reported class already says. `None` for a single axis, which has
+/// nothing beside itself. A compound that reports `scope_divergence` names all of its axes.
+pub fn also_axes(direction: Direction, moved: &[Direction]) -> Option<String> {
+    if moved.len() < 2 {
+        return None;
+    }
+    let mut rest: Vec<&str> = moved.iter().map(Direction::as_str).collect();
+    if let Some(i) = rest.iter().position(|w| *w == direction.as_str()) {
+        rest.remove(i);
+    }
+    Some(rest.join(", "))
 }
 
 fn load_claim(path: &str) -> Result<crate::model::ClaimFile, String> {

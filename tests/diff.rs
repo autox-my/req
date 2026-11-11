@@ -1641,3 +1641,126 @@ fn the_help_page_states_the_exit_contract() {
         );
     }
 }
+
+// ADR 0044 (R-2) -------------------------------------------------------------------------------
+
+/// Decision 3: SHOULD→SHALL strengthens while 10→100 ms loosens tenfold. Classed `tightened` it
+/// slipped past `--fail-on weakened`; it is `reshaped`, which a repository can also fail on.
+#[test]
+fn a_compound_change_whose_axes_disagree_is_reshaped_and_not_missed_by_fail_on() {
+    let before = "The system should respond within 10 ms.";
+    let after = "The system shall respond within 100 ms.";
+    let run = diff(
+        &one_claim_change("compound-mixed", before, after),
+        &["--base", "base", "--head", "head"],
+    );
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert_eq!(class_of(&run, "REQ-0001"), "reshaped", "{}", run.stdout);
+    assert!(
+        has_word(&run, "REQ-0001", "scope_divergence"),
+        "{}",
+        run.stdout
+    );
+    assert!(has_word(&run, "REQ-0001", "also:"), "{}", run.stdout);
+    assert!(
+        has_word(&run, "REQ-0001", "modality_strengthening,")
+            && has_word(&run, "REQ-0001", "numeric_loosening"),
+        "both axes are named: {}",
+        run.stdout
+    );
+
+    let run = diff(
+        &one_claim_change("compound-mixed-fail", before, after),
+        &["--base", "base", "--head", "head", "--fail-on", "reshaped"],
+    );
+    assert_eq!(run.code, 1, "{}{}", run.stdout, run.stderr);
+}
+
+/// Agreeing axes keep their class and effect, and the second axis is named.
+#[test]
+fn a_compound_change_whose_axes_agree_is_weakened_and_names_both() {
+    let run = diff(
+        &one_claim_change(
+            "compound-agree",
+            "The system shall respond within 100 ms.",
+            "The system should respond within 200 ms.",
+        ),
+        &["--base", "base", "--head", "head", "--fail-on", "weakened"],
+    );
+    assert_eq!(run.code, 1, "{}{}", run.stdout, run.stderr);
+    assert_eq!(class_of(&run, "REQ-0001"), "weakened", "{}", run.stdout);
+    assert!(
+        has_word(&run, "REQ-0001", "modality_weakening"),
+        "{}",
+        run.stdout
+    );
+    assert!(
+        has_word(&run, "REQ-0001", "numeric_loosening"),
+        "{}",
+        run.stdout
+    );
+    assert!(has_word(&run, "REQ-0001", "also:"), "{}", run.stdout);
+}
+
+/// Decision 5 through `req diff`: raising the number a prohibition forbids is a weakening.
+#[test]
+fn a_bound_raised_under_a_prohibition_is_weakened() {
+    let run = diff(
+        &one_claim_change(
+            "prohibition-bound",
+            "The system shall not be more than 3 s late.",
+            "The system shall not be more than 4 s late.",
+        ),
+        &["--base", "base", "--head", "head", "--fail-on", "weakened"],
+    );
+    assert_eq!(run.code, 1, "{}{}", run.stdout, run.stderr);
+    assert_eq!(class_of(&run, "REQ-0001"), "weakened", "{}", run.stdout);
+    assert!(
+        has_word(&run, "REQ-0001", "numeric_loosening"),
+        "{}",
+        run.stdout
+    );
+}
+
+/// Decision 6: `req.diff/1` gains `axes`, additively — the single-axis claim lists one class, a
+/// compound lists every moved axis in order, and an entry with no changed meaning lists none.
+#[test]
+fn the_json_report_lists_every_moved_axis() {
+    let repo = Repo::new("axes-json");
+    repo.claim("REQ-0001", "The system should respond within 10 ms.");
+    repo.claim("REQ-0002", "The system shall respond within 200 ms.");
+    repo.claim("REQ-0003", "The system shall log each command.");
+    repo.commit("base");
+    repo.claim("REQ-0001", "The system shall respond within 100 ms.");
+    repo.claim("REQ-0002", "The system shall respond within 300 ms.");
+    repo.claim("REQ-0004", "The system shall archive each report.");
+    repo.commit("head");
+    let run = diff(
+        &repo,
+        &["--base", "base", "--head", "head", "--format", "json"],
+    );
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    let doc: serde_json::Value = serde_json::from_str(&run.stdout).expect("one JSON document");
+    assert_eq!(doc["schema"], "req.diff/1", "additive: the schema stays");
+    let claims = doc["claims"].as_array().expect("claims[]");
+    let axes_of = |id: &str| {
+        claims
+            .iter()
+            .find(|c| c["claim_id"] == id)
+            .unwrap_or_else(|| panic!("{id} is listed"))["axes"]
+            .clone()
+    };
+    assert_eq!(
+        axes_of("REQ-0001"),
+        serde_json::json!(["modality_strengthening", "numeric_loosening"])
+    );
+    assert_eq!(
+        axes_of("REQ-0002"),
+        serde_json::json!(["numeric_loosening"])
+    );
+    assert_eq!(
+        axes_of("REQ-0004"),
+        serde_json::json!([]),
+        "an added claim moved no axis"
+    );
+}

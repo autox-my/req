@@ -642,6 +642,8 @@ struct Entry {
     head_address: Option<String>,
     /// The direction word, for a changed meaning only.
     direction: Option<Direction>,
+    /// The class of every axis that moved (ADR 0044), for a changed meaning only; empty otherwise.
+    axes: Vec<Direction>,
 }
 
 /// What the whole comparison found.
@@ -690,15 +692,16 @@ fn classify_pair(base: &LoadedClaim, head: &LoadedClaim) -> Entry {
     let applicability_edited = b.applicability.iter().collect::<BTreeSet<_>>()
         != h.applicability.iter().collect::<BTreeSet<_>>();
 
-    let (class, direction) = if statement_edited || applicability_edited {
+    let (class, direction, axes) = if statement_edited || applicability_edited {
         if base_address == head_address {
             // The text changed and the meaning fingerprint did not.
-            (Class::Reworded, None)
+            (Class::Reworded, None, Vec::new())
         } else {
             let direction = compare::compare(&base.derived.form, &head.derived.form);
             (
                 Class::of_direction(direction, base.derived.form.modality),
                 Some(direction),
+                compare::axes(&base.derived.form, &head.derived.form),
             )
         }
     } else if metadata_differs(base, head) || (flagged(head) && !flagged(base)) {
@@ -707,9 +710,9 @@ fn classify_pair(base: &LoadedClaim, head: &LoadedClaim) -> Entry {
         // *newly* disagrees with the head parse (a registry edit can do it with the claim file
         // byte-identical) is a change a `--fail-on pin-flagged` gate must see; a disagreement
         // present on both sides is not a change and stays unlisted.
-        (Class::Metadata, None)
+        (Class::Metadata, None, Vec::new())
     } else {
-        (Class::Unchanged, None)
+        (Class::Unchanged, None, Vec::new())
     };
 
     let mut flags = Vec::new();
@@ -733,6 +736,7 @@ fn classify_pair(base: &LoadedClaim, head: &LoadedClaim) -> Entry {
         base_address: Some(base_address.clone()),
         head_address: Some(head_address.clone()),
         direction,
+        axes,
     }
 }
 
@@ -759,6 +763,7 @@ fn compare_sides(base: &Side, head: &Side) -> Report {
                 base_address: None,
                 head_address: Some(added.derived.address.clone()),
                 direction: None,
+                axes: Vec::new(),
             },
             (Some(removed), None) => Entry {
                 claim_id: id.to_string(),
@@ -767,6 +772,7 @@ fn compare_sides(base: &Side, head: &Side) -> Report {
                 base_address: Some(removed.derived.address.clone()),
                 head_address: None,
                 direction: None,
+                axes: Vec::new(),
             },
             (Some(before), Some(after)) => classify_pair(before, after),
             (None, None) => continue,
@@ -841,6 +847,10 @@ fn render_text(
         if let Some(direction) = entry.direction {
             out.push(' ');
             out.push_str(direction.as_str());
+            if let Some(also) = compare::also_axes(direction, &entry.axes) {
+                out.push_str(" also: ");
+                out.push_str(&also);
+            }
         }
         for flag in &entry.flags {
             out.push(' ');
@@ -909,6 +919,7 @@ fn render_json(
                 "base_address": e.base_address,
                 "head_address": e.head_address,
                 "direction": e.direction.map(|d| d.as_str()),
+                "axes": e.axes.iter().map(|d| d.as_str()).collect::<Vec<_>>(),
             })
         })
         .collect();

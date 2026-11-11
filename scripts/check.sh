@@ -444,6 +444,10 @@ run cargo run -q -- bench   # seed parity corpus: 0 PASS / 1 FAIL / 3 UNVERIFIAB
   # gates, and the `false_carry` block with the support behind each weakening class's zero. The
   # false-carry count is reported, not a verdict here; admission is ADR 0040's input.
   run cargo run -q -- bench bench/corpus/direction-v2.yml
+  # v3 (R-2, ADR 0044 decision 7) = v2 plus the compound pairs (two mutations on one statement) and the
+  # numeric mutations on a prohibition, labelled by the ADR's rule. Same hard gates; the false-carry
+  # measurement that ADR 0040 admits on stays v2's (its support is single-axis pairs).
+  run cargo run -q -- bench bench/corpus/direction-v3.yml
   fi
 
 # The release check over this repository's own corpus: `req check` (ADR 0023). It reads the two

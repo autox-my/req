@@ -73,3 +73,25 @@ This decision is wrong if any of these is observed:
 2. a single-axis pair's class changes from what it was before this decision;
 3. a bound loosened under a prohibition is reported as a tightening, or the reverse;
 4. the generator labels a compound or prohibition pair from the classifier's output.
+
+## Implementation note (2026-11-11, R-2)
+
+Implemented in `src/compare.rs` (`axes`, then `compare` combining per decisions 1–5; `Direction`'s variants and strings
+unchanged), `req compare` / `req diff` (`also:`; `axes` in `req.diff/1`, additively) and the gold set
+(`build_direction.py --version 3`, `bench/corpus/direction-v3.yml`). Two readings the text left open:
+
+- A modality that appears or disappears (no rank to compare) is a `scope_divergence` entry on the modality axis, and
+  `applicability` is an identity axis with the same entry. Neither changes a single-axis pair (the catch-all already
+  answered `scope_divergence`); they change only compounds, which now have no direction where the other axis's class
+  used to be returned.
+- `also:` lists each moved axis's class less the one the reported class already says; a mixed compound (reported
+  `scope_divergence`) names all of its axes.
+
+Measured on `direction-v3` at rules v9 (`bench/results/direction-v3-rules-v9.json`): 1827 pairs, FMR 0/1548, FSR 0/199,
+hard gate PASS, **0 dangerous confusions**, accuracy 0.9849 over 1587 classified (1563 correct). The 436 compound pairs
+(370 scored) have 8 mismatches, all `scope_divergence` on two PROMISE statements the parser cannot read for the value slot.
+The prohibition-bound family is 16 pairs from 4 bases, **none a native `shall not` statement** (the pinned sources hold
+none with one bound; the bases are flipped SHALLs, said so in the corpus header): 8 correct, 8 `scope_divergence` on
+those same two statements, so decision 5 is measured on two statements here, plus `tests/compare.rs`. The v1 and v2
+records are byte-identical before and after (falsification 2 not observed on either), and the false-carry
+measurement stays on v2.
