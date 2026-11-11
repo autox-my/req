@@ -9,6 +9,15 @@ signs the same manifest bytes. No rules change, no claim-schema change.
 — the features needed for OEM↔Tier-1 co-development"), and sequenced by the owner after the unrelated claims were resolved.
 Date proposed: 2026-11-11. This ADR decides the contract; the code follows in its own pull request, test first.
 
+**Implementation note (2026-11-12, task A-1).** Decisions 1–6 are implemented: `party`/`role` on a trust key; keyed
+signature files judged beside the default `.minisig`; `.req/signing`; `req baseline --verify` naming every signature
+judged; `req decision --verify` judging `DEC-NNNN.yml.<key-id>.minisig` over `decision::canonical_bytes`; the
+completeness step counting a manifest with any signature file. Choices the ADR left open: a key id in a signature file
+name is `[A-Za-z0-9._-]+`; a signed Decision's key is judged at the record's own `date`, and a key that holds no `role`
+cannot sign a Decision (FAIL); a key expired at that date is FAIL as at a Baseline's signing time; a Decision key that is
+unknown or whose verifier cannot answer is UNVERIFIABLE. Falsification 1–5 are tests (`tests/party_signatures.rs`); 6 is
+the same test run with the network refused. No manifest, claim-schema or rules change.
+
 ## Context
 
 ADR 0005 ends: *"The tool must model roles and authority."* It does not yet (`docs/design.md` §4 row 27, §6 item 8):

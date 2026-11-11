@@ -515,8 +515,8 @@ no path is 1.
 
 One more step always runs: `completeness` (ADR 0039), the structural omissions req can prove from
 these files. `in_no_release` — a claim every declared release excludes — is 1. `in_no_baseline` — a
-claim a release ships that no signed Baseline under `baselines/` names (a manifest counts only with its
-`.minisig` beside it; verifying the signature is `req baseline --verify`'s) — is 3, so a repository
+claim a release ships that no signed Baseline under `baselines/` names (a manifest counts only with a
+signature beside it, `.minisig` or a party's `.<key-id>.minisig`; verifying it is `req baseline --verify`'s) — is 3, so a repository
 with no signed Baseline is 3. `unrelated` — a claim with no relation in or out — is listed and changes
 nothing, unless `.req/completeness` says `strict unrelated` (then 1). `need design` in that file adds
 `unsatisfied` (ADR 0040) — a claim a release applies that no design element declares `req-satisfies:`
@@ -657,6 +657,17 @@ signer-asserted, so revocation bounds newly asserted times only, and `valid_from
 but not enforced. A newer envelope's dated revocation stays UNVERIFIABLE, while an anchor whose
 own `revoked_at` cannot be read fails closed on every envelope. The signature check is a process boundary to a pinned verifier.
 
+Several parties may sign the same bytes (ADR 0042). `<file>.minisig` is the `--key` key's signature, as
+always; every `<file>.<key-id>.minisig` beside it is that key's. A trust-file key may carry a `party`
+and a `role` (the meaning of its signatures), and an optional `.req/signing` lists what a release
+needs, one `<party> <role>` per line (a line repeated n times needs n distinct keys; `#` comments;
+a malformed line is exit 2 naming `.req/signing:<line>`). Every signature present is judged as above
+(one that does not verify, or a key revoked at the signing time, is FAIL; a file naming a key the
+trust file lacks is UNVERIFIABLE, never ignored). With a policy every line must be met by a distinct
+verified key holding that party and role: an unmet line is UNVERIFIABLE, `awaiting <party> <role>`
+— not a defect and not a pass. With no policy one verified signature suffices, and a repository
+with no `.req/signing` and no keyed file verifies exactly as before.
+
 exit: 0 emitted or VERIFIED, 1 FAIL (drift, a signature or authority that does not verify),
 3 UNVERIFIABLE (no verifier, an unknown key, no signature, a `rules_v` mismatch, an absent
 decision log, or an `--out` target that cannot be written), 2 usage (emitting without `--at`, an
@@ -703,9 +714,16 @@ would launder the edit `--verify` reports as TAMPERED. A decision records the ad
 ratified; an edit that moves the address is reported by `req audit` and `baseline --verify`,
 not by this log, because a log is history and superseding an address later is not tampering.
 
+A record may carry `decisions/DEC-NNNN.yml.<key-id>.minisig`, a signature over its canonical bytes
+(ADR 0042). A verified one makes the listing say `signed by <id> (<party> <role>)`, and the record's
+`role` must equal the key's: a mismatch, a signature that does not verify or a key revoked at the
+record's date is FAIL (exit 1); an unknown key or no verifier is UNVERIFIABLE. A record with no
+signature file is listed as *asserted*: its role is a claim, not a proof, and the verdict is unchanged.
+
 exit: 0 VALID, 1 TAMPERED (a stored hash that does not recompute, or a `prev_hash` that
-disagrees with the entry before it), 3 UNVERIFIABLE (an unfilled hash, an unparsable file, an
-empty log, or a log that does not begin at the genesis anchor), 2 usage.
+disagrees with the entry before it) or a signed Decision that FAILS, 3 UNVERIFIABLE (an unfilled
+hash, an unparsable file, an empty log, a log that does not begin at the genesis anchor, or a
+Decision signature that cannot be judged), 2 usage.
 
 `docs/adopting.md` for the loop.";
 

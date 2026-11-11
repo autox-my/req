@@ -120,12 +120,13 @@ workflow that runs on pull requests from strangers).
 - `bench/corpus/` the seed parity corpus plus external families — **generated data** from `tools/corpus/`, reviewed
   through the generator and its pins; `bench/results/` append-only, one record per corpus and rules version.
 - `src/` `main.rs` thin CLI + help pages, one module per command; `tests/` public-seam tests.
-- `baselines/` `trust.yml` (ADR 0010, the **single home of the public key**), `<variant>.json` + `.minisig`: `air-gapped.json`
+- `baselines/` `trust.yml` (ADR 0010, the **single home of the public key**; a key may carry a `party` and `role`, ADR 0042),
+  `<variant>.json` + `.minisig` (a party's is `.<key-id>.minisig`): `air-gapped.json`
   and one `release-*.json` per `.req/variants` line; the gate verifies every one. req
   emits and verifies, never signs (`minisign -Sm`). In CI the trust anchor is taken from `origin/main`, not the
   PR; rotation is two PRs (add the new key beside the old and re-sign; revoke the old only after both merge).
 - `.req/variants` this repo's release list; `.req/projections` pinned projections; `.req/completeness` roots and strictness for
-  the completeness step (optional); `.config/nextest.toml`; `tools/`
+  the completeness step (optional); `.req/signing` the `<party> <role>` signatures a Baseline needs (optional, ADR 0042; this repo declares none); `.config/nextest.toml`; `tools/`
   (`adopt.py` the extractor, `needs_import.py` its Sphinx-Needs sibling and `reqif_import.py` its ReqIF sibling: copy and adjust; `ocr/` the pinned review CLI; `review/`; `orchestration/`);
   `review/rule.json` the review rules; `experiments/tier2/` the Tier-2 research crate (ADR 0021), nothing in it gates
   a release; `docs/specs/`, `docs/handoffs/` orchestration; `.scratch/` gitignored, never a deliverable.

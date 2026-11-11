@@ -261,6 +261,50 @@ fn a_manifest_with_no_signature_beside_it_covers_nothing() {
     );
 }
 
+/// Review A-1-review-1 (low): a DIRECTORY named like a party signature is not a signature, so the
+/// manifest beside it is not counted as signed.
+#[test]
+fn a_directory_named_like_a_signature_does_not_count() {
+    let s = clean("keyed-dir");
+    fs::remove_file(s.path().join("baselines/release.json.minisig")).expect("removes the default");
+    fs::create_dir_all(s.path().join("baselines/release.json.oem-ro.minisig"))
+        .expect("makes the directory");
+    let out = s.req(&["check"]);
+    let block = out.completeness_block();
+    assert!(
+        block.starts_with("[UNVERIFIABLE] completeness "),
+        "a directory is not a signature: {block}"
+    );
+}
+
+#[test]
+fn a_manifest_signed_only_by_a_keyed_party_signature_counts() {
+    // ADR 0042: `<manifest>.<key-id>.minisig` is a signature too. Whether it verifies is
+    // `req baseline --verify`'s question; this step reads which claims a signed manifest names.
+    let s = clean("keyed-only");
+    fs::remove_file(s.path().join("baselines/release.json.minisig")).expect("removes the default");
+    s.write(
+        "baselines/release.json.oem-ro.minisig",
+        "untrusted comment: fixture\n",
+    );
+    let out = s.req(&["check"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let block = out.completeness_block();
+    assert!(block.starts_with("[PASS] completeness "), "{block}");
+}
+
+#[test]
+fn an_unsigned_manifest_note_names_both_signature_spellings() {
+    let s = clean("note-spellings");
+    fs::remove_file(s.path().join("baselines/release.json.minisig")).expect("removes the default");
+    let out = s.req(&["check"]);
+    let block = out.completeness_block();
+    assert!(
+        block.contains("release.json.minisig") && block.contains("release.json.<key-id>.minisig"),
+        "{block}"
+    );
+}
+
 #[test]
 fn a_manifest_that_cannot_be_read_is_exit_3_and_named() {
     let s = clean("corrupt");

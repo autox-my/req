@@ -29,6 +29,19 @@
 #               (no RFC 3161), so this bounds newly asserted times only; `--now` overrides the
 #               judgement time on the command line.
 #
+#   party       optional (ADR 0042). The organisation or function that holds the key, e.g. `oem`
+#               or `acme-tier1`. Letters, digits, `.`, `_`, `-`.
+#   role        optional (ADR 0042). The capacity every signature of this key is made in — its
+#               meaning, e.g. `requirements-owner` or `safety-manager`. A person acting in two
+#               capacities holds two keys. A key with no party and role behaves as it always did,
+#               and can never meet a line of `.req/signing`. A signed Decision's `role` must equal
+#               its key's role.
+#
+# Several parties sign the same manifest: `<manifest>.json.<key-id>.minisig` is the signature of
+# the key `<key-id>` (the default `<manifest>.json.minisig` stays the `--key` key's). A
+# `.req/signing` file lists the signatures a release needs, one `<party> <role>` per line; a line
+# repeated n times needs n distinct keys. Adding a party is a diff to this file someone reads.
+#
 # Rotating a key means adding a new entry beside the old one with its own validity window.
 # Old Baselines stay verifiable against the old key; new ones must use the new one.
 keys:
@@ -42,3 +55,5 @@ keys:
     valid_from: "2026-10-07"
     # valid_until: "2027-10-07"
     # revoked_at: "2026-12-01"
+    # party: "oem"
+    # role: "requirements-owner"

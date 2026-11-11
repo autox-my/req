@@ -4,7 +4,8 @@ Amends ADR 0026 §2 (the `weakened` / `tightened` mapping), ADR 0030 §6 (the pr
 bounds) and ADR 0041 (the effect of a scope class). No class is renamed, no `RULES_V` bump (the classifier is not on the
 address path), no claim-schema or Baseline change.
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it, together with the fix (task R-2).
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it, together with the fix (task R-2;
+2026-11-12, GitHub PR #58).
 Asked for by the owner on 2026-11-11 ("yes": write the amendment and the fix after R-1 merged). Date proposed: 2026-11-11.
 
 ## Context
