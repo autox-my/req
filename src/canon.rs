@@ -35,10 +35,12 @@ use crate::model::Registry;
 /// subject match (T1.7 as written) after two false merges in this repository's own corpus;
 /// 6 -> 7 added the `IN` operator (ADR 0030): an enumerated "one of {A, B, C}" is a set in the
 /// value slot and no longer the bound `1`; 7 -> 8 read a leading condition (`When X, the pump shall
-/// stop`) as a condition, not as part of the subject (ADR 0038, issue #18).
+/// stop`) as a condition, not as part of the subject (ADR 0038, issue #18); 8 -> 9 read "no more than" /
+/// "not more than" / "no greater than" / "not greater than" as an upper bound (LE) where the bare
+/// "more than" had read a lower one (GT) (R-1).
 /// Addresses computed under older rules are re-canonicalization candidates, never silently
 /// rewritten (hashing spec §5).
-pub const RULES_V: u32 = 8;
+pub const RULES_V: u32 = 9;
 /// The claim **file format's** own version (`docs/claim-format.md`), an axis that moves
 /// independently of the normalization rules: a schema bump is a migration and moves no
 /// address, while a rules bump re-derives every address. Named here, beside the other
@@ -705,6 +707,12 @@ const COMPARATOR_PHRASES: &[(&str, Comp)] = &[
     ("at most", Comp::Le),
     ("up to", Comp::Le),
     ("not exceed", Comp::Le),
+    // The negated upper bounds (rules v9, R-1): the mirrors of "no less than" / "not less than" below. Without them the
+    // bare "more than" / "greater than" (GT) matched inside "no more than" and read an upper bound as a lower one.
+    ("no more than", Comp::Le),
+    ("not more than", Comp::Le),
+    ("no greater than", Comp::Le),
+    ("not greater than", Comp::Le),
     ("in fewer than", Comp::Lt),
     ("in less than", Comp::Lt),
     ("fewer than", Comp::Lt),

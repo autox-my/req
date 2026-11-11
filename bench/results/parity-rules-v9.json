@@ -1,0 +1,89 @@
+{
+  "corpus": "bench/corpus/parity.yml",
+  "corpus_sha256": "d7ccf2dc65073d68755e62194ae8b0b2f3e1a232f868d78606548594b3811d54",
+  "degraded": [],
+  "direction": {
+    "accuracy": null,
+    "checked": 0,
+    "correct": 0,
+    "dangerous_confusions": [],
+    "false_carry": {
+      "membership_widening": {
+        "admitted": false,
+        "count": 0,
+        "pairs": [],
+        "support": 0
+      },
+      "modality_weakening": {
+        "admitted": false,
+        "count": 0,
+        "pairs": [],
+        "support": 0
+      },
+      "numeric_loosening": {
+        "admitted": false,
+        "count": 0,
+        "pairs": [],
+        "support": 0
+      }
+    },
+    "hard_gate": "UNVERIFIABLE",
+    "mismatches": [],
+    "note": "a loosening reported as no change, or as the opposite direction, is the dangerous confusion — the direction analogue of a false merge. Accuracy is reported rather than gated: a harmless misread costs nothing, while a dangerous one costs a ratified loosening.",
+    "soft_target": 0.95,
+    "unclassifiable": [],
+    "unknown_labels": []
+  },
+  "fmr": {
+    "collapses": 0,
+    "hard_gate": "PASS",
+    "hit_pairs": [],
+    "not_equivalent_total": 19,
+    "rate": 0.0,
+    "structurally_unverifiable_ids": [
+      "N-007",
+      "N-008"
+    ],
+    "structurally_unverifiable_pairs": 2
+  },
+  "fsr": {
+    "hit_pairs": [],
+    "rate": 0.0,
+    "splits": 0,
+    "structured_equivalent_total": 9
+  },
+  "lints": [
+    {
+      "code": "untestable_comparator",
+      "detail": "comparator word \"under\" is not in the T1.5 table",
+      "pair": "N-005",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "once, on, outgoing, side, of, its, origin, claim",
+      "pair": "N-008",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "once, on, incoming, side, of, its, origin, claim",
+      "pair": "N-008",
+      "side": "b"
+    }
+  ],
+  "pairs_total": 31,
+  "rules_v": 9,
+  "schema": "req.bench.result/1",
+  "tier2": {
+    "candidates": 3,
+    "collapsed_at_tier1": 0,
+    "ids": [
+      "E-006",
+      "E-007",
+      "E-008"
+    ],
+    "note": "pairs needing the provider funnel; excluded from the FSR headline by design"
+  },
+  "verdict": "PASS"
+}

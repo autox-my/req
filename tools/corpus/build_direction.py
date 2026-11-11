@@ -32,9 +32,40 @@ from build_external import (
 
 # Which way a bound moves depends on which side of the bound it is — the sign that is
 # easy to get backwards, which is exactly why the gold set exists.
-UPPER_WORDS = ("within", "at most", "no later than", "less than", "fewer than", "under")
-LOWER_WORDS = ("at least", "no less than", "greater than", "more than")
-NUMBER_UNIT = r"(\d+(?:\.\d+)?)\s*(ms|s|%|kN|N|kHz|Hz|A|amps|V|records|seconds|minutes)"
+#
+# The **longest** matching phrase decides, so the negated forms are listed explicitly and a bare
+# "more than" inside "no more than" does not count (R-1: it was read as a lower bound, and "less than"
+# inside "no less than" as an upper one, so the labels agreed with the parser's wrong reading).
+UPPER_WORDS = ("within", "at most", "no later than", "less than", "fewer than", "under",
+               "no more than", "not more than", "no greater than", "not greater than")
+LOWER_WORDS = ("at least", "no less than", "not less than", "no fewer than", "greater than",
+               "more than")
+# A number preceded by a backslash is an escape sequence ("\\92s", an escaped quote and an s), not a
+# quantity: it matched as 92 seconds and produced pairs that change no bound at all.
+NUMBER_UNIT = (r"(?<!\\)(\d+(?:\.\d+)?)\s*"
+               r"(ms|s|%|kN|N|kHz|Hz|A|amps|V|records|seconds|minutes)")
+
+
+def bound_side(s: str):
+    """"upper", "lower" or None: which side of a bound the statement's comparator phrase is.
+
+    Every phrase of both lists is located, any phrase lying inside a longer one is dropped (the
+    longest match wins, as in the parser's table), and an upper phrase outranks a lower one, as
+    before. Substring matching is kept as it was, so only the negated forms move.
+    """
+    low = s.lower()
+    hits = []
+    for side, words in (("upper", UPPER_WORDS), ("lower", LOWER_WORDS)):
+        for w in words:
+            i = low.find(w)
+            while i != -1:
+                hits.append((i, i + len(w), side))
+                i = low.find(w, i + 1)
+    kept = [h for h in hits
+            if not any(o != h and o[0] <= h[0] and h[1] <= o[1] and (o[1] - o[0]) > (h[1] - h[0])
+                       for o in hits)]
+    sides = {h[2] for h in kept}
+    return "upper" if "upper" in sides else "lower" if "lower" in sides else None
 
 
 def _scale(s: str, factor: Decimal):
@@ -49,20 +80,20 @@ def _scale(s: str, factor: Decimal):
 
 def d_numeric_loosening(s: str):
     """An upper bound raised, or a lower bound lowered: more values comply."""
-    low = s.lower()
-    if any(w in low for w in UPPER_WORDS):
+    side = bound_side(s)
+    if side == "upper":
         return _scale(s, Decimal("1.25"))
-    if any(w in low for w in LOWER_WORDS):
+    if side == "lower":
         return _scale(s, Decimal("0.8"))
     return None
 
 
 def d_numeric_tightening(s: str):
     """The reverse: fewer values comply."""
-    low = s.lower()
-    if any(w in low for w in UPPER_WORDS):
+    side = bound_side(s)
+    if side == "upper":
         return _scale(s, Decimal("0.8"))
-    if any(w in low for w in LOWER_WORDS):
+    if side == "lower":
         return _scale(s, Decimal("1.25"))
     return None
 
@@ -329,6 +360,30 @@ def self_check() -> int:
     assert d_membership_narrowing("The report shall cite one of {A, B}.") is None
     assert d_membership_narrowing("The report shall cite one of the four standards: A, B, C, D.") is None
     assert d_membership_narrowing("The product shall allow one of the target market countries.") is None
+    # R-1: the longest phrase decides; the negated forms are the bound the English says.
+    for text, side in (
+        ("The system shall respond in no more than 3 seconds.", "upper"),
+        ("The system shall respond in not more than 3 seconds.", "upper"),
+        ("The system shall respond in no greater than 3 seconds.", "upper"),
+        ("The system shall respond in not greater than 3 seconds.", "upper"),
+        ("The system shall store no less than 3 records.", "lower"),
+        ("The system shall store not less than 3 records.", "lower"),
+        ("The system shall store no fewer than 3 records.", "lower"),
+        ("The system shall respond more than 3 seconds.", "lower"),
+        ("The system shall respond in less than 3 seconds.", "upper"),
+        ("The system shall respond within 3 seconds.", "upper"),
+        ("The system shall respond quickly.", None),
+    ):
+        assert bound_side(text) == side, (text, bound_side(text))
+    assert d_numeric_loosening("The system shall respond in no more than 4 seconds.") == (
+        "The system shall respond in no more than 5 seconds.")
+    assert d_numeric_tightening("The system shall respond in no more than 5 seconds.") == (
+        "The system shall respond in no more than 4 seconds.")
+    assert d_numeric_loosening("The system shall store no less than 5 records.") == (
+        "The system shall store no less than 4 records.")
+    # ...and a number after a backslash is an escape, not a quantity.
+    assert _scale("It shall render \\92s as a quote.", Decimal("2")) is None
+    assert _scale("It shall respond in 92s.", Decimal("2")) == "It shall respond in 184s."
     m = mirror(("D-X-1-MW", "a", "b", "src", "modality_weakening", "n"))
     assert m == ("D-X-1-MWr", "b", "a", "src", "modality_strengthening",
                  "mirror of D-X-1-MW (a and b swapped): n")

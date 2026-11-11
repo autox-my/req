@@ -4845,18 +4845,6 @@ not_equivalent:
     source: "promise@b63dde159b41 P6:r310"
     note: "PF"
     direction: "polarity_flip"
-  - id: D-PR-P6:r310-NL
-    a: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\92s language."
-    b: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\73.6s language."
-    source: "promise@b63dde159b41 P6:r310"
-    note: "An upper bound raised, or a lower bound lowered: more values comply."
-    direction: "numeric_loosening"
-  - id: D-PR-P6:r310-NT
-    a: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\92s language."
-    b: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\115s language."
-    source: "promise@b63dde159b41 P6:r310"
-    note: "The reverse: fewer values comply."
-    direction: "numeric_tightening"
   - id: D-PR-P6:r310-SN
     a: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\92s language."
     b: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\92s language when the brake is engaged."
@@ -5669,13 +5657,13 @@ not_equivalent:
     direction: "unrelated"
   - id: D-PR-P11:r545-NL
     a: "On a 112k connection or faster the system response time for all operations must be no more than 3 seconds 90% of the time."
-    b: "On a 112k connection or faster the system response time for all operations must be no more than 2.4 seconds 90% of the time."
+    b: "On a 112k connection or faster the system response time for all operations must be no more than 3.75 seconds 90% of the time."
     source: "promise@b63dde159b41 P11:r545"
     note: "An upper bound raised, or a lower bound lowered: more values comply."
     direction: "numeric_loosening"
   - id: D-PR-P11:r545-NT
     a: "On a 112k connection or faster the system response time for all operations must be no more than 3 seconds 90% of the time."
-    b: "On a 112k connection or faster the system response time for all operations must be no more than 3.75 seconds 90% of the time."
+    b: "On a 112k connection or faster the system response time for all operations must be no more than 2.4 seconds 90% of the time."
     source: "promise@b63dde159b41 P11:r545"
     note: "The reverse: fewer values comply."
     direction: "numeric_tightening"

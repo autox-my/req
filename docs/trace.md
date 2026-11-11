@@ -1,4 +1,4 @@
-<!-- req projection: generator=req trace | rules_v=8 | selection=corpus_set=parity_and_adversarial deployment_mode=air_gapped field=value set=direction_gold_structural | claims=39 | identity=sha256:b75f1a73bb101b1321224954306262c331b54705e229f3e8f7c4f5317e52eba1 -->
+<!-- req projection: generator=req trace | rules_v=9 | selection=corpus_set=parity_and_adversarial deployment_mode=air_gapped field=value set=direction_gold_structural | claims=39 | identity=sha256:b75f1a73bb101b1321224954306262c331b54705e229f3e8f7c4f5317e52eba1 -->
 # Traceability: corpus_set=parity_and_adversarial, deployment_mode=air_gapped, field=value, set=direction_gold_structural
 edges are stored once, on the outgoing side (REQ-0020); the incoming
 view below is derived by traversal, never stored

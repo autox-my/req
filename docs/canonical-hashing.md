@@ -54,9 +54,14 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
   under-specified (bare ``dB``, no reference) is **NOT normalized** → lint
   `untestable_quantity`.
 - **T1.5 Comparators** — closed table:
-  - ``within`` / ``shall not exceed`` / ``no later than`` / ``at most`` → **LE**
+  - ``within`` / ``shall not exceed`` / ``no later than`` / ``at most`` → **LE**;
+    and, since rules v9 (R-1), the negated upper bounds ``no more than`` / ``not more than`` /
+    ``no greater than`` / ``not greater than`` → **LE** (the mirrors of the lower-bound pair
+    below; the bare ``more than`` / ``greater than`` matched *inside* them and read an upper
+    bound as a lower one, so a loosening was reported as a tightening). The longest phrase wins.
   - ``less than`` → **LT**  ← *the classic trap: LE and LT are different claims*
-  - ``at least`` / ``no less than`` → **GE** − ``greater than`` / ``exceeds`` → **GT**
+  - ``at least`` / ``no less than`` / ``not less than`` / ``no fewer than`` → **GE** −
+    ``greater than`` / ``more than`` / ``exceeds`` → **GT**
   - bare ``is`` between bound and value → **EQ**. Ambiguous comparators ("fast",
     "as soon as possible") → never guessed → lint `untestable_comparator`. The lint
     fires only for a word that could plausibly *be* a comparator (a curated list): a
@@ -327,6 +332,36 @@ as `req gate` lets Fail outrank Unverifiable.
 
 #### Recorded runs (append-only)
 
+- **Rules v9** — a negated upper bound is an upper bound (T1.5; R-1). Found while checking parser coverage for
+  the numeric direction pairs: `no more than 3 seconds` derived `op GT`, because the table had `no less than`
+  → GE but not its mirrors and the bare `more than` matched inside. `req compare` then called "no more than
+  3 s" → "no more than 4 s" a `numeric_tightening`, a loosening reported as a tightening. Addresses did not
+  falsely merge (the stray "no" stayed in the action). The direction gold set did not catch it because its
+  generator had the same substring bug and labelled the same way, so the labels agreed with the parser's wrong
+  reading: that was the oracle failing, not the classifier passing. Per corpus, never pooled, against the
+  recorded v8 numbers:
+  - **parity** — 31 pairs (the two new ones are hand-written from the spec: `E-012` "no more than" ≡ "at most",
+    `N-019` "no more than" ≠ "more than"): FMR 0/19, FSR 0/9, 2 structurally unverifiable (was 29 pairs, 0/18, 0/8).
+  - **external-v1/v2/v3/v4** — every count is identical to v8 (FMR 0/160, 0/227, 0/625, 0/1595; FSR 0/150,
+    0/150, 0/389, 0/389), and **no pair's verdict moved**: the records differ from v8 only in `rules_v`. No external
+    pair is named because none moved; those corpora are not evidence about this rule, the parity pairs and
+    `tests/negated_upper_comparators.rs` are.
+  - **direction gold set** (the generator was fixed: the longest matching phrase decides, the negated forms are
+    listed, and a number after a backslash is not a quantity). v1: 1157 pairs (was 1159), FMR 0/878, FSR 0/199,
+    hard gate PASS, 0 dangerous confusions, accuracy 0.9961 over 1016 classified pairs (1012 correct; 141
+    unclassifiable, was 143). v2: 1375 pairs (was 1379), FMR 0/1096, hard gate PASS, 0 dangerous confusions,
+    accuracy 0.9933 over 1201 (1193 correct; 174 unclassifiable, was 178). The regenerated files differ from the
+    committed v8 ones in exactly two source statements and their mirrors: `D-PR-P6:r310-NL`/`-NT` (the
+    `\92s` escape read as 92 seconds: no bound changes, dropped with their v2 mirrors) and `D-PR-P11:r545-NL`/`-NT`
+    ("no more than 3 seconds": the two labels had been mutated the wrong way round, so each pair's `b` now
+    holds the other's, and the mirrors likewise).
+  - **false carry** (`direction-v2`): `numeric_loosening` 0 false carries, support **9** (unchanged from v8;
+    admitted: no, support below 100). The fix does not move it: the two repaired pairs were already scored, and the
+    two dropped ones were unclassifiable. More support needs more numeric source statements, a different unit.
+    `modality_weakening` stays 0 over 177; `membership_widening` 0 over 0.
+  - **dogfood** — no claim in this repository holds `no more than`, `not more than`, `no greater than` or
+    `not greater than` (`req canon`: 40 claims, 0 flags), so there is **no re-canonicalization candidate**; only
+    `rules_v` 8 → 9 differs in the re-emitted manifests, which need the owner's re-signature and nothing else.
 - **Direction gold set v2, rules v8** (S-1; `bench/results/direction-v2-rules-v8.json`) — 1379 pairs
   (v1's 1159 plus 220 mirrors, 0 membership): FMR 0/1100 (178 structurally unverifiable), FSR 0/199. Hard gate PASS,
   **0 dangerous confusions**, accuracy 0.9933 over 1201 classified pairs (178 unclassifiable); the 8

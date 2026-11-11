@@ -1,6 +1,6 @@
 schema: req.bench.corpus/0
 version: 2
-rules: "Direction gold set: every pair is a real requirement from another project (pinned by commit — strictdoc@abf7be7daa2a25721a56980b5be15845336ea0b8, doorstop@f267ef67cb80b0eb0dcdf0597fe61f623e851e15, promise-nfr@b63dde159b41d6cb7be01f03fad2c2a59490de8b, sampled every 5th of 969) with one mutation applied, and the `direction` label IS that mutation. Labels are therefore an independent oracle for `req compare`, never the classifier's output. Vocabulary: identical | modality_weakening | modality_strengthening | polarity_flip | numeric_loosening | numeric_tightening | scope_narrowing | scope_widening | scope_divergence | unrelated. A misspelled label FAILS the gate rather than disabling the check. Version 2 (S-1, ADR 0040 decision 5) = every v1 pair, plus 220 mirrors (the modality/numeric/membership pairs swapped and labelled with the opposite class, ids suffixed `r`) and 0 membership mutations: the pinned sources hold no enumerated `one of {...}` statement the rules-v8 parser reads as IN, and none was synthesised to reach a number. Measures false carries: a strengthening, tightening, flip or scope change reported as a weakening class."
+rules: "Direction gold set: every pair is a real requirement from another project (pinned by commit — strictdoc@abf7be7daa2a25721a56980b5be15845336ea0b8, doorstop@f267ef67cb80b0eb0dcdf0597fe61f623e851e15, promise-nfr@b63dde159b41d6cb7be01f03fad2c2a59490de8b, sampled every 5th of 969) with one mutation applied, and the `direction` label IS that mutation. Labels are therefore an independent oracle for `req compare`, never the classifier's output. Vocabulary: identical | modality_weakening | modality_strengthening | polarity_flip | numeric_loosening | numeric_tightening | scope_narrowing | scope_widening | scope_divergence | unrelated. A misspelled label FAILS the gate rather than disabling the check. Version 2 (S-1, ADR 0040 decision 5) = every v1 pair, plus 218 mirrors (the modality/numeric/membership pairs swapped and labelled with the opposite class, ids suffixed `r`) and 0 membership mutations: the pinned sources hold no enumerated `one of {...}` statement the rules-v8 parser reads as IN, and none was synthesised to reach a number. Measures false carries: a strengthening, tightening, flip or scope change reported as a weakening class."
 equivalent:
   - id: I-ST-SDOC-SSS-3
     a: "The Requirements Tool shall provide the CRUD operations for document management: - Create document - Read document - Update document - Delete document."
@@ -4845,18 +4845,6 @@ not_equivalent:
     source: "promise@b63dde159b41 P6:r310"
     note: "PF"
     direction: "polarity_flip"
-  - id: D-PR-P6:r310-NL
-    a: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\92s language."
-    b: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\73.6s language."
-    source: "promise@b63dde159b41 P6:r310"
-    note: "An upper bound raised, or a lower bound lowered: more values comply."
-    direction: "numeric_loosening"
-  - id: D-PR-P6:r310-NT
-    a: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\92s language."
-    b: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\115s language."
-    source: "promise@b63dde159b41 P6:r310"
-    note: "The reverse: fewer values comply."
-    direction: "numeric_tightening"
   - id: D-PR-P6:r310-SN
     a: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\92s language."
     b: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\92s language when the brake is engaged."
@@ -5669,13 +5657,13 @@ not_equivalent:
     direction: "unrelated"
   - id: D-PR-P11:r545-NL
     a: "On a 112k connection or faster the system response time for all operations must be no more than 3 seconds 90% of the time."
-    b: "On a 112k connection or faster the system response time for all operations must be no more than 2.4 seconds 90% of the time."
+    b: "On a 112k connection or faster the system response time for all operations must be no more than 3.75 seconds 90% of the time."
     source: "promise@b63dde159b41 P11:r545"
     note: "An upper bound raised, or a lower bound lowered: more values comply."
     direction: "numeric_loosening"
   - id: D-PR-P11:r545-NT
     a: "On a 112k connection or faster the system response time for all operations must be no more than 3 seconds 90% of the time."
-    b: "On a 112k connection or faster the system response time for all operations must be no more than 3.75 seconds 90% of the time."
+    b: "On a 112k connection or faster the system response time for all operations must be no more than 2.4 seconds 90% of the time."
     source: "promise@b63dde159b41 P11:r545"
     note: "The reverse: fewer values comply."
     direction: "numeric_tightening"
@@ -7743,18 +7731,6 @@ not_equivalent:
     source: "promise@b63dde159b41 P6:r310"
     note: "mirror of D-PR-P6:r310-MW (a and b swapped): MW"
     direction: "modality_strengthening"
-  - id: D-PR-P6:r310-NLr
-    a: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\73.6s language."
-    b: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\92s language."
-    source: "promise@b63dde159b41 P6:r310"
-    note: "mirror of D-PR-P6:r310-NL (a and b swapped): An upper bound raised, or a lower bound lowered: more values comply."
-    direction: "numeric_tightening"
-  - id: D-PR-P6:r310-NTr
-    a: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\115s language."
-    b: "The product shall be translated into foreign languages other than the target market countries\\92 languages in future releases. For each emerging target market it shall take no more than 5 days to configure the product for that market\\92s language."
-    source: "promise@b63dde159b41 P6:r310"
-    note: "mirror of D-PR-P6:r310-NT (a and b swapped): The reverse: fewer values comply."
-    direction: "numeric_loosening"
   - id: D-PR-P6:r315-MWr
     a: "The product may ensure that the database\\92s data corresponds to the data entered by the user. Each conference room reservation in the system will contain the same information as was entered by the user."
     b: "The product shall ensure that the database\\92s data corresponds to the data entered by the user. Each conference room reservation in the system will contain the same information as was entered by the user."
@@ -7972,13 +7948,13 @@ not_equivalent:
     note: "mirror of D-PR-P10:r540-MW (a and b swapped): MW"
     direction: "modality_strengthening"
   - id: D-PR-P11:r545-NLr
-    a: "On a 112k connection or faster the system response time for all operations must be no more than 2.4 seconds 90% of the time."
+    a: "On a 112k connection or faster the system response time for all operations must be no more than 3.75 seconds 90% of the time."
     b: "On a 112k connection or faster the system response time for all operations must be no more than 3 seconds 90% of the time."
     source: "promise@b63dde159b41 P11:r545"
     note: "mirror of D-PR-P11:r545-NL (a and b swapped): An upper bound raised, or a lower bound lowered: more values comply."
     direction: "numeric_tightening"
   - id: D-PR-P11:r545-NTr
-    a: "On a 112k connection or faster the system response time for all operations must be no more than 3.75 seconds 90% of the time."
+    a: "On a 112k connection or faster the system response time for all operations must be no more than 2.4 seconds 90% of the time."
     b: "On a 112k connection or faster the system response time for all operations must be no more than 3 seconds 90% of the time."
     source: "promise@b63dde159b41 P11:r545"
     note: "mirror of D-PR-P11:r545-NT (a and b swapped): The reverse: fewer values comply."
