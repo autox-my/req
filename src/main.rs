@@ -491,16 +491,27 @@ does not exist or is not a regular file is 1 (a projection that vanished is sile
 one step whose exit differs from `render --check`'s, which can only say 3), and a present list that yields
 no path is 1.
 
+One more step always runs: `completeness` (ADR 0039), the structural omissions req can prove from
+these files. `in_no_release` — a claim every declared release excludes — is 1. `in_no_baseline` — a
+claim a release ships that no signed Baseline under `baselines/` names (a manifest counts only with its
+`.minisig` beside it; verifying the signature is `req baseline --verify`'s) — is 3, so a repository
+with no signed Baseline is 3. `unrelated` — a claim with no relation in or out — is listed and changes
+nothing, unless `.req/completeness` says `strict unrelated` (then 1). That optional file lists, one per
+line, root claim ids `unrelated` spares and `strict unrelated`; an unknown word or an id the corpus does
+not hold is exit 2 naming `<file>:<line>`. A claim a line leaves undecided is that gate's 3, never named
+here. Nothing says the requirements are complete: req holds nothing to be complete against.
+
 `verdict: PASS` is printed only when every declared step ran and passed. There is no `--only`,
 no `--skip` and no flag that narrows what is examined. `--format json` prints one `req.check/1`
 document on stdout — the folded verdict and, per step, its kind, its line or path, its exit and,
-for a gate step, the whole `req.gate/2` document — with the same fold and the same exit as the
-text.
+for a gate step, the whole `req.gate/2` document, and for the completeness step its three lists —
+with the same fold and the same exit as the text.
 
 exit: 0 every declared step ran and passed; 1 a defect in any step (a gate that fails, a stale or
-missing projection, a list that pins nothing); 3 UNVERIFIABLE (a step that cannot be confirmed —
-an undecided claim, a missing test report, a list that exists and cannot be read, a projection
-`render --check` cannot judge); 2 usage or a malformed list, decided before any step runs.
+missing projection, a list that pins nothing, a claim no release examines); 3 UNVERIFIABLE (a step
+that cannot be confirmed — an undecided claim, a missing test report, a list that exists and cannot
+be read, a projection `render --check` cannot judge, a shipped claim no signed Baseline names); 2
+usage or a malformed list, decided before any step runs.
 Fail outranks Unverifiable.
 
 `docs/adopting.md` for the loop.";
@@ -606,8 +617,12 @@ than none.
 
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 packet as a `req.audit/1` document on stdout: schema, generator, `rules_v`, the selection,
-whether anything is ratified, the coverage lists (`not_judged` as its reason string) and the
-findings in order, each carrying the class the text packet prints.
+whether anything is ratified, the coverage lists (`not_judged` as its reason string), the
+findings in order, each carrying the class the text packet prints, and `unrelated`.
+
+An applying claim with no relation in or out (minus the roots `.req/completeness` lists) is printed
+under *Structural omissions* (ADR 0039). It is reported and never part of the verdict; the
+release-wide omissions are `req check`'s.
 
 exit: 0 every applying claim covered and still matching, 1 a defect (drift, or no
 provenance), 3 nothing ratified, something uncovered, or coverage NOT JUDGED because the

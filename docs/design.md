@@ -105,7 +105,7 @@ A perfect tool is defined by the tensions it resolves, not the features it lists
 | 22 | Scale (100k+ claims) | Indexed graph; specs are projections | **not built** — measured linear, trigger recorded (§9.1) |
 | 23 | AI accelerates prose rot | AI as quality gate + semantic engine — never author of record | built — `req propose`, one pair, never author of record (ADR 0021) |
 | 24 | Roadmap vs spec | Views compiled over the same graph | **not built** |
-| 25 | Incomplete requirements, silent omissions | Report what req can prove structurally: a claim no release examines, no Baseline covers, or no relation joins; never assert "complete" | **proposed** — ADR 0039, in its own pull request |
+| 25 | Incomplete requirements, silent omissions | Report what req can prove structurally: a claim no release examines, no Baseline covers, or no relation joins; never assert "complete" | built — `req check`'s `completeness` step and the audit's *Structural omissions* (ADR 0039) |
 | 26 | Design satisfaction unverified | A design or code element states which claims it satisfies; the link is checked against meaning drift | **not built** — §6 item 7 |
 | 27 | Multi-party co-development (OEM ↔ supplier) | Signed, pinned snapshots exchanged between repositories; sign-off by named parties | **not built** — §6 item 8; ADR 0033 is the one building block |
 
@@ -179,8 +179,8 @@ A perfect tool is defined by the tensions it resolves, not the features it lists
 3. Concurrency on legally-weighted prose → tension 5. Name the policy; defend it to an auditor.
 4. Tool qualification (DO-330 / tool-confidence) → §9; deferred deliberately, not denied.
 5. Buyer ≠ sufferer → bottom-up via the code link; top-down via the audit packet.
-6. Completeness → no oracle in the repository. req can prove structural omissions and must not claim more
-   (ADR 0039, proposed).
+6. Completeness → no oracle in the repository. req proves structural omissions and claims no more
+   (ADR 0039: `req check`'s `completeness` step).
 7. Design satisfaction → verification reaches code only through linked tests; no design element or
    *satisfies* link exists. Standard practice (OpenFastTrace `Covers:`/`Needs:` with an authored revision;
    Doorstop links that store the parent's text fingerprint and turn *suspect* on any edit) is the baseline to

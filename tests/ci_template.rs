@@ -908,6 +908,26 @@ impl Probe {
             ),
         )
         .expect("writes the probe claim");
+        // A signed Baseline naming the claim, so `req check`'s `completeness` step (ADR 0039) leaves
+        // the verdict to the gate this test is about. The hashes are placeholders: that step reads
+        // which claims a signed manifest names; verifying it is `req baseline --verify`'s question.
+        let hash = "0".repeat(64);
+        std::fs::create_dir_all(dir.join("baselines")).expect("makes baselines/");
+        std::fs::write(
+            dir.join("baselines/release.json"),
+            format!(
+                "{{\"version\":4,\"signed_at\":\"2026-11-11T00:00:00Z\",\"authority\":{{\"head\":\
+                 \"{hash}\",\"entries\":1}},\"rules_v\":8,\"selection\":{{}},\"claims\":[{{\"claim_id\":\
+                 \"REQ-0001\",\"address\":\"{hash}\",\"relations_hash\":\"{hash}\",\"rationale_hash\":\
+                 \"{hash}\",\"tests_hash\":\"{hash}\"}}]}}"
+            ),
+        )
+        .expect("writes the probe manifest");
+        std::fs::write(
+            dir.join("baselines/release.json.minisig"),
+            "untrusted comment: fixture signature, never verified by this step\n",
+        )
+        .expect("writes the probe signature");
         Probe(dir)
     }
 
@@ -985,8 +1005,10 @@ fn the_check_step_exits_with_req_checks_exit() {
         "an undecided release is UNVERIFIABLE, and the step is red:\n{text}"
     );
     assert!(text.contains("verdict: UNVERIFIABLE"), "{text}");
+    // The verdict, not a step line: the `completeness` step (ADR 0039) may pass on its own in a run
+    // whose gate step is UNVERIFIABLE, and its `[PASS]` line is that step's answer, not the run's.
     assert!(
-        !text.contains("verdict: PASS") && !summary.contains("PASS"),
+        !text.contains("verdict: PASS") && !summary.contains("| 0 | PASS"),
         "a non-PASS verdict never prints PASS, in the log or the summary:\n{text}\n{summary}"
     );
     assert!(

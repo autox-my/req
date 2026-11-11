@@ -79,7 +79,7 @@ surprises you. Run as `cargo run -q -- <command>`.
 | `impact <id>` | what depends on a claim, nearest first |
 | `next-id` | the next free claim id(s); `--reserve` holds a block in `.req/reserved` so parallel authors do not collide |
 | `gate` | may this selection ship (six policies, tri-state) |
-| `check` | may this repository ship: every declared variant and projection, folded (ADR 0023) |
+| `check` | may this repository ship: every declared variant and projection, plus the structural omissions (ADR 0039), folded (ADR 0023) |
 | `baseline` | the manifest a human signs; verify one (req never signs) |
 | `audit` | the audit packet: coverage, provenance, undecided |
 | `decision` | the decision log and its hash chain |
@@ -119,10 +119,12 @@ workflow that runs on pull requests from strangers).
 - `bench/corpus/` the seed parity corpus plus external families — **generated data** from `tools/corpus/`, reviewed
   through the generator and its pins; `bench/results/` append-only, one record per corpus and rules version.
 - `src/` `main.rs` thin CLI + help pages, one module per command; `tests/` public-seam tests.
-- `baselines/` `trust.yml` (ADR 0010, the **single home of the public key**), `<variant>.json` + `.minisig`. req
+- `baselines/` `trust.yml` (ADR 0010, the **single home of the public key**), `<variant>.json` + `.minisig`: `air-gapped.json`
+  and one `release-*.json` per `.req/variants` line; the gate verifies every one. req
   emits and verifies, never signs (`minisign -Sm`). In CI the trust anchor is taken from `origin/main`, not the
   PR; rotation is two PRs (add the new key beside the old and re-sign; revoke the old only after both merge).
-- `.req/variants` this repo's release list; `.req/projections` pinned projections; `.config/nextest.toml`; `tools/`
+- `.req/variants` this repo's release list; `.req/projections` pinned projections; `.req/completeness` roots and strictness for
+  the completeness step (optional); `.config/nextest.toml`; `tools/`
   (`adopt.py` the extractor, `needs_import.py` its Sphinx-Needs sibling and `reqif_import.py` its ReqIF sibling: copy and adjust; `ocr/` the pinned review CLI; `review/`; `orchestration/`);
   `review/rule.json` the review rules; `experiments/tier2/` the Tier-2 research crate (ADR 0021), nothing in it gates
   a release; `docs/specs/`, `docs/handoffs/` orchestration; `.scratch/` gitignored, never a deliverable.

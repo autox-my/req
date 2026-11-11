@@ -110,6 +110,17 @@ fn short(address: &str) -> &str {
 /// The packet, as text a human reads and an auditor files. Deterministic: claims in id order,
 /// no hash-map iteration anywhere.
 pub fn packet(rows: &[Row], context: &Context, baseline: Option<&Manifest>) -> String {
+    packet_with_roots(rows, context, baseline, &BTreeSet::new())
+}
+
+/// [`packet`], with the roots `.req/completeness` declares spared from the `unrelated` list
+/// (ADR 0039).
+pub fn packet_with_roots(
+    rows: &[Row],
+    context: &Context,
+    baseline: Option<&Manifest>,
+    roots: &BTreeSet<String>,
+) -> String {
     // Sorted here rather than assumed: the packet is read by someone else, and its order must
     // not depend on the order the caller happened to load claims in. (`view::load_rows` returns
     // sorted claims today, which is exactly why an unsorted packet would hide until a different
@@ -248,6 +259,21 @@ pub fn packet(rows: &[Row], context: &Context, baseline: Option<&Manifest>) -> S
         }
     }
 
+    // ADR 0039 §4: the structural omission this selection can show. `in_no_baseline` is already
+    // the coverage above (`uncovered`), and `in_no_release` is a property across release lines,
+    // which is `req check`'s question; what remains per selection is an applying claim with no
+    // relation. Reported, never part of the verdict: a top-level obligation is legitimate.
+    let unrelated = unrelated_in_selection(rows, roots);
+    if !unrelated.is_empty() {
+        out.push_str("\n## Structural omissions (reported, not judged)\n");
+        out.push_str(&format!(
+            "- unrelated: {} — no relation in or out; add the missing relation, or list the claim \
+             as a root in {}\n",
+            unrelated.join(", "),
+            crate::completeness::COMPLETENESS
+        ));
+    }
+
     let (failed, open) = findings(rows, baseline, coverage.as_ref());
     if !failed.is_empty() || !open.is_empty() {
         out.push_str("\n## Findings\n");
@@ -259,6 +285,17 @@ pub fn packet(rows: &[Row], context: &Context, baseline: Option<&Manifest>) -> S
         }
     }
     out
+}
+
+/// Applying claims with no relation in or out, minus the declared roots (ADR 0039).
+fn unrelated_in_selection(rows: &[Row], roots: &BTreeSet<String>) -> Vec<String> {
+    crate::completeness::unrelated(rows, roots)
+        .into_iter()
+        .filter(|id| {
+            rows.iter()
+                .any(|row| &row.claim_id == id && row.applies == Applies::Yes)
+        })
+        .collect()
 }
 
 /// The two lists a verdict is made of. A known defect outranks an open question, as in
@@ -362,6 +399,9 @@ struct AuditDocument<'a> {
     /// as a comparison with an empty result, and the document must not blur them.
     coverage: Option<CoverageDocument<'a>>,
     findings: Vec<String>,
+    /// Applying claims with no relation in or out, minus `.req/completeness` roots (ADR 0039):
+    /// reported, not part of the verdict.
+    unrelated: Vec<String>,
 }
 
 /// `req audit [--baseline <file>] [--format text|json] [key=value ...]`
@@ -443,6 +483,31 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         }
     };
 
+    // `.req/completeness` names the roots `unrelated` spares; a malformed one is refused, as
+    // `req check` refuses it, rather than read as "no roots".
+    let roots = match std::fs::read_to_string(root.join(crate::completeness::COMPLETENESS)) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeSet::new(),
+        Err(e) => {
+            eprintln!(
+                "[UNVERIFIABLE] {} cannot be read: {e}",
+                crate::completeness::COMPLETENESS
+            );
+            return 3;
+        }
+        Ok(text) => {
+            let known: BTreeSet<String> = rows.iter().map(|row| row.claim_id.clone()).collect();
+            match crate::completeness::parse_policy(&text, &known) {
+                Ok(policy) => policy.roots,
+                Err(errors) => {
+                    for error in errors {
+                        eprintln!("{error}");
+                    }
+                    return 2;
+                }
+            }
+        }
+    };
+
     let coverage = manifest.as_ref().map(|manifest| coverage(&rows, manifest));
     let (failed, open) = findings(&rows, manifest.as_ref(), coverage.as_ref());
     // Computed once, before either rendering: the verdict is the same fold in both, and the exit
@@ -469,11 +534,15 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                 .map(|reason| format!("FAIL: {reason}"))
                 .chain(open.iter().map(|reason| format!("UNVERIFIABLE: {reason}")))
                 .collect(),
+            unrelated: unrelated_in_selection(&rows, &roots),
         };
         println!("{}", format::document(&document));
         return code;
     }
-    print!("{}", packet(&rows, &effective, manifest.as_ref()));
+    print!(
+        "{}",
+        packet_with_roots(&rows, &effective, manifest.as_ref(), &roots)
+    );
     println!(
         "\nverdict: {}",
         match code {
