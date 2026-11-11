@@ -236,10 +236,14 @@ fn signed_coverage(root: &Path) -> (BTreeSet<String>, Vec<String>, Vec<String>) 
         if !path.is_file() {
             continue;
         }
-        if !dir.join(format!("{name}.minisig")).is_file() {
+        // A signature is the default `<manifest>.minisig` or, since ADR 0042, any party's
+        // `<manifest>.<key-id>.minisig`. Whether one verifies is `req baseline --verify`'s question.
+        if !dir.join(format!("{name}.minisig")).is_file()
+            && crate::baseline::keyed_signatures(&path).is_empty()
+        {
             not_counted.push(format!(
-                "{shown} has no signature beside it ({shown}.minisig): an emitted manifest is not yet \
-                 a Baseline"
+                "{shown} has no signature beside it ({shown}.minisig or {shown}.<key-id>.minisig): \
+                 an emitted manifest is not yet a Baseline"
             ));
             continue;
         }

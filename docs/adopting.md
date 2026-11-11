@@ -517,6 +517,70 @@ req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not y
   version, so the comparison is void rather than failed. A v2 manifest still parses and is reported as
   *predates … re-issue and re-sign* — re-emit with `--at` and sign again.
 
+## Signing by several parties
+
+A release two organisations must both accept (an OEM and its Tier-1) is signed by each, in a named
+capacity, over **the same manifest bytes** (ADR 0042). Nothing about emission changes; each party adds
+one file beside the manifest, so a countersignature never invalidates the signature already there.
+
+1. **Give each key a party and a role** in `baselines/trust.yml`. The role is the *meaning* of every
+   signature the key makes; someone acting in two capacities holds two keys.
+
+   ```yaml
+   keys:
+     - id: "oem-ro"
+       scheme: "minisign"
+       public_key: |
+         untrusted comment: minisign public key …
+         RWQ…
+       valid_from: "2026-11-01"
+       party: "oem"
+       role: "requirements-owner"
+   ```
+
+2. **Say who must sign** in `.req/signing`, one `<party> <role>` per line (`#` comments and blank lines
+   are skipped). A line repeated *n* times needs *n* signatures from *n* distinct keys: one key counts
+   once.
+
+   ```text
+   oem requirements-owner
+   acme-tier1 safety-manager
+   ```
+
+3. **Each party signs the manifest** into `<manifest>.<key-id>.minisig` and commits the file:
+
+   ```bash
+   minisign -S -m baselines/release.json -s oem-ro.key -x baselines/release.json.oem-ro.minisig
+   ```
+
+   `baselines/release.json.minisig` still works and is read as a signature by the `--key` key (default
+   `req-baseline-1`), so a repository that never uses this section is untouched: no `.req/signing`
+   and no keyed file verifies exactly as before.
+
+`req baseline --verify` judges every signature present, then the policy, and its header names each
+signer (`key oem-ro (oem requirements-owner)`). **Awaiting a party is not a broken signature:**
+
+| verdict | reads as | what to do |
+| --- | --- | --- |
+| `[UNVERIFIABLE]` `awaiting acme-tier1 safety-manager` | the others verified; nobody holding that party and role has signed | get that party's `.minisig` committed |
+| `[UNVERIFIABLE]` `key X is not in the trust file` | a signature file names a key nobody trusted | add the key by pull request, or delete the stray file |
+| `[FAIL]` `key X: the signature does not verify` | the bytes were edited, or the wrong key signed | re-emit and re-sign; never edit a signature |
+| `[FAIL]` `key X is revoked …` | the key was revoked at or before the signing time | sign with a current key |
+
+`req check` keeps this step blocking: a release awaiting a party is not ready to ship. `req check`'s
+completeness step counts a manifest as signed when *any* signature file lies beside it.
+
+**Exchange across organisations is offline.** The supplier pins the OEM's corpus at a commit
+([a corpus kept in another repository](#a-corpus-kept-in-another-repository)) and commits the OEM's
+public key to its own `trust.yml` with `party: oem`; the OEM's Baseline and signatures then verify in
+the supplier's checkout with no network. The supplier's countersignature travels back as one file.
+Who may read or push stays with your git host.
+
+**A signed Decision.** `decisions/DEC-NNNN.yml.<key-id>.minisig` is a signature over the record's
+canonical bytes. `req decision --verify` then reports `signed by <id> (<party> <role>)` and requires
+the record's `role` to equal the key's; a mismatch is FAIL. A record with no signature file stays
+valid and is listed as *asserted*: its role is a claim, not a proof.
+
 ## Link each claim to its proving test
 
 A claim may carry `tests:` — the test ids that prove it. The list is **authored**, like its rationale,

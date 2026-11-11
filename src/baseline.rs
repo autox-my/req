@@ -556,6 +556,12 @@ pub struct TrustedKey {
     pub valid_until: Option<String>,
     #[serde(default)]
     pub revoked_at: Option<String>,
+    /// The organisation or function holding the key (ADR 0042). Optional.
+    #[serde(default)]
+    pub party: Option<String>,
+    /// The capacity every signature of this key is made in — its meaning (ADR 0042). Optional.
+    #[serde(default)]
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1149,13 +1155,275 @@ pub struct Verification<'a> {
     pub log: Result<&'a [decision::Decision], &'a str>,
 }
 
+/// One line of `.req/signing`: a signature is required from a key holding this party and role.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PolicyLine {
+    pub party: String,
+    pub role: String,
+}
+
+/// A signature file `<manifest>.<key-id>.minisig` beside the manifest (ADR 0042).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyedSignature {
+    pub key_id: String,
+    /// The signature text, or why the file could not be read.
+    pub signature: Result<String, String>,
+}
+
+/// The party signatures and the signing policy (ADR 0042), beside [`Verification`].
+#[derive(Clone, Copy)]
+pub struct Parties<'a> {
+    pub keyed: &'a [KeyedSignature],
+    pub policy: &'a [PolicyLine],
+}
+
+/// Where a repository declares who must sign (ADR 0042 decision 3).
+pub const SIGNING_POLICY_PATH: &str = ".req/signing";
+
+/// A party or role token, and a key id in a signature file name: `[A-Za-z0-9._-]+`.
+pub fn is_signing_token(token: &str) -> bool {
+    !token.is_empty()
+        && token
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+/// Parse `.req/signing`: the grammar of the other `.req/` lists (`#` starts a comment, blank lines
+/// are skipped), one `<party> <role>` per line. Every malformed line is named `<file>:<line>` in
+/// one run. A line repeated *n* times asks for *n* signatures (decision 3).
+pub fn parse_signing_policy(text: &str) -> Result<Vec<PolicyLine>, Vec<String>> {
+    let mut lines = Vec::new();
+    let mut errors = Vec::new();
+    for (index, raw) in text.split('\n').enumerate() {
+        let number = index + 1;
+        let raw = raw.strip_suffix('\r').unwrap_or(raw);
+        let content = raw.split('#').next().unwrap_or("");
+        let tokens: Vec<&str> = content
+            .split([' ', '\t'])
+            .filter(|word| !word.is_empty())
+            .collect();
+        match tokens.as_slice() {
+            [] => {}
+            [party, role] if is_signing_token(party) && is_signing_token(role) => {
+                lines.push(PolicyLine {
+                    party: (*party).to_string(),
+                    role: (*role).to_string(),
+                });
+            }
+            _ => errors.push(format!(
+                "{SIGNING_POLICY_PATH}:{number}: `{}` is not `<party> <role>` (two words, each \
+                 `[A-Za-z0-9._-]+`)",
+                tokens.join(" ")
+            )),
+        }
+    }
+    if errors.is_empty() {
+        Ok(lines)
+    } else {
+        Err(errors)
+    }
+}
+
+/// The trust anchor's verdict on `key_id` at `now`, as findings. Shared by the one-signature path
+/// and every keyed signature, so a key is judged by one rule wherever its signature lies.
+fn judge_trust(
+    trust: &TrustFile,
+    key_id: &str,
+    now: &str,
+    manifest: &Manifest,
+    failed: &mut Vec<String>,
+    open: &mut Vec<String>,
+) {
+    match trust.state(key_id, now) {
+        TrustState::Trusted => {}
+        // **A revocation is judged at a time this build must be able to interpret.** For a v2
+        // manifest the judged time is today and for a v3 one it is the attested `signed_at`
+        // (ADR 0016), so a key revoked at or before it was not trusted when the human signed —
+        // a definite finding, symmetric with expiry at signing. An envelope **newer** than this
+        // build's records a signing time this build does not validate (and the CLI falls back to
+        // today for it), so the same revocation cannot be turned into a definite FAIL: the
+        // version dispatch above already answered UNVERIFIABLE with the remedy of verifying under
+        // a build that writes it, and a FAIL here would outrank it and misdiagnose the change.
+        // Gating on `==` instead of `<=` would break the documented v2 answer, which is still
+        // "judged at today".
+        TrustState::Revoked(reason) => {
+            if manifest.version <= BASELINE_VERSION {
+                failed.push(format!("key {key_id} is {reason}"));
+            } else {
+                open.push(format!(
+                    "key {key_id} is {reason} — a newer envelope (v{}) records a signing time this \
+                     build cannot judge, so the revocation cannot be decided here; verify with a \
+                     build that writes that envelope",
+                    manifest.version
+                ));
+            }
+        }
+        // **A broken anchor is not a judgement about a time**, so no envelope version can make it
+        // "cannot tell": it fails closed on every manifest this build reads, a newer one included.
+        // Reporting it as UNVERIFIABLE would also hand out the wrong remedy — a build that writes
+        // the newer envelope reads the same unreadable `baselines/trust.yml`.
+        TrustState::RevokedAnchor(reason) => failed.push(format!(
+            "key {key_id} is {reason} — the trust anchor itself cannot be read, so this is not a \
+             question about the envelope's signing time"
+        )),
+        // A v3 manifest records its signing time, so expiry is judged *at that time* (ADR
+        // 0016): a key that had already expired then was not trusted when the Baseline was
+        // signed, which is a definite finding — symmetric with revocation at/before the signing
+        // time. A v2 manifest has no trusted signing time, which is the older ADR 0010 answer.
+        // `--now` may supply the judged time instead, so the reason names the time it actually
+        // used rather than claiming it was `signed_at`.
+        TrustState::Expired(reason) => {
+            if judges_signing_time(manifest.version) {
+                failed.push(format!(
+                    "key {key_id} is {reason} — the judged time ({now}) is outside the key's \
+                     validity window, so the Baseline was not signed under a trusted key \
+                     (ADR 0016)"
+                ));
+            } else {
+                open.push(format!(
+                    "key {key_id} is {reason} — a Baseline is historical and no trusted signing \
+                     time exists, so this cannot be decided"
+                ));
+            }
+        }
+        TrustState::Unknown => open.push(format!("key {key_id} is not in the trust file")),
+    }
+}
+
+/// What checking one signature against its key found.
+enum SignatureVerdict {
+    /// The verifier accepted it. Whether the key was *trusted* is [`judge_trust`]'s question.
+    Valid,
+    /// The trust file holds no such key: [`judge_trust`] already said so.
+    NoKey,
+    /// The key is declared for another scheme than the verifier's; the text names the key.
+    WrongScheme(String),
+    Invalid(String),
+    Unverifiable(String),
+}
+
+/// One signature, checked against its key's scheme and the manifest's canonical bytes.
+fn check_signature(
+    manifest: &Manifest,
+    trust: &TrustFile,
+    verifier: &dyn SignatureVerifier,
+    key_id: &str,
+    signature: &str,
+) -> SignatureVerdict {
+    let Some(key) = trust.key(key_id) else {
+        return SignatureVerdict::NoKey;
+    };
+    if key.scheme != verifier.scheme() {
+        return SignatureVerdict::WrongScheme(format!(
+            "key {key_id} is declared for scheme {} but the verifier is {}",
+            key.scheme,
+            verifier.scheme()
+        ));
+    }
+    match verifier.verify(
+        canonical_bytes(manifest).as_bytes(),
+        signature,
+        &key.public_key,
+    ) {
+        SignatureOutcome::Valid => SignatureVerdict::Valid,
+        SignatureOutcome::Invalid(why) => SignatureVerdict::Invalid(why),
+        SignatureOutcome::Unverifiable(why) => SignatureVerdict::Unverifiable(why),
+    }
+}
+
+/// Judge one signature: push what it found, and say whether it counts towards a policy line —
+/// it verified, and its key is trusted at the judged time. `named` prefixes the key id to a
+/// finding that would not otherwise say which key it concerns (the party path); the
+/// one-signature path keeps its historical text.
+fn judge_signature(
+    manifest: &Manifest,
+    checks: &Verification<'_>,
+    key_id: &str,
+    signature: &str,
+    named: bool,
+    failed: &mut Vec<String>,
+    open: &mut Vec<String>,
+) -> bool {
+    let prefix = if named {
+        format!("key {key_id}: ")
+    } else {
+        String::new()
+    };
+    match check_signature(manifest, checks.trust, checks.verifier, key_id, signature) {
+        SignatureVerdict::Valid => {
+            matches!(checks.trust.state(key_id, checks.now), TrustState::Trusted)
+        }
+        SignatureVerdict::NoKey => false,
+        SignatureVerdict::WrongScheme(why) => {
+            open.push(why);
+            false
+        }
+        SignatureVerdict::Invalid(why) => {
+            failed.push(format!("{prefix}the signature does not verify: {why}"));
+            false
+        }
+        SignatureVerdict::Unverifiable(why) => {
+            open.push(format!("{prefix}{why}"));
+            false
+        }
+    }
+}
+
+/// How a signing key is named in a header or a finding: `key <id> (<party> <role>)`, or
+/// `key <id>` when the key carries no party and role.
+pub fn key_label(trust: &TrustFile, key_id: &str) -> String {
+    match trust.key(key_id) {
+        Some(TrustedKey {
+            party: Some(party),
+            role: Some(role),
+            ..
+        }) => format!("key {key_id} ({party} {role})"),
+        _ => format!("key {key_id}"),
+    }
+}
+
+/// [`verify`] with ADR 0042's party signatures and signing policy.
+///
+/// Drift, the rules version and the authority are judged exactly as in [`verify`]. Then every
+/// present signature is judged under today's per-key rules (a signature that does not verify, or
+/// a key revoked at the signing time, is FAIL; a key the trust file does not hold is
+/// UNVERIFIABLE), and then the policy: each `<party> <role>` line must be met by a distinct
+/// verified key holding that party and role (one key counts towards one line only), and an unmet
+/// line is UNVERIFIABLE — `awaiting <party> <role>`, never a pass. With no policy and no keyed
+/// signature file the answer is [`verify`]'s, byte for byte.
+pub fn verify_parties(
+    rows: &[Row],
+    manifest: &Manifest,
+    checks: &Verification<'_>,
+    parties: &Parties<'_>,
+) -> Outcome {
+    verify_inner(rows, manifest, checks, parties)
+}
+
 /// Verify a manifest against the working tree and the checks in [`Verification`].
 pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> Outcome {
+    verify_inner(
+        rows,
+        manifest,
+        checks,
+        &Parties {
+            keyed: &[],
+            policy: &[],
+        },
+    )
+}
+
+fn verify_inner(
+    rows: &[Row],
+    manifest: &Manifest,
+    checks: &Verification<'_>,
+    parties: &Parties<'_>,
+) -> Outcome {
     let Verification {
         signature,
         trust,
         key_id,
-        verifier,
+        verifier: _,
         now,
         log,
     } = *checks;
@@ -1262,59 +1530,13 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
         }
     }
 
-    match trust.state(key_id, now) {
-        TrustState::Trusted => {}
-        // **A revocation is judged at a time this build must be able to interpret.** For a v2
-        // manifest the judged time is today and for a v3 one it is the attested `signed_at`
-        // (ADR 0016), so a key revoked at or before it was not trusted when the human signed —
-        // a definite finding, symmetric with expiry at signing. An envelope **newer** than this
-        // build's records a signing time this build does not validate (and the CLI falls back to
-        // today for it), so the same revocation cannot be turned into a definite FAIL: the
-        // version dispatch above already answered UNVERIFIABLE with the remedy of verifying under
-        // a build that writes it, and a FAIL here would outrank it and misdiagnose the change.
-        // Gating on `==` instead of `<=` would break the documented v2 answer, which is still
-        // "judged at today".
-        TrustState::Revoked(reason) => {
-            if manifest.version <= BASELINE_VERSION {
-                failed.push(format!("key {key_id} is {reason}"));
-            } else {
-                open.push(format!(
-                    "key {key_id} is {reason} — a newer envelope (v{}) records a signing time this \
-                     build cannot judge, so the revocation cannot be decided here; verify with a \
-                     build that writes that envelope",
-                    manifest.version
-                ));
-            }
-        }
-        // **A broken anchor is not a judgement about a time**, so no envelope version can make it
-        // "cannot tell": it fails closed on every manifest this build reads, a newer one included.
-        // Reporting it as UNVERIFIABLE would also hand out the wrong remedy — a build that writes
-        // the newer envelope reads the same unreadable `baselines/trust.yml`.
-        TrustState::RevokedAnchor(reason) => failed.push(format!(
-            "key {key_id} is {reason} — the trust anchor itself cannot be read, so this is not a \
-             question about the envelope's signing time"
-        )),
-        // A v3 manifest records its signing time, so expiry is judged *at that time* (ADR
-        // 0016): a key that had already expired then was not trusted when the Baseline was
-        // signed, which is a definite finding — symmetric with revocation at/before the signing
-        // time. A v2 manifest has no trusted signing time, which is the older ADR 0010 answer.
-        // `--now` may supply the judged time instead, so the reason names the time it actually
-        // used rather than claiming it was `signed_at`.
-        TrustState::Expired(reason) => {
-            if judges_signing_time(manifest.version) {
-                failed.push(format!(
-                    "key {key_id} is {reason} — the judged time ({now}) is outside the key's \
-                     validity window, so the Baseline was not signed under a trusted key \
-                     (ADR 0016)"
-                ));
-            } else {
-                open.push(format!(
-                    "key {key_id} is {reason} — a Baseline is historical and no trusted signing \
-                     time exists, so this cannot be decided"
-                ));
-            }
-        }
-        TrustState::Unknown => open.push(format!("key {key_id} is not in the trust file")),
+    // The one-signature path (no policy, no keyed file) is today's, text for text. A repository
+    // that declares a policy or carries a keyed signature file is on the party path (ADR 0042):
+    // the default `.minisig` then counts only when it is there, so a key that signed by file name
+    // alone is not reported missing for want of the default key's signature.
+    let party_path = !parties.keyed.is_empty() || !parties.policy.is_empty();
+    if !party_path || signature.is_some() {
+        judge_trust(trust, key_id, now, manifest, &mut failed, &mut open);
     }
 
     // A newer envelope's signed bytes are not reconstructable by this build: its canonical shape
@@ -1323,32 +1545,71 @@ pub fn verify(rows: &[Row], manifest: &Manifest, checks: &Verification<'_>) -> O
     // UNVERIFIABLE with the "verify with a build that writes it" remedy, so the signature is left
     // unjudged rather than misjudged.
     if manifest.version <= BASELINE_VERSION {
-        match signature {
-            None => open.push(
+        // The keys whose signature verified under a trusted key: the set a policy line is met from.
+        let mut verified: BTreeSet<String> = BTreeSet::new();
+        if let Some(signature) = signature {
+            if judge_signature(
+                manifest,
+                checks,
+                key_id,
+                signature,
+                party_path,
+                &mut failed,
+                &mut open,
+            ) {
+                verified.insert(key_id.to_string());
+            }
+        } else if !party_path {
+            open.push(
                 "no signature: this is a manifest, not yet a Baseline (nothing is ratified until \
                  a human signs it)"
                     .to_string(),
-            ),
-            Some(signature) => {
-                if let Some(key) = trust.key(key_id) {
-                    if key.scheme != verifier.scheme() {
-                        open.push(format!(
-                            "key {key_id} is declared for scheme {} but the verifier is {}",
-                            key.scheme,
-                            verifier.scheme()
-                        ));
-                    } else {
-                        match verifier.verify(
-                            canonical_bytes(manifest).as_bytes(),
-                            signature,
-                            &key.public_key,
-                        ) {
-                            SignatureOutcome::Valid => {}
-                            SignatureOutcome::Invalid(why) => {
-                                failed.push(format!("the signature does not verify: {why}"))
-                            }
-                            SignatureOutcome::Unverifiable(why) => open.push(why),
+            );
+        }
+        if party_path {
+            for keyed in parties.keyed {
+                let id = keyed.key_id.as_str();
+                match &keyed.signature {
+                    Err(why) => open.push(format!("key {id}: {why}")),
+                    Ok(text) => {
+                        judge_trust(trust, id, now, manifest, &mut failed, &mut open);
+                        if judge_signature(manifest, checks, id, text, true, &mut failed, &mut open)
+                        {
+                            verified.insert(id.to_string());
                         }
+                    }
+                }
+            }
+            let present = signature.is_some() || !parties.keyed.is_empty();
+            if parties.policy.is_empty() {
+                if !present {
+                    open.push(
+                        "no signature: this is a manifest, not yet a Baseline (nothing is \
+                         ratified until a human signs it)"
+                            .to_string(),
+                    );
+                }
+            } else {
+                // One key counts towards one line only (TUF's rule): a key is assigned to the
+                // first line with room that its party and role match, and then it is spent.
+                let mut spent: BTreeSet<&str> = BTreeSet::new();
+                for line in parties.policy {
+                    let holder = verified.iter().find(|id| {
+                        !spent.contains(id.as_str())
+                            && trust.key(id).is_some_and(|key| {
+                                key.party.as_deref() == Some(line.party.as_str())
+                                    && key.role.as_deref() == Some(line.role.as_str())
+                            })
+                    });
+                    match holder {
+                        Some(id) => {
+                            spent.insert(id.as_str());
+                        }
+                        None => open.push(format!(
+                            "awaiting {} {}: no verified signature from a distinct key holding \
+                             that party and role",
+                            line.party, line.role
+                        )),
                     }
                 }
             }
@@ -1706,7 +1967,23 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         }
     };
 
-    let outcome = verify(
+    // The signing policy and the keyed signature files beside the manifest (ADR 0042). A
+    // repository with neither takes the one-signature path, unchanged.
+    let policy = match read_signing_policy(root) {
+        Ok(policy) => policy,
+        Err(PolicyRefusal::Usage(errors)) => {
+            for error in errors {
+                eprintln!("{error}");
+            }
+            return 2;
+        }
+        Err(PolicyRefusal::Unreadable(why)) => {
+            eprintln!("[UNVERIFIABLE] {why}");
+            return 3;
+        }
+    };
+    let keyed = keyed_signatures(Path::new(&path));
+    let outcome = verify_parties(
         &rows,
         &manifest,
         &Verification {
@@ -1717,16 +1994,36 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             now: &judged_at,
             log,
         },
+        &Parties {
+            keyed: &keyed,
+            policy: &policy,
+        },
     );
+    // The header names every signature judged. On the one-signature path that is the `--key` key
+    // alone, as before; with keyed files or a policy it is each signature present.
+    let signers = if keyed.is_empty() && policy.is_empty() {
+        key_label(&trust, &key_id)
+    } else {
+        let mut labels: Vec<String> = Vec::new();
+        if signature.is_some() {
+            labels.push(key_label(&trust, &key_id));
+        }
+        labels.extend(keyed.iter().map(|k| key_label(&trust, &k.key_id)));
+        if labels.is_empty() {
+            "unsigned".to_string()
+        } else {
+            labels.join(", ")
+        }
+    };
     match manifest.signed_at.as_deref() {
         Some(signed_at) => println!(
-            "# Baseline {path}: {} claim(s), rules v{}, key {key_id}, signed at {signed_at}, \
+            "# Baseline {path}: {} claim(s), rules v{}, {signers}, signed at {signed_at}, \
              verified at {judged_at}",
             manifest.claims.len(),
             manifest.rules_v
         ),
         None => println!(
-            "# Baseline {path}: {} claim(s), rules v{}, key {key_id}, verified at {judged_at}",
+            "# Baseline {path}: {} claim(s), rules v{}, {signers}, verified at {judged_at}",
             manifest.claims.len(),
             manifest.rules_v
         ),
@@ -1749,6 +2046,73 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         println!("  - {reason}");
     }
     outcome.exit_code()
+}
+
+enum PolicyRefusal {
+    Usage(Vec<String>),
+    Unreadable(String),
+}
+
+/// `.req/signing`, or no policy when the file is absent. A file that exists and cannot be read is
+/// not absent: a skipped policy would let a Baseline verify without the signatures it asked for.
+fn read_signing_policy(root: &Path) -> Result<Vec<PolicyLine>, PolicyRefusal> {
+    let path = root.join(SIGNING_POLICY_PATH);
+    match std::fs::read(&path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(error) => Err(PolicyRefusal::Unreadable(format!(
+            "cannot read {SIGNING_POLICY_PATH}: {error}"
+        ))),
+        Ok(bytes) => match String::from_utf8(bytes) {
+            Err(_) => Err(PolicyRefusal::Unreadable(format!(
+                "{SIGNING_POLICY_PATH} is not valid UTF-8 text"
+            ))),
+            Ok(text) => parse_signing_policy(&text).map_err(PolicyRefusal::Usage),
+        },
+    }
+}
+
+/// Every `<manifest>.<key-id>.minisig` beside `manifest`, in key-id order. The default
+/// `<manifest>.minisig` is not among them (it is the `--key` key's signature). A file whose id is
+/// not a signing token is kept, as an unreadable signature that names it: never ignored.
+pub(crate) fn keyed_signatures(manifest: &Path) -> Vec<KeyedSignature> {
+    let Some(name) = manifest
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+    else {
+        return Vec::new();
+    };
+    let directory = match manifest.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    let prefix = format!("{name}.");
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return Vec::new();
+    };
+    let mut found: Vec<(String, PathBuf)> = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let file = entry.file_name().to_string_lossy().into_owned();
+            let id = file.strip_prefix(&prefix)?.strip_suffix(".minisig")?;
+            Some((id.to_string(), entry.path()))
+        })
+        .collect();
+    found.sort();
+    found
+        .into_iter()
+        .map(|(key_id, file)| {
+            let signature = if is_signing_token(&key_id) {
+                std::fs::read_to_string(&file)
+                    .map_err(|error| format!("cannot read {}: {error}", file.display()))
+            } else {
+                Err(format!(
+                    "{} names a key id that is not `[A-Za-z0-9._-]+`",
+                    file.display()
+                ))
+            };
+            KeyedSignature { key_id, signature }
+        })
+        .collect()
 }
 
 /// The Decision log as `decisions/` holds it, in chain order. One loader, so emission and
@@ -1790,7 +2154,7 @@ fn valid_calendar_date(year: u32, month: u32, day: u32) -> bool {
 }
 
 /// A `--now` value: a bare ISO date, or the full RFC 3339 UTC timestamp `--at` requires.
-fn valid_judgement_time(value: &str) -> bool {
+pub(crate) fn valid_judgement_time(value: &str) -> bool {
     if value.contains('T') {
         return valid_signing_time(value);
     }

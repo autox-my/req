@@ -238,6 +238,100 @@ pub fn verify_chain(log: &[Decision]) -> Chain {
     }
 }
 
+/// What a Decision's signature file says about it (ADR 0042 decision 5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Attribution {
+    /// No signature file: the record's `role` is a claim, not a proof.
+    Asserted,
+    /// Verified under a key trusted at the record's date, and the record's `role` is the key's.
+    Signed {
+        key_id: String,
+        party: Option<String>,
+        role: String,
+    },
+    /// A definite finding: the signature does not verify, the key was revoked or expired at the
+    /// record's date, or the record's `role` is not the key's.
+    Failed(String),
+    /// The question cannot be answered: an unknown key, no verifier, an unreadable signature.
+    Unverifiable(String),
+}
+
+/// Judge one `decisions/DEC-NNNN.yml.<key-id>.minisig` over [`canonical_bytes`] of `decision`.
+///
+/// The key is judged at the record's own `date` (ADR 0016's rule, with the Decision's date as the
+/// signing time: a Decision carries no other). A verified signature whose key holds a different
+/// `role` than the record states — or no role at all — is FAIL: a role claimed without a key that
+/// holds it is exactly what ADR 0042 refuses to count as a proof.
+pub fn judge_signature(
+    decision: &Decision,
+    key_id: &str,
+    signature: &str,
+    trust: &crate::baseline::TrustFile,
+    verifier: &dyn crate::baseline::SignatureVerifier,
+) -> Attribution {
+    use crate::baseline::{SignatureOutcome, TrustState};
+    let Some(key) = trust.key(key_id) else {
+        return Attribution::Unverifiable(format!("key {key_id} is not in the trust file"));
+    };
+    if !crate::baseline::valid_judgement_time(&decision.date) {
+        return Attribution::Unverifiable(format!(
+            "{} has a date ({}) that is not an ISO date, so key {key_id} cannot be judged at it",
+            decision.id, decision.date
+        ));
+    }
+    match trust.state(key_id, &decision.date) {
+        TrustState::Trusted => {}
+        TrustState::Revoked(why) | TrustState::RevokedAnchor(why) | TrustState::Expired(why) => {
+            return Attribution::Failed(format!(
+                "key {key_id} is {why} — not trusted at {}, the date of {}",
+                decision.date, decision.id
+            ));
+        }
+        TrustState::Unknown => {
+            return Attribution::Unverifiable(format!("key {key_id} is not in the trust file"));
+        }
+    }
+    if key.scheme != verifier.scheme() {
+        return Attribution::Unverifiable(format!(
+            "key {key_id} is declared for scheme {} but the verifier is {}",
+            key.scheme,
+            verifier.scheme()
+        ));
+    }
+    match verifier.verify(
+        canonical_bytes(decision).as_bytes(),
+        signature,
+        &key.public_key,
+    ) {
+        SignatureOutcome::Valid => {}
+        SignatureOutcome::Invalid(why) => {
+            return Attribution::Failed(format!(
+                "the signature of key {key_id} over {} does not verify: {why}",
+                decision.id
+            ));
+        }
+        SignatureOutcome::Unverifiable(why) => {
+            return Attribution::Unverifiable(format!("key {key_id}: {why}"));
+        }
+    }
+    match key.role.as_deref() {
+        Some(role) if role == decision.role => Attribution::Signed {
+            key_id: key_id.to_string(),
+            party: key.party.clone(),
+            role: role.to_string(),
+        },
+        Some(role) => Attribution::Failed(format!(
+            "{} states role `{}` but key {key_id} signs as `{role}`: a role is a property of the \
+             key someone was trusted with",
+            decision.id, decision.role
+        )),
+        None => Attribution::Failed(format!(
+            "{} states role `{}` but key {key_id} holds no role in the trust file",
+            decision.id, decision.role
+        )),
+    }
+}
+
 fn quote(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 2);
     out.push('"');
@@ -414,9 +508,12 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             }
         };
     }
+    // Who stands behind each record (ADR 0042 decision 5). Read here, once, so the listing and the
+    // verdict describe the same files; a record with no signature file is *asserted*.
+    let signed = SignedDecisions::read(&log);
     let decisions: Vec<Decision> = log.into_iter().map(|(_, d)| d).collect();
     println!("# Decision log: {} record(s)", decisions.len());
-    for decision in &decisions {
+    for (decision, provenance) in decisions.iter().zip(&signed.lines) {
         println!(
             "- {}  {} {}  by {} ({})  {}",
             decision.id,
@@ -426,13 +523,122 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             decision.role,
             decision.date
         );
+        for line in provenance {
+            println!("    {line}");
+        }
     }
     let chain = verify_chain(&decisions);
     println!("\n[{}]", chain.as_str());
     for reason in chain.reasons() {
         println!("  - {reason}");
     }
-    chain.exit_code()
+    let mut code = chain.exit_code();
+    // A definite finding outranks an open question, as everywhere else: the chain's TAMPERED (1)
+    // and a signature FAIL (1) stand over any UNVERIFIABLE (3). A chain that is VALID stays VALID
+    // in its own line; the signatures answer in a line of their own.
+    if !signed.failed.is_empty() {
+        println!("[FAIL] signed Decisions");
+        for reason in &signed.failed {
+            println!("  - {reason}");
+        }
+        code = 1;
+    }
+    if !signed.open.is_empty() {
+        println!("[UNVERIFIABLE] signed Decisions");
+        for reason in &signed.open {
+            println!("  - {reason}");
+        }
+        if code == 0 {
+            code = 3;
+        }
+    }
+    code
+}
+
+/// The provenance of every record in the log: per record the lines the listing prints under it,
+/// and the findings that move the verdict.
+struct SignedDecisions {
+    lines: Vec<Vec<String>>,
+    failed: Vec<String>,
+    open: Vec<String>,
+}
+
+impl SignedDecisions {
+    fn read(log: &[(std::path::PathBuf, Decision)]) -> Self {
+        let mut out = SignedDecisions {
+            lines: Vec::new(),
+            failed: Vec::new(),
+            open: Vec::new(),
+        };
+        // The trust file is read only when some record carries a signature: a log with none needs
+        // no anchor, and its output must not depend on one.
+        let files: Vec<Vec<crate::baseline::KeyedSignature>> = log
+            .iter()
+            .map(|(path, _)| crate::baseline::keyed_signatures(path))
+            .collect();
+        let root = log
+            .first()
+            .and_then(|(path, _)| path.parent())
+            .and_then(std::path::Path::parent);
+        let trust = if files.iter().all(Vec::is_empty) {
+            None
+        } else {
+            let text = root
+                .map(|root| root.join(crate::baseline::TRUST_PATH))
+                .and_then(|path| std::fs::read_to_string(path).ok())
+                .unwrap_or_default();
+            Some(crate::baseline::TrustFile::load(&text))
+        };
+        for ((_, decision), signatures) in log.iter().zip(files) {
+            let mut lines = Vec::new();
+            if signatures.is_empty() {
+                lines.push(
+                    "asserted (no signature file: its role is a claim, not a proof)".to_string(),
+                );
+            }
+            for keyed in signatures {
+                let judged = match (&trust, &keyed.signature) {
+                    (_, Err(why)) => Attribution::Unverifiable(why.clone()),
+                    (Some(Err(why)), _) => Attribution::Unverifiable(why.clone()),
+                    (Some(Ok(trust)), Ok(signature)) => judge_signature(
+                        decision,
+                        &keyed.key_id,
+                        signature,
+                        trust,
+                        &crate::baseline::MinisignCli,
+                    ),
+                    (None, _) => continue,
+                };
+                match judged {
+                    Attribution::Signed {
+                        key_id,
+                        party,
+                        role,
+                    } => {
+                        let holder = match party {
+                            Some(party) => format!("{party} {role}"),
+                            None => role,
+                        };
+                        lines.push(format!(
+                            "signed by {key_id} ({holder}), actor {}",
+                            decision.actor
+                        ));
+                    }
+                    Attribution::Failed(why) => {
+                        lines.push(format!("signature of {} FAILS", keyed.key_id));
+                        out.failed.push(format!("{}: {why}", decision.id));
+                    }
+                    Attribution::Unverifiable(why) => {
+                        lines.push(format!("signature of {} cannot be judged", keyed.key_id));
+                        out.open.push(format!("{}: {why}", decision.id));
+                    }
+                    Attribution::Asserted => {}
+                }
+            }
+            out.lines.push(lines);
+        }
+        out
+    }
 }
 
 /// Read the log from disk, in chain order, keeping the path each record came from so a caller can
