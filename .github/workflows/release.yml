@@ -146,16 +146,38 @@ jobs:
         run: |
           set -eu
           # scripts/build-release.sh answers exit 3 (UNVERIFIABLE) without it, and the Baseline proof
-          # has no SKIP. The GitHub-hosted image does not ship minisign, so install it from the
-          # distribution when it is absent, then verify the effect: a runner that still lacks it fails
+          # has no SKIP. The GitHub-hosted image does not ship minisign, so install the pinned release
+          # when it is absent, then verify the effect: a runner that still lacks it fails
           # naming the reason. Same step, same reason, as ci.yml.
           if ! command -v minisign >/dev/null 2>&1; then
-            sudo apt-get update -o Acquire::Retries=3
-            sudo apt-get install -y -o Acquire::Retries=3 minisign
+            # The prebuilt release, pinned in version AND in the tarball's SHA-256, as nextest is below:
+            # the hash is provenance, and a swapped artefact must fail HERE rather than become the
+            # verifier. Not apt: on 2026-11-11 the runners could not resolve any Ubuntu archive host
+            # (`Temporary failure resolving 'security.ubuntu.com'`) for over half an hour, which made
+            # every pull request red for a reason that was not the change. The pin was taken from the
+            # 0.12 release on 2026-11-11 after verifying the tarball's minisign signature against the
+            # author's key as published in jedisct1/minisign's README (RWQf6LRCGA9i53mlYecO4IzT51TGPpvW
+            # ucNSCh1CBM0QTaLn73Y7GFO3); 0.12 is the version the Ubuntu package carried.
+            VERSION=0.12
+            SHA256=9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73
+            url="https://github.com/jedisct1/minisign/releases/download/${VERSION}/minisign-${VERSION}-linux.tar.gz"
+            # The same asset by id through the API route, for a release URL that answers 5xx (the nextest
+            # step has the same fallback); the SHA-256 decides what is accepted whichever route it came by.
+            api="https://api.github.com/repos/jedisct1/minisign/releases/assets/220886623"
+            tmp="$(mktemp -d)"
+            if ! curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -fsSL "$url" -o "$tmp/minisign.tar.gz"; then
+              echo "the release URL failed; trying the API asset route for the same pinned file"
+              curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -fsSL -H "Accept: application/octet-stream" "$api" -o "$tmp/minisign.tar.gz"
+            fi
+            echo "${SHA256}  $tmp/minisign.tar.gz" | sha256sum -c -
+            tar -xzf "$tmp/minisign.tar.gz" -C "$tmp"
+            # One binary per architecture under minisign-linux/; absent = a layout change, named here.
+            test -x "$tmp/minisign-linux/x86_64/minisign"
+            sudo install -m 0755 "$tmp/minisign-linux/x86_64/minisign" /usr/local/bin/minisign
           fi
           if ! command -v minisign >/dev/null 2>&1; then
             echo "::error::minisign is not installed, so the Baseline proof cannot verify"
-            echo "On a Debian-ish host: sudo apt-get update && sudo apt-get install -y minisign"
+            echo "Install it from https://github.com/jedisct1/minisign/releases (0.12), or: sudo apt-get install -y minisign"
             exit 1
           fi
           minisign -v
