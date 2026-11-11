@@ -2,7 +2,7 @@
 
 Extends T1.8 of `docs/canonical-hashing.md` (guard clauses); nothing else in it, and no ADR, is superseded.
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it; issue #18. Date proposed: 2026-11-10.
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-10, GitHub PR #43); issue #18. Date proposed: 2026-11-10.
 **A rules change: `RULES_V` 7 → 8.** The Baseline `baselines/air-gapped.json` must be re-signed by the owner before this can be released
 (the signed `rules_v` differs; the 18 attested claim hashes do not move, see *Consequences*).
 

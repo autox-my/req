@@ -1,6 +1,6 @@
 # 0034. `req selftest`: known-answer checks of the installed binary
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it; asked for by the owner on
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-10, GitHub PR #33); asked for by the owner on
 2026-11-10 (no issue). Date proposed: 2026-11-10. Adds a command; changes no existing contract, no `RULES_V`, no address.
 
 ## Context
