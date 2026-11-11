@@ -192,6 +192,16 @@ covers, or one with no relation. Reported by name; it never certifies the requir
 because req holds nothing to be complete against (ADR 0039).
 _Avoid_: completeness (as a verdict), coverage gap
 
+**Satisfaction link**:
+A design element's authored statement that it meets a claim, recorded with the claim's statement
+at the moment a human ratified it. It holds while the meaning is unchanged or weakened in a class
+measured never to hide a strengthening, and is suspect otherwise (ADR 0040).
+_Avoid_: trace link (a relation is claim to claim), coverage
+
+**False carry**:
+A satisfaction link left holding across a change that was in fact a strengthening — the
+satisfaction analogue of a false merge, held to zero on the direction gold set (ADR 0040).
+
 ### Authority
 
 **Authoring**:
