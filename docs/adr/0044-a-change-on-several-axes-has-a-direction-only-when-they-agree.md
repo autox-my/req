@@ -84,8 +84,9 @@ unchanged), `req compare` / `req diff` (`also:`; `axes` in `req.diff/1`, additiv
   `applicability` is an identity axis with the same entry. Neither changes a single-axis pair (the catch-all already
   answered `scope_divergence`); they change only compounds, which now have no direction where the other axis's class
   used to be returned.
-- `also:` lists each moved axis's class less the one the reported class already says; a mixed compound (reported
-  `scope_divergence`) names all of its axes.
+- `also:` lists each moved axis's class less the first moved axis when the reported class is taken from it (the
+  axes agree); a mixed compound (a synthesised `scope_divergence`) names all of its axes, a divergent one included
+  (review R-2-review-1 found the first version dropping it).
 
 Measured on `direction-v3` at rules v9 (`bench/results/direction-v3-rules-v9.json`): 1827 pairs, FMR 0/1548, FSR 0/199,
 hard gate PASS, **0 dangerous confusions**, accuracy 0.9849 over 1587 classified (1563 correct). The 436 compound pairs

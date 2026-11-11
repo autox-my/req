@@ -348,7 +348,7 @@ as `req gate` lets Fail outrank Unverifiable.
   pairs (1563 correct, v2's 1193 plus 370 new). No `RULES_V` bump: the classifier is not on the address path, and
   the v1 and v2 records are byte-identical before and after the change (every single-axis pair keeps its class).
   - **compound** (436 pairs: modality × bound 16 — all four sense combinations, the strengthened ones through
-    the swapped mirrors, because no source statement with a bound says "may" — modality × guard 404, guard ×
+    the swapped mirrors, because no bounded source statement says "may" or "should" (11 say "should", none with a single bound; measured by review R-2-review-1) — modality × guard 404, guard ×
     bound 16): 370 scored, 362 correct, 66 unclassifiable. The 8 mismatches are the two PROMISE statements
     `P8:r375` and `P8:r380`, whose scaled number is not the value slot (the same parse-coverage fact as their
     v1 `numeric_*` pairs: reported `scope_divergence`, never a direction).

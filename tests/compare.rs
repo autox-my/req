@@ -709,3 +709,26 @@ fn the_cli_names_every_moved_axis_beside_the_class() {
     );
     assert!(!out.contains("permits"), "{out}");
 }
+
+/// Review R-2-review-1 (low): `also:` dropped a moved axis whose class happened to equal the reported
+/// class, so a mixed compound with a qualifier change hid that axis while the JSON `axes` named it.
+/// Only the axis the class *is* (the first moved axis, when they agree) is left out.
+#[test]
+fn also_names_every_moved_axis_but_the_one_the_class_is() {
+    use req::compare::{Direction::*, also_axes};
+    // Mixed: the class is synthesised, so every axis is named, the divergent qualifier included.
+    assert_eq!(
+        also_axes(
+            ScopeDivergence,
+            &[ScopeWidening, ScopeDivergence, NumericLoosening]
+        )
+        .as_deref(),
+        Some("scope_widening, scope_divergence, numeric_loosening")
+    );
+    // Agreeing: the class is the first axis; the rest are named.
+    assert_eq!(
+        also_axes(ModalityWeakening, &[ModalityWeakening, NumericLoosening]).as_deref(),
+        Some("numeric_loosening")
+    );
+    assert_eq!(also_axes(NumericLoosening, &[NumericLoosening]), None);
+}

@@ -451,10 +451,12 @@ pub fn also_axes(direction: Direction, moved: &[Direction]) -> Option<String> {
     if moved.len() < 2 {
         return None;
     }
-    let mut rest: Vec<&str> = moved.iter().map(Direction::as_str).collect();
-    if let Some(i) = rest.iter().position(|w| *w == direction.as_str()) {
-        rest.remove(i);
-    }
+    // Leave out only the axis the class *is*: the first moved axis, when the axes agree and the class
+    // is taken from it (ADR 0044 decision 3). A synthesised `scope_divergence` (mixed effects) is none
+    // of the axes, so every axis is named — including a divergent one that shares its spelling
+    // (review R-2-review-1).
+    let skip = usize::from(moved.first() == Some(&direction));
+    let rest: Vec<&str> = moved.iter().skip(skip).map(Direction::as_str).collect();
     Some(rest.join(", "))
 }
 
