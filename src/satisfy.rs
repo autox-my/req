@@ -98,11 +98,36 @@ pub fn judge(
     if direction == Direction::Identical {
         return Judgement::Holds;
     }
-    if carries(direction) {
+    if carries(direction) && moved_on_its_axis_alone(&before, &after, direction) {
         Judgement::HoldsWeakened(direction)
     } else {
         Judgement::Suspect(direction)
     }
+}
+
+/// Did the claim move on `direction`'s axis and nowhere else? `compare` names the first axis that
+/// differs (modality before conditions before the bound), so a compound edit — SHALL→SHOULD with a
+/// tighter bound, or with a guard added — would otherwise be read as the weakening alone and carried.
+/// The measurement (decision 5) is of single-axis pairs; a carry is earned on one axis only
+/// (review S-2-review-1). Put the after side's axis back to the before side's: if the forms are then
+/// equal, nothing else moved.
+fn moved_on_its_axis_alone(
+    before: &canon::CanonicalForm,
+    after: &canon::CanonicalForm,
+    direction: Direction,
+) -> bool {
+    let mut reverted = after.clone();
+    match direction {
+        Direction::ModalityWeakening => reverted.modality = before.modality,
+        Direction::NumericLoosening => {
+            reverted.operator = before.operator;
+            reverted.value = before.value;
+        }
+        Direction::MembershipWidening => reverted.members = before.members.clone(),
+        // Nothing else is ever carried (`carries`), so there is no axis to isolate.
+        _ => return false,
+    }
+    canon::canonical_json(&reverted) == canon::canonical_json(before)
 }
 
 /// One recorded link: the meaning it was ratified against. `deny_unknown_fields`, as every `.req/`
@@ -637,7 +662,11 @@ fn print_text(evaluation: &Evaluation, has_design: bool) {
         .iter()
         .filter(|link| link.outcome != Outcome::Orphaned)
         .count();
-    if declared == 0 {
+    if declared == 0 && !evaluation.unreadable.is_empty() {
+        println!(
+            "# req satisfy: no satisfaction link could be read under {DESIGN} (see the UNVERIFIABLE lines)"
+        );
+    } else if declared == 0 {
         if has_design {
             println!(
                 "# req satisfy: no satisfaction link declared under {DESIGN} (nothing to judge)"

@@ -226,6 +226,32 @@ fn a_strengthening_tightening_flip_or_scope_change_is_suspect_and_names_the_dire
 
 // ---- Falsification 3 -------------------------------------------------------------------------
 
+/// Review S-2-review-1 (HIGH): `compare` names the first axis that moved, so a compound edit that
+/// weakens the modality *and* moves another axis read as `modality_weakening` and held. A carry is
+/// earned on one axis alone; a compound change is suspect, whichever axis `compare` named.
+#[test]
+fn a_modality_weakening_carried_with_another_change_is_suspect() {
+    for (name, current) in [
+        // SHOULD (weaker) with a tighter bound: the design met 100 ms, not 10 ms.
+        (
+            "compound-bound",
+            "The pump service should respond to a health check within 10 ms.",
+        ),
+        // SHOULD with a guard added: a scope class, never carried (decision 6).
+        (
+            "compound-guard",
+            "The pump service should respond to a health check within 100 ms when the tank is full.",
+        ),
+    ] {
+        let s = Scratch::recorded(name);
+        s.claim("REQ-0001", current, None);
+        let out = s.req(&["satisfy"]);
+        assert_eq!(out.code, 3, "{name}: {}", out.all());
+        let line = out.line_for(ELEMENT, "REQ-0001");
+        assert!(line.contains("SUSPECT"), "{name}: {line}");
+    }
+}
+
 #[test]
 fn an_admitted_weakening_holds_and_is_named_while_an_unadmitted_loosening_is_suspect() {
     // Falsification 3, both halves. `modality_weakening` is admitted (support 177, zero false
@@ -490,6 +516,8 @@ fn a_file_under_a_root_that_is_not_utf8_is_unverifiable_and_named() {
     let out = s.req(&["satisfy"]);
     assert_eq!(out.code, 3, "{}", out.all());
     assert!(out.all().contains("design/blob.bin"), "{}", out.all());
+    // Review S-2-review-1 (LOW): the header must not claim there was nothing to judge.
+    assert!(!out.stdout.contains("nothing to judge"), "{}", out.all());
 }
 
 #[test]
@@ -769,8 +797,41 @@ fn need_design_alone_is_unverifiable_exit_3_and_json_carries_the_list() {
     // Make REQ-0003 a legitimate release member so only `unsatisfied` is left to say.
     s.write(".req/variants", "mode=a\nmode=b\n");
     s.element("design/more.md", &["REQ-0002"]);
+    // A placeholder signed manifest covering every claim, so ADR 0039's `in_no_baseline` (which alone
+    // makes the step UNVERIFIABLE) is silent and only `unsatisfied` is left to decide the step.
+    let hash = "0".repeat(64);
+    let claims: Vec<String> = ["REQ-0001", "REQ-0002", "REQ-0003"]
+        .iter()
+        .map(|id| {
+            format!(
+                "{{\"claim_id\":\"{id}\",\"address\":\"{hash}\",\"relations_hash\":\"{hash}\",\
+                 \"rationale_hash\":\"{hash}\",\"tests_hash\":\"{hash}\"}}"
+            )
+        })
+        .collect();
+    s.write(
+        "baselines/fixture.json",
+        &format!(
+            "{{\"version\":4,\"signed_at\":\"2026-11-11T00:00:00Z\",\"authority\":{{\"head\":\"{hash}\",\
+             \"entries\":1}},\"rules_v\":8,\"selection\":{{}},\"claims\":[{}]}}",
+            claims.join(",")
+        ),
+    );
+    s.write(
+        "baselines/fixture.json.minisig",
+        "placeholder: presence is what counts (ADR 0039)\n",
+    );
     let out = s.req(&["check"]);
+    // The name says exit 3: pin it on the completeness step itself (review S-2-review-1, MEDIUM —
+    // deleting the `unsatisfied` arm of the completeness exit left every test green, and the run's
+    // own exit is 3 for other reasons in this fixture, so only the step's verdict tells).
+    assert_eq!(out.code, 3, "{}", out.all());
     let block = completeness_block(&out);
+    let head = block.lines().next().unwrap_or_default();
+    assert!(
+        head.starts_with("[UNVERIFIABLE] completeness") && head.contains("(exit 3)"),
+        "the completeness step itself is UNVERIFIABLE: {head}"
+    );
     let line = block
         .lines()
         .find(|l| l.contains("unsatisfied"))
