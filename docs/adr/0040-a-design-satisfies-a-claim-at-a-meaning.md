@@ -115,6 +115,31 @@ Not an edit of the decisions above; what decision 5 now has behind it.
   So today only a `modality_weakening` change may carry a link; a numeric or membership loosening does not, until the gold set
   has the support (a source with such statements, or classifier coverage of the unclassifiable ones).
 
+## Implementation note — 2026-11-11 (S-2: the code)
+
+Not an edit of the decisions above; where they now live.
+
+- **The module is `src/satisfy.rs`**; `req satisfy [--format text|json]` lists every declared link and `req satisfy
+  --record <element> <claim-id>` is the human act. `.req/design` is the optional list of roots (grammar of the other `.req/`
+  lists; directories are read recursively, symlinks and `.git` are not followed, a file that is not UTF-8 or a root that does
+  not exist is UNVERIFIABLE and named). A declaration is any line holding `req-satisfies:` followed by a claim id; the
+  element id is the repo-relative, `/`-separated path.
+- **The file format.** `.req/satisfied` is `schema: req.satisfied/1` and `links:`, a list of `{element, claim_id,
+  statement}` sorted by `(element, claim_id)`; `statement` is the claim's statement verbatim. No address, no rules version, no
+  date. An unknown key, another schema or a repeated link is a load error (UNVERIFIABLE; `--record` refuses to overwrite it).
+- **The admitted set** is `ADMITTED_CARRIES` in that module: `modality_weakening` alone, the one class
+  `bench/results/direction-v2-rules-v8.json` reports `admitted: true` (S-1). `tests/satisfy_admission.rs` reads the record
+  for the current `RULES_V` and asserts the constant equals it, so a rules bump or a re-measurement that changes admission
+  fails CI until the constant is changed on purpose; the record is never read at runtime. `carries()` refuses a scope class
+  whatever the constant says (decision 6).
+- **Judging** re-derives the recorded and the current statement under the current rules, with the claim's current
+  applicability on both sides (a selector change is not a statement change, and the record holds none): same address holds,
+  `compare` in the admitted set holds weakened, any other direction is suspect.
+- **Enforcement.** The gate's seventh policy `design_satisfied` (PASS with counts, or UNVERIFIABLE; never FAIL; PASS over zero
+  links with no `.req/design`, said so) is folded in by `gate::evaluate_selection`, so `req check` inherits it per release line.
+  `need design` in `.req/completeness` adds the `unsatisfied` omission to the completeness step and to `req audit`'s
+  *Structural omissions* section. A malformed `.req/design` line is exit 2 in `satisfy` and `check`.
+
 ## Falsification
 
 This decision is wrong if any of these is observed:

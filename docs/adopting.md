@@ -661,6 +661,46 @@ never a pass, because folding a rename into PASS is how a green build stops mean
 rename or delete a test, edit its claim in the same commit; the gate is what tells you that you did
 not.
 
+## Satisfaction links
+
+A claim linked to a test says *the code behaves*. A **satisfaction link** says *this design element is
+what meets the claim*, and keeps saying it only while the claim's meaning has not moved against it
+(ADR 0040). It is optional: with no `.req/design`, nothing here runs.
+
+1. **List the design roots** in `.req/design` — one repo-relative directory or file per line, the
+   grammar of the other `.req/` lists (`#` comments, blank lines skipped; an absolute path or `..` is
+   exit 2 naming the line):
+
+   ```text
+   docs/design
+   ```
+
+2. **Declare the link where the design is**, in any file under a root, one claim per occurrence. req
+   reads the token, not the format, so a comment, front matter or a heading line all do:
+
+   ```text
+   <!-- req-satisfies: REQ-0007 -->
+   ```
+
+   The element's id is its repo-relative path (`docs/design/pump.md`).
+3. **Record it** — the human act, never req's own: `req satisfy --record docs/design/pump.md REQ-0007`.
+   That writes the claim's statement, verbatim, to `.req/satisfied`. Commit the file; it is reviewed
+   like `.req/variants`.
+4. **Read the answer**: `req satisfy` lists every link. A cosmetic edit to the claim leaves it
+   **HOLDS**; a weakening of a class the measurement admitted (today the modality, SHALL to SHOULD)
+   is **HOLDS (weakened)**, named, so the loosening is seen but not re-opened; anything else — a
+   strengthening, a tighter number, a flipped polarity, any scope change, a loosening class not yet
+   measured — is **SUSPECT** (exit 3, naming element, claim and direction) until a human has looked at
+   the design and re-recorded it. A declared link never recorded is **UNRATIFIED**, a link to a claim
+   the corpus does not hold is **UNKNOWN CLAIM**, and a record whose declaration is gone is
+   **ORPHANED** (listed, not a finding).
+
+`req gate` and `req check` carry the same answer as the `design_satisfied` policy: PASS when every link
+of an applying claim holds (the line names the counts), UNVERIFIABLE otherwise — never FAIL, because a
+suspect link may still comply and nobody has shown it. To require a design element for every applying
+claim, add the line `need design` to `.req/completeness`; a claim no element declares is then the
+structural omission `unsatisfied` (UNVERIFIABLE), also listed in `req audit`.
+
 ## CI
 
 Save this as `.github/workflows/req.yml`. The summary step below targets GitHub's
@@ -1017,7 +1057,8 @@ release lines, the claims and `baselines/`:
   `derives-from`, or declare it a root in `.req/completeness`.
 
 `.req/completeness` is optional and has the same grammar as the other two lists. Each line is one root
-claim id, or `strict unrelated`, which turns every unlisted unrelated claim into a 1. An unknown word or
+claim id, `strict unrelated` (which turns every unlisted unrelated claim into a 1) or `need design`
+(which adds `unsatisfied`, a 3 for an applying claim no design element declares: *Satisfaction links*). An unknown word or
 an id the corpus does not hold is exit 2. A claim a line leaves undecided is that gate's 3 and is not named
 here again. None of this certifies the requirements **complete**: req holds no hazard list, stakeholder
 needs or standard clauses to be complete against.
@@ -1290,7 +1331,7 @@ for an adopter's agent. The four prohibitions, and why each one matters:
 stdout — `req.render/1`, `req.trace/1`, `req.gate/2`, `req.audit/1`, `req.check/1` — with the exit code
 identical to the text form. It renders the verdict, it does not add one. The CI Action writes four of them
 to `req-views/` (see *CI*): `check.json` is **one** document for the whole release check, carrying every
-step's `req.gate/2` inside it. A `req.gate/2` document carries **six** `policies` (the first is
+step's `req.gate/2` inside it. A `req.gate/2` document carries **seven** `policies` (the first is
 `pins_hold`) and a top-level `process_evidenced` array, so a consumer that reads only the machine count
 would overstate what was proven. Read the artifact, not the log; the `req check` step remains what decides
 the build.

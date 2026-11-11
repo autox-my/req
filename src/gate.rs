@@ -86,9 +86,10 @@ pub struct PolicyResult {
     /// **named and counted**, because a count that hides its subjects is how "declared" starts to
     /// read as "proven". Empty for every policy but `tests_linked`.
     pub process: Vec<String>,
-    /// How many pins the policy judged, for `pins_hold` only (`None` for every other policy).
-    /// It is in the JSON document too, so a pass over zero pins is distinguishable from a pass
-    /// that held some for a consumer that never reads the text form.
+    /// How many the policy judged: pins for `pins_hold`, source line anchors for
+    /// `rationale_present`, links for `design_satisfied` (`None` for every other policy). It is in
+    /// the JSON document too, so a pass over zero is distinguishable from a pass that held some for
+    /// a consumer that never reads the text form.
     pub checked: Option<usize>,
     /// For `tests_linked` only: how many applying claims are linked, unlinked, process-evidenced
     /// and, when a usable report was supplied, passed, failed or missing from it (issue #20).
@@ -578,7 +579,8 @@ struct PolicyDocument {
     policy: &'static str,
     outcome: &'static str,
     details: Vec<String>,
-    /// `pins_hold` only: the number of pins judged. Absent for every other policy.
+    /// The number judged: pins (`pins_hold`), source anchors (`rationale_present`) or links
+    /// (`design_satisfied`). Absent for every other policy.
     #[serde(skip_serializing_if = "Option::is_none")]
     checked: Option<usize>,
     /// `tests_linked` only (issue #20): the claims by verdict. Absent for every other policy.
@@ -593,7 +595,7 @@ struct UndecidedDocument {
     missing: Vec<String>,
 }
 
-/// `gate`'s document: the folded verdict, the six policies, the process-evidenced claims and
+/// `gate`'s document: the folded verdict, the seven policies, the process-evidenced claims and
 /// the undecided claims. The
 /// verdict is computed from the same `exit_code` the command returns, so the document and the
 /// process cannot disagree.
@@ -810,6 +812,37 @@ fn fold_source_anchors(results: &mut [PolicyResult], rows: &[Row], root: &std::p
     *slot = folded;
 }
 
+/// Add `design_satisfied` (ADR 0040): the satisfaction links of the applying claims. It needs the
+/// corpus root, which the pure policy seam does not have, so it is folded in here beside the source
+/// anchors, before the invocation policy (which stays last). It never FAILs: a suspect link may
+/// still comply, nobody has shown it, so a link that cannot be confirmed is UNVERIFIABLE.
+fn fold_design_links(results: &mut Vec<PolicyResult>, rows: &[Row], root: &std::path::Path) {
+    let applying: BTreeSet<&str> = rows
+        .iter()
+        .filter(|row| row.applies == Applies::Yes)
+        .map(|row| row.claim_id.as_str())
+        .collect();
+    let found = crate::satisfy::gate_findings(root, &applying);
+    let detail = if found.judged == 0 && found.unverifiable.is_empty() {
+        "every link of an applying claim holds, or holds weakened under an admitted class \
+         (counts: 0 link(s) judged · 0 holding · 0 weakened — zero links in this selection: nothing \
+         to judge, so nothing was unconfirmed; the policy ran over zero links, it was not skipped)"
+            .to_string()
+    } else {
+        format!(
+            "every link of an applying claim holds, or holds weakened under an admitted class; a \
+             suspect, unratified or unknown-claim link cannot be confirmed (counts: {} link(s) \
+             judged · {} holding · {} weakened)",
+            found.judged, found.holding, found.weakened
+        )
+    };
+    let mut policy = PolicyResult::new("design_satisfied", detail, Vec::new(), found.unverifiable);
+    policy.checked = Some(found.judged);
+    // Before the invocation policy, which stays last.
+    let at = results.len().saturating_sub(1);
+    results.insert(at, policy);
+}
+
 /// Select over the corpus, evaluate every policy and fold the exit. `Err` is a corpus that will
 /// not load — the caller owns how that is reported (`gate` prints it and exits 3).
 pub fn evaluate_selection(
@@ -830,6 +863,7 @@ pub fn evaluate_selection(
     // line anchor is checked against the file. It needs the corpus root, which the pure policy seam
     // (`evaluate_claims`) does not have, so it is folded into `rationale_present` here.
     fold_source_anchors(&mut results, &rows, root);
+    fold_design_links(&mut results, &rows, root);
     let code = exit_code(&results, undecided.len());
     // The process-evidenced claims, sorted once: they are reported beside the outcome (never as
     // offenders, because a declaration is a pass-as-declared) and must be visible as a count.

@@ -121,6 +121,18 @@ pub fn packet_with_roots(
     baseline: Option<&Manifest>,
     roots: &BTreeSet<String>,
 ) -> String {
+    packet_with_omissions(rows, context, baseline, roots, &[])
+}
+
+/// [`packet_with_roots`], with the applying claims no design element declares a link for — the
+/// `unsatisfied` omission of `need design` (ADR 0040), reported beside `unrelated`.
+pub fn packet_with_omissions(
+    rows: &[Row],
+    context: &Context,
+    baseline: Option<&Manifest>,
+    roots: &BTreeSet<String>,
+    unsatisfied: &[String],
+) -> String {
     // Sorted here rather than assumed: the packet is read by someone else, and its order must
     // not depend on the order the caller happened to load claims in. (`view::load_rows` returns
     // sorted claims today, which is exactly why an unsorted packet would hide until a different
@@ -264,13 +276,24 @@ pub fn packet_with_roots(
     // which is `req check`'s question; what remains per selection is an applying claim with no
     // relation. Reported, never part of the verdict: a top-level obligation is legitimate.
     let unrelated = unrelated_in_selection(rows, roots);
-    if !unrelated.is_empty() {
+    if !unrelated.is_empty() || !unsatisfied.is_empty() {
         out.push_str("\n## Structural omissions (reported, not judged)\n");
+    }
+    if !unrelated.is_empty() {
         out.push_str(&format!(
             "- unrelated: {} — no relation in or out; add the missing relation, or list the claim \
              as a root in {}\n",
             unrelated.join(", "),
             crate::completeness::COMPLETENESS
+        ));
+    }
+    if !unsatisfied.is_empty() {
+        out.push_str(&format!(
+            "- unsatisfied: {} — no design element declares `req-satisfies:` for it (`need design` in \
+             {}; roots in {}); `req check` judges it UNVERIFIABLE\n",
+            unsatisfied.join(", "),
+            crate::completeness::COMPLETENESS,
+            crate::satisfy::DESIGN
         ));
     }
 
@@ -402,6 +425,10 @@ struct AuditDocument<'a> {
     /// Applying claims with no relation in or out, minus `.req/completeness` roots (ADR 0039):
     /// reported, not part of the verdict.
     unrelated: Vec<String>,
+    /// With `need design` (ADR 0040): applying claims no design element declares a link for.
+    /// Reported, not part of the verdict; absent unless the policy asks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unsatisfied: Option<Vec<String>>,
 }
 
 /// `req audit [--baseline <file>] [--format text|json] [key=value ...]`
@@ -485,8 +512,10 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
 
     // `.req/completeness` names the roots `unrelated` spares; a malformed one is refused, as
     // `req check` refuses it, rather than read as "no roots".
-    let roots = match std::fs::read_to_string(root.join(crate::completeness::COMPLETENESS)) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeSet::new(),
+    let policy = match std::fs::read_to_string(root.join(crate::completeness::COMPLETENESS)) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            crate::completeness::Policy::default()
+        }
         Err(e) => {
             eprintln!(
                 "[UNVERIFIABLE] {} cannot be read: {e}",
@@ -497,7 +526,7 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         Ok(text) => {
             let known: BTreeSet<String> = rows.iter().map(|row| row.claim_id.clone()).collect();
             match crate::completeness::parse_policy(&text, &known) {
-                Ok(policy) => policy.roots,
+                Ok(policy) => policy,
                 Err(errors) => {
                     for error in errors {
                         eprintln!("{error}");
@@ -508,6 +537,23 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         }
     };
 
+    let roots = policy.roots.clone();
+    // `need design` (ADR 0040): the applying claims no element declares a link for. A malformed
+    // `.req/design` is refused as `req check` refuses it; an unreadable design root leaves the
+    // question open, which is UNVERIFIABLE and never an empty list.
+    let unsatisfied = if policy.need_design {
+        match crate::completeness::unsatisfied_in(&rows, root) {
+            Ok(ids) => Some(ids),
+            Err(error) => {
+                for line in error.lines() {
+                    eprintln!("{line}");
+                }
+                return error.exit();
+            }
+        }
+    } else {
+        None
+    };
     let coverage = manifest.as_ref().map(|manifest| coverage(&rows, manifest));
     let (failed, open) = findings(&rows, manifest.as_ref(), coverage.as_ref());
     // Computed once, before either rendering: the verdict is the same fold in both, and the exit
@@ -535,13 +581,20 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                 .chain(open.iter().map(|reason| format!("UNVERIFIABLE: {reason}")))
                 .collect(),
             unrelated: unrelated_in_selection(&rows, &roots),
+            unsatisfied: unsatisfied.clone(),
         };
         println!("{}", format::document(&document));
         return code;
     }
     print!(
         "{}",
-        packet_with_roots(&rows, &effective, manifest.as_ref(), &roots)
+        packet_with_omissions(
+            &rows,
+            &effective,
+            manifest.as_ref(),
+            &roots,
+            unsatisfied.as_deref().unwrap_or(&[])
+        )
     );
     println!(
         "\nverdict: {}",

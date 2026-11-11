@@ -78,7 +78,8 @@ surprises you. Run as `cargo run -q -- <command>`.
 | `render`, `trace` | the spec view, the traceability matrix (projections; `--out` / `--check`) |
 | `impact <id>` | what depends on a claim, nearest first |
 | `next-id` | the next free claim id(s); `--reserve` holds a block in `.req/reserved` so parallel authors do not collide |
-| `gate` | may this selection ship (six policies, tri-state) |
+| `satisfy` | do the design elements still satisfy their claims: `req-satisfies:` links judged by the direction of the claim's change since a human recorded them (ADR 0040); `--record` is the human act |
+| `gate` | may this selection ship (seven policies, tri-state) |
 | `check` | may this repository ship: every declared variant and projection, plus the structural omissions (ADR 0039), folded (ADR 0023) |
 | `baseline` | the manifest a human signs; verify one (req never signs) |
 | `audit` | the audit packet: coverage, provenance, undecided |

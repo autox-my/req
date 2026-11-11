@@ -1,6 +1,6 @@
 //! Structural omissions (ADR 0039): what req can prove is missing from files it already reads.
 //!
-//! Three findings, each naming the claim, and never a verdict that the requirements are complete —
+//! Three findings (a fourth with `need design`), each naming the claim, and never a verdict that the requirements are complete —
 //! req holds no hazard list, no stakeholder needs and no standard's clauses, so it has nothing to be
 //! complete *against*:
 //!
@@ -14,6 +14,9 @@
 //!   that signature verifies stays `req baseline --verify`'s answer (the gate runs it).
 //! * **`unrelated`** — the claim has no outgoing and no derived incoming relation. Reported, and FAIL
 //!   only when `.req/completeness` says `strict unrelated`; a claim listed there as a root is exempt.
+//! * **`unsatisfied`** (only with `need design`, ADR 0040) — the claim applies in a release line and no
+//!   design element declares `req-satisfies:` for it: **UNVERIFIABLE**. A repository policy rather than
+//!   a per-claim field, so no claim-schema change.
 //!
 //! The step is a repository question — release lines, Baselines and claims together — so it lives in
 //! `req check`, which already reads all three (ADR 0023).
@@ -33,16 +36,18 @@ const BASELINES: &str = "baselines";
 /// The number of checks the step runs, printed so a pass says what it examined.
 const CHECKS: usize = 3;
 
-/// `.req/completeness`, validated: the declared roots and whether `unrelated` is promoted to FAIL.
+/// `.req/completeness`, validated: the declared roots, whether `unrelated` is promoted to FAIL and
+/// whether every applying claim needs a design element (`need design`, ADR 0040).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Policy {
     pub roots: BTreeSet<String>,
     pub strict_unrelated: bool,
+    pub need_design: bool,
 }
 
 /// Validate `.req/completeness` against the corpus's ids. Grammar as the other `.req/` lists: `#`
 /// starts a comment, a blank line is skipped, a trailing CR is stripped. A line is either one claim
-/// id (a root) or the two words `strict unrelated`. Anything else — an unknown word, an id the corpus
+/// id (a root), `strict unrelated` or `need design`. Anything else — an unknown word, an id the corpus
 /// does not hold, two ids on one line — is refused naming `<file>:<line>`, every bad line in one run.
 pub fn parse_policy(text: &str, known: &BTreeSet<String>) -> Result<Policy, Vec<String>> {
     let mut policy = Policy::default();
@@ -58,16 +63,17 @@ pub fn parse_policy(text: &str, known: &BTreeSet<String>) -> Result<Policy, Vec<
         match words.as_slice() {
             [] => {}
             ["strict", "unrelated"] => policy.strict_unrelated = true,
+            ["need", "design"] => policy.need_design = true,
             [id] if known.contains(*id) => {
                 policy.roots.insert((*id).to_string());
             }
             [id] => errors.push(format!(
                 "{COMPLETENESS}:{number}: `{id}` is neither a claim id this corpus holds nor a known \
-                 word: a line is one root claim id, or `strict unrelated`"
+                 word: a line is one root claim id, `strict unrelated` or `need design`"
             )),
             many => errors.push(format!(
                 "{COMPLETENESS}:{number}: `{}` is not a line this file takes: one root claim id per \
-                 line, or `strict unrelated`",
+                 line, `strict unrelated` or `need design`",
                 many.join(" ")
             )),
         }
@@ -87,6 +93,11 @@ pub struct Findings {
     pub unrelated: Vec<String>,
     /// Whether `unrelated` decides the verdict (`strict unrelated`) or is reported only.
     pub unrelated_judged: bool,
+    /// With `need design` (ADR 0040): the applying claims no design element declares a link for.
+    /// `None` when the policy does not ask — absent from the JSON, so "not judged" is not read as
+    /// "none found".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unsatisfied: Option<Vec<String>>,
     /// The signed manifests that were read, by repository path.
     pub baselines: Vec<String>,
     /// Manifests that did not count, each with the reason (no signature beside it, unreadable).
@@ -99,7 +110,10 @@ impl Findings {
     pub fn exit(&self) -> i32 {
         if !self.in_no_release.is_empty() || (self.unrelated_judged && !self.unrelated.is_empty()) {
             1
-        } else if !self.in_no_baseline.is_empty() || !self.not_counted.is_empty() {
+        } else if !self.in_no_baseline.is_empty()
+            || !self.not_counted.is_empty()
+            || self.unsatisfied.as_ref().is_some_and(|ids| !ids.is_empty())
+        {
             3
         } else {
             0
@@ -132,6 +146,14 @@ impl Findings {
                 self.in_no_baseline.join(", ")
             ));
         }
+        if let Some(ids) = self.unsatisfied.as_ref().filter(|ids| !ids.is_empty()) {
+            notes.push(format!(
+                "unsatisfied (UNVERIFIABLE): {} — applies in a declared release and no design element \
+                 declares `req-satisfies:` for it (`need design` in {COMPLETENESS}; roots in {})",
+                ids.join(", "),
+                crate::satisfy::DESIGN
+            ));
+        }
         if !self.unrelated.is_empty() {
             let how = if self.unrelated_judged {
                 "FAIL, `strict unrelated`"
@@ -156,7 +178,15 @@ impl Findings {
 
     /// The step's label: what was checked, never what is true.
     pub fn label() -> String {
-        format!("structural omissions ({CHECKS} checks)")
+        Self::label_for(false)
+    }
+
+    /// [`Findings::label`] for a policy: `need design` adds a check, and the label counts it.
+    pub fn label_for(need_design: bool) -> String {
+        format!(
+            "structural omissions ({} checks)",
+            CHECKS + usize::from(need_design)
+        )
     }
 }
 
@@ -272,14 +302,43 @@ pub fn evaluate(root: &Path, releases: &[Context], policy: &Policy) -> Result<Fi
         .filter(|id| applies_somewhere.contains(**id) && !covered.contains(**id))
         .map(|id| (*id).to_string())
         .collect();
+    // `need design` (ADR 0040): a claim some release applies and no element declares a link for. A
+    // design root that cannot be read leaves the question open, so the step is UNVERIFIABLE with the
+    // reason, never a list read as empty.
+    let unsatisfied = if policy.need_design {
+        let declared = crate::satisfy::declared_claims(root).map_err(|e| e.lines().join("; "))?;
+        Some(
+            ids.iter()
+                .filter(|id| applies_somewhere.contains(**id) && !declared.contains(**id))
+                .map(|id| (*id).to_string())
+                .collect(),
+        )
+    } else {
+        None
+    };
     Ok(Findings {
         in_no_release,
         in_no_baseline,
         unrelated: unrelated(&rows, &policy.roots),
         unrelated_judged: policy.strict_unrelated,
+        unsatisfied,
         baselines,
         not_counted,
     })
+}
+
+/// Applying claims (in this selection) that no design element declares a link for — what `req audit`
+/// lists under *Structural omissions* when `.req/completeness` says `need design` (ADR 0040).
+pub fn unsatisfied_in(rows: &[Row], root: &Path) -> Result<Vec<String>, crate::satisfy::LinkError> {
+    let declared = crate::satisfy::declared_claims(root)?;
+    let mut ids: Vec<String> = rows
+        .iter()
+        .filter(|row| row.applies == Applies::Yes && !declared.contains(&row.claim_id))
+        .map(|row| row.claim_id.clone())
+        .collect();
+    ids.sort();
+    ids.dedup();
+    Ok(ids)
 }
 
 /// The ids the corpus holds, for validating `.req/completeness` before anything runs.

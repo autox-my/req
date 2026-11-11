@@ -741,13 +741,14 @@ fn gate_json_has_the_pinned_shape() {
             "dependencies_decided",
             "rationale_present",
             "tests_linked",
+            "design_satisfied",
             "selectors_confirmed",
         ],
         "the policies keep the order the text report and the docs name"
     );
     for policy in policies {
-        // `checked` is on `pins_hold` (the pins judged) and `rationale_present` (the sources with a
-        // line anchor, issue #19) alone.
+        // `checked` is on `pins_hold` (the pins judged), `rationale_present` (the sources with a
+        // line anchor, issue #19) and `design_satisfied` (the links judged) alone.
         if policy["policy"] == "pins_hold" {
             assert_keys(policy, &["checked", "details", "outcome", "policy"]);
             // The starter claim pins three keys (operator, value, unit); nothing else here pins.
@@ -757,6 +758,14 @@ fn gate_json_has_the_pinned_shape() {
         if policy["policy"] == "rationale_present" {
             assert_keys(policy, &["checked", "details", "outcome", "policy"]);
             // No fixture source carries a line anchor: a pass over zero sources says so.
+            assert_eq!(policy["checked"], 0, "{policy}");
+            assert_eq!(policy["outcome"], "pass");
+            continue;
+        }
+        // `design_satisfied` (ADR 0040) carries `checked` as the links it judged: no fixture declares
+        // one, so it passes over zero links and the document says so.
+        if policy["policy"] == "design_satisfied" {
+            assert_keys(policy, &["checked", "details", "outcome", "policy"]);
             assert_eq!(policy["checked"], 0, "{policy}");
             assert_eq!(policy["outcome"], "pass");
             continue;
