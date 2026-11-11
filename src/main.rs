@@ -411,8 +411,8 @@ const GATE_HELP: &str = "\
 usage: req gate [--format text|json] [--test-report <file>]... [key=value ...]
 
 Runs the release policies over the claims a variant leaves applying — pins hold, relations
-resolve, dependencies decided, rationale present, design satisfied (ADR 0040), and (with
-`--test-report <file>`) tests linked — and confirms the invocation itself. A claim the invocation leaves undecided was
+resolve, dependencies decided, rationale present, design satisfied (ADR 0040), contradictions
+(ADR 0043), and (with `--test-report <file>`) tests linked — and confirms the invocation itself. A claim the invocation leaves undecided was
 not examined, and that is not a pass: a bare gate on a corpus carrying a selector is
 UNVERIFIABLE.
 
@@ -441,6 +441,21 @@ when one is suspect (the claim changed in a direction that is not carried), unra
 names an unknown claim. It never FAILs — a suspect link may still comply; nobody has shown it — and with no
 `.req/design` it passes over zero links and says so.
 
+`contradictions` (ADR 0043) judges the applying claims of the selection against each other, and the
+Conflicts a human recorded between them. Two claims are *comparable* when they share subject, action,
+qualifier, unit, exception and temporal, one's conditions are inside the other's, and both are `SHALL` /
+`SHALL NOT`; they *contradict* when no value satisfies both (a `SHALL` against a `SHALL NOT` of the same
+obligation, disjoint bounds — strictness at the meeting point counts — or disjoint or forbidden membership), decided on exact
+decimals. FAIL names both claims, the slot and the two values, unless a human recorded the pair as a
+Conflict (`relations: [{type: conflicts-with, to: REQ-X}]`, on either claim): a recorded Conflict between two
+applying claims is UNVERIFIABLE, not a defect — information, but a release cannot be shown to satisfy both
+sides — and so is a `conflicts-with` naming a claim the corpus does not hold. Resolve one by an edit, a
+retirement or an applicability predicate that keeps the two out of the same release, never by a flag. PASS
+says what was examined (\"no structural contradiction among *k* comparable pairs; *m* pairs not comparable\")
+and never that the corpus is consistent: a claim the parser leaves unstructured, a `SHOULD` or `MAY`, or a pair
+whose slots differ is counted as not comparable, never guessed. `checked` is *k*. Claims that apply in different
+`.req/variants` lines are never compared.
+
 `tests_linked` answers four ways over machine-evidenced claims, and there is no fifth: PASS (a
 linked test passed), FAIL (every linked test is in the report and none passed — a skipped test
 is not a pass, and a failed one outranks a passing one on the same claim), UNVERIFIABLE *no
@@ -461,8 +476,8 @@ because a test absent from the union might be in the one that failed to load.
 
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 answers as a `req.gate/2` document on stdout: schema, generator, `rules_v`, the selection, the
-folded verdict, the seven policies (`pins_hold` also carries `checked`, the number of pins it judged,
-so a pass over zero pins is told from one that held some; `rationale_present` carries it too, as the number of source line anchors it judged; `design_satisfied` carries it as the number of links; `tests_linked` carries `counts`, below) and the undecided claims with what each is missing. The
+folded verdict, the eight policies (`pins_hold` also carries `checked`, the number of pins it judged,
+so a pass over zero pins is told from one that held some; `rationale_present` carries it too, as the number of source line anchors it judged; `design_satisfied` carries it as the number of links; `contradictions` carries it as the comparable pairs examined; `tests_linked` carries `counts`, below) and the undecided claims with what each is missing. The
 verdict is the same fold the exit code applies, so the document and the process cannot disagree.
 
 `tests_linked`'s `counts` (also printed as a `counts:` line under the policy in the text report) are the
@@ -502,7 +517,9 @@ malformed line is exit 2 naming `<file>:<line>`, and nothing was gated.
 
 A step's exit is the command's exit — the same code runs, no policy is copied and nothing is
 shelled out — and the output says which step produced which exit. The fold is the gate's:
-a defect (1) outranks something that cannot be confirmed (3), which outranks a pass (0).
+a defect (1) outranks something that cannot be confirmed (3), which outranks a pass (0). Each variants
+line therefore carries the gate's `contradictions` policy over **that line's** applying claims (ADR 0043):
+two claims that apply in different lines are never compared.
 
 Absence is not silence. No `.req/variants`, or one with no line in it, is the default variant
 (one bare gate) and says so on its own line; on a corpus carrying a selector that gate is 3, so

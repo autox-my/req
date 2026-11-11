@@ -14,6 +14,9 @@
 //! * **Pass** — every policy settled in the affirmative **and** every claim in the corpus was
 //!   decided; a selection that leaves a claim undecided is Unverifiable, never Pass.
 //!
+//! One policy, added by ADR 0043, judges the **contradictions** among the applying claims (and the
+//! Conflicts a human recorded between them); see [`contradictions_policy`].
+//!
 //! One policy judges the **invocation** rather than a claim: what the `key=value` context
 //! selected, and whether the corpus's own selector predicates confirm it. One policy, added by
 //! ADR 0019, judges the **evidence**: does a test that proves each applying claim pass? (Its
@@ -595,7 +598,7 @@ struct UndecidedDocument {
     missing: Vec<String>,
 }
 
-/// `gate`'s document: the folded verdict, the seven policies, the process-evidenced claims and
+/// `gate`'s document: the folded verdict, the eight policies, the process-evidenced claims and
 /// the undecided claims. The
 /// verdict is computed from the same `exit_code` the command returns, so the document and the
 /// process cannot disagree.
@@ -843,6 +846,103 @@ fn fold_design_links(results: &mut Vec<PolicyResult>, rows: &[Row], root: &std::
     results.insert(at, policy);
 }
 
+/// The `contradictions` policy (ADR 0043 decision 4): over the selection's applying claims, is there
+/// a Tier-1 contradiction nobody recorded, or a recorded Conflict that binds two applying claims?
+///
+/// * a **recorded Conflict** between two applying claims → UNVERIFIABLE, naming both ids — information,
+///   not an error, but a release cannot be shown to satisfy both sides of it (REQ-0041). Judged from
+///   the first unit on: it needs no detector. A `conflicts-with` whose `to` the corpus does not hold is
+///   UNVERIFIABLE too (a dangling Conflict cannot be shown resolved);
+/// * a **Tier-1 contradiction not recorded** → FAIL, naming both ids, the slot and the two values — but
+///   only once the detector is admitted ([`crate::contradict::DETECTOR_ADMITTED`], decision 6); until
+///   then each is listed as *reported, not judged* and the outcome does not change;
+/// * otherwise PASS, worded for what was examined — never "consistent".
+///
+/// `checked` is *k*, the number of comparable pairs examined.
+pub fn contradictions_policy(findings: &crate::contradict::Findings) -> PolicyResult {
+    use crate::contradict::DETECTOR_ADMITTED;
+    let k = findings.comparable;
+    let m = findings.not_comparable;
+    let by_pair: BTreeMap<(&str, &str), &crate::contradict::Contradiction> = findings
+        .contradictions
+        .iter()
+        .map(|c| ((c.a_id.as_str(), c.b_id.as_str()), c))
+        .collect();
+
+    let mut unverifiable: Vec<String> = Vec::new();
+    for (a, b) in &findings.conflicts {
+        let mut line = format!(
+            "{a} conflicts-with {b}: a recorded Conflict between two applying claims — a release \
+             cannot be shown to satisfy both sides; resolve it by an edit, a retirement or an \
+             applicability predicate that keeps them out of the same release"
+        );
+        if let Some(found) = by_pair.get(&(a.as_str(), b.as_str())) {
+            line.push_str(&format!(" (Tier 1 also finds it: {})", found.describe()));
+        }
+        unverifiable.push(line);
+    }
+    for (from, to) in &findings.dangling {
+        unverifiable.push(format!(
+            "{from} conflicts-with {to}: {to} is not in the corpus, so the Conflict cannot be shown resolved"
+        ));
+    }
+    let unrecorded: Vec<String> = findings.unrecorded().map(|c| c.describe()).collect();
+
+    let (failed, reported) = if DETECTOR_ADMITTED {
+        (unrecorded, Vec::new())
+    } else {
+        (
+            Vec::new(),
+            unrecorded
+                .into_iter()
+                .map(|line| format!("{line} — reported, not judged (ADR 0043 decision 6)"))
+                .collect(),
+        )
+    };
+    let detail = if !reported.is_empty() {
+        format!(
+            "{} structural contradiction(s) among {k} comparable pairs, reported not judged — the \
+             detector is not yet admitted (ADR 0043 decision 6); {m} pairs not comparable",
+            reported.len()
+        )
+    } else if failed.is_empty() && unverifiable.is_empty() {
+        let mut line = format!(
+            "no structural contradiction among {k} comparable pairs; {m} pairs not comparable"
+        );
+        if !DETECTOR_ADMITTED {
+            line.push_str("; detector reported, not judged (ADR 0043 decision 6)");
+        }
+        line
+    } else {
+        format!(
+            "two applying claims that cannot both hold must be resolved or recorded as a Conflict \
+             ({k} comparable pairs examined; {m} pairs not comparable)"
+        )
+    };
+    let mut policy = PolicyResult::new("contradictions", detail, failed, unverifiable);
+    // Reported-not-judged findings ride beside the outcome, never part of it.
+    policy.offenders.extend(reported);
+    policy.checked = Some(k);
+    policy
+}
+
+/// Fold `contradictions` (ADR 0043) into the results, before the invocation policy (which stays
+/// last). It needs the claims' canonical forms, which the pure policy seam does not have, so it is
+/// folded in here beside `design_satisfied`. A corpus that cannot be read leaves it UNVERIFIABLE.
+fn fold_contradictions(results: &mut Vec<PolicyResult>, rows: &[Row], root: &std::path::Path) {
+    let policy = match crate::contradict::forms_of(root) {
+        Ok(forms) => contradictions_policy(&crate::contradict::find(rows, &forms)),
+        Err(reason) => PolicyResult::new(
+            "contradictions",
+            "the claims' canonical forms could not be read, so contradictions cannot be judged",
+            Vec::new(),
+            vec![reason],
+        ),
+    };
+    let at = results.len().saturating_sub(1);
+    results.insert(at, policy);
+}
+
 /// Select over the corpus, evaluate every policy and fold the exit. `Err` is a corpus that will
 /// not load — the caller owns how that is reported (`gate` prints it and exits 3).
 pub fn evaluate_selection(
@@ -864,6 +964,7 @@ pub fn evaluate_selection(
     // (`evaluate_claims`) does not have, so it is folded into `rationale_present` here.
     fold_source_anchors(&mut results, &rows, root);
     fold_design_links(&mut results, &rows, root);
+    fold_contradictions(&mut results, &rows, root);
     let code = exit_code(&results, undecided.len());
     // The process-evidenced claims, sorted once: they are reported beside the outcome (never as
     // offenders, because a declaration is a pass-as-declared) and must be visible as a count.

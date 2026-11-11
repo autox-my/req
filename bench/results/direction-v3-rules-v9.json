@@ -1,4 +1,17 @@
 {
+  "contradiction": {
+    "comparable": 433,
+    "false_contradictions": 0,
+    "not_comparable": 559,
+    "note": "ADR 0043 decision 6. false_contradictions counts the pairs that must never contradict (labelled equivalent, or a nested-set direction label) reported as a contradiction: a hard bound, the analogue of FMR = 0. recall is over polarity_flip pairs whose earlier claim is a SHALL — reported, not gated.",
+    "pairs": [],
+    "recall": {
+      "found": 176,
+      "not_comparable": 0,
+      "of": 176
+    },
+    "scored": 992
+  },
   "corpus": "bench/corpus/direction-v3.yml",
   "corpus_sha256": "1673529607db6ede7ca9d1970cac49bd3cb54b52a8f4ce097b45a716e72991e9",
   "degraded": [],

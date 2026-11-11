@@ -101,3 +101,33 @@ This decision is wrong if any of these is observed:
 3. a recorded Conflict between two applying claims lets the policy PASS;
 4. the policy's PASS line omits the count of pairs it could not compare;
 5. any part of the decision is made by a model rather than proposed by one.
+
+## Implementation note — 2026-11-12 (C-1: the code)
+
+Decisions 1–4 and 6 are implemented (`src/contradict.rs`; the policy in `src/gate.rs`; the audit section in `src/audit.rs`;
+the measurement in `src/bench.rs`). Decision 5 needed no code: `req propose` already puts one pair to a provider and returns an
+unratified proposal, and the "can both hold?" question is **not** added here; `req diff` flagging a contradiction a change
+introduces stays the follow-up *Not decided here* names.
+
+- **Measured, then admitted.** Every `bench/results/*-rules-v9.json` now carries a `contradiction` block (that key and nothing
+  else changed). **False contradictions: 0 on all eight corpora** — parity 0/12 scored pairs, external-v1 0/178, v2 0/178,
+  v3 0/499, v4 0/499, direction-v1 0/533, v2 0/548, v3 0/992 (labelled-equivalent pairs plus the `numeric_*` / `scope_*`
+  direction pairs; the direction corpora hold no `membership_*` pair, so the membership arm of the bound is carried by
+  `tests/contradict.rs` and not by the corpora). **Recall** on the `polarity_flip` pairs whose earlier claim is a `SHALL`:
+  176 of 176 on each direction corpus, none not comparable (reported, not gated). So `DETECTOR_ADMITTED` is `true`: an
+  unrecorded contradiction is FAIL. The constant is compiled in and pinned to the records by a test, so a rules bump or a
+  corpus that breaks the bound fails CI until it is changed on purpose; the policy never reads a record at runtime.
+- **The recorded-Conflict half was judged from the first unit**: a `conflicts-with` between two applying claims, or naming a
+  claim the corpus does not hold, is UNVERIFIABLE with no detector involved.
+- **Rules without a Tier-1 verdict are not comparable, not guessed.** A `SHALL` against a `SHALL NOT` whose operator or value
+  differ (other than `IN` against `NOT IN`), and a membership against a bound, are counted as not comparable. Two
+  prohibitions, and a bare action against anything but its negation, are consistent.
+- **A finding about the parser, not the detector.** The parse keeps a leading preposition in the *action*: `respond within
+  100 ms` has action `respond` while `respond in at least 200 ms` has action `respond in`, so the two sentences this ADR's
+  *Context* opens with differ in the action slot and are **not comparable** at Tier 1 today (the same pair is found when both
+  read `in no more than` / `in at least`, or both `within` / `at least`). The detector is exactly as wide as the parse, as
+  the *Consequences* say, and the PASS line counts such pairs; widening the parse is a rules change (`RULES_V` bump, goldens
+  regenerated) and is not made here.
+- **Not in the audit's JSON.** The *Contradictions and Conflicts* section is in the audit packet's text; `req.audit/1` is
+  unchanged. The gate's `req.gate/2` carries the policy additively (`checked` = comparable pairs, `details` = the
+  contradictions and Conflicts).
