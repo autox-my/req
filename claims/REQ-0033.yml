@@ -13,4 +13,6 @@ rationale:
   rejected_alternatives:
     - an empty corpus as a pass with zero discrepancy flags
   assumptions: []
-relations: []
+relations:
+  - type: derives-from
+    to: REQ-0041

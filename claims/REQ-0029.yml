@@ -13,4 +13,8 @@ rationale:
   rejected_alternatives:
     - skipping the signature check when minisign is absent (a verification that silently did less)
   assumptions: []
-relations: []
+relations:
+  - type: derives-from
+    to: REQ-0041
+  - type: derives-from
+    to: REQ-0002

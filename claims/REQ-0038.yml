@@ -13,4 +13,6 @@ rationale:
   rejected_alternatives:
     - gating whatever the policy repository's main happens to be, so a green run does not say which policy it passed
   assumptions: []
-relations: []
+relations:
+  - type: derives-from
+    to: REQ-0028

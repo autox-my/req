@@ -1016,3 +1016,32 @@ fn every_linked_test_id_exists() {
         );
     }
 }
+
+/// REQ-0041 — an outcome req cannot establish is UNVERIFIABLE, never a pass. Shown across every command
+/// that judges or projects the corpus, on the one input none of them can judge: a corpus with no claims.
+/// The oracle is the claim's own words and each command's `exit:` line (3 is UNVERIFIABLE), not a run.
+#[test]
+fn every_judging_command_reports_what_it_cannot_establish_as_unverifiable_never_a_pass() {
+    let scratch = Scratch::new("req-unverifiable");
+    scratch.write(
+        "aliases/subjects.yml",
+        "schema: req.subject_registry/0\nversion: 1\nsubjects: {}\n",
+    );
+    std::fs::create_dir_all(scratch.path().join("claims")).expect("creates claims/");
+    let root = scratch.path().to_string_lossy().into_owned();
+    for command in [
+        "gate", "check", "canon", "audit", "trace", "render", "select",
+    ] {
+        let (code, stdout, stderr) = run_here(scratch.path(), &["--root", &root, command]);
+        let said = format!("{stdout}{stderr}");
+        assert_eq!(code, 3, "req {command} on an empty corpus: {said}");
+        assert!(
+            said.contains("UNVERIFIABLE"),
+            "req {command} names the outcome: {said}"
+        );
+        assert!(
+            !said.contains("PASS"),
+            "req {command} never says PASS here: {said}"
+        );
+    }
+}

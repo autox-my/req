@@ -12,4 +12,6 @@ rationale:
   rejected_alternatives:
     - regenerating the projection silently, which hides an edit made to a generated file
   assumptions: []
-relations: []
+relations:
+  - type: derives-from
+    to: REQ-0001

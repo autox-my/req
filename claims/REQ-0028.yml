@@ -13,4 +13,6 @@ rationale:
   rejected_alternatives:
     - trusting git history alone to show that a ratified claim did not change
   assumptions: []
-relations: []
+relations:
+  - type: derives-from
+    to: REQ-0017

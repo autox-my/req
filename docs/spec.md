@@ -1,8 +1,8 @@
-<!-- req projection: generator=req render | rules_v=8 | selection=none | claims=34 | identity=sha256:38dc6d8fd5a5cc8855d631f23fb21e6d016bb0fc9bc1fe21b6adefa3ef4338b4 -->
+<!-- req projection: generator=req render | rules_v=8 | selection=none | claims=35 | identity=sha256:0ca408b5e5ee45e3b1559d8fdba14262c8d2fd534d524afc0de37d4b07005e77 -->
 # Selection: (no context: nothing is decided by the caller)
-applies 34, undecided 5, outside the selection 0 (an undecided claim is never reported as excluded)
+applies 35, undecided 5, outside the selection 0 (an undecided claim is never reported as excluded)
 
-## Applies (34)
+## Applies (35)
 - REQ-0001  f559f5a905e4  SHALL  The req tool shall treat a single claim as the unit of requirements authorship, review, and merge.
     selector: (none — applies to every variant)
 - REQ-0002  6e6ba2ec76ee  SHALL  The req tool shall record each acceptance or rejection of a change as a signed Decision carrying role, meaning, timestamp, and any dissent.
@@ -57,38 +57,56 @@ applies 34, undecided 5, outside the selection 0 (an undecided claim is never re
 - REQ-0024  c3eadd9b4bc2  SHALL  The req tool shall report a gate invocation that leaves a claim undecided as UNVERIFIABLE.
     selector: (none — applies to every variant)
     -> refines REQ-0016
+    -> derives-from REQ-0041
 - REQ-0025  0c87837b3330  SHALL  The req tool shall report a claim with no linked test as UNVERIFIABLE.
     selector: (none — applies to every variant)
+    -> derives-from REQ-0041
 - REQ-0026  a015dc0ac17d  SHALL-NOT  The req tool shall not count a skipped test as a pass.
     selector: (none — applies to every variant)
+    -> refines REQ-0025
 - REQ-0027  264413b20370  SHALL  The req tool shall fail the gate when a claim's pin disagrees with the parse its statement derives.
     selector: (none — applies to every variant)
+    -> derives-from REQ-0017
 - REQ-0028  923f071ba7b5  SHALL  The req tool shall fail the verification of a Baseline when a claim was edited after signing.
     selector: (none — applies to every variant)
+    -> derives-from REQ-0017
 - REQ-0029  86509bfea214  SHALL-NOT  The req tool shall not report a Baseline as verified when its signature does not verify or no verifier is installed.
     selector: (none — applies to every variant)
+    -> derives-from REQ-0041
+    -> derives-from REQ-0002
 - REQ-0030  0a0da15c2a51  SHALL  The req tool shall report a Baseline written under another rules version as UNVERIFIABLE.
     selector: (none — applies to every variant)
+    -> derives-from REQ-0041
+    -> derives-from REQ-0017
 - REQ-0031  523381a2556c  SHALL  The req tool shall report an edited decision record as tampered.
     selector: (none — applies to every variant)
     -> derives-from REQ-0002
 - REQ-0032  8921ad734b31  SHALL  The req tool shall refuse a claim file that carries a key it does not define.
     selector: (none — applies to every variant)
+    -> derives-from REQ-0017
 - REQ-0033  852ff0535240  SHALL  The req tool shall report a corpus with no claim files as UNVERIFIABLE when it derives the parse.
     selector: (none — applies to every variant)
+    -> derives-from REQ-0041
 - REQ-0034  79a92eeb5cc8  SHALL  The req tool shall report a change that loosens an obligation as weakened.
     selector: (none — applies to every variant)
+    -> derives-from REQ-0023
 - REQ-0035  b680aeaaa9a1  SHALL  The benchmark harness shall report a corpus with no not-equivalent pairs as UNVERIFIABLE.
     selector: (none — applies to every variant)
+    -> derives-from REQ-0041
 - REQ-0036  898b62a32ce9  SHALL  The req tool shall report a hand-edited projection as stale.
     selector: (none — applies to every variant)
+    -> derives-from REQ-0001
 - REQ-0037  dd73ffc53893  SHALL  The req tool shall rank a failure above an undecided line when it folds the checks of a repository.
     selector: (none — applies to every variant)
+    -> refines REQ-0024
 - REQ-0038  e8c8f136b0ed  SHALL  The req tool shall report a corpus that is not the pinned commit as a failure.
     selector: (none — applies to every variant)
+    -> derives-from REQ-0028
 - REQ-0039  042be179a510  SHALL  The install script shall refuse a tarball whose hash differs from the pin.
     selector: (none — applies to every variant)
 - REQ-0040  faccefaea670  SHALL  The req tool shall exit with status 2 for a command it does not know.
+    selector: (none — applies to every variant)
+- REQ-0041  84b865ad2596  SHALL  The req tool shall report an outcome it cannot establish as UNVERIFIABLE rather than as a pass.
     selector: (none — applies to every variant)
 
 ## Undecided (5)

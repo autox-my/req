@@ -13,4 +13,6 @@ rationale:
   rejected_alternatives:
     - letting the first non-zero exit decide, so that the order of the release list changes the verdict
   assumptions: []
-relations: []
+relations:
+  - type: refines
+    to: REQ-0024

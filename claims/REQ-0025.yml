@@ -12,4 +12,6 @@ rationale:
   rejected_alternatives:
     - counting an unlinked claim as passing (absence of evidence read as evidence)
   assumptions: []
-relations: []
+relations:
+  - type: derives-from
+    to: REQ-0041

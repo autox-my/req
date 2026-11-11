@@ -12,4 +12,6 @@ rationale:
   rejected_alternatives:
     - ignoring an unknown key, which loses an authored slot silently
   assumptions: []
-relations: []
+relations:
+  - type: derives-from
+    to: REQ-0017

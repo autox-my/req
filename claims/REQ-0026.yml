@@ -12,4 +12,6 @@ rationale:
   rejected_alternatives:
     - counting a skipped test as a pass, which lets a disabled test keep a claim green
   assumptions: []
-relations: []
+relations:
+  - type: refines
+    to: REQ-0025

@@ -13,4 +13,6 @@ rationale:
   rejected_alternatives:
     - reading a false merge rate of 0 out of 0 pairs as a pass
   assumptions: []
-relations: []
+relations:
+  - type: derives-from
+    to: REQ-0041
