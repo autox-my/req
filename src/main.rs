@@ -170,6 +170,9 @@ fails, and results are append-only — one record per corpus and rules version.
 hard gate is dangerous confusions = 0 (a loosening reported as no change, or as the opposite
 direction — the direction analogue of a false merge), accuracy is reported against a 0.95 soft
 target, and a misspelled `direction:` label fails the gate rather than switching the check off.
+The record's `direction.false_carry` reports, per weakening class (modality_weakening,
+numeric_loosening, membership_widening), the pairs labelled a non-weakening class but reported as
+it (ADR 0040), the support behind that count, and `admitted` (count 0 and support >= 100) — reported, never a verdict.
 
 exit: 0 the gate passed (no false merge), 1 a false merge or a direction confusion, 3
 UNVERIFIABLE (an unreadable corpus, a degraded run that found nothing, or a vacuous

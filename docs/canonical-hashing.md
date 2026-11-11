@@ -274,6 +274,13 @@ unauditable.
    through one mutation per direction class, and the `direction:` label **is** the
    mutation. It answers "what kind of change is this?", and it is labelled by
    construction for the same reason the identity corpora are.
+   **Version 2** (`bench/corpus/direction-v2.yml`, `build_direction.py --version 2`; S-1, ADR 0040
+   decision 5) is every v1 pair plus the **mirrors** of the modality/numeric pairs (`a` and `b`
+   swapped, labelled with the opposite class — the mutation read backwards, ids suffixed `r`) and the
+   membership mutations on enumerated `one of` sets. It exists to measure **false carries**: v1 holds 5
+   `modality_strengthening` and 9 `numeric_tightening` pairs, so its zero false carries is vacuous. The
+   pinned sources hold no enumerated `one of {…}` statement, so v2 carries **0** membership pairs
+   (none was synthesised); v1 regenerates byte-identical from the same generator.
 4. **Natural duplicate run** — whole real documents; measures collapse of true
    duplicates vs near-duplicates. Not yet implemented.
 5. **Evaluated and excluded — Sphinx-Needs.** Its own documentation uses standard
@@ -320,6 +327,23 @@ as `req gate` lets Fail outrank Unverifiable.
 
 #### Recorded runs (append-only)
 
+- **Direction gold set v2, rules v8** (S-1; `bench/results/direction-v2-rules-v8.json`) — 1379 pairs
+  (v1's 1159 plus 220 mirrors, 0 membership): FMR 0/1100 (178 structurally unverifiable), FSR 0/199. Hard gate PASS,
+  **0 dangerous confusions**, accuracy 0.9933 over 1201 classified pairs (178 unclassifiable); the 8
+  mismatches are the 4 v1 `numeric_* → scope_divergence` coverage facts (two PROMISE statements whose
+  scaled number is not the value slot) and their 4 mirrors. v1 is unchanged (1016 checked, 1012
+  correct, 0 dangerous). The measured `false_carry` block (reported, not a verdict; `admitted` =
+  count 0 **and** support ≥ 100):
+
+  | weakening class | false carries | support (scored opposing pairs) | admitted |
+  | --- | --- | --- | --- |
+  | `modality_weakening` | 0 | 177 (`modality_strengthening`; was 1 scored on v1) | yes |
+  | `numeric_loosening` | 0 | 9 (`numeric_tightening`; was 5 on v1) | no — support below 100 |
+  | `membership_widening` | 0 | 0 (`membership_narrowing`) | no — no pair at all |
+
+  Without the mirror family the `modality_weakening` support is 1 (mutation check). The numeric
+  class cannot reach 100 from these sources: 17 labelled tightenings, 8 of which the classifier
+  cannot parse (unclassifiable) and 4 read as `scope_divergence`. Seed and other-projects' prose only.
 - **Rules v8** — a leading condition (T1.8, ADR 0038; issue #18). Found on an adopter's second
   pilot: "When a document is sent to a third-party provider, the provider shall be recorded …"
   read the whole clause as the subject, so rewording only the trigger moved the subject and

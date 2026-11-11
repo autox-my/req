@@ -94,6 +94,27 @@ the classifier is right about the direction, which is a measured property, not a
   with the gold-set labels re-read against the spec); decision 6 keeps this ADR independent of it.
   *Decided by ADR 0041: a guard added to an obligation now reads as permitting more.*
 
+## Implementation note — 2026-11-11 (S-1: the false-carry measurement)
+
+Not an edit of the decisions above; what decision 5 now has behind it.
+
+- **The measurement set is `bench/corpus/direction-v2.yml`**: v1 plus the mirrors of the modality/numeric pairs (labelled with
+  the opposite class — the mutation read backwards). v1 held 5 `modality_strengthening`, 9 `numeric_tightening` and no
+  `membership_*` pairs, so its zero false carries was vacuous. The pinned sources hold no enumerated `one of {…}` statement, so
+  v2 has **no membership pairs**; none was synthesised.
+- **The support minimum is 100** scored pairs labelled the class's opposite (owner go-ahead, 2026-11-11). `req bench` reports
+  `direction.false_carry.<class> = {count, support, admitted, pairs}` for all three weakening classes; `admitted` is `count == 0`
+  and `support >= 100`. It is an input to this ADR's satisfaction links, not a bench verdict.
+- **Measured at rules v8** (`bench/results/direction-v2-rules-v8.json`; docs/canonical-hashing.md §6.3): zero false carries in
+  all three classes, and
+  - `modality_weakening` — support 177: **admitted today**;
+  - `numeric_loosening` — support 9 (of 17 labelled tightenings, 8 are unclassifiable and 4 read as `scope_divergence`):
+    **not admitted**, support below 100;
+  - `membership_widening` — support 0: **not admitted**, no pair exists to measure it on.
+
+  So today only a `modality_weakening` change may carry a link; a numeric or membership loosening does not, until the gold set
+  has the support (a source with such statements, or classifier coverage of the unclassifiable ones).
+
 ## Falsification
 
 This decision is wrong if any of these is observed:

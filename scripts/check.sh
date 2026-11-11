@@ -440,6 +440,10 @@ run cargo run -q -- bench   # seed parity corpus: 0 PASS / 1 FAIL / 3 UNVERIFIAB
   # reported as no change (or as the opposite direction) is a dangerous confusion and
   # fails, exactly as a false merge does. See docs/canonical-hashing.md 6.3.
   run cargo run -q -- bench bench/corpus/direction-v1.yml
+  # v2 (S-1, ADR 0040 decision 5) = v1 plus the mirrored loosening/tightening pairs: the same hard
+  # gates, and the `false_carry` block with the support behind each weakening class's zero. The
+  # false-carry count is reported, not a verdict here; admission is ADR 0040's input.
+  run cargo run -q -- bench bench/corpus/direction-v2.yml
   fi
 
 # The release check over this repository's own corpus: `req check` (ADR 0023). It reads the two

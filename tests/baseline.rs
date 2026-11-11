@@ -2558,6 +2558,7 @@ fn the_fast_run_skips_the_expensive_checks_and_never_reads_as_the_gate() {
         "PLAN cargo clippy",
         "external-v1",
         "direction-v1",
+        "direction-v2",
         // The rehearsal is kept in both modes: this is the full plan's half of the pin, so a
         // block moved into a fast-only branch would leave the fast assertion green while the
         // full gate stopped checking the page's claim.
