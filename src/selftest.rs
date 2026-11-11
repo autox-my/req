@@ -27,7 +27,7 @@ const PARITY_YAML: &str = include_str!("../bench/corpus/parity.yml");
 const REGISTRY_YAML: &str = include_str!("../aliases/subjects.yml");
 
 /// The rules version the address goldens below were recorded under.
-const GOLDEN_RULES_V: u32 = 8;
+const GOLDEN_RULES_V: u32 = 9;
 const _: () = assert!(
     GOLDEN_RULES_V == RULES_V,
     "RULES_V moved: regenerate the address goldens in src/selftest.rs deliberately, in the same commit (hashing spec section 5)"
@@ -104,6 +104,8 @@ fn field(
 const RESPOND_200: &str = "The system shall respond within 200 ms.";
 const RESPOND_500: &str = "The system shall respond within 500 ms.";
 const RESPOND_LT: &str = "The system shall respond in less than 200 ms.";
+const NO_MORE_12KN: &str = "The system shall apply no more than 12 kN to the pedal.";
+const NO_MORE_15KN: &str = "The system shall apply no more than 15 kN to the pedal.";
 const THREE_STANDARDS: &str =
     "The report shall cite one of the three standards, ISO 9001, IEC 61508 or IEC 62304.";
 const TWO_STANDARDS: &str =
@@ -128,6 +130,15 @@ pub fn known_answers() -> KnownAnswers {
                 None,
                 &[],
             ),
+            // R-1 (rules v9): "no more than" is an upper bound, never the bare "more than" (GT) with a stray "no".
+            field(
+                "The system shall respond in no more than 3 seconds.",
+                "SHALL",
+                "LE",
+                Some("3"),
+                Some("s"),
+                &[],
+            ),
             // ADR 0030: an enumerated "one of" is a set, sorted, with no number.
             field(
                 THREE_STANDARDS,
@@ -148,6 +159,11 @@ pub fn known_answers() -> KnownAnswers {
                 s("The system shall apply at most 12 kN to the pedal."),
                 s("The system shall apply at most 12000 N to the pedal."),
             ),
+            // R-1: "no more than" and "at most" are one bound.
+            (
+                s(NO_MORE_12KN),
+                s("The system shall apply at most 12 kN to the pedal."),
+            ),
             // ADR 0030: the order of a set's members is not meaning.
             (
                 s(THREE_STANDARDS),
@@ -162,6 +178,11 @@ pub fn known_answers() -> KnownAnswers {
             (
                 s("The system shall log a secret."),
                 s("The system shall not log a secret."),
+            ),
+            // R-1: an upper bound is not the strict lower bound on the same value.
+            (
+                s(NO_MORE_12KN),
+                s("The system shall apply more than 12 kN to the pedal."),
             ),
             (s(THREE_STANDARDS), s(TWO_STANDARDS)),
         ],
@@ -185,6 +206,11 @@ pub fn known_answers() -> KnownAnswers {
             ),
             (
                 s("The system shall apply at most 12 kN to the pedal."),
+                s("11f3a67a3ed7ac57bb0ee5b7f18575aa9b85ff1b2dff60ffdd7fff9da566cbd1"),
+            ),
+            // R-1: the same bytes as "at most 12 kN" above, by T1.5, not a fresh run's answer.
+            (
+                s(NO_MORE_12KN),
                 s("11f3a67a3ed7ac57bb0ee5b7f18575aa9b85ff1b2dff60ffdd7fff9da566cbd1"),
             ),
             (
@@ -226,6 +252,12 @@ pub fn known_answers() -> KnownAnswers {
                 a: s(THREE_STANDARDS),
                 b: s(TWO_STANDARDS),
                 expected: s("membership_narrowing"),
+            },
+            // R-1: raising a "no more than" bound loosens it (it was read as a tightening at rules v8).
+            DirectionRow {
+                a: s(NO_MORE_12KN),
+                b: s(NO_MORE_15KN),
+                expected: s("numeric_loosening"),
             },
         ],
         registry_yaml: s(REGISTRY_YAML),

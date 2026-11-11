@@ -54,6 +54,10 @@ equivalent:
     a: When a document is sent to a third-party provider, the provider shall be recorded in the findings file.
     b: The provider shall be recorded in the findings file when a document is sent to a third-party provider.
     source: leading condition, T1.8 (rules v8, issue #18) — a condition written first or last is the same condition on the same obligation, labelled from the spec
+  - id: E-012
+    a: The system shall complete the check no more than 3 seconds after the request.
+    b: The system shall complete the check at most 3 seconds after the request.
+    source: negated upper bound, T1.5 (rules v9, R-1) — "no more than N" means at most N, so the two spellings are one claim, labelled from the spec and from English
 
 not_equivalent:
   - id: N-001
@@ -128,3 +132,7 @@ not_equivalent:
     a: When the valve is open, the pump shall stop.
     b: Unless the valve is open, the pump shall stop.
     source: leading guard word, T1.8 (rules v8, issue #18) — when and unless are opposite guards, labelled by construction
+  - id: N-019
+    a: The system shall complete the check no more than 3 seconds after the request.
+    b: The system shall complete the check more than 3 seconds after the request.
+    source: negated upper bound, T1.5 (rules v9, R-1) — an upper bound (LE) against a strict lower bound (GT) on the same value are opposite obligations; the stray "no" must never be what tells them apart, labelled from the spec and from English

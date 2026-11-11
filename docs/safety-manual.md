@@ -7,7 +7,7 @@ already states about how req may be relied on, so that a reader deciding whether
 guarantees, their evidence and the limits side by side. Every statement points at the document or test that owns it; where this
 manual and its source disagree, the source is right and this page has a defect.
 
-Version of req described: the `rules_v 8` line (`req --version` says which build you hold). Maintained by one person; `0.1.0`.
+Version of req described: the `rules_v 9` line (`req --version` says which build you hold). Maintained by one person; `0.1.0`.
 
 ## 1. What req is for, and what it is not for
 
@@ -65,7 +65,7 @@ every ratification (ADR 0004); req never auto-merges and never rewrites a claim.
 | what is in the binary, and nothing forbidden is | `cargo deny` bans network crates anywhere in the graph, allows only reviewed licences and crates.io in every gate run; the bill of materials `docs/sbom.cdx.json` (CycloneDX 1.5, `scope` required/excluded) is drift-checked like a projection; advisories are checked weekly, not in the gate (ADR 0036) | `deny.toml`, `docs/sbom.cdx.json`, `tools/sbom.py`, `.github/workflows/audit.yml` |
 | a change is gated before it merges | one local gate (`scripts/check.sh`) and the same job in CI, required by branch protection; a human reads every pull request | `scripts/check.sh`, `.github/workflows/ci.yml`, ADR 0029 §7 |
 
-**What the headline numbers are.** At `rules_v 8`, per corpus and never pooled: the seed parity corpus (29 pairs) has FMR 0/18; the four
+**What the headline numbers are.** At `rules_v 9`, per corpus and never pooled: the seed parity corpus (31 pairs) has FMR 0/19; the four
 external corpora (other projects' real requirement prose, pinned by commit) have FMR 0/160, 0/227, 0/625 and 0/1595; the direction gold
 set classified 1012 of 1016 pairs correctly with no dangerous confusion. **These are labelled by construction** (the label is the
 mutation applied to a real statement). They are seed and self-corpus results plus other projects' prose; they are not an external

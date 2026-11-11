@@ -1,0 +1,846 @@
+{
+  "corpus": "bench/corpus/external-v2.yml",
+  "corpus_sha256": "49bc5ee74d0b4116b0eca64c0a73e9d2afba6de01ee898fdfddfa1e873d7831d",
+  "degraded": [],
+  "direction": {
+    "accuracy": null,
+    "checked": 0,
+    "correct": 0,
+    "dangerous_confusions": [],
+    "false_carry": {
+      "membership_widening": {
+        "admitted": false,
+        "count": 0,
+        "pairs": [],
+        "support": 0
+      },
+      "modality_weakening": {
+        "admitted": false,
+        "count": 0,
+        "pairs": [],
+        "support": 0
+      },
+      "numeric_loosening": {
+        "admitted": false,
+        "count": 0,
+        "pairs": [],
+        "support": 0
+      }
+    },
+    "hard_gate": "UNVERIFIABLE",
+    "mismatches": [],
+    "note": "a loosening reported as no change, or as the opposite direction, is the dangerous confusion — the direction analogue of a false merge. Accuracy is reported rather than gated: a harmless misread costs nothing, while a dangerous one costs a ratified loosening.",
+    "soft_target": 0.95,
+    "unclassifiable": [],
+    "unknown_labels": []
+  },
+  "fmr": {
+    "collapses": 0,
+    "hard_gate": "PASS",
+    "hit_pairs": [],
+    "not_equivalent_total": 227,
+    "rate": 0.0,
+    "structurally_unverifiable_ids": [
+      "N-ST-SDOC-SSS-61-MW",
+      "N-ST-SDOC-SSS-61-PF",
+      "N-ST-SDOC-SSS-61-PS",
+      "N-ST-SDOC-SSS-5-MW",
+      "N-ST-SDOC-SSS-5-PF",
+      "N-ST-SDOC-SSS-5-PS",
+      "N-ST-SDOC-SSS-49-MW",
+      "N-ST-SDOC-SSS-49-PF",
+      "N-ST-SDOC-SSS-49-PS",
+      "N-ST-SDOC-SSS-72-MW",
+      "N-ST-SDOC-SSS-72-PF",
+      "N-ST-SDOC-SSS-72-PS",
+      "N-ST-SDOC-SSS-79-MW",
+      "N-ST-SDOC-SSS-79-PF",
+      "N-ST-SDOC-SSS-79-PS",
+      "N-ST-SDOC-SSS-80-MW",
+      "N-ST-SDOC-SSS-80-PF",
+      "N-ST-SDOC-SSS-80-PS",
+      "N-ST-SDOC-SSS-86-MW",
+      "N-ST-SDOC-SSS-86-PF",
+      "N-ST-SDOC-SSS-86-PS",
+      "N-ST-SDOC-SSS-67-MW",
+      "N-ST-SDOC-SSS-67-PF",
+      "N-ST-SDOC-SSS-67-PS",
+      "N-ST-SDOC-SSS-77-MW",
+      "N-ST-SDOC-SSS-77-PF",
+      "N-ST-SDOC-SSS-77-PS",
+      "N-ST-SDOC-SSS-78-MW",
+      "N-ST-SDOC-SSS-78-PF",
+      "N-ST-SDOC-SSS-78-PS",
+      "N-DO-REQ004-MW",
+      "N-DO-REQ004-PF"
+    ],
+    "structurally_unverifiable_pairs": 32
+  },
+  "fsr": {
+    "hit_pairs": [],
+    "rate": 0.0,
+    "splits": 0,
+    "structured_equivalent_total": 150
+  },
+  "lints": [
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "E-ST-SDOC-SSS-61-MS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "E-ST-SDOC-SSS-61-MS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "E-ST-SDOC-SSS-61-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "E-ST-SDOC-SSS-61-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "E-ST-SDOC-SSS-5-MS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "E-ST-SDOC-SSS-5-MS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "E-ST-SDOC-SSS-5-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "E-ST-SDOC-SSS-5-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-49-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-49-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-49-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-49-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-72-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-72-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-72-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-72-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-79-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-79-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-79-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-79-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-80-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-80-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-80-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-80-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-80-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-80-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-80-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-80-CP",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-86-MS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-86-MS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-86-CP",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "E-ST-SDOC-SSS-86-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "E-ST-SDOC-SSS-67-MS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "E-ST-SDOC-SSS-67-MS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "E-ST-SDOC-SSS-67-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "E-ST-SDOC-SSS-67-CP",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-77-MS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-77-MS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-77-CP",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "E-ST-SDOC-SSS-77-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "E-ST-SDOC-SSS-78-MS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "E-ST-SDOC-SSS-78-MS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "E-ST-SDOC-SSS-78-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "E-ST-SDOC-SSS-78-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "E-DO-REQ004-EM",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "E-DO-REQ004-EM",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "E-DO-REQ004-MS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "E-DO-REQ004-MS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "E-DO-REQ004-CP",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "E-DO-REQ004-CP",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-MW",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-MW",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-PF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-PF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-PS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, requirement, field, set, -, uid, -, status, -, title, -, statement, -, rationale, -, comment, -, relations, connections, with, other, requirements",
+      "pair": "N-ST-SDOC-SSS-61-PS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-MW",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-MW",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-PF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-PF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-PS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "containing, document",
+      "pair": "N-ST-SDOC-SSS-5-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-49-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-72-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"easy\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-79-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-80-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"smooth\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-80-PS",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-MW",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-MW",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PF",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PF",
+      "side": "b"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PS",
+      "side": "a"
+    },
+    {
+      "code": "multiple_obligations",
+      "detail": "a second obligation follows; claim-format requires one obligation per claim",
+      "pair": "N-ST-SDOC-SSS-86-PS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-MW",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-MW",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-PF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-PF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-PS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "following, operating, systems, -, linux, -, windows, -, macos",
+      "pair": "N-ST-SDOC-SSS-67-PS",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-MW",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-MW",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PF",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PF",
+      "side": "b"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PS",
+      "side": "a"
+    },
+    {
+      "code": "untestable_qualifier",
+      "detail": "\"modern\" is not measurable; state a bound or leave the claim unstructured",
+      "pair": "N-ST-SDOC-SSS-77-PS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-MW",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-MW",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-PF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-PF",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-PS",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "61508",
+      "pair": "N-ST-SDOC-SSS-78-PS",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "N-DO-REQ004-MW",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "N-DO-REQ004-MW",
+      "side": "b"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "N-DO-REQ004-PF",
+      "side": "a"
+    },
+    {
+      "code": "uncovered_content",
+      "detail": "linkable, text",
+      "pair": "N-DO-REQ004-PF",
+      "side": "b"
+    }
+  ],
+  "pairs_total": 405,
+  "rules_v": 9,
+  "schema": "req.bench.result/1",
+  "tier2": {
+    "candidates": 28,
+    "collapsed_at_tier1": 17,
+    "ids": [
+      "E-ST-SDOC-SSS-61-MS",
+      "E-ST-SDOC-SSS-61-CP",
+      "E-ST-SDOC-SSS-5-MS",
+      "E-ST-SDOC-SSS-5-CP",
+      "E-ST-SDOC-SSS-49-MS",
+      "E-ST-SDOC-SSS-49-CP",
+      "E-ST-SDOC-SSS-72-MS",
+      "E-ST-SDOC-SSS-72-CP",
+      "E-ST-SDOC-SSS-79-MS",
+      "E-ST-SDOC-SSS-79-CP",
+      "E-ST-SDOC-SSS-80-MS",
+      "E-ST-SDOC-SSS-80-CP",
+      "E-ST-SDOC-SSS-86-MS",
+      "E-ST-SDOC-SSS-86-CP",
+      "E-ST-SDOC-SSS-67-MS",
+      "E-ST-SDOC-SSS-67-CP",
+      "E-ST-SDOC-SSS-77-MS",
+      "E-ST-SDOC-SSS-77-CP",
+      "E-ST-SDOC-SSS-78-MS",
+      "E-ST-SDOC-SSS-78-CP",
+      "E-DO-REQ002-CP",
+      "E-DO-REQ004-EM",
+      "E-DO-REQ004-MS",
+      "E-DO-REQ004-CP",
+      "E-DO-REQ006-CP",
+      "E-DO-REQ010-CP",
+      "E-DO-REQ018-CP",
+      "E-DO-REQ019-CP"
+    ],
+    "note": "pairs needing the provider funnel; excluded from the FSR headline by design"
+  },
+  "verdict": "PASS"
+}

@@ -4,7 +4,7 @@ Paste the block below into your project's `AGENTS.md` (or whatever instruction f
 reads). It is the invariant set from req's own agent rules, cut to what an adopter's agent needs.
 
 ```markdown
-- Use the `req` on `PATH` only after `req --version` shows `claim_schema req.claim/2` and `rules_v 8` (and `built from` the rev your project pins). Anything else is an older or newer build: stop and report it; do not work around it.
+- Use the `req` on `PATH` only after `req --version` shows `claim_schema req.claim/2` and `rules_v 9` (and `built from` the rev your project pins). Anything else is an older or newer build: stop and report it; do not work around it.
 - To find a command, run `req --help`; `req <command> --help` is that command's contract, with its `exit:` line (both work with no corpus). Act on the exit code and the named line, not on prose. The loop is `docs/adopting.md` § *For an agent*.
 - The claim is the unit: one obligation per file under `claims/`, one file per claim.
 - A claim is authored (`req.claim/2`): its parse, canonical form and address are derived from `statement` at load and stored nowhere — never add `address`, `canonical` or a parse slot to a claim file.
