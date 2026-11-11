@@ -3,7 +3,7 @@
 Extends ADR 0003 (variants are selectors), ADR 0007 (collapse tiers), ADR 0021 (a provider proposes one pair) and ADR 0039
 (structural completeness). Nothing is superseded. No rules change, no claim-schema change, no Baseline envelope change.
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it. Asked for by the owner on
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-11, GitHub PR #53). Asked for by the owner on
 2026-11-11 ("check also in design any remaining gaps"; `docs/design.md` §4 row 8), and sequenced by the owner after the
 unrelated claims were resolved. Date proposed: 2026-11-11. This ADR decides the contract; the code follows in its own pull
 request, test first, with the measurement in decision 6.

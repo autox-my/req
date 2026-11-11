@@ -4,7 +4,7 @@ Extends ADR 0005 (authority is a signed Decision), ADR 0010 (minisign over a com
 time) and ADR 0033 (a consumer pins an external corpus). Nothing is superseded. **No manifest envelope change**: every party
 signs the same manifest bytes. No rules change, no claim-schema change.
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it. Asked for by the owner on
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-11, GitHub PR #52). Asked for by the owner on
 2026-11-11 ("Multi-party collaboration: role-based access, contractual sign-off workflows, and cross-organization visibility
 — the features needed for OEM↔Tier-1 co-development"), and sequenced by the owner after the unrelated claims were resolved.
 Date proposed: 2026-11-11. This ADR decides the contract; the code follows in its own pull request, test first.

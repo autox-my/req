@@ -7,6 +7,26 @@
     "checked": 1016,
     "correct": 1012,
     "dangerous_confusions": [],
+    "false_carry": {
+      "membership_widening": {
+        "admitted": false,
+        "count": 0,
+        "pairs": [],
+        "support": 0
+      },
+      "modality_weakening": {
+        "admitted": false,
+        "count": 0,
+        "pairs": [],
+        "support": 1
+      },
+      "numeric_loosening": {
+        "admitted": false,
+        "count": 0,
+        "pairs": [],
+        "support": 5
+      }
+    },
     "hard_gate": "PASS",
     "mismatches": [
       "D-PR-P8:r375-NL: expected numeric_loosening, reported scope_divergence",

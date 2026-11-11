@@ -87,6 +87,10 @@ pub struct Evaluation {
     /// Labels no `Direction` answers to. A misspelled label would otherwise switch the
     /// whole check off while every number looked fine.
     pub direction_label_errors: Vec<String>,
+    /// Per weakening class: the false carries and the support behind the zero (ADR 0040
+    /// decision 5). Always the three classes, in `WEAKENING_CLASSES` order, so a class with no
+    /// pairs is *present and not admitted* rather than absent. Reported, not a gate verdict.
+    pub false_carry: Vec<FalseCarry>,
     pub rows: Vec<String>,
     pub verdict: Verdict,
     /// The FMR gate, evaluated once with `verdict` so the record cannot re-derive it.
@@ -131,9 +135,60 @@ impl std::fmt::Display for Verdict {
     }
 }
 
+/// The fewest scored opposing pairs a weakening class needs behind a zero false-carry count
+/// before it is `admitted` (ADR 0040 implementation note; owner go-ahead 2026-11-11). Zero
+/// out of five is not evidence; 100 is the floor the owner agreed.
+pub const MIN_FALSE_CARRY_SUPPORT: usize = 100;
+
+/// One weakening class's false-carry record (ADR 0040 decision 5): a weakening class may
+/// carry a satisfaction link only if nothing that is not a weakening is classified into it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FalseCarry {
+    /// The weakening class the carry is counted under — the **reported** one.
+    pub class: &'static str,
+    /// Pairs labelled a non-weakening class and reported as `class`.
+    pub count: usize,
+    /// Scored pairs labelled the opposite of `class` (strengthening, tightening, narrowing).
+    pub support: usize,
+    /// `count == 0` **and** `support >= MIN_FALSE_CARRY_SUPPORT`.
+    pub admitted: bool,
+    /// The carries, named: `<pair id>: expected <label>, reported <class>`.
+    pub pairs: Vec<String>,
+}
+
+/// The weakening classes and, for each, the label that is its opposite.
+fn weakening_classes() -> [(crate::compare::Direction, crate::compare::Direction); 3] {
+    use crate::compare::Direction::*;
+    [
+        (ModalityWeakening, ModalityStrengthening),
+        (NumericLoosening, NumericTightening),
+        (MembershipWidening, MembershipNarrowing),
+    ]
+}
+
+/// Labels a weakening class must never be reported for: a strengthening, a tightening, a
+/// polarity flip or a scope change.
+fn is_non_weakening_label(label: crate::compare::Direction) -> bool {
+    use crate::compare::Direction::*;
+    matches!(
+        label,
+        ModalityStrengthening
+            | NumericTightening
+            | MembershipNarrowing
+            | PolarityFlip
+            | ScopeNarrowing
+            | ScopeWidening
+            | ScopeDivergence
+    )
+}
+
 /// The direction tally, carried through both pair loops as one value.
 #[derive(Default)]
 struct DirectionTally {
+    /// (reported class, `pair: expected, reported`) for each false carry.
+    carries: Vec<(crate::compare::Direction, String)>,
+    /// Expected labels of the scored pairs, for the support counts.
+    scored_labels: Vec<crate::compare::Direction>,
     checked: usize,
     correct: usize,
     dangerous: Vec<String>,
@@ -164,6 +219,18 @@ fn record_direction(
         return;
     }
     tally.checked += 1;
+    tally.scored_labels.push(expected);
+    if is_non_weakening_label(expected) && weakening_classes().iter().any(|(w, _)| *w == reported) {
+        tally.carries.push((
+            reported,
+            format!(
+                "{}: expected {}, reported {}",
+                pair.id,
+                expected.as_str(),
+                reported.as_str()
+            ),
+        ));
+    }
     if reported == expected {
         tally.correct += 1;
         return;
@@ -267,8 +334,32 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
     );
     let verdict = if direction_defect { Verdict::Fail } else { fmr };
     let direction = direction_gate(tally.checked, direction_defect);
+    let false_carry = weakening_classes()
+        .iter()
+        .map(|(weakening, opposite)| {
+            let pairs: Vec<String> = tally
+                .carries
+                .iter()
+                .filter(|(reported, _)| reported == weakening)
+                .map(|(_, named)| named.clone())
+                .collect();
+            let support = tally
+                .scored_labels
+                .iter()
+                .filter(|l| *l == opposite)
+                .count();
+            FalseCarry {
+                class: weakening.as_str(),
+                count: pairs.len(),
+                support,
+                admitted: pairs.is_empty() && support >= MIN_FALSE_CARRY_SUPPORT,
+                pairs,
+            }
+        })
+        .collect();
 
     Evaluation {
+        false_carry,
         verdict,
         fmr_gate: fmr,
         direction_gate: direction,
@@ -384,6 +475,21 @@ pub fn run(corpus_path: Option<&str>, root: &std::path::Path) -> i32 {
     let direction_unclassifiable = ev.direction_unclassifiable;
     let direction_mismatches = ev.direction_mismatches;
     let direction_label_errors = ev.direction_label_errors;
+    let false_carry: serde_json::Map<String, serde_json::Value> = ev
+        .false_carry
+        .iter()
+        .map(|c| {
+            (
+                c.class.to_string(),
+                json!({
+                    "count": c.count,
+                    "support": c.support,
+                    "admitted": c.admitted,
+                    "pairs": c.pairs,
+                }),
+            )
+        })
+        .collect();
     // The FMR gate comes from `evaluate` with the verdict: the record reads what was
     // evaluated instead of calling `fmr_gate` a second time from the same numbers, and
     // it is a `Verdict`, not a literal, so the vocabulary has one home in
@@ -438,6 +544,10 @@ pub fn run(corpus_path: Option<&str>, root: &std::path::Path) -> i32 {
             "mismatches": direction_mismatches,
             "unclassifiable": direction_unclassifiable,
             "unknown_labels": direction_label_errors,
+            // ADR 0040 decision 5. Reported, not gated: admission of a weakening class to carry
+            // a satisfaction link is that ADR's input. `admitted` is `count == 0` and
+            // `support >= MIN_FALSE_CARRY_SUPPORT`; a class with no pairs is present, `admitted: false`.
+            "false_carry": false_carry,
             "note": "a loosening reported as no change, or as the opposite direction, is the dangerous confusion — the direction analogue of a false merge. Accuracy is reported rather than gated: a harmless misread costs nothing, while a dangerous one costs a ratified loosening."
         },
         "tier2": {

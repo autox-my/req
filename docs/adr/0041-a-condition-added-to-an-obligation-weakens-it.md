@@ -3,7 +3,7 @@
 Amends ADR 0026 §2 (the `weakened` / `tightened` mapping) and ADR 0030 §6's last clause ("`is_loosening` includes the
 widening"). No class is renamed, no corpus label changes, no `RULES_V` bump, no address moves.
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it, together with the fix. Asked for
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it, together with the fix (2026-11-11, GitHub PR #50). Asked for
 by the owner on 2026-11-11 ("write the ADR 0026 amendment and the fix next"), after ADR 0040's *Consequences* recorded the
 finding. Date proposed: 2026-11-11.
 

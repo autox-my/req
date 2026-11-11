@@ -7,6 +7,26 @@
     "checked": 0,
     "correct": 0,
     "dangerous_confusions": [],
+    "false_carry": {
+      "membership_widening": {
+        "admitted": false,
+        "count": 0,
+        "pairs": [],
+        "support": 0
+      },
+      "modality_weakening": {
+        "admitted": false,
+        "count": 0,
+        "pairs": [],
+        "support": 0
+      },
+      "numeric_loosening": {
+        "admitted": false,
+        "count": 0,
+        "pairs": [],
+        "support": 0
+      }
+    },
     "hard_gate": "UNVERIFIABLE",
     "mismatches": [],
     "note": "a loosening reported as no change, or as the opposite direction, is the dangerous confusion — the direction analogue of a false merge. Accuracy is reported rather than gated: a harmless misread costs nothing, while a dangerous one costs a ratified loosening.",
