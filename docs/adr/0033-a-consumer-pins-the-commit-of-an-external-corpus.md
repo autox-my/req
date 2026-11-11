@@ -1,6 +1,6 @@
 # 0033. A consumer pins the commit of an external corpus: `req pin`
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it; issue #16 (opened from an adopter
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-09, GitHub PR #30); issue #16 (opened from an adopter
 evaluation whose operating policy lives in a separate repository). Date proposed: 2026-11-09. **Extends [ADR 0012](0012-runtime-corpus-root.md)**
 (the corpus root is a runtime parameter) and reuses the git boundary of [ADR 0026](0026-req-diff-what-changed-in-meaning-between-two-revisions.md);
 adds a command and changes no existing contract, no `RULES_V`, no address.

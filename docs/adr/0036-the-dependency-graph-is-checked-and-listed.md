@@ -1,6 +1,6 @@
 # 0036. The dependency graph is checked in the gate, audited on a schedule, and listed as a bill of materials
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it; asked for by the owner on 2026-11-10
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-10, GitHub PR #37); asked for by the owner on 2026-11-10
 (item 6 of the qualification-readiness package; no issue). Date proposed: 2026-11-10. Adds checks and a generated file; changes no
 engine behaviour, no `RULES_V`, no address, and adds no dependency to the crate.
 

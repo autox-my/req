@@ -1,6 +1,7 @@
 # Design of record — req
 
-Status: v0 (2026-10-07).
+Status: v0 (2026-10-07); implementation state recorded 2026-11-11 (§4 *State* column, §5 status marks,
+§6 items 6–8). The design itself is unchanged by that revision: it records what is built against it.
 This document exists because until now the full synthesis lived only in conversation,
 which is not a system of record. Complements [CONTEXT.md](../CONTEXT.md) (the glossary)
 and the ADRs — most paths (docs/adr/0001-the-unit-is-a-claim.md … 0006-friction-zones.md)
@@ -69,37 +70,44 @@ A perfect tool is defined by the tensions it resolves, not the features it lists
   Working set (Gap: never a continuous file sync bridge).
 - **L4 Views** — `render --audience X --jurisdiction Y --baseline vN`: spec, trace
   matrix, V-model evidence graph, audit packet, roadmap. Compiled, never maintained.
+  (*State, 2026-11-11:* built as separate commands over one selection — `req render` (spec),
+  `req trace` (matrix), `req audit` (packet against a Baseline) — each with `--out`/`--check` where it is
+  a committed projection (ADR 0018). `--audience`, `--jurisdiction`, the V-model evidence graph and the
+  roadmap view are not built.)
 - **L5 Protocol** — open object model; ReqIF interop (incumbents become clients);
   federated libraries for shared/regulatory claims.
 
 ## 4. Pain → mechanism (consolidated)
 
-| # | Pain | Mechanism |
-|---|---|---|
-| 1 | Centralized bottleneck, no offline | Git-native serialization; full graph local; L0 works offline |
-| 2 | Spec/code desync | Same repo, same branch; `checkout` moves both; atomic PR |
-| 3 | Ticket state global, branch state local | Claim state is branch- and selector-scoped |
-| 4 | Non-engineers can't use git | PM UI on the claim model; edits are Proposals in a Working set; one commit per ratified logical Decision — *never* continuous two-way sync |
-| 5 | Concurrent-edit data loss | Claim-level granularity + explicit proposal state; no last-write-wins |
-| 6 | Textual merge on prose | Structural merge + semantic proposals, human-ratified |
-| 7 | Duplicate requirements | Semantic content-addressing (the technical bet) |
-| 8 | Contradictions found in the field | Graph contradiction queries; Conflict is a first-class object |
-| 9 | Ambiguous / untestable claims | Testability lint: unmeasurable bound, vague verbs, unquantified ``shall`` |
-| 10 | Rationale rot | Rationale is an object: source, date, rejected alternatives, assumptions |
-| 11 | Stale traceability matrices | Trace is a query; never stale by construction |
-| 12 | Trace skipped under pressure | CI Gate — scoped to traceable targets, demands evidence not ID presence |
-| 13 | Audit archaeology | Signed Baseline; `render --audience auditor` compiles the packet |
-| 14 | E-signature / 21 CFR Part 11 | Signed Decisions: identity, authority, meaning, timestamp |
-| 15 | Rewritable history | Append-only refs + signatures + optional external anchoring |
-| 16 | Variant explosion | Applicability selectors over the 150% model (the commercial bet) |
-| 17 | Cross-product shared/regulatory claims | Federated claim libraries; ReqIF interop; claims as dependencies |
-| 18 | Impact guesswork | `req impact` traverses relations + evidence + selectors |
-| 19 | Air-gap / ITAR | File-native, self-hosted, offline by default |
-| 20 | Lock-in | Open object model; the repo is the migration artifact |
-| 21 | Auditor unfamiliarity | DO-330 tool qualification + safety manual as first-class deliverable (deferred: §9) |
-| 22 | Scale (100k+ claims) | Indexed graph; specs are projections |
-| 23 | AI accelerates prose rot | AI as quality gate + semantic engine — never author of record |
-| 24 | Roadmap vs spec | Views compiled over the same graph |
+| # | Pain | Mechanism | State (2026-11-11) |
+|---|---|---|---|
+| 1 | Centralized bottleneck, no offline | Git-native serialization; full graph local; L0 works offline | built — REQ-0012; air-gapped is the release variant |
+| 2 | Spec/code desync | Same repo, same branch; `checkout` moves both; atomic PR | built — projections checked by `req check` (ADR 0018/0023) |
+| 3 | Ticket state global, branch state local | Claim state is branch- and selector-scoped | built — selectors (ADR 0003); branch scope is git's |
+| 4 | Non-engineers can't use git | PM UI on the claim model; edits are Proposals in a Working set; one commit per ratified logical Decision — *never* continuous two-way sync | **not built** — no PM UI, no Working set |
+| 5 | Concurrent-edit data loss | Claim-level granularity + explicit proposal state; no last-write-wins | partial — one claim per file, `req next-id --reserve`; no explicit proposal state |
+| 6 | Textual merge on prose | Structural merge + semantic proposals, human-ratified | **not built** — §5 step 6 |
+| 7 | Duplicate requirements | Semantic content-addressing (the technical bet) | built — the meaning fingerprint, FMR = 0 measured by `req bench` (drift signal, not a paraphrase collapser: README *Status*) |
+| 8 | Contradictions found in the field | Graph contradiction queries; Conflict is a first-class object | **not built** — no contradiction query, no Conflict object |
+| 9 | Ambiguous / untestable claims | Testability lint: unmeasurable bound, vague verbs, unquantified ``shall`` | built — `req canon` lints (`untestable_comparator`, `untestable_qualifier`, `ambiguous_modality`, `uncovered_content`) |
+| 10 | Rationale rot | Rationale is an object: source, date, rejected alternatives, assumptions | built — `rationale_present`, line anchors checked |
+| 11 | Stale traceability matrices | Trace is a query; never stale by construction | built — `req trace`; `docs/trace.md` checked (ADR 0018 amendment) |
+| 12 | Trace skipped under pressure | CI Gate — scoped to traceable targets, demands evidence not ID presence | built — `req gate` `tests_linked` over JUnit reports (ADR 0019/0024); claim→test only |
+| 13 | Audit archaeology | Signed Baseline; `render --audience auditor` compiles the packet | built — signed Baseline + `req audit` (not `render --audience`) |
+| 14 | E-signature / 21 CFR Part 11 | Signed Decisions: identity, authority, meaning, timestamp | partial — Baselines signed (ADR 0010/0016); Decisions hash-chained, not individually signed; `role` is free text (§9) |
+| 15 | Rewritable history | Append-only refs + signatures + optional external anchoring | partial — Decision hash chain, attested by the Baseline (ADR 0016); no external anchoring |
+| 16 | Variant explosion | Applicability selectors over the 150% model (the commercial bet) | built — tri-state selectors, `in` operator (ADR 0030) |
+| 17 | Cross-product shared/regulatory claims | Federated claim libraries; ReqIF interop; claims as dependencies | partial — ReqIF and needs.json readers draft claims (ADR 0027/0028); external corpus pinned (ADR 0033); no federation, no writer |
+| 18 | Impact guesswork | `req impact` traverses relations + evidence + selectors | partial — `req impact` over relations, each dependent's state in the selection; evidence not traversed |
+| 19 | Air-gap / ITAR | File-native, self-hosted, offline by default | built — no network in the core |
+| 20 | Lock-in | Open object model; the repo is the migration artifact | built — plain YAML, open schema |
+| 21 | Auditor unfamiliarity | DO-330 tool qualification + safety manual as first-class deliverable (deferred: §9) | partial — safety manual draft, `req selftest`, reproducible build, release record (ADR 0034/0035/0037); no qualification |
+| 22 | Scale (100k+ claims) | Indexed graph; specs are projections | **not built** — measured linear, trigger recorded (§9.1) |
+| 23 | AI accelerates prose rot | AI as quality gate + semantic engine — never author of record | built — `req propose`, one pair, never author of record (ADR 0021) |
+| 24 | Roadmap vs spec | Views compiled over the same graph | **not built** |
+| 25 | Incomplete requirements, silent omissions | Report what req can prove structurally: a claim no release examines, no Baseline covers, or no relation joins; never assert "complete" | **proposed** — ADR 0039, in its own pull request |
+| 26 | Design satisfaction unverified | A design or code element states which claims it satisfies; the link is checked against meaning drift | **not built** — §6 item 7 |
+| 27 | Multi-party co-development (OEM ↔ supplier) | Signed, pinned snapshots exchanged between repositories; sign-off by named parties | **not built** — §6 item 8; ADR 0033 is the one building block |
 
 ## 5. Build order and gates
 
@@ -157,12 +165,12 @@ A perfect tool is defined by the tensions it resolves, not the features it lists
    ADR 0021 the core keeps the single-pair `req propose` seam; the corpus-wide funnel is research in
    `experiments/tier2/`.)*
 6. **Structural merge + conflict classification** (needs direction, hence the canonical
-   layer).
-7. **Selectors + tri-state scope** (ADR 0003) — the commercial differentiator.
+   layer). *Not built:* direction of change exists (`req compare`, `req diff`); the 3-way merge does not.
+7. **Selectors + tri-state scope** (ADR 0003) — the commercial differentiator. *Built.*
 8. **Decision log + hash chain + verify** (`VALID` / `TAMPERED` / `UNVERIFIABLE` as three
-   distinct outcomes).
-9. **`render` / `trace` / `impact` / `gate`.**
-10. CLI, then the porcelain split.
+   distinct outcomes). *Built* (`req decision`).
+9. **`render` / `trace` / `impact` / `gate`.** *Built*, with `req check` folding them (ADR 0023).
+10. CLI, then the porcelain split. *CLI built*; the porcelain is not started.
 
 ## 6. Open problems, mapped to their tension
 
@@ -171,6 +179,16 @@ A perfect tool is defined by the tensions it resolves, not the features it lists
 3. Concurrency on legally-weighted prose → tension 5. Name the policy; defend it to an auditor.
 4. Tool qualification (DO-330 / tool-confidence) → §9; deferred deliberately, not denied.
 5. Buyer ≠ sufferer → bottom-up via the code link; top-down via the audit packet.
+6. Completeness → no oracle in the repository. req can prove structural omissions and must not claim more
+   (ADR 0039, proposed).
+7. Design satisfaction → verification reaches code only through linked tests; no design element or
+   *satisfies* link exists. Standard practice (OpenFastTrace `Covers:`/`Needs:` with an authored revision;
+   Doorstop links that store the parent's text fingerprint and turn *suspect* on any edit) is the baseline to
+   beat; req's candidate edge is a link stamped with the meaning fingerprint and judged by direction of
+   change. Needs its own ADR.
+8. Multi-party collaboration → one repository, one signing key, a free-text `role`. ADR 0005's "the tool must
+   model roles and authority" is not yet met. Access control stays with the git host; what req owes is
+   sign-off by named parties and exchange of signed, pinned snapshots.
 
 ## 7. Dogfooding — req manages req
 
@@ -218,7 +236,7 @@ target *stops* rather than starts.
 - **What it is, at what scale.** Their own telemetry: ~2,500 code changes merged per day in May
   2026, over 30,000/day by September; a main-branch history approaching 100 GB, whose compressed
   working tree exceeds 25 GB; ≈25 million CI checkouts a day. Their problem is *data movement and
-  materialisation*. req reads 21 small YAML files. The regimes do not overlap, and none of their
+  materialisation*. req reads a few dozen small YAML files (39 claims on 2026-11-11). The regimes do not overlap, and none of their
   numbers is a target req grows into.
 - **An inverted assumption — a divergence, not a lag.** Scion is designed for clients that are
   always online, and the article says that git's offline-distributed strengths had become part
@@ -247,7 +265,9 @@ which is measured on `bench/` corpora — an unrelated system's success falsifie
 - Per-Decision signatures. Baselines are signed with minisign over a committed trust file (ADR 0010),
   and the signed Baseline attests the decision chain's head and length (ADR 0016); an individual
   Decision record is hash-chained but not itself signed, and its `actor` is an asserted name.
-- ReqIF interop, federation, PM web UI — after the plumbing gates pass.
+- ReqIF interop, federation, PM web UI — after the plumbing gates pass. (*2026-11-11:* the ReqIF and
+  needs.json **readers** exist as drafting tools, ADR 0027/0028; a writer, federation and the PM UI remain
+  deferred.)
 
 The Scion reading in §8 re-opened two deferrals and made a third question answerable. They are
 recorded here with the trigger — or, for the index, the conditions — that would make each current

@@ -3,7 +3,7 @@
 Amends ADR 0025 (§1, the `build-info` asset: "text, informational only") and ADR 0034 (the selftest was a check an adopter runs; it is now
 also one the release runs before it writes an asset).
 
-**Status: proposed** — the owner ratifies it by merging the pull request that carries it; asked for by the owner on 2026-11-10
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-10, GitHub PR #39); asked for by the owner on 2026-11-10
 (item 8 of the qualification-readiness package; no issue). Date proposed: 2026-11-10. Changes what a release contains, not what the
 engine computes: no `RULES_V` change, no address moves, no change to the engine.
 
