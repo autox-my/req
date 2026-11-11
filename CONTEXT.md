@@ -214,3 +214,13 @@ Changes made before a decision; deliberately friction-free.
 
 **Decision boundary**:
 The point at which a change acquires authority; deliberately high-friction and auditable.
+
+**Party**:
+An organisation or function whose keys may sign a Baseline (`oem`, `acme-tier1`). Each key carries one
+party and one role, and the role is the meaning of every signature the key makes (ADR 0042).
+_Avoid_: user, account (a party is held by keys, not by a forge login)
+
+**Signing policy**:
+The signatures a Baseline needs before it verifies — one `<party> <role>` line per signature, in
+`.req/signing`; an unmet line is UNVERIFIABLE, awaiting that party (ADR 0042).
+_Avoid_: sign-off workflow, approval chain
