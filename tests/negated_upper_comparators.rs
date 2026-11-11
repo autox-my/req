@@ -91,3 +91,23 @@ fn no_more_than_and_more_than_differ() {
         address("The system shall complete the check more than 3 seconds after the request.")
     );
 }
+
+/// Review R-1-review-1 (MEDIUM): `not fewer than` was the last unmirrored negated form — the table
+/// had `no fewer than` and `not less than` (GE) but not it, so `fewer than` (LT) matched inside it and a
+/// raised floor read as a loosening. Oracle: English — "not fewer than 3" is "at least 3".
+#[test]
+fn not_fewer_than_is_a_lower_bound() {
+    let form = canon("The system shall store not fewer than 3 records.");
+    assert_eq!(form.operator, Some(req::canon::Comp::Ge), "{form:?}");
+    assert_eq!(
+        dir(
+            "The system shall store not fewer than 3 records.",
+            "The system shall store not fewer than 4 records."
+        ),
+        "numeric_tightening"
+    );
+    assert_eq!(
+        address("The system shall store not fewer than 3 records."),
+        address("The system shall store at least 3 records.")
+    );
+}

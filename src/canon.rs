@@ -721,6 +721,7 @@ const COMPARATOR_PHRASES: &[(&str, Comp)] = &[
     ("no less than", Comp::Ge),
     ("not less than", Comp::Ge),
     ("no fewer than", Comp::Ge),
+    ("not fewer than", Comp::Ge),
     ("greater than", Comp::Gt),
     ("more than", Comp::Gt),
     ("exceeds", Comp::Gt),

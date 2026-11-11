@@ -38,7 +38,7 @@ from build_external import (
 # inside "no less than" as an upper one, so the labels agreed with the parser's wrong reading).
 UPPER_WORDS = ("within", "at most", "no later than", "less than", "fewer than", "under",
                "no more than", "not more than", "no greater than", "not greater than")
-LOWER_WORDS = ("at least", "no less than", "not less than", "no fewer than", "greater than",
+LOWER_WORDS = ("at least", "no less than", "not less than", "no fewer than", "not fewer than", "greater than",
                "more than")
 # A number preceded by a backslash is an escape sequence ("\\92s", an escaped quote and an s), not a
 # quantity: it matched as 92 seconds and produced pairs that change no bound at all.
@@ -369,6 +369,7 @@ def self_check() -> int:
         ("The system shall store no less than 3 records.", "lower"),
         ("The system shall store not less than 3 records.", "lower"),
         ("The system shall store no fewer than 3 records.", "lower"),
+        ("The system shall store not fewer than 3 records.", "lower"),
         ("The system shall respond more than 3 seconds.", "lower"),
         ("The system shall respond in less than 3 seconds.", "upper"),
         ("The system shall respond within 3 seconds.", "upper"),

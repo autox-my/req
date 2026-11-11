@@ -54,15 +54,15 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
   under-specified (bare ``dB``, no reference) is **NOT normalized** → lint
   `untestable_quantity`.
 - **T1.5 Comparators** — closed table:
-  - ``within`` / ``shall not exceed`` / ``no later than`` / ``at most`` → **LE**;
+  - ``within`` / ``not exceed`` / ``no later than`` / ``at most`` / ``up to`` → **LE**;
     and, since rules v9 (R-1), the negated upper bounds ``no more than`` / ``not more than`` /
-    ``no greater than`` / ``not greater than`` → **LE** (the mirrors of the lower-bound pair
+    ``no greater than`` / ``not greater than`` → **LE**, and ``not fewer than`` → **GE** (the mirrors of the lower-bound pair
     below; the bare ``more than`` / ``greater than`` matched *inside* them and read an upper
     bound as a lower one, so a loosening was reported as a tightening). The longest phrase wins.
-  - ``less than`` → **LT**  ← *the classic trap: LE and LT are different claims*
-  - ``at least`` / ``no less than`` / ``not less than`` / ``no fewer than`` → **GE** −
+  - ``less than`` / ``fewer than`` / ``in less than`` / ``in fewer than`` → **LT**  ← *the classic trap: LE and LT are different claims*
+  - ``at least`` / ``no less than`` / ``not less than`` / ``no fewer than`` / ``not fewer than`` → **GE** −
     ``greater than`` / ``more than`` / ``exceeds`` → **GT**
-  - bare ``is`` between bound and value → **EQ**. Ambiguous comparators ("fast",
+  - ``equal to`` / ``exactly``, or bare ``is`` between bound and value → **EQ**. Ambiguous comparators ("fast",
     "as soon as possible") → never guessed → lint `untestable_comparator`. The lint
     fires only for a word that could plausibly *be* a comparator (a curated list): a
     standard's name before a number ("IEC 61508") is not one, and linting it produced
@@ -356,8 +356,8 @@ as `req gate` lets Fail outrank Unverifiable.
     ("no more than 3 seconds": the two labels had been mutated the wrong way round, so each pair's `b` now
     holds the other's, and the mirrors likewise).
   - **false carry** (`direction-v2`): `numeric_loosening` 0 false carries, support **9** (unchanged from v8;
-    admitted: no, support below 100). The fix does not move it: the two repaired pairs were already scored, and the
-    two dropped ones were unclassifiable. More support needs more numeric source statements, a different unit.
+    admitted: no, support below 100). The fix does not move it: the two repaired pairs (`D-PR-P11:r545-NL/-NT`) and the
+    two dropped ones were unclassifiable at v8 and stay so, so none of them ever fed the support. More support needs more numeric source statements, a different unit.
     `modality_weakening` stays 0 over 177; `membership_widening` 0 over 0.
   - **dogfood** — no claim in this repository holds `no more than`, `not more than`, `no greater than` or
     `not greater than` (`req canon`: 40 claims, 0 flags), so there is **no re-canonicalization candidate**; only
