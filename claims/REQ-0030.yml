@@ -13,4 +13,8 @@ rationale:
   rejected_alternatives:
     - judging drift across two rule sets, which would blame claims for a change the rules made
   assumptions: []
-relations: []
+relations:
+  - type: derives-from
+    to: REQ-0041
+  - type: derives-from
+    to: REQ-0017

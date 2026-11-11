@@ -1,0 +1,18 @@
+schema: req.claim/2
+claim_id: REQ-0041
+statement: >-
+  The req tool shall report an outcome it cannot establish as UNVERIFIABLE rather
+  than as a pass.
+applicability: []
+tests:
+  - "req::evidence::every_judging_command_reports_what_it_cannot_establish_as_unverifiable_never_a_pass"
+evidence: machine
+rationale:
+  source: AGENTS.md
+  date: 2026-11-11
+  rejected_alternatives:
+    - folding an unreadable corpus, a missing verifier or a skipped check into PASS (absence of evidence read as evidence)
+    - two-state PASS/FAIL outcomes, where "could not judge" must be forced into one of them
+  assumptions:
+    - every judging command documents exit 3 as UNVERIFIABLE on its --help page
+relations: []

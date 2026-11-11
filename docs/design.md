@@ -236,7 +236,7 @@ target *stops* rather than starts.
 - **What it is, at what scale.** Their own telemetry: ~2,500 code changes merged per day in May
   2026, over 30,000/day by September; a main-branch history approaching 100 GB, whose compressed
   working tree exceeds 25 GB; ≈25 million CI checkouts a day. Their problem is *data movement and
-  materialisation*. req reads a few dozen small YAML files (39 claims on 2026-11-11). The regimes do not overlap, and none of their
+  materialisation*. req reads a few dozen small YAML files (40 claims on 2026-11-11). The regimes do not overlap, and none of their
   numbers is a target req grows into.
 - **An inverted assumption — a divergence, not a lag.** Scion is designed for clients that are
   always online, and the article says that git's offline-distributed strengths had become part

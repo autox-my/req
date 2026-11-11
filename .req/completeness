@@ -1,0 +1,7 @@
+# Completeness policy (ADR 0039), read by `req check`'s completeness step and `req audit`.
+# One root claim id per line (a claim that relates to nothing and is related to by nothing on purpose),
+# or the two words `strict unrelated` to make an unrelated claim a FAIL. `#` comments, blank lines skipped.
+#
+# Roots, confirmed by the owner on 2026-11-11:
+REQ-0039
+REQ-0040

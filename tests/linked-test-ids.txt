@@ -42,3 +42,4 @@ req::corpus_pin::a_corpus_ahead_of_the_pin_fails_and_says_how_far
 req::corpus_pin::an_uncommitted_change_under_claims_fails_even_at_the_pinned_commit
 req::install_req::b_a_wrong_pin_hash_installs_nothing
 req::cli_version::bare_req_and_unknown_arguments_stay_usage_errors
+req::evidence::every_judging_command_reports_what_it_cannot_establish_as_unverifiable_never_a_pass

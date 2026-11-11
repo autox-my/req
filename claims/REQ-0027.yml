@@ -13,4 +13,6 @@ rationale:
   rejected_alternatives:
     - editing the pin to fit the parse (the statement is the source of truth, so the pin would stop checking anything)
   assumptions: []
-relations: []
+relations:
+  - type: derives-from
+    to: REQ-0017

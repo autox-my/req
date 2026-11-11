@@ -13,4 +13,6 @@ rationale:
   rejected_alternatives:
     - reporting a loosened obligation as no change, or as a tightening, which a reviewer would ratify unnoticed
   assumptions: []
-relations: []
+relations:
+  - type: derives-from
+    to: REQ-0023
