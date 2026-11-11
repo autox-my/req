@@ -91,3 +91,27 @@ This decision is wrong if any of these is observed:
 3. a relation-less claim changes the verdict without `strict unrelated`, or a declared root is reported under it;
 4. an unknown word, or an id the corpus does not hold, in `.req/completeness` is ignored;
 5. any output of this step contains the word "complete" as a verdict.
+
+## Implementation note (2026-11-11)
+
+Built in `src/completeness.rs`, run by `req check` as the step `completeness` and printed by `req audit` under
+*Structural omissions*; tested in `tests/completeness.rs`, each load-bearing rule mutation-checked (seven mutants, all
+killed). Four points the decision above left open, settled with the owner on 2026-11-11 or by the rules it already cites:
+
+1. **No Baseline at all is 3** (owner's choice of the strict reading). A repository that has signed nothing ships nothing
+   ratified, the answer `req audit` already gives; `docs/adopting.md` says so, and the step's note names the command that
+   emits a manifest.
+2. **A manifest counts only with its `.minisig` beside it** (owner's choice). The signature itself is still verified only
+   by `req baseline --verify`, so `scripts/check.sh` now verifies **every** `baselines/*.json`, not only the default one:
+   the step trusts no manifest the gate did not verify.
+3. **`in_no_release` names a claim every release line *excludes*.** A claim a line leaves *undecided* is that line's
+   UNVERIFIABLE already (ADR 0015); naming it here would turn an open question into a FAIL nobody established, so it is
+   not named twice. Decision 2's wording ("applies (`Yes`) in no line") is read with this exception.
+4. **The step's line says what it checked**: `structural omissions (3 checks)`, and under it either
+   `no structural omission found`, or the findings. The JSON step carries `in_no_release`, `in_no_baseline`, `unrelated`,
+   `unrelated_judged`, the manifests read and any not counted. `req.audit/1` gains `unrelated`, an added key.
+
+This repository: REQ-0008/9/10/18 were in no signed Baseline. They are covered by one Baseline per release line,
+`baselines/release-parity-and-adversarial.json` and `baselines/release-parity.json`, signed by the owner. The 15
+relation-less claims (REQ-0025…REQ-0030, REQ-0032…REQ-0040) are listed on every run and left for the owner to relate
+or declare as roots; nothing is promoted (`strict unrelated` is not set).

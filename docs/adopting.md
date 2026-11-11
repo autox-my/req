@@ -485,6 +485,9 @@ req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not y
   that gap would still verify. Req never invents one: emitting without `--at` is a usage
   error (exit 2). A v3 manifest also attests the Decision log's chain head, and emission refuses (exit 3)
   when that log is absent, unparsable or tampered — a head that attests nothing must not be signed.
+- **One Baseline per release line.** A manifest covers the claims its selection makes apply, so pass a
+  release line's words to cover that release: `req baseline --at <ts> --out baselines/<release>.json
+  <the line's key=value words>`. A release no Baseline covers is `req check`'s `in_no_baseline` (exit 3).
 - **`-Sm` is `-S` (sign) with `-m <manifest>`**, and its default output name is `<manifest>.minisig` —
   exactly the file `--verify` looks for. Name it otherwise with `-x <path>` and pass `--signature <path>`.
 - **Sign the bytes `req baseline` emitted.** Do not reformat the file: the signature covers those bytes,
@@ -998,8 +1001,26 @@ option or a word without `=`** — `req gate --help` exits 0 having gated nothin
 line is rejected (exit **2**, naming `<file>:<line>`, before anything runs) rather than becoming a
 help page that "passes". A `.req/projections` line is exactly **one path**, relative to the corpus
 root; an absolute path or a `..` component is malformed, because the list is repository content and
-must not point outside it. `req check` adds no key, no section and no third file; what a line
-*means* is unchanged.
+must not point outside it. What a line *means* is unchanged.
+
+**Structural omissions (ADR 0039).** `req check` always runs one more step, `completeness`, over the
+release lines, the claims and `baselines/`:
+
+- **`in_no_release` (1).** A claim every `.req/variants` line excludes: nothing examines it. Retire it,
+  or declare the release that ships it.
+- **`in_no_baseline` (3).** A claim a release ships that no **signed** manifest under `baselines/` names.
+  A manifest counts only when its `.minisig` lies beside it. Whether the signature verifies is
+  `req baseline --verify`'s answer, so verify every committed manifest in the same CI (this repository's
+  `scripts/check.sh` does). **Until you sign a first Baseline, `req check` is 3**: nothing is ratified,
+  which is what `req audit` already says. Sign one per release line (*Sign the Baseline*).
+- **`unrelated` (listed only).** A claim with no relation in or out. Add the missing `refines` or
+  `derives-from`, or declare it a root in `.req/completeness`.
+
+`.req/completeness` is optional and has the same grammar as the other two lists. Each line is one root
+claim id, or `strict unrelated`, which turns every unlisted unrelated claim into a 1. An unknown word or
+an id the corpus does not hold is exit 2. A claim a line leaves undecided is that gate's 3 and is not named
+here again. None of this certifies the requirements **complete**: req holds no hazard list, stakeholder
+needs or standard clauses to be complete against.
 
 **The JSON views are the agent-facing half.** The last two steps write pack C's documents and
 upload them as the `req-views` artifact, so an agent reviewing the pull request reads the verdict

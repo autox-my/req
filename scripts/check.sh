@@ -365,9 +365,18 @@ fi
 # so there is no `canon --verify` step: the pins are held by each release's `req gate`
 # (`pins_hold`), and every address is re-derived against the signed manifest just below.
 run cargo run -q -- canon
-# The committed Baseline (F5): the gate re-checks what a human signed. See
-# verify_baseline above for what each exit means — 1 and 3 both block.
+# The committed Baselines (F5): the gate re-checks what a human signed. See
+# verify_baseline above for what each exit means — 1 and 3 both block. Every manifest under
+# baselines/ is verified, not only the default one: `req check`'s completeness step counts a
+# signed manifest as covering its claims (ADR 0039) and leaves the signature to this step, so a
+# manifest the gate did not verify must not exist. The default file is verified first (and is
+# required: a missing default is the verifier's UNVERIFIABLE, never a skip).
 verify_baseline "$baseline_file"
+for extra_baseline in baselines/*.json; do
+  [ -e "$extra_baseline" ] || continue
+  [ "$extra_baseline" = "$baseline_file" ] && continue
+  verify_baseline "$extra_baseline"
+done
 # The decision log: the gate re-checks the recorded decisions. See verify_decision above
 # for what each exit means — 1 and 3 both block.
 verify_decision

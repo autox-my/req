@@ -21,6 +21,7 @@
 //! * **No flag narrows the steps.** `PASS` is printed only when every declared step ran and passed.
 
 use crate::canon::RULES_V;
+use crate::completeness::{self, COMPLETENESS, Findings, Policy};
 use crate::format::{self, Format};
 use crate::gate::{self, Evaluation, GateDocument, Outcome, TestEvidence};
 use crate::select::Context;
@@ -55,7 +56,8 @@ pub fn fold(exits: &[i32]) -> i32 {
 /// One thing the run examined, with the exit it earned.
 struct Step {
     /// `gate` (a variants line), `render` or `trace` (a projections path, by the generator its
-    /// header names) or `list` (the list itself could not be used as a list).
+    /// header names), `completeness` (the structural omissions, ADR 0039) or `list` (the list
+    /// itself could not be used as a list).
     kind: &'static str,
     /// The variants line, or the path.
     label: String,
@@ -65,6 +67,8 @@ struct Step {
     /// For a gate step that ran: the `req.gate/2` document `req gate --format json` prints for the
     /// same line.
     gate: Option<GateDocument>,
+    /// For the completeness step that ran: its findings (ADR 0039).
+    completeness: Option<Findings>,
 }
 
 impl Step {
@@ -92,6 +96,7 @@ impl Step {
             exit,
             notes,
             gate,
+            completeness: None,
         }
     }
 }
@@ -400,6 +405,45 @@ fn projection_step(path: &str, root: &Path) -> Step {
     Step::new(kind, path.to_string(), judged.code, notes, None)
 }
 
+/// The completeness step (ADR 0039): structural omissions across the declared releases, the signed
+/// Baselines and the claims. An unusable `.req/completeness` is a list step's 3, never a pass.
+fn completeness_step(
+    root: &Path,
+    releases: &[Context],
+    policy: &Policy,
+    listing: &Listing,
+) -> Step {
+    if let Listing::Unreadable(reason) = listing {
+        return Step::new(
+            "list",
+            COMPLETENESS.to_string(),
+            3,
+            vec![reason.clone()],
+            None,
+        );
+    }
+    match completeness::evaluate(root, releases, policy) {
+        Ok(findings) => {
+            let mut step = Step::new(
+                "completeness",
+                Findings::label(),
+                findings.exit(),
+                findings.notes(),
+                None,
+            );
+            step.completeness = Some(findings);
+            step
+        }
+        Err(reason) => Step::new(
+            "completeness",
+            Findings::label(),
+            3,
+            vec![format!("[UNVERIFIABLE] {reason}")],
+            None,
+        ),
+    }
+}
+
 fn exit_word(exit: i32) -> &'static str {
     match exit {
         0 => "PASS",
@@ -422,6 +466,8 @@ struct StepDocument<'a> {
     notes: &'a [String],
     #[serde(skip_serializing_if = "Option::is_none")]
     gate: Option<&'a GateDocument>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    completeness: Option<&'a Findings>,
 }
 
 /// `req.check/1` (ADR 0023 §6): the folded verdict and, per step, its kind, its line or path, its
@@ -450,11 +496,13 @@ fn print_json(steps: &[Step], code: i32, projections_pinned: bool) {
             .map(|step| StepDocument {
                 kind: step.kind,
                 line: (step.kind == "gate").then_some(step.label.as_str()),
-                path: (step.kind != "gate").then_some(step.label.as_str()),
+                path: matches!(step.kind, "render" | "trace" | "list")
+                    .then_some(step.label.as_str()),
                 exit: step.exit,
                 verdict: gate::verdict_word(step.exit),
                 notes: &step.notes,
                 gate: step.gate.as_ref(),
+                completeness: step.completeness.as_ref(),
             })
             .collect(),
     };
@@ -468,14 +516,20 @@ fn print_text(steps: &[Step], code: i32, projections_pinned: bool) {
         .filter(|step| step.kind == "render" || step.kind == "trace")
         .count();
     let lists = steps.iter().filter(|step| step.kind == "list").count();
-    if lists == 0 {
-        println!("# req check: {variants} variant step(s), {projections} projection(s)");
-    } else {
-        // A list that could not be read is a step too: the header agrees with the lines below it.
-        println!(
-            "# req check: {variants} variant step(s), {projections} projection(s), {lists} list step(s)"
-        );
+    let completeness = steps
+        .iter()
+        .filter(|step| step.kind == "completeness")
+        .count();
+    let mut header =
+        format!("# req check: {variants} variant step(s), {projections} projection(s)");
+    if completeness > 0 {
+        header.push_str(&format!(", {completeness} completeness step"));
     }
+    if lists > 0 {
+        // A list that could not be read is a step too: the header agrees with the lines below it.
+        header.push_str(&format!(", {lists} list step(s)"));
+    }
+    println!("{header}");
     for step in steps {
         println!(
             "[{}] {} {} (exit {})",
@@ -521,6 +575,7 @@ pub fn run(args: &[String], root: &Path) -> i32 {
     // bytes; nothing is re-read between validation and use.
     let variants_listing = read_list(root, VARIANTS);
     let projections_listing = read_list(root, PROJECTIONS);
+    let completeness_listing = read_list(root, COMPLETENESS);
     let variants = match &variants_listing {
         Listing::Text(text) => Some(parse_variants(text)),
         _ => None,
@@ -535,6 +590,18 @@ pub fn run(args: &[String], root: &Path) -> i32 {
     }
     if let Some(Err(errors)) = &projections {
         malformed.extend(errors.iter().cloned());
+    }
+    // `.req/completeness` names claim ids, so it is validated against the corpus. A corpus that
+    // cannot be loaded leaves it unvalidated here; the completeness step then answers 3 with the
+    // load error, and nothing is read as a pass.
+    let mut policy = Policy::default();
+    if let Listing::Text(text) = &completeness_listing
+        && let Ok(known) = completeness::known_ids(root)
+    {
+        match completeness::parse_policy(text, &known) {
+            Ok(parsed) => policy = parsed,
+            Err(errors) => malformed.extend(errors),
+        }
     }
     if !malformed.is_empty() {
         for error in &malformed {
@@ -586,9 +653,20 @@ pub fn run(args: &[String], root: &Path) -> i32 {
             evidence(),
         ));
     }
+    let releases: Vec<Context> = if lines.is_empty() {
+        vec![Context::new()]
+    } else {
+        lines.iter().map(|line| line.context.clone()).collect()
+    };
     for line in lines {
         steps.push(variant_step(line.text, line.context, root, evidence()));
     }
+    steps.push(completeness_step(
+        root,
+        &releases,
+        &policy,
+        &completeness_listing,
+    ));
 
     let mut projections_pinned = true;
     match projections_listing {

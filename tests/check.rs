@@ -108,6 +108,53 @@ impl Scratch {
              pins:\n  operator: LE\n  value: \"{value}\"\n  unit: s\n"
         );
         fs::write(self.0.join(format!("claims/{id}.yml")), text).expect("writes a claim");
+        self.sign_every_claim();
+    }
+
+    /// Every fixture claim is named by a signed Baseline, so the `completeness` step (ADR 0039)
+    /// leaves these tests' verdicts to the steps they are about. Whether a Baseline covers a claim
+    /// is tested in `tests/completeness.rs`; the manifest's hashes are placeholders because that
+    /// step reads which claims a signed manifest names, and verifying it is `baseline --verify`'s.
+    fn sign_every_claim(&self) {
+        let mut ids: Vec<String> = fs::read_dir(self.0.join("claims"))
+            .expect("lists the claims")
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .strip_suffix(".yml")
+                    .map(str::to_string)
+            })
+            .collect();
+        ids.sort();
+        let hash = "0".repeat(64);
+        let claims: Vec<String> = ids
+            .iter()
+            .map(|id| {
+                format!(
+                    "{{\"claim_id\":\"{id}\",\"address\":\"{hash}\",\"relations_hash\":\"{hash}\",\
+                     \"rationale_hash\":\"{hash}\",\"tests_hash\":\"{hash}\"}}"
+                )
+            })
+            .collect();
+        let manifest = format!(
+            "{{\"version\":4,\"signed_at\":\"2026-11-11T00:00:00Z\",\"authority\":{{\"head\":\"{hash}\",\
+             \"entries\":1}},\"rules_v\":8,\"selection\":{{}},\"claims\":[{}]}}",
+            claims.join(",")
+        );
+        self.write("baselines/fixture.json", manifest.as_bytes());
+        self.write(
+            "baselines/fixture.json.minisig",
+            b"untrusted comment: fixture signature, never verified by this step\n",
+        );
+    }
+
+    /// Removes a claim the test's single release line would exclude, so the `completeness` step's
+    /// `in_no_release` (ADR 0039) does not decide a verdict this test is not about.
+    fn retire(&self, id: &str) {
+        fs::remove_file(self.0.join(format!("claims/{id}.yml"))).expect("removes the claim");
+        self.sign_every_claim();
     }
 
     /// Writes a file beside the corpus, creating its directory.
@@ -167,7 +214,9 @@ impl Out {
         format!("{}{}", self.stdout, self.stderr)
     }
 
-    /// The step lines (`[PASS] gate …`, `[FAIL] render …`): what a run actually examined.
+    /// The step lines (`[PASS] gate …`, `[FAIL] render …`): what a run examined of the two lists.
+    /// The `completeness` step (ADR 0039) runs on every invocation and is left out here, so these
+    /// tests count the steps they are about; [`Out::completeness_line`] is that step's line.
     fn step_lines(&self) -> Vec<&str> {
         self.stdout
             .lines()
@@ -176,7 +225,15 @@ impl Out {
                     .iter()
                     .any(|prefix| line.starts_with(prefix))
             })
+            .filter(|line| !line.contains("] completeness "))
             .collect()
+    }
+
+    /// The `completeness` step's line: present on every run that reached the steps.
+    fn completeness_line(&self) -> Option<&str> {
+        self.stdout
+            .lines()
+            .find(|line| line.starts_with('[') && line.contains("] completeness "))
     }
 }
 
@@ -242,6 +299,7 @@ fn a_variant_line_that_fails_is_exit_1() {
 #[test]
 fn a_variant_left_undecided_is_exit_3() {
     let s = Scratch::decided()("b-undecided");
+    s.retire("REQ-0002");
     s.claim("REQ-0004", Some("region == eu"), MS_500, None, None);
     s.variants("deployment_mode=connected\n");
 
@@ -305,6 +363,12 @@ fn all_steps_passing_is_exit_0_and_verdict_pass() {
     );
     assert_eq!(out.step_lines().len(), 2, "{}", out.stdout);
     assert!(
+        out.completeness_line()
+            .is_some_and(|l| l.starts_with("[PASS] completeness ")),
+        "{}",
+        out.stdout
+    );
+    assert!(
         out.step_lines()
             .iter()
             .all(|l| l.starts_with("[PASS] gate "))
@@ -353,6 +417,7 @@ fn every_steps_exit_equals_the_standalone_gate() {
     ] {
         s.claim(id, predicate, ms, None, Some("probe::passes"));
     }
+    s.retire("REQ-0002");
     let line = "deployment_mode=connected";
     s.variants(&format!("{line}\n"));
     let passing = s.report("passing.xml", Outcome::Passed);
@@ -437,10 +502,13 @@ fn a_tab_separated_line_is_split() {
 #[test]
 fn a_star_in_a_value_is_not_expanded() {
     let s = Scratch::decided()("g-star");
+    s.retire("REQ-0002");
     s.claim("REQ-0004", Some("region == eu"), MS_500, None, None);
     // A file the glob would match: the value must stay `*`.
     s.write("region=eu", b"");
-    s.variants("deployment_mode=connected region=*\n");
+    // The second line ships REQ-0004, so the `completeness` step (ADR 0039) has nothing excluded
+    // everywhere and the verdict is the `*` line's.
+    s.variants("deployment_mode=connected region=*\ndeployment_mode=connected region=eu\n");
     let oracle = gate(&s, None, "deployment_mode=connected region=*");
     assert_eq!(oracle.code, 3, "setup: `*` is not a declared value");
     let out = s.req(&["check"]);
@@ -997,6 +1065,7 @@ fn gate_json(s: &Scratch, line: &str) -> (i32, serde_json::Value) {
 #[test]
 fn the_json_verdict_of_a_passing_run_is_pass() {
     let s = Scratch::decided()("k-all-pass");
+    s.retire("REQ-0002");
     s.variants("deployment_mode=connected\n");
     let out = s.req(&["check", "--format=json"]);
     // `--format=json` is not the shared parser's spelling: it is a usage error, as for `gate`.

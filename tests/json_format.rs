@@ -902,6 +902,7 @@ fn audit_json_reports_an_unsigned_corpus_as_unratified() {
             "rules_v",
             "schema",
             "selection",
+            "unrelated",
         ],
     );
     assert_eq!(document["schema"], "req.audit/1");
