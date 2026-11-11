@@ -79,14 +79,15 @@ impl Contradiction {
 }
 
 /// What a selection's applying claims hold: the contradictions, how many pairs were comparable, how
-/// many in a bucket were not, and the recorded Conflicts.
+/// many were not, and the recorded Conflicts.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Findings {
     /// Every Tier-1 contradiction (recorded or not), sorted by the two claim ids.
     pub contradictions: Vec<Contradiction>,
     /// Pairs in a bucket that were comparable (consistent or contradicting).
     pub comparable: usize,
-    /// Pairs in a bucket that were not (non-nested conditions, `SHOULD`/`MAY`, an `IN` against a bound).
+    /// Every other pair of applying claims (ADR 0043 decision 2: counted, never guessed): a different
+    /// slot, an unstructured claim, non-nested conditions, `SHOULD`/`MAY`, an `IN` against a bound.
     pub not_comparable: usize,
     /// Recorded Conflicts whose two claims both apply, one per unordered pair (lower id first).
     pub conflicts: Vec<(String, String)>,
@@ -227,11 +228,65 @@ pub fn contradicts(a: &CanonicalForm, b: &CanonicalForm) -> Pair {
         );
     }
     match (ma, mb) {
-        // Two prohibitions never exclude each other.
-        (Modality::ShallNot, Modality::ShallNot) => Pair::Consistent,
+        (Modality::ShallNot, Modality::ShallNot) => both_shall_not(a, b),
         (Modality::Shall, Modality::ShallNot) => polarity(a, b, a, b),
         (Modality::ShallNot, Modality::Shall) => polarity(a, b, b, a),
         _ => both_shall(a, b),
+    }
+}
+
+/// The operator a `SHALL NOT` with a bound leaves as an obligation: forbidding `GT 100` obliges
+/// `LE 100` (ADR 0044 decision 5 reads the forbidden region the same way). `IN` has no complement
+/// Tier 1 can state (the universe of members is not known), so it is `None`.
+fn complement(operator: Comp) -> Option<Comp> {
+    match operator {
+        Comp::Lt => Some(Comp::Ge),
+        Comp::Le => Some(Comp::Gt),
+        Comp::Eq => Some(Comp::Ne),
+        Comp::Ge => Some(Comp::Lt),
+        Comp::Gt => Some(Comp::Le),
+        Comp::Ne => Some(Comp::Eq),
+        Comp::In => None,
+    }
+}
+
+/// A `SHALL NOT` with a numeric bound, restated as the `SHALL` it leaves; `None` for a bare action
+/// or a membership.
+fn as_obligation(form: &CanonicalForm) -> Option<CanonicalForm> {
+    form.value?;
+    let operator = complement(form.operator?)?;
+    let mut obliged = form.clone();
+    obliged.modality = Some(Modality::Shall);
+    obliged.operator = Some(operator);
+    Some(obliged)
+}
+
+/// Decide `both_shall` on the obligations two forms leave, printing the forms as written.
+fn on_obligations(
+    a: &CanonicalForm,
+    b: &CanonicalForm,
+    oa: &CanonicalForm,
+    ob: &CanonicalForm,
+) -> Pair {
+    match both_shall(oa, ob) {
+        Pair::Contradiction { slot, .. } => contradiction(slot, a, b),
+        other => other,
+    }
+}
+
+/// Two prohibitions. A bare one excludes only its own action, which abstaining satisfies, so it
+/// never contradicts; two numeric bounds contradict when the values they leave are disjoint
+/// (`SHALL NOT GT 100` and `SHALL NOT LT 200`: at most 100 and at least 200); two forbidden sets
+/// are not comparable (the universe of members is not known).
+fn both_shall_not(a: &CanonicalForm, b: &CanonicalForm) -> Pair {
+    if a.operator.is_none() || b.operator.is_none() {
+        return Pair::Consistent;
+    }
+    match (as_obligation(a), as_obligation(b)) {
+        (Some(oa), Some(ob)) => on_obligations(a, b, &oa, &ob),
+        _ => Pair::NotComparable(
+            "two prohibitions over a set: the members left are not known at Tier 1".to_string(),
+        ),
     }
 }
 
@@ -253,10 +308,22 @@ fn polarity(
             Pair::Consistent
         };
     }
-    Pair::NotComparable(
-        "a SHALL against a SHALL NOT whose operator or value differ: no Tier-1 rule decides it"
-            .to_string(),
-    )
+    // A numeric prohibition leaves an obligation (`SHALL NOT GT 150` → `LE 150`), compared with the
+    // SHALL as two SHALLs. A bare prohibition against a bound, or a set against a bound, has no rule.
+    match (pos.operator, as_obligation(neg)) {
+        (Some(op), Some(obliged)) if op != Comp::In => {
+            if std::ptr::eq(pos, a) {
+                on_obligations(a, b, pos, &obliged)
+            } else {
+                on_obligations(a, b, &obliged, pos)
+            }
+        }
+        _ => Pair::NotComparable(
+            "a SHALL against a SHALL NOT whose operator or value differ, and neither is a numeric \
+             bound: no Tier-1 rule decides it"
+                .to_string(),
+        ),
+    }
 }
 
 fn both_shall(a: &CanonicalForm, b: &CanonicalForm) -> Pair {
@@ -382,6 +449,10 @@ pub fn find(rows: &[Row], forms: &BTreeMap<String, CanonicalForm>) -> Findings {
         dangling: dangling.into_iter().collect(),
         ..Findings::default()
     };
+    // Every other pair of applying claims was not compared: a different slot (another bucket), an
+    // unstructured claim, or a pair the rules above leave undecided. ADR 0043 counts them all.
+    let n = applying.len();
+    let all_pairs = n.saturating_mul(n.saturating_sub(1)) / 2;
     for members in buckets.values() {
         for (index, (a_id, a)) in members.iter().enumerate() {
             for (b_id, b) in &members[index + 1..] {
@@ -403,6 +474,7 @@ pub fn find(rows: &[Row], forms: &BTreeMap<String, CanonicalForm>) -> Findings {
             }
         }
     }
+    findings.not_comparable = all_pairs.saturating_sub(findings.comparable);
     findings
         .contradictions
         .sort_by(|x, y| (&x.a_id, &x.b_id).cmp(&(&y.a_id, &y.b_id)));

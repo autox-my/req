@@ -1074,3 +1074,118 @@ fn the_record_block_has_the_decision_6_shape() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// review C-1-review-1
+// ---------------------------------------------------------------------------
+
+/// Two prohibitions whose bounds leave disjoint values contradict: forbidding "more than 100 ms"
+/// obliges at most 100, forbidding "less than 200 ms" obliges at least 200 (ADR 0043 decision 2: no
+/// value satisfies both). Bare prohibitions stay consistent (abstaining satisfies both).
+#[test]
+fn two_prohibitions_whose_bounds_leave_no_common_value_contradict() {
+    let (ab, ba) = both_ways(
+        "The API shall not take more than 100 ms to respond.",
+        "The API shall not take less than 200 ms to respond.",
+    );
+    assert!(
+        is_contradiction(&ab) && is_contradiction(&ba),
+        "{ab:?} / {ba:?}"
+    );
+    if let Pair::Contradiction { slot, a, b } = &ab {
+        assert_eq!(*slot, "bounds");
+        assert!(
+            a.starts_with("SHALL-NOT") && b.starts_with("SHALL-NOT"),
+            "printed as written: {a} / {b}"
+        );
+    }
+    let (ab, ba) = both_ways(
+        "The API shall not take more than 200 ms to respond.",
+        "The API shall not take less than 100 ms to respond.",
+    );
+    assert!(
+        matches!(ab, Pair::Consistent),
+        "100..=200 satisfies both: {ab:?}"
+    );
+    assert!(matches!(ba, Pair::Consistent), "{ba:?}");
+}
+
+/// A `SHALL` bound against a `SHALL NOT` bound of a different operator: the prohibition leaves an
+/// obligation, and the two are judged as two `SHALL`s.
+#[test]
+fn a_shall_bound_against_a_prohibited_bound_is_judged_on_what_the_prohibition_leaves() {
+    // ≤ 100 against "not ≤ 150" (> 150): disjoint.
+    let (ab, ba) = both_ways(
+        "The API shall respond in no more than 100 ms.",
+        "The API shall not respond in no more than 150 ms.",
+    );
+    assert!(
+        is_contradiction(&ab) && is_contradiction(&ba),
+        "{ab:?} / {ba:?}"
+    );
+    // ≤ 100 against "not > 100" (≤ 100): the same obligation, consistent.
+    let (ab, ba) = both_ways(
+        "The API shall respond in no more than 100 ms.",
+        "The API shall not respond in more than 100 ms.",
+    );
+    assert!(matches!(ab, Pair::Consistent), "{ab:?}");
+    assert!(matches!(ba, Pair::Consistent), "{ba:?}");
+}
+
+/// ADR 0043 decision 2 and *Consequences*: pairs with a different slot, or an unstructured claim,
+/// are not comparable and are counted as such — every applying pair is either comparable or counted.
+#[test]
+fn every_applying_pair_is_counted_comparable_or_not() {
+    let forms = forms_of(&[
+        ("REQ-0001", SHORT),
+        (
+            "REQ-0002",
+            "The store shall keep each record for at least 30 days.",
+        ),
+        ("REQ-0003", LONG),
+    ]);
+    let rows = rows_of(&[
+        ("REQ-0001", Applies::Yes, &[]),
+        ("REQ-0002", Applies::Yes, &[]),
+        ("REQ-0003", Applies::Yes, &[]),
+    ]);
+    let findings = find(&rows, &forms);
+    assert_eq!(findings.comparable, 1, "{findings:?}");
+    assert_eq!(
+        findings.not_comparable, 2,
+        "the two pairs with REQ-0002 have another subject: {findings:?}"
+    );
+}
+
+/// A FAIL outranks a recorded Conflict, but the Conflict is still named in the entry (spec choice 4:
+/// the entry carries the contradictions and the Conflicts).
+#[test]
+fn a_fail_still_names_the_recorded_conflicts_beside_it() {
+    let s = Scratch::new("fail-and-conflict");
+    s.claim("REQ-0001", SHORT, None, &[]);
+    s.claim("REQ-0002", LONG, None, &[]);
+    s.claim(
+        "REQ-0003",
+        "The store shall keep each record for at least 30 days.",
+        None,
+        &[("conflicts-with", "REQ-0004")],
+    );
+    s.claim(
+        "REQ-0004",
+        "The archive shall delete each record within 7 days.",
+        None,
+        &[],
+    );
+    let (out, document) = s.gate_json(&[]);
+    let entry = policy(&document, "contradictions");
+    if DETECTOR_ADMITTED {
+        assert_eq!(out.code, 1, "{}", out.all());
+        assert_eq!(entry["outcome"], "fail");
+    }
+    let details = entry["details"].to_string();
+    assert!(
+        details.contains("REQ-0003 conflicts-with REQ-0004"),
+        "the recorded Conflict is named beside the FAIL: {details}"
+    );
+    assert!(details.contains("REQ-0001 vs REQ-0002"), "{details}");
+}

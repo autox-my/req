@@ -410,7 +410,7 @@ an unreproducible selection, or another command's projection (--check); 2 usage.
 const GATE_HELP: &str = "\
 usage: req gate [--format text|json] [--test-report <file>]... [key=value ...]
 
-Runs the release policies over the claims a variant leaves applying — pins hold, relations
+Runs the eight release policies over the claims a variant leaves applying — pins hold, relations
 resolve, dependencies decided, rationale present, design satisfied (ADR 0040), contradictions
 (ADR 0043), and (with `--test-report <file>`) tests linked — and confirms the invocation itself. A claim the invocation leaves undecided was
 not examined, and that is not a pass: a bare gate on a corpus carrying a selector is
@@ -518,7 +518,7 @@ malformed line is exit 2 naming `<file>:<line>`, and nothing was gated.
 A step's exit is the command's exit — the same code runs, no policy is copied and nothing is
 shelled out — and the output says which step produced which exit. The fold is the gate's:
 a defect (1) outranks something that cannot be confirmed (3), which outranks a pass (0). Each variants
-line therefore carries the gate's `contradictions` policy over **that line's** applying claims (ADR 0043):
+line therefore carries the gate's eight policies, `contradictions` among them, over **that line's** applying claims (ADR 0043):
 two claims that apply in different lines are never compared.
 
 Absence is not silence. No `.req/variants`, or one with no line in it, is the default variant

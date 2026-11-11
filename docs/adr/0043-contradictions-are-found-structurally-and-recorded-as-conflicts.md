@@ -119,9 +119,17 @@ introduces stays the follow-up *Not decided here* names.
   corpus that breaks the bound fails CI until it is changed on purpose; the policy never reads a record at runtime.
 - **The recorded-Conflict half was judged from the first unit**: a `conflicts-with` between two applying claims, or naming a
   claim the corpus does not hold, is UNVERIFIABLE with no detector involved.
-- **Rules without a Tier-1 verdict are not comparable, not guessed.** A `SHALL` against a `SHALL NOT` whose operator or value
-  differ (other than `IN` against `NOT IN`), and a membership against a bound, are counted as not comparable. Two
-  prohibitions, and a bare action against anything but its negation, are consistent.
+- **A prohibited bound is read for what it leaves.** `SHALL NOT GT 100` obliges `LE 100` (ADR 0044 decision 5 reads the
+  forbidden region the same way), so two prohibitions, or a `SHALL` and a `SHALL NOT` with different operators, are judged
+  as two `SHALL`s on what they leave: "shall not take more than 100 ms" against "shall not take less than 200 ms" is a
+  contradiction (review C-1-review-1 found the first version calling every pair of prohibitions consistent).
+- **Rules without a Tier-1 verdict are not comparable, not guessed.** A membership against a bound, two forbidden sets, and
+  a bare prohibition against a bound are counted as not comparable. Two bare prohibitions are consistent (abstaining
+  satisfies both), and so is a bare action against anything but its negation.
+- **Every applying pair is counted.** *m* in the PASS line is every pair of applying claims that was not comparable: a
+  different slot (another bucket), an unstructured claim, or a pair the rules leave undecided — so a selection whose claims
+  share no slot says so (review C-1-review-1 found the first version counting only pairs inside a bucket). A FAIL still
+  names the recorded Conflicts of the same selection beside the contradictions.
 - **A finding about the parser, not the detector.** The parse keeps a leading preposition in the *action*: `respond within
   100 ms` has action `respond` while `respond in at least 200 ms` has action `respond in`, so the two sentences this ADR's
   *Context* opens with differ in the action slot and are **not comparable** at Tier 1 today (the same pair is found when both

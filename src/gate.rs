@@ -919,7 +919,13 @@ pub fn contradictions_policy(findings: &crate::contradict::Findings) -> PolicyRe
              ({k} comparable pairs examined; {m} pairs not comparable)"
         )
     };
-    let mut policy = PolicyResult::new("contradictions", detail, failed, unverifiable);
+    let failing = !failed.is_empty();
+    let mut policy = PolicyResult::new("contradictions", detail, failed, unverifiable.clone());
+    // A FAIL outranks the Conflicts, but they are still named beside it (review C-1-review-1): a
+    // reader fixing the defect must not lose the Conflict the same release carries.
+    if failing {
+        policy.offenders.extend(unverifiable);
+    }
     // Reported-not-judged findings ride beside the outcome, never part of it.
     policy.offenders.extend(reported);
     policy.checked = Some(k);
