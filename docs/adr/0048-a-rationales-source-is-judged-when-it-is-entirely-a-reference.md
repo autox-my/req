@@ -32,6 +32,11 @@ Meanwhile `source: https://github.com/autox-my/req/issues/22` is inert text, and
 answerable by reading prose and by nothing else — which means an agent asked to judge a rationale can only pattern-match
 it.
 
+**The experiment was run, not proposed.** Applying decision 2 by hand to this corpus — every one-token source, tested for
+existence — reports exactly one dangling reference out of forty: `claims/REQ-0034.yml` cites
+`docs/adr/0026-req-diff-what-changed-in-meaning-between-two-revisions.md`, and the file on disk is
+`0026-req-diff-what-changed-in-meaning-between-two-revs.md`. Nothing in the gate can see that today.
+
 ## Decision
 
 1. **A source that is entirely one token is a reference, and is judged.** One token means no whitespace and no `:`. So
@@ -63,6 +68,11 @@ it.
 
 - On the next gate run, every one of the 40 sources in this repository becomes judged. A claim whose justifying document
   was deleted or renamed now fails, where today it reads as justified.
+- **The first such run would be red, and the repair is not free.** The dangling reference above is repaired by editing
+  `claims/REQ-0034.yml`, which changes its `rationale_hash`, which is in the signed manifest (`src/baseline.rs:72`) — so
+  the Baseline FAILs until the owner re-signs it, and req never signs (ADR 0010). The repair, the re-signing and this
+  rule therefore land as one owner-acted sequence; landing the rule first would put CI red on `main` for a defect it
+  correctly found.
 - An adopter who cites a document by path gets the same protection for free, with no new convention to learn.
 - A tracker reference remains text. That limit is now stated next to the reference instead of being left to the reader:
   the gate can confirm an in-repo document exists, and cannot confirm what a URL says.
