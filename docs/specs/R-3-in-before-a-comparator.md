@@ -1,5 +1,8 @@
 # R-3 — "in" before any comparator belongs to the comparator (rules v10)
 
+> **Dropped 2026-11-12 by the owner. Rules stay at v9.** See *Why it was dropped* at the end. Nothing in this spec
+> is built.
+
 Task id: `R-3`. Base: the commit that adds this spec. Owner go-ahead of 2026-11-12 (after PR #60 merged: "widen the
 parser" first).
 
@@ -88,3 +91,34 @@ fail **only** with "signature does not verify" until the owner signs; `req selft
 Forbidden: every `bench/results/*-rules-v9.json` and older, `bench/corpus/direction-*.yml`, `bench/corpus/external-*.yml`,
 `baselines/*.minisig`, `baselines/trust.yml`, `claims/**`, `decisions/**`, `aliases/**`, `src/compare.rs`,
 `src/contradict.rs`, `src/satisfy.rs`, `tools/**`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`.
+
+## Why it was dropped (2026-11-12)
+
+The writer built the rule (local commit `4d0a433`, never pushed). It held FMR = 0 on all eight corpora, and no external
+or direction pair moved. But absorbing "in" before **any** comparator read "The user shall log in at least 3 times." as
+action `log`. That shares an address with "The user shall log at least 3 times.", which is a different obligation.
+
+The orchestrator then narrowed the rule to bounds whose unit is a duration (`62b94bc`, never pushed). Review R-3-review-1
+(deepseek-v4.1-flash) confirmed that the shape survives exactly where these verbs occur: "The user shall log in within
+2 s." equals "The system shall log within 2 s.", and "check in within 5 min" equals "check within 5 min". At rules v9 each
+pair differs, so v10 would **create** these false merges. No corpus pair trips them, which is why FMR stayed 0.
+
+No narrower rule removes the shape:
+
+- "In at most 2 s" after a particle verb is ambiguous in English.
+- A closed list of particle verbs (log, sign, check, …) silently misses every verb it does not list.
+
+A false merge is always a failure (AGENTS.md), while the defect this spec fixes is a false split, which is noise. The
+owner chose to keep rules v9.
+
+**What stays as it is:**
+
+- "within 100 ms" and "in no more than 100 ms" keep different addresses (a false split).
+- ADR 0043's opening example ("within 100 ms" against "in at least 200 ms") stays **not comparable**, and the
+  contradiction policy's PASS line counts it among the pairs it could not compare.
+- An author who wants such a pair compared writes both claims with the same preposition ("within" / "in at least", or
+  "in no more than" / "in at least"), as ADR 0043's implementation note says.
+
+**Do not retry this without new evidence.** A future widening must first add the trap pairs "log in within 2 s" vs
+"log within 2 s" and "log in at least 3 times" vs "log at least 3 times" to the parity corpus, labelled N, and must keep
+them apart.
