@@ -123,14 +123,18 @@ This decision is wrong if any of these is observed:
   does not hold. The id comes from the document's own edge, so the output still holds nothing the document does not.
 - **Layout rule.** A node's layer is the longest `derives-from`/`refines` path to a root (a root is a claim with none of
   either); any other relation does not move it, and a cycle's closing edge is not followed. Layers are rows, top to
-  bottom; inside a layer, columns run in claim id order and wrap after six. Every coordinate is an integer. Edges between
-  neighbours keep archify's automatic route; every other edge is routed only through the channels between rows and the
-  gutters between columns, so no route can cross an unrelated node, and parallel routes fan out over fixed lane offsets
-  in edge order. The converter writes the archify commit (`7e45f36`) into `meta.subtitle`.
+  bottom; inside a layer, columns run in claim id order and wrap after six. Every coordinate is an integer. **Every**
+  edge is routed explicitly, only through the channels between rows and the gutters between columns, with its label on
+  the first routed segment: no route can cross an unrelated node, and parallel routes fan out over fixed lane offsets in
+  edge order. (Neighbours were first left to archify's automatic route, which puts the label of an adjacent-row edge
+  inside its source node; review V-1-review-1 found it, and no edge is left to automatic placement now.) The converter
+  writes the archify commit (`7e45f36`) into `meta.subtitle`; it refuses a document with no nodes, or a `superseded_by`
+  that is not claim ids, by name.
 - **Falsification, as tested.** `tests/graph_archify.rs` (the converter, over a hand-written fixture) pins items 1, 3, 4
   and 5; `tests/trace_nodes.rs` and `tests/json_format.rs` pin the document, and item 1 for the document itself.
 - **Verification outside the gate** (this repository's own graph: `.req/variants` line 1, 40 claims and 40 edges, none
   dangling or undecided): the converter's output is byte-identical across two runs, and `archify finalize architecture
   … --quality standard --json` with `ARCHIFY_UPDATE_CHECK_DISABLED=1` exited 0, with `validate`, `deliver`, `check` and
-  `browser-check` all `pass` and no diagnostic. The page was **not visually reviewed**; archify advises a perceptual look
+  `browser-check` all `pass` and no diagnostic; so did three small corpora `req` produced itself (a downward
+  `supersedes` edge, a parent-to-child edge, an edge into a claim the corpus does not hold). The page was **not visually reviewed**; archify advises a perceptual look
   at route bends (`visualReview: not-requested`). The HTML is in the session scratch directory and is not committed.

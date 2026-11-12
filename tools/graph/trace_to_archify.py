@@ -88,14 +88,17 @@ def check_document(document):
     for key in ("nodes", "edges"):
         if not isinstance(document[key], list):
             refuse(f"`{key}` is not an array")
+    if not document["nodes"]:
+        refuse("`nodes` is empty: there is no claim to draw, and archify refuses an empty diagram")
     for node in document["nodes"]:
         if not isinstance(node, dict):
             refuse("a node is not an object")
         for key in ("claim_id", "statement", "modality", "applies"):
             if not isinstance(node.get(key), str):
                 refuse(f"a node has no string `{key}`: {node!r}")
-        if not isinstance(node.get("superseded_by"), list):
-            refuse(f"a node has no `superseded_by` array: {node!r}")
+        successors = node.get("superseded_by")
+        if not isinstance(successors, list) or not all(isinstance(item, str) for item in successors):
+            refuse(f"a node has no `superseded_by` array of claim ids: {node!r}")
     for edge in document["edges"]:
         if not isinstance(edge, dict):
             refuse("an edge is not an object")
@@ -173,14 +176,13 @@ def lane(lanes, coordinate):
 def route_of(source, target, lanes):
     """Fields that route one edge through the free channels between rows and the gutters between columns.
 
-    Nodes sit on a grid, so a straight line can cross an unrelated node; a route that runs only in channels (the
-    horizontal gaps between rows) and gutters (the vertical gaps between columns) cannot. Neighbours in a row or in
-    adjacent rows keep archify's automatic route, which never leaves the gap between them.
+    Nodes sit on a grid, so a straight line can cross an unrelated node, and archify's automatic route puts the label
+    of a neighbour's edge on a node; a route that runs only in channels (the horizontal gaps between rows) and gutters
+    (the vertical gaps between columns), with its label on the channel segment, cannot. **Every** edge gets one: no
+    edge is left to archify's automatic route or label placement.
     """
     (src_row, src_col), (dst_row, dst_col) = source, target
     row_gap = abs(src_row - dst_row)
-    if row_gap == 0 and abs(src_col - dst_col) <= 1:
-        return {}
     src_x = MARGIN + src_col * PITCH_X + NODE_W // 2
     dst_x = MARGIN + dst_col * PITCH_X + NODE_W // 2
 
@@ -197,8 +199,6 @@ def route_of(source, target, lanes):
         out_y, in_y, from_side, to_side = below(src_row), above(dst_row), "bottom", "top"
     else:
         out_y, in_y, from_side, to_side = above(src_row), below(dst_row), "top", "bottom"
-    if row_gap == 1 and abs(src_col - dst_col) <= 1:
-        return {}
     if out_y == in_y:
         channel = lane(lanes, out_y)
         via = [[src_x, channel], [dst_x, channel]]

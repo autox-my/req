@@ -336,6 +336,51 @@ fn malformed_json_is_refused_with_nothing_written() {
     let output = scratch.path("graph.json");
     let ran = run(&input, &output);
     assert_eq!(ran.code, 2, "{}", ran.stderr);
+    assert!(
+        ran.stderr.contains("malformed JSON"),
+        "the refusal names the malformed JSON, as the schema refusal names the schema:\n{}",
+        ran.stderr
+    );
+    assert!(!output.exists(), "a refusal writes nothing");
+}
+
+/// A `superseded_by` that is not an array of claim ids is a named refusal, not a traceback.
+#[test]
+fn a_superseded_by_that_is_not_claim_ids_is_refused_with_nothing_written() {
+    let scratch = Scratch::new("superseded-type");
+    let mut document = fixture();
+    document["nodes"][0]["superseded_by"] = json!([1]);
+    let input = write_fixture(&scratch, "trace.json", &document);
+    let output = scratch.path("graph.json");
+    let ran = run(&input, &output);
+    assert_eq!(ran.code, 2, "{}", ran.stderr);
+    assert!(
+        ran.stderr.starts_with("refused: "),
+        "a named refusal, not a traceback:\n{}",
+        ran.stderr
+    );
+    assert!(ran.stderr.contains("superseded_by"), "{}", ran.stderr);
+    assert!(!output.exists(), "a refusal writes nothing");
+}
+
+/// An empty `nodes` would be `components: []`, which archify refuses: the converter refuses first, by name.
+#[test]
+fn a_document_with_no_nodes_is_refused_with_nothing_written() {
+    let scratch = Scratch::new("empty-nodes");
+    let mut document = fixture();
+    document["nodes"] = json!([]);
+    document["edges"] = json!([]);
+    document["findings"] = json!({"dangling": [], "undecided_edges": []});
+    let input = write_fixture(&scratch, "trace.json", &document);
+    let output = scratch.path("graph.json");
+    let ran = run(&input, &output);
+    assert_eq!(ran.code, 2, "{}", ran.stderr);
+    assert!(
+        ran.stderr.starts_with("refused: "),
+        "a named refusal, not a traceback:\n{}",
+        ran.stderr
+    );
+    assert!(ran.stderr.contains("nodes"), "{}", ran.stderr);
     assert!(!output.exists(), "a refusal writes nothing");
 }
 
@@ -551,4 +596,199 @@ fn the_archify_pin_is_in_the_file_and_in_the_output() {
         "{}",
         graph["meta"]
     );
+}
+
+// ---------------------------------------------------------------------------
+// Placement: no edge is left to archify's automatic route or label (V-1-fix, F1)
+// ---------------------------------------------------------------------------
+
+fn small_document(nodes: Vec<Value>, edges: Vec<Value>, dangling: &[&str]) -> Value {
+    json!({
+        "schema": "req.trace/1",
+        "generator": "trace",
+        "rules_v": 9,
+        "selection": {},
+        "nodes": nodes,
+        "edges": edges,
+        "derived_incoming": [],
+        "findings": {"dangling": dangling, "undecided_edges": []},
+    })
+}
+
+/// A box, as `(x0, y0, x1, y1)`.
+type Rect = (i64, i64, i64, i64);
+
+fn boxes(graph: &Value) -> Vec<(String, Rect)> {
+    components(graph)
+        .iter()
+        .map(|c| {
+            let (x, y) = (
+                c["pos"][0].as_i64().expect("x"),
+                c["pos"][1].as_i64().expect("y"),
+            );
+            let (w, h) = (
+                c["size"][0].as_i64().expect("w"),
+                c["size"][1].as_i64().expect("h"),
+            );
+            (
+                c["id"].as_str().expect("id").to_string(),
+                (x, y, x + w, y + h),
+            )
+        })
+        .collect()
+}
+
+fn overlaps(a: Rect, b: Rect) -> bool {
+    a.0 < b.2 && b.0 < a.2 && a.1 < b.3 && b.1 < a.3
+}
+
+/// The rule, over the output alone: every connection carries an explicit route whose label sits on a routed
+/// segment, and neither that label nor any routed segment touches a node. archify's own automatic route puts the
+/// label of an adjacent-row edge inside the source node, so none is left to it.
+fn assert_every_edge_is_explicitly_placed(graph: &Value) {
+    let nodes = boxes(graph);
+    for c in graph["connections"].as_array().expect("connections") {
+        let id = c["id"].as_str().expect("an id");
+        let via: Vec<(i64, i64)> = c["via"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{id} has no explicit route: {c}"))
+            .iter()
+            .map(|p| (p[0].as_i64().expect("x"), p[1].as_i64().expect("y")))
+            .collect();
+        assert!(
+            via.len() >= 2,
+            "{id}: the label segment needs two route points: {c}"
+        );
+        assert_eq!(
+            c["labelSegment"], 1,
+            "{id}: the label sits on the first routed segment: {c}"
+        );
+        assert!(
+            c["fromSide"].is_string() && c["toSide"].is_string(),
+            "{id}: sides are pinned: {c}"
+        );
+
+        // The label: centred on the segment's midpoint, as wide as the text needs (7 px a character, generously).
+        let label = c["label"].as_str().expect("a label");
+        let (mx, my) = ((via[0].0 + via[1].0) / 2, (via[0].1 + via[1].1) / 2);
+        let half_w = 7 * i64::try_from(label.len()).expect("a short label") / 2 + 4;
+        let rect = (mx - half_w, my - 9, mx + half_w, my + 9);
+        for (node, at) in &nodes {
+            assert!(
+                !overlaps(rect, *at),
+                "{id}: the label {label:?} at {rect:?} overlaps {node} {at:?}"
+            );
+        }
+        // Every routed segment runs in free space.
+        for pair in via.windows(2) {
+            let seg = (
+                pair[0].0.min(pair[1].0),
+                pair[0].1.min(pair[1].1),
+                pair[0].0.max(pair[1].0) + 1,
+                pair[0].1.max(pair[1].1) + 1,
+            );
+            for (node, at) in &nodes {
+                assert!(
+                    !overlaps(seg, *at),
+                    "{id}: the route {seg:?} crosses {node} {at:?}"
+                );
+            }
+        }
+    }
+}
+
+/// Shape 1: a successor and the claim it supersedes, one row below it in the same column. The corpus: REQ-0001
+/// supersedes REQ-0003, which derives from REQ-0002.
+#[test]
+fn a_downward_adjacent_supersedes_edge_has_its_label_off_the_node() {
+    let scratch = Scratch::new("shape-supersedes");
+    let document = small_document(
+        vec![
+            node(
+                "REQ-0001",
+                "The API shall respond in no more than 100 ms.",
+                "applies",
+                &[],
+            ),
+            node(
+                "REQ-0002",
+                "The service shall log every request.",
+                "applies",
+                &[],
+            ),
+            node(
+                "REQ-0003",
+                "The API shall respond in at least 200 ms.",
+                "does_not_apply",
+                &["REQ-0001"],
+            ),
+        ],
+        vec![
+            edge("REQ-0001", "supersedes", "REQ-0003"),
+            edge("REQ-0003", "derives-from", "REQ-0002"),
+        ],
+        &[],
+    );
+    let graph = converted(&scratch, &document);
+    // The shape is the one the review named: the target is exactly one row below its source.
+    let y = |id: &str| component(&graph, id)["pos"][1].as_i64().expect("y");
+    assert!(y("REQ-0003") > y("REQ-0001"));
+    assert_every_edge_is_explicitly_placed(&graph);
+}
+
+/// Shape 2: a parent that names its child (a downward `constrains`), the child deriving from the parent.
+#[test]
+fn a_downward_parent_to_child_edge_has_its_label_off_the_node() {
+    let scratch = Scratch::new("shape-constrains");
+    let document = small_document(
+        vec![
+            node(
+                "REQ-0001",
+                "The service shall log every request.",
+                "applies",
+                &[],
+            ),
+            node(
+                "REQ-0002",
+                "The service shall log the caller of every request.",
+                "applies",
+                &[],
+            ),
+        ],
+        vec![
+            edge("REQ-0001", "constrains", "REQ-0002"),
+            edge("REQ-0002", "derives-from", "REQ-0001"),
+        ],
+        &[],
+    );
+    let graph = converted(&scratch, &document);
+    assert_every_edge_is_explicitly_placed(&graph);
+}
+
+/// Shape 3: an edge into a claim the corpus does not hold, whose placeholder is drawn one row below.
+#[test]
+fn a_dangling_target_one_row_below_has_its_label_off_the_node() {
+    let scratch = Scratch::new("shape-dangling");
+    let document = small_document(
+        vec![node(
+            "REQ-0001",
+            "The service shall log every request.",
+            "applies",
+            &[],
+        )],
+        vec![edge("REQ-0001", "refines", "REQ-0404")],
+        &["refines -> REQ-0404 (referenced by REQ-0001, not in the corpus)"],
+    );
+    let graph = converted(&scratch, &document);
+    let y = |id: &str| component(&graph, id)["pos"][1].as_i64().expect("y");
+    assert!(y("REQ-0404") > y("REQ-0001"));
+    assert_every_edge_is_explicitly_placed(&graph);
+}
+
+/// The rule holds on the general fixture too: neighbours in one row, upward edges and long edges alike.
+#[test]
+fn every_edge_of_the_general_fixture_is_explicitly_placed() {
+    let scratch = Scratch::new("shape-general");
+    let graph = converted(&scratch, &fixture());
+    assert_every_edge_is_explicitly_placed(&graph);
 }

@@ -272,32 +272,39 @@ fn two_runs_give_identical_bytes() {
     );
 }
 
+/// `trace --out` of a three-claim corpus, exactly as the **base build** (3144571, before `nodes` existed) wrote it:
+/// the golden is a literal, captured once from that build and never from this one. (A Tier-1 rules bump moves the
+/// header's `rules_v` and identity, and this literal with it.)
+const BASE_TRACE_OUT: &str = "\
+<!-- req projection: generator=req trace | rules_v=9 | selection=none | claims=3 | identity=sha256:e6f633104bc65598f15e318fbc27587949916e2652f00d93691a0c87d3861bf7 -->
+# Traceability: (no context: nothing is decided by the caller)
+edges are stored once, on the outgoing side (REQ-0020); the incoming
+view below is derived by traversal, never stored
+
+## Edges
+- REQ-0002 -refines-> REQ-0001
+
+## Incoming (derived)
+- REQ-0001 <- refines: REQ-0002
+
+## Findings
+(none)
+";
+
 #[test]
-fn trace_out_is_byte_identical_to_the_base_build() {
-    // The text matrix does not change: pinned here by the bytes of a hand-checked corpus, whose
-    // matrix was produced by the base build (3144571) before `nodes` existed.
+fn trace_out_prints_the_bytes_the_base_build_printed() {
     let s = Scratch::new("text-unchanged");
     s.claim("REQ-0001", LONG, &[], &[]);
     s.claim("REQ-0002", SHORT, &[], &[("refines", "REQ-0001")]);
+    s.claim("REQ-0003", PLAIN, &[], &[]);
     let out = s.path().join("trace.md");
     let run = s.req(&["trace", "--out", out.to_str().expect("utf-8 path")]);
     assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
-    let text = fs::read_to_string(&out).expect("the projection");
-    assert!(
-        !text.contains("\"nodes\""),
-        "the text projection carries no document key:\n{text}"
+    assert_eq!(
+        fs::read_to_string(&out).expect("the projection"),
+        BASE_TRACE_OUT,
+        "the text projection is byte-identical to the base build's: adding `nodes` edits no text"
     );
-    let check = s.req(&["trace", "--check", out.to_str().expect("utf-8 path")]);
-    assert_eq!(check.code, 0, "{}{}", check.stdout, check.stderr);
-    let plain = s.req(&["trace"]);
-    let plain_text: Vec<&str> = plain.stdout.lines().collect();
-    for line in text.lines().filter(|l| !l.starts_with("<!--")) {
-        assert!(
-            plain_text.contains(&line),
-            "`--out` is the plain text matrix: `{line}` is not in\n{}",
-            plain.stdout
-        );
-    }
 }
 
 #[test]
