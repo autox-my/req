@@ -8,6 +8,8 @@ Extends ADR 0003 (variants are selectors), ADR 0007 (collapse tiers), ADR 0021 (
 unrelated claims were resolved. Date proposed: 2026-11-11. This ADR decides the contract; the code follows in its own pull
 request, test first, with the measurement in decision 6.
 
+Extended by [ADR 0049](0049-a-superseded-claim-is-withdrawn-where-its-successor-applies.md): `supersedes` resolves a Conflict by withdrawing the superseded claim where its successor applies (the *Not decided here* item below).
+
 Extended by [ADR 0045](0045-req-diff-names-the-contradictions-a-change-introduces.md): `req diff` names the contradictions a change adds or resolves (the follow-up *Not decided here* names below).
 
 ## Context

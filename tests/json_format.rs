@@ -489,6 +489,7 @@ fn render_json_has_the_pinned_shape_and_keeps_the_sections_apart() {
             "relations",
             "selectors",
             "statement",
+            "superseded_by",
         ],
     );
     assert_eq!(

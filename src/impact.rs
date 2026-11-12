@@ -24,6 +24,8 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct Dependent {
     pub claim_id: String,
     pub applies: Applies,
+    /// ADR 0049: the successors that withdrew this dependent in the selection; empty unless it is.
+    pub superseded_by: Vec<String>,
     pub distance: usize,
 }
 
@@ -83,17 +85,17 @@ pub fn dependents(rows: &[Row], target: &str) -> (Vec<Dependent>, ImpactFindings
             for parent in parents {
                 if seen.insert(parent) {
                     queue.push((parent, distance + 1));
-                    let applies = rows
-                        .iter()
-                        .find(|r| r.claim_id == *parent)
-                        .map(|r| r.applies)
-                        .unwrap_or(Applies::Unknown);
+                    let parent_row = rows.iter().find(|r| r.claim_id == *parent);
+                    let applies = parent_row.map(|r| r.applies).unwrap_or(Applies::Unknown);
                     if applies == Applies::Unknown {
                         findings.unknown_dependents.push(parent.to_string());
                     }
                     out.push(Dependent {
                         claim_id: parent.to_string(),
                         applies,
+                        superseded_by: parent_row
+                            .map(|r| r.superseded_by.clone())
+                            .unwrap_or_default(),
                         distance: distance + 1,
                     });
                 }
@@ -146,9 +148,13 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         println!("{} dependent(s), nearest first:", dependents.len());
         for dependent in &dependents {
             let state = match dependent.applies {
-                Applies::Yes => "applies",
-                Applies::No => "outside the selection",
-                Applies::Unknown => "UNDECIDED",
+                Applies::Yes => "applies".to_string(),
+                Applies::No if !dependent.superseded_by.is_empty() => format!(
+                    "does not apply (superseded by {})",
+                    dependent.superseded_by.join(", ")
+                ),
+                Applies::No => "outside the selection".to_string(),
+                Applies::Unknown => "UNDECIDED".to_string(),
             };
             println!(
                 "- {}  distance {}  {state}",

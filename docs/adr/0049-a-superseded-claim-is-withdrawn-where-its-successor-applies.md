@@ -99,3 +99,30 @@ This decision is wrong if any of these is observed:
 4. a `supersedes` cycle passes the gate, or withdraws any member of the cycle;
 5. two views of the same selection disagree on whether a claim is withdrawn;
 6. a corpus with no `supersedes` relation produces different bytes in any committed projection or Baseline manifest.
+
+## Implementation note — 2026-11-13 (W-1: the code)
+
+Decisions 1–7 are implemented as written; nothing in them moved.
+
+- **One evaluation, in the loader.** `view::load_rows` folds each claim's own answer with its successors' own answers in a
+  second pass (`withdraw_superseded`), after every row's `applies` is known. `view::supersession` reads the relations once
+  (ordered maps and sets, no hash iteration) and returns the successors of each claim and every cycle; the loader, the gate and
+  `select` share it. `Row` gains `superseded_by` (sorted; empty unless withdrawn).
+- **`select` now reads the loader's rows.** It used to evaluate predicates on its own, which would have left it the one view
+  that did not know a claim was withdrawn. Its output is unchanged without a `supersedes` relation.
+- **Cycles.** Every claim with a path back to itself is excluded from the fold as a successor and as a target. Each cycle is
+  named once (the shortest cycle through its lowest member, rotated to start at its lowest id), so a component with chords is
+  named by every distinct cycle the members need, and no member goes unnamed. `relations_resolve` FAILs naming each in every
+  selection, whether or not its members apply.
+- **Dangling.** `relations_resolve` lists a `supersedes` whose `to` is missing as UNVERIFIABLE even when its claim does not
+  apply; every other relation kind keeps the applying-only rule.
+- **Text.** `render` (outside-the-selection list), `trace` (`[target …]`), `select` and `impact` say `does not apply
+  (superseded by REQ-X)` for a withdrawn claim, and the audit packet has a *Superseded* section, each only when a claim is
+  withdrawn. With no `supersedes` relation the only byte that moves is `render --format json`'s `superseded_by: []` on each row;
+  `docs/spec.md`, `docs/trace.md` and the three Baselines are unchanged and verify.
+- **Not built, as decided:** `select` has no `--format json`, so there is no JSON `select` row to carry the key; `req diff` still
+  names a supersession only through its successor's added relation and the resolved contradiction.
+- **Verified.** The five mutations each fail a test: folding through the successor's folded state (the chain test),
+  withdrawing whatever the successor's applicability (the variant-scoped test), treating an undecided successor as not
+  applying (the undecided-successor test), withdrawing within a cycle (the cycle tests), and computing withdrawal in the gate
+  alone (the view-agreement test and eleven others).

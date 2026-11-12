@@ -41,6 +41,7 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
         pins: Vec::new(),
         rationale_source: provenance.source,
         rationale_date: provenance.date,
+        superseded_by: Vec::new(),
     }
 }
 

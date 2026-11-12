@@ -660,7 +660,7 @@ results in the sibling `<dir>/junit-swift-testing.xml`; with only Swift Testing 
 requested `junit.xml` is never created, so read the file that appeared rather than the one that was
 asked for. The parent directory must already exist — SwiftPM does not make it. The id is again
 `classname::name`, and both halves carry what a machine needs: `classname` is the suite path
-(`DiskTriageCLITests.ImagingMapfileTests`) and `name` keeps its trailing `()` and its XML escaping
+(`DiskTriageCLITests.ImagingMapfileTests`) and `name` keeps its trailing `()`, with req decoding XML entities so a `tests:` entry holds the decoded name
 (`DiskTriageCLITests.ImagingMapfileTests::REQ0108_partialMapfileClipsTheUnboundedTail()`), so a claim id
 written into the function name is enough to generate the link — copy the id out of the report all the
 same. **A parameterised test is one case**: `@Test(arguments: [1, 2]) func f(_ v: Int)` yields a single
@@ -810,6 +810,14 @@ two out of the same release — never by a flag, and never by deleting the relat
 `conflicts-with` that names a claim the corpus does not hold is UNVERIFIABLE too. `req audit` lists the contradictions and
 the applying Conflicts in a *Contradictions and Conflicts* section. A model may *propose* a Conflict (`req propose`); you
 record it, or you do not.
+
+**Replacing a requirement is a relation, not a deletion.** When REQ-0050 replaces REQ-0012 (say "at least 3" becomes "at
+most 2"), add `relations: [{type: supersedes, to: REQ-0012}]` to **REQ-0050**, the new claim, and leave REQ-0012 where it is.
+In every selection where REQ-0050 applies, REQ-0012 is withdrawn: the gate, `req check`, the Baseline, the audit packet and the
+views no longer count it, so the pair is no longer a contradiction, and `req render` and `req select` read *does not apply
+(superseded by REQ-0050)*. A successor scoped to one variant supersedes only there, and one the context cannot decide leaves
+REQ-0012 undecided, which the gate names. The old claim stays readable as history, and the audit packet lists it in a *Superseded*
+section. A claim that supersedes itself, or a loop of them, fails `relations_resolve`.
 
 ## CI
 

@@ -119,6 +119,11 @@ action, qualifier and unit, nested conditions, disjoint feasible sets; found str
 (ADR 0043). Unrecorded, it is a defect; recorded, it is a Conflict.
 _Avoid_: inconsistency (the corpus is never shown consistent, only free of what was checked)
 
+**Withdrawn**:
+A claim that does not apply in a selection because a successor that supersedes it applies there;
+kept in the corpus, with its address, and named wherever a view lists what it left out (ADR 0049).
+_Avoid_: deleted, retired (a withdrawn claim is still in the corpus), superseded (the relation, not the state)
+
 **Proposal**:
 A change to a claim that has not yet been accepted; what an edit from a non-engineer
 produces.

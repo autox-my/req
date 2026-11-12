@@ -152,42 +152,66 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         }
     }
 
-    let claims = match crate::canon::load_claims(root) {
-        Ok(c) => c,
+    // One evaluation: the rows the other views read, with each claim's own answer folded with its
+    // successors' (ADR 0049). `select` used to evaluate predicates itself, which would leave it the
+    // one view that did not know a claim was withdrawn.
+    let rows = match crate::view::load_rows(&context, root) {
+        Ok(rows) => rows,
         Err(e) => {
             eprintln!("[UNVERIFIABLE] {e}");
             return 3;
         }
     };
+    let successors = crate::view::supersession(&rows).successors;
+    let selectors_of = |id: &str| -> Vec<Predicate> {
+        rows.iter()
+            .find(|row| row.claim_id == id)
+            .map(|row| row.selectors.iter().map(|p| parse_predicate(p)).collect())
+            .unwrap_or_default()
+    };
 
     let (mut yes, mut no, mut unknown) = (0usize, 0usize, 0usize);
-    for loaded in claims.iter() {
-        let claim = &loaded.claim;
-        let predicates: Vec<Predicate> = claim
-            .applicability
-            .iter()
-            .map(|p| parse_predicate(p))
-            .collect();
-        match applies(&predicates, &context) {
+    for row in &rows {
+        let predicates: Vec<Predicate> = row.selectors.iter().map(|p| parse_predicate(p)).collect();
+        match row.applies {
             Applies::Yes => {
                 yes += 1;
                 if predicates.is_empty() {
-                    println!("{}  applies  (no selector)", claim.claim_id);
+                    println!("{}  applies  (no selector)", row.claim_id);
                 } else {
-                    println!("{}  applies", claim.claim_id);
+                    println!("{}  applies", row.claim_id);
                 }
             }
-            Applies::No => no += 1,
+            Applies::No => {
+                no += 1;
+                // Only a withdrawn claim is named: an excluded one is counted, as it always was.
+                if !row.superseded_by.is_empty() {
+                    println!("{}  {}", row.claim_id, crate::view::not_applying(row));
+                }
+            }
             Applies::Unknown => {
                 unknown += 1;
-                let undecided: Vec<String> = predicates
+                let mut undecided: Vec<String> = predicates
                     .iter()
                     .filter(|p| evaluate(p, &context) == Applies::Unknown)
                     .map(|p| p.source())
                     .collect();
+                // A claim whose own selector is decided can still be undecided: a successor that
+                // supersedes it is, and whether it still binds depends on that predicate.
+                for successor in successors.get(&row.claim_id).into_iter().flatten() {
+                    for predicate in selectors_of(successor)
+                        .iter()
+                        .filter(|p| evaluate(p, &context) == Applies::Unknown)
+                    {
+                        undecided.push(format!(
+                            "{} (selector of {successor}, which supersedes it)",
+                            predicate.source()
+                        ));
+                    }
+                }
                 println!(
                     "{}  UNKNOWN  undecided: {}",
-                    claim.claim_id,
+                    row.claim_id,
                     undecided.join("; ")
                 );
             }
