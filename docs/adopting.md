@@ -424,6 +424,10 @@ every view, and adding a path is a decision. A `spec.md` cannot go stale by cons
 the only way to change it is to change the corpus — which has its own gates (`req gate`,
 `req baseline --verify`).
 
+A graph page for a reader who will not read a matrix is rendered, not committed: `req trace --format json` carries every
+claim as a node and every relation as an edge, and `examples/graph/README.md` turns that document into one standalone
+page with a deterministic converter and a pinned, offline renderer. The page is as current as the run that made it.
+
 ## The authoring loop and its traps
 
 Every command's `--help` carries its own `exit:` line — the codes that command answers,

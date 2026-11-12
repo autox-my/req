@@ -354,14 +354,28 @@ struct EdgeDocument<'a> {
     to: &'a str,
 }
 
-/// `trace`'s document: the outgoing edges, the derived incoming edges (REQ-0020 stores each
-/// relation once), and the findings.
+/// One claim as `trace`'s document names it (ADR 0046 decision 2): every claim in the corpus is a
+/// node, including one with no relation, so a renderer holds the whole graph. The field order is
+/// the document's contract and the writer keeps it.
+#[derive(Serialize)]
+struct NodeDocument<'a> {
+    claim_id: &'a str,
+    statement: &'a str,
+    modality: &'a str,
+    address: String,
+    applies: &'static str,
+    superseded_by: &'a [String],
+}
+
+/// `trace`'s document: the nodes (every claim), the outgoing edges, the derived incoming edges
+/// (REQ-0020 stores each relation once), and the findings.
 #[derive(Serialize)]
 struct TraceDocument<'a> {
     schema: &'static str,
     generator: &'static str,
     rules_v: u32,
     selection: &'a Context,
+    nodes: Vec<NodeDocument<'a>>,
     edges: Vec<EdgeDocument<'a>>,
     derived_incoming: Vec<EdgeDocument<'a>>,
     findings: &'a TraceFindings,
@@ -411,6 +425,19 @@ pub fn trace_document(rows: &[Row], context: &Context) -> (String, TraceFindings
     let (_, findings) = trace(rows, context);
     let sorted = sorted_rows(rows);
 
+    let nodes: Vec<NodeDocument<'_>> = sorted
+        .iter()
+        .map(|row| NodeDocument {
+            claim_id: &row.claim_id,
+            statement: &row.statement,
+            modality: &row.modality,
+            // The address is spelled as the other documents spell it (see `impl Serialize for Row`).
+            address: format!("sha256:{}", row.address),
+            applies: row.applies.as_str(),
+            superseded_by: &row.superseded_by,
+        })
+        .collect();
+
     let mut edges = Vec::new();
     for row in &sorted {
         for (kind, to) in &row.relations {
@@ -443,6 +470,7 @@ pub fn trace_document(rows: &[Row], context: &Context) -> (String, TraceFindings
         generator: "trace",
         rules_v: RULES_V,
         selection: context,
+        nodes,
         edges,
         derived_incoming,
         findings: &findings,
