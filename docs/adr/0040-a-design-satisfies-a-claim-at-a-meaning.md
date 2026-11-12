@@ -142,6 +142,30 @@ Not an edit of the decisions above; where they now live.
 
 - **2026-11-12 (G-1: PURE; corrected by G-1-fix and G-1-fix-2).** `direction-v4` (v3 plus pairs from the numeric statements of PURE, Zenodo 1414117, CC BY 4.0) measures `numeric_loosening` at **0 false carries over a support of 139** (v3: 17, v2: 9; 154 on the first run, before 8 statements whose comparator bounds the domain, not the obligation, were excluded by hand: review 1 found two of them (`tcs` #487, `evla back` #162), the writer's hand-read found five more, and review 2 found the eighth (`home 1.3` #146)), and `modality_weakening` at 0 over 271; its record reports both `admitted: true`. The support is pairs, not statements (about 44 PURE statements the parser reads with a value slot, each giving several pairs), and `ADMITTED_CARRIES` is **unchanged** and still pinned to the v2 record, so only `modality_weakening` may carry a link today; moving the measurement to v4 and admitting `numeric_loosening` is a separate owner decision. docs/canonical-hashing.md, *Recorded runs*.
 
+## Implementation note — 2026-11-12 (N-1: `numeric_loosening` admitted)
+
+The owner admitted `numeric_loosening` on 2026-11-12, after `direction-v4` (G-1, PR #63) measured it at **0 false carries
+over a support of 139**. That clears decision 5's rule (count 0, support ≥ 100). `ADMITTED_CARRIES` is now
+`modality_weakening` and `numeric_loosening`, and `tests/satisfy_admission.rs` pins it to
+`bench/results/direction-v4-rules-v<RULES_V>.json`, the largest direction gold set, instead of the v2 record.
+
+v4 is a superset of v2, and `modality_weakening` stays admitted on it (0 over 271). `membership_widening` stays unadmitted,
+because no gold set has support for it. The single-axis guard in `src/satisfy.rs` is unchanged: a loosened bound carries
+a link only when the bound is the one axis that moved.
+
+What the admission rests on, so a later reader can weigh it:
+
+- **Pairs, not statements.** The support is pairs. About 44 PURE statements the parser reads with a value slot give 122 of
+  them, and v3 gives the other 17.
+- **Narrow sources.** The statements cluster in a few documents.
+- **A shared defect was found twice.** Twice, the generator's label and req's reading were wrong *together* on a comparator
+  that bounds the domain (what is detected or handled) rather than the obligation. Such a pair shows no false carry, so
+  only reading by hand caught it: two reviews and the writer's own reading excluded 8 statements, and review 2 read all
+  50 that remain.
+
+Decision 5's measurement cannot see that class of error, so a future source should be read the same way before its
+pairs count toward admission.
+
 ## Falsification
 
 This decision is wrong if any of these is observed:

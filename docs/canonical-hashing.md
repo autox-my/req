@@ -425,6 +425,8 @@ as `req gate` lets Fail outrank Unverifiable.
   - **Admission is not changed by this run.** `ADMITTED_CARRIES` stays pinned to `direction-v2-rules-v<RULES_V>.json`
     (S-2): `numeric_loosening` is `admitted: false` there (support 9). Moving the measurement to v4 and admitting the class
     is an owner decision for a later unit. Every number above is pinned in `tests/direction_pure.rs`.
+  - **Admitted afterwards (N-1, 2026-11-12).** The owner admitted `numeric_loosening`: `ADMITTED_CARRIES` is now
+    `modality_weakening` and `numeric_loosening`, pinned to `direction-v4-rules-v<RULES_V>.json` (ADR 0040, N-1 note).
 
 - **Contradiction measurement, rules v9** (C-1; the `contradiction` block added to every `bench/results/*-rules-v9.json`;
   ADR 0043 decision 6) — **false contradictions 0 on every corpus**: parity 0 of 12 scored pairs (9 comparable, 3 not),

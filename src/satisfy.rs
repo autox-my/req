@@ -20,7 +20,7 @@
 //! what is judged, and the record holds no applicability to compare.
 //!
 //! Admission is compiled in and pinned to the measurement (`tests/satisfy_admission.rs` reads
-//! `bench/results/direction-v2-rules-v<RULES_V>.json`); the record is never read at runtime, because
+//! `bench/results/direction-v4-rules-v<RULES_V>.json`); the record is never read at runtime, because
 //! an adopter does not have it. Scope classes are never carried, whatever the measurement says.
 
 use crate::canon::{self, RULES_V};
@@ -50,13 +50,15 @@ const WEAKENING: [Direction; 3] = [
 ];
 
 /// The classes whose links carry over a change (ADR 0040 decision 5): exactly those
-/// `bench/results/direction-v2-rules-v<RULES_V>.json` reports `admitted: true` — zero false carries
-/// on the gold set, with the support minimum. Today that is `modality_weakening` alone
-/// (`numeric_loosening` has support 9 of the 100 required, `membership_widening` has none).
+/// `bench/results/direction-v4-rules-v<RULES_V>.json` reports `admitted: true` — zero false carries
+/// on the largest direction gold set, with the support minimum. Today that is `modality_weakening`
+/// (0 over 271) and `numeric_loosening` (0 over 139, from PURE's numeric statements; admitted by the
+/// owner on 2026-11-12, N-1); `membership_widening` has no support on any gold set.
 ///
 /// A test reads the record and asserts equality, so a rules bump or a re-measurement that changes
 /// admission fails CI until this constant is changed deliberately.
-pub const ADMITTED_CARRIES: &[Direction] = &[Direction::ModalityWeakening];
+pub const ADMITTED_CARRIES: &[Direction] =
+    &[Direction::ModalityWeakening, Direction::NumericLoosening];
 
 /// Whether a change in this direction carries a link. A weakening class the measurement admitted,
 /// and nothing else: a scope class is refused here whatever [`ADMITTED_CARRIES`] says (decision 6).
