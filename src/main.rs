@@ -410,8 +410,10 @@ it must name the selection the header records or it is a second question (3).
 
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 matrix as a `req.trace/1` document on stdout: schema, generator, `rules_v`, the selection, the
-edges, the derived incoming edges and the findings. It is stdout only — `--out`/`--check` are
-text projections, and pairing either with `--format json` is a usage error (exit 2).
+nodes (every claim, with its statement, modality, address, applicability and the successors that
+withdrew it), the edges, the derived incoming edges and the findings. It is stdout only —
+`--out`/`--check` are text projections, and pairing either with `--format json` is a usage error
+(exit 2). `examples/graph/README.md` turns that document into a graph page.
 
 exit: 0 the edge graph is settled (plain), written (--out), or current (--check); 1 a committed
 projection is stale or was hand-edited (--check); 3 an edge into a claim the corpus does not

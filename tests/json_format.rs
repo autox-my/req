@@ -597,6 +597,7 @@ fn trace_json_serializes_edges_derived_incoming_and_findings() {
             "edges",
             "findings",
             "generator",
+            "nodes",
             "rules_v",
             "schema",
             "selection",

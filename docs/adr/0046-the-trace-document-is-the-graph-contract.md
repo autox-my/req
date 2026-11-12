@@ -100,3 +100,37 @@ This decision is wrong if any of these is observed:
    there that the document does not hold;
 4. the converter, or any invocation the skill reference gives, needs a network connection or writes to the corpus;
 5. the converter accepts a schema version it was not written for.
+
+## Implementation note (2026-11-13, unit V-1)
+
+- **`nodes`** is in `req.trace/1` (`view::trace_document`): one entry per claim in the corpus, sorted by claim id, with
+  `claim_id`, `statement`, `modality`, `address` (spelled `sha256:<hex>`, as the other documents spell it), `applies` and
+  `superseded_by`. The key sits between `selection` and `edges`, and each node's fields keep the order above in the bytes.
+  The text matrix, `docs/trace.md` and every `--out`/`--check` byte are unchanged; `req trace --help` names `nodes`.
+- **The archify type is `architecture`.** archify's `dataflow` takes labelled directed flows but caps a diagram at five
+  stages and five rows, which a claim graph of any size exceeds, and its `lifecycle`, `workflow` and `sequence` types
+  assume a main path or a time order a claim graph does not have. `architecture` has typed nodes, labelled and
+  variant-carrying directed connections, free integer `pos`/`size` placement with no stage cap, and free-text `tag` and
+  `cards`. It is the type with the least invention.
+- **What each field carries.** A node's label is its `claim_id`; its `tag` is the modality, followed by the state when the
+  claim is not an ordinary applying one. A statement is far longer than a node box and archify draws a node's sublabel on
+  one unwrapped line, so the full statement (and, for a withdrawn claim, its successors) is the claim's **card**; nothing
+  is shortened. An edge's label is its `relation`. Four component types stand for four states (applies, undecided, does not
+  apply, withdrawn), a fifth for a target an edge names that the corpus does not hold, and `meta.legend` names each in
+  req's words. An undecided edge is a `dashed` connection and a dangling edge a `security` one; archify's architecture
+  legend has no entry for a connection variant, so the page says it in the node tag and card, not in the legend.
+- **A dangling edge's target is drawn as one node** ("not in the corpus"), because archify refuses a connection to an id it
+  does not hold. The id comes from the document's own edge, so the output still holds nothing the document does not.
+- **Layout rule.** A node's layer is the longest `derives-from`/`refines` path to a root (a root is a claim with none of
+  either); any other relation does not move it, and a cycle's closing edge is not followed. Layers are rows, top to
+  bottom; inside a layer, columns run in claim id order and wrap after six. Every coordinate is an integer. Edges between
+  neighbours keep archify's automatic route; every other edge is routed only through the channels between rows and the
+  gutters between columns, so no route can cross an unrelated node, and parallel routes fan out over fixed lane offsets
+  in edge order. The converter writes the archify commit (`7e45f36`) into `meta.subtitle`.
+- **Falsification, as tested.** `tests/graph_archify.rs` (the converter, over a hand-written fixture) pins items 1, 3, 4
+  and 5; `tests/trace_nodes.rs` and `tests/json_format.rs` pin the document, and item 1 for the document itself.
+- **Verification outside the gate** (this repository's own graph: `.req/variants` line 1, 40 claims and 40 edges, none
+  dangling or undecided): the converter's output is byte-identical across two runs, and `archify finalize architecture
+  … --quality standard --json` with `ARCHIFY_UPDATE_CHECK_DISABLED=1` exited 0, with `validate`, `deliver`, `check` and
+  `browser-check` all `pass` and no diagnostic. The page was **not visually reviewed**; archify advises a perceptual look
+  at route bends (`visualReview: not-requested`). The HTML is in the session scratch directory and is not committed.
