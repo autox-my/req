@@ -77,7 +77,10 @@ Decisions 1–6 are implemented in `src/diff.rs`; `src/check.rs` only made its `
   `conflicts-with` is deleted at head is **added** (outstanding again), and a pair recorded on both sides is not news.
 - **One list, read from head.** With no `--head` the working tree's `.req/variants` is read; with `--head <rev>` that revision's
   blob (so a working-tree edit does not move a `--head` report). A list that cannot be read (malformed, not a regular file, not
-  UTF-8) is exit 3 naming `.req/variants:<line>`; a base list is never read. Lines with identical words count once.
+  UTF-8) is exit 3 naming `.req/variants:<line>`; a base list is never read. Lines with identical words count once. One
+  difference from `req check`: with `--head`, a list committed as a symbolic link is exit 3, not followed (git stores the
+  link's target path, and resolving it would read outside what `req diff` extracts); without `--head` the working-tree link
+  is followed as `req check` follows it (review D-1-review-1). The default selection carries `req check`'s labels.
 - **Order.** Pairs are sorted by the line's position in the list, then by the two ids.
 - **The admission is a parameter** (`flagged_claims(delta, admitted)`; `contradictions_block(delta, n, admitted)`), so falsification
   3 is tested while `DETECTOR_ADMITTED` is `true`. `req diff` passes the constant.

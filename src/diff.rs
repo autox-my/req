@@ -915,12 +915,9 @@ pub fn contradiction_delta(
     head: &[SelectionFindings],
 ) -> ContradictionDelta {
     let (before, after) = (outstanding(base), outstanding(head));
-    let mut lines: Vec<&str> = head.iter().map(|s| s.line.as_str()).collect();
-    for selection in base {
-        if !lines.contains(&selection.line.as_str()) {
-            lines.push(&selection.line);
-        }
-    }
+    // Both sides are judged under the head's lines (ADR 0045 decision 1), so the head's order is
+    // every line there is.
+    let lines: Vec<&str> = head.iter().map(|s| s.line.as_str()).collect();
     let position = |line: &str| lines.iter().position(|l| *l == line).unwrap_or(lines.len());
     let sorted = |from: &BTreeMap<PairKey, PairChange>, not_in: &BTreeMap<PairKey, PairChange>| {
         let mut changes: Vec<PairChange> = from
@@ -1008,8 +1005,9 @@ pub fn contradictions_block(
 }
 
 /// What the selection a pair is judged under is called when `.req/variants` names none: the bare
-/// selection `req check` uses (ADR 0023).
-const DEFAULT_SELECTION: &str = "(the default variant)";
+/// selection `req check` uses (ADR 0023), with `req check`'s own labels.
+const NO_FILE: &str = "(no .req/variants: the default variant)";
+const NO_RELEASE: &str = "(.req/variants declares no release: the default variant)";
 
 /// One line of the head's `.req/variants`, parsed.
 struct Selection {
@@ -1021,8 +1019,12 @@ struct Selection {
 /// no list or it holds no line. A list that cannot be used is UNVERIFIABLE (the `Err`), never the
 /// default: a skipped check is never a pass.
 fn selections_from(listing: Listing, side: &str) -> Result<Vec<Selection>, String> {
+    let mut default_label = NO_RELEASE;
     let lines = match listing {
-        Listing::Absent => Vec::new(),
+        Listing::Absent => {
+            default_label = NO_FILE;
+            Vec::new()
+        }
         Listing::Unreadable(reason) => return Err(format!("{side}: {reason}")),
         Listing::Text(text) => check::parse_variants(&text).map_err(|errors| {
             format!(
@@ -1044,7 +1046,7 @@ fn selections_from(listing: Listing, side: &str) -> Result<Vec<Selection>, Strin
     }
     if selections.is_empty() {
         selections.push(Selection {
-            label: DEFAULT_SELECTION.to_string(),
+            label: default_label.to_string(),
             context: Context::new(),
         });
     }
@@ -1053,7 +1055,10 @@ fn selections_from(listing: Listing, side: &str) -> Result<Vec<Selection>, Strin
 
 /// `.req/variants` of a revision, beside the corpus (`prefix` is the corpus root's place in the work
 /// tree): a raw blob read the way the claims are, absent when the revision has none. Only a regular
-/// file is a list; anything else (a directory, a link) is unreadable, as it is for `req check`.
+/// file is a list; anything else (a directory, a link) is unreadable. Unlike `req check`'s
+/// `read_list`, a link is **not** followed here: git stores a link as its target's path, and
+/// resolving it would read outside the claims and aliases this command extracts — so a list that
+/// is a link works without `--head` and is UNVERIFIABLE with it (review D-1-review-1).
 fn revision_listing(
     root: &Path,
     revision: &Revision,

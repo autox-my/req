@@ -1905,7 +1905,7 @@ fn a_claim_added_against_an_existing_one_lists_the_pair_flags_both_and_fails_on_
     let pair = &pairs[0];
     assert!(pair.starts_with("added "), "{pair}");
     for needle in [
-        "(the default variant)",
+        "(no .req/variants: the default variant)",
         "REQ-0001 vs REQ-0002",
         "bounds",
         "SHALL LE 0.1 s",
