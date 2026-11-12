@@ -8,6 +8,8 @@ Extends ADR 0003 (variants are selectors), ADR 0007 (collapse tiers), ADR 0021 (
 unrelated claims were resolved. Date proposed: 2026-11-11. This ADR decides the contract; the code follows in its own pull
 request, test first, with the measurement in decision 6.
 
+Extended by [ADR 0045](0045-req-diff-names-the-contradictions-a-change-introduces.md): `req diff` names the contradictions a change adds or resolves (the follow-up *Not decided here* names below).
+
 ## Context
 
 `docs/design.md` §4 row 8, *contradictions found in the field*, is **not built**: nothing tells an author that REQ-A says

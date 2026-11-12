@@ -311,6 +311,17 @@ is reported once, at the top: a changed `aliases/subjects.yml` can move many add
 on several axes is named beside its class (`also: ...`), and `--format json` lists every moved axis
 in `axes` (ADR 0044).
 
+A `contradictions:` section follows the claims (ADR 0045): the structural contradictions the
+change added or resolved, each with its `.req/variants` line, both ids, the slot and the two
+values. Contradiction belongs to a selection, so it is judged once per line of the **head**
+side's `.req/variants` (the working tree's, or `--head`'s blob; no list is the bare selection),
+on both sides with that line, so a renamed line does not make old pairs new. *Added* is
+unrecorded at head and not unrecorded at base; *resolved* is the reverse (gone, or recorded as
+a `conflicts-with` Conflict at head). Each claim in an added pair carries the flag
+`contradiction-added <other-id>`, and an otherwise unchanged one is then listed. While the
+detector is not admitted the pairs are marked `(reported, not judged)` and no flag is raised.
+`--format json` adds `contradictions: {added, resolved}`.
+
 Each side is read from git without checking anything out: only `claims/` and `aliases/`, as
 raw blobs, into a temporary directory that is removed on every exit, then loaded by the same
 loaders every command uses and derived under this binary's rules and that side's own
@@ -320,8 +331,8 @@ the checkout (a shallow clone needs `fetch-depth: 0`). The corpus must be inside
 tree; its direction quality is exactly `req compare`'s.
 
 `--fail-on <list>` names classes that turn the run into exit 1: a comma-separated subset of
-`weakened`, `removed`, `reshaped`, `not-judged`, `pins-changed`, `pin-flagged`, `tests-lost`.
-Nothing is on by default; an unlisted class is still printed. `--format json` prints one
+`weakened`, `removed`, `reshaped`, `not-judged`, `pins-changed`, `pin-flagged`, `tests-lost`,
+`contradiction-added`. Nothing is on by default; an unlisted class is still printed. `--format json` prints one
 `req.diff/1` document, the same classes as the text.
 
 The output is a description, not a verdict: it never says PASS or FAIL, and `weakened` is a
@@ -331,8 +342,8 @@ exit: 0 the report was produced (whatever it lists); 1 only with `--fail-on`, wh
 class or flag is present; 3 UNVERIFIABLE (`git` missing or failing, the corpus not inside a
 git work tree, a revision that does not resolve, a side whose claims or registry do not
 load, including a claim declaring a file format this build does not write, or an empty
-`claims/`); 2 usage (a missing `--base`, a revision beginning with `-`, an empty or unknown
-`--fail-on` class).
+`claims/`, or a head `.req/variants` that cannot be read, naming its line); 2 usage (a missing
+`--base`, a revision beginning with `-`, an empty or unknown `--fail-on` class).
 
 `docs/adopting.md` for the loop.";
 

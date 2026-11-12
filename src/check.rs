@@ -35,7 +35,7 @@ pub const SCHEMA_CHECK: &str = "req.check/1";
 
 const USAGE: &str = "usage: req check [--test-report <file>]... [--format text|json]";
 
-const VARIANTS: &str = ".req/variants";
+pub(crate) const VARIANTS: &str = ".req/variants";
 const PROJECTIONS: &str = ".req/projections";
 
 /// The fold over step exits, restated from `gate::exit_code` (which ranks policy outcomes, not step
@@ -103,7 +103,7 @@ impl Step {
 }
 
 /// A list on disk, read once.
-enum Listing {
+pub(crate) enum Listing {
     /// The path does not exist (and is not a link, dangling or otherwise).
     Absent,
     /// The path exists and cannot be used as a list; the reason says why.
@@ -116,7 +116,7 @@ enum Listing {
 /// FIFO is never opened (which blocks forever with no writer): a link is followed with `metadata`,
 /// and anything that is not a regular file — a directory, a FIFO, a device, a link to either — is
 /// unreadable, not absent. Only a path that does not exist at all is absent.
-fn read_list(root: &Path, name: &str) -> Listing {
+pub(crate) fn read_list(root: &Path, name: &str) -> Listing {
     let path = root.join(name);
     match std::fs::symlink_metadata(&path) {
         Ok(_) => {}
@@ -162,17 +162,17 @@ fn words(line: &str) -> Vec<&str> {
 }
 
 /// One validated `.req/variants` line.
-struct VariantLine {
+pub(crate) struct VariantLine {
     /// The words, joined by one space: the label the step carries.
-    text: String,
-    context: Context,
+    pub(crate) text: String,
+    pub(crate) context: Context,
 }
 
 /// Validate and parse `.req/variants`. A line is `key=value` words, never an option; a word that
 /// starts with `-`, lacks `=` or has an empty key is a malformed list, named `<file>:<line>`.
 /// Every malformed line is reported, so one run names them all. A final line with no newline
 /// counts (`split('\n')`, not a reader that wants a terminator).
-fn parse_variants(text: &str) -> Result<Vec<VariantLine>, Vec<String>> {
+pub(crate) fn parse_variants(text: &str) -> Result<Vec<VariantLine>, Vec<String>> {
     let mut lines = Vec::new();
     let mut errors = Vec::new();
     for (index, raw) in text.split('\n').enumerate() {
