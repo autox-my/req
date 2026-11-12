@@ -765,6 +765,34 @@ suspect link may still comply and nobody has shown it. To require a design eleme
 claim, add the line `need design` to `.req/completeness`; a claim no element declares is then the
 structural omission `unsatisfied` (UNVERIFIABLE), also listed in `req audit`.
 
+## Contradictions and Conflicts
+
+Two claims about the same thing can say opposite things: "the API shall respond within 100 ms" in one file and "the API
+shall respond in at least 200 ms" in another. `req gate` judges this for the claims a release applies, as its
+`contradictions` policy (ADR 0043). It looks only at what Tier 1 can decide exactly — the same subject, action,
+qualifier, unit, exception and temporal, under nested conditions, with a `SHALL` against a `SHALL NOT`, bounds no value
+meets, or membership sets that cannot overlap — and says so: the PASS line reads *no structural contradiction among k
+comparable pairs; m pairs not comparable*, never "consistent". A claim the parser leaves unstructured, a `SHOULD` or a `MAY`,
+and a pair that differs in a slot are counted in *m*, not guessed. Claims that apply in different `.req/variants` lines are
+never compared.
+
+An unrecorded contradiction is a defect nobody has looked at, and the policy fails it, naming both claims, the slot and the
+two values. When you (or the person who owns the requirement) have looked and know the two cannot both hold — whether or
+not Tier 1 can see it — record it on either claim:
+
+```yaml
+relations:
+  - type: conflicts-with
+    to: REQ-0042
+```
+
+A recorded **Conflict** is information, not an error, so it is UNVERIFIABLE rather than FAIL: a release cannot be shown to
+satisfy both sides of it. It is resolved by an edit, by retiring one claim, or by an applicability predicate that keeps the
+two out of the same release — never by a flag, and never by deleting the relation while the two still apply. A
+`conflicts-with` that names a claim the corpus does not hold is UNVERIFIABLE too. `req audit` lists the contradictions and
+the applying Conflicts in a *Contradictions and Conflicts* section. A model may *propose* a Conflict (`req propose`); you
+record it, or you do not.
+
 ## CI
 
 Save this as `.github/workflows/req.yml`. The summary step below targets GitHub's
@@ -1395,7 +1423,7 @@ for an adopter's agent. The four prohibitions, and why each one matters:
 stdout — `req.render/1`, `req.trace/1`, `req.gate/2`, `req.audit/1`, `req.check/1` — with the exit code
 identical to the text form. It renders the verdict, it does not add one. The CI Action writes four of them
 to `req-views/` (see *CI*): `check.json` is **one** document for the whole release check, carrying every
-step's `req.gate/2` inside it. A `req.gate/2` document carries **seven** `policies` (the first is
+step's `req.gate/2` inside it. A `req.gate/2` document carries **eight** `policies` (the first is
 `pins_hold`) and a top-level `process_evidenced` array, so a consumer that reads only the machine count
 would overstate what was proven. Read the artifact, not the log; the `req check` step remains what decides
 the build.

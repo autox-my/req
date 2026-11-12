@@ -558,6 +558,7 @@ fn the_gate_document_is_req_gate_2_with_pins_hold_first() {
             "rationale_present",
             "tests_linked",
             "design_satisfied",
+            "contradictions",
             "selectors_confirmed"
         ],
         "a rename in place: the list keeps its order"

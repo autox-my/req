@@ -20,6 +20,7 @@ pub mod canon;
 pub mod check;
 pub mod compare;
 pub mod completeness;
+pub mod contradict;
 pub mod decision;
 // What changed in meaning between two revisions of a corpus (ADR 0026): joins the loader, the
 // direction classifier and the pin verdicts across two git revisions, and describes — never judges.

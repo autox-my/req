@@ -91,6 +91,9 @@ pub struct Evaluation {
     /// decision 5). Always the three classes, in `WEAKENING_CLASSES` order, so a class with no
     /// pairs is *present and not admitted* rather than absent. Reported, not a gate verdict.
     pub false_carry: Vec<FalseCarry>,
+    /// ADR 0043 decision 6: the false-contradiction bound and the polarity recall. Reported in the
+    /// record; whether the detector may judge is `contradict::DETECTOR_ADMITTED`, pinned to it.
+    pub contradiction: ContradictionScore,
     pub rows: Vec<String>,
     pub verdict: Verdict,
     /// The FMR gate, evaluated once with `verdict` so the record cannot re-derive it.
@@ -248,6 +251,67 @@ fn record_direction(
     }
 }
 
+/// The direction labels whose pairs are **nested sets** — the later claim is the earlier one with a
+/// bound moved, a member added or removed, or a condition added or removed — and so can never be a
+/// contradiction (ADR 0043 decision 6).
+const NESTED_DIRECTIONS: [&str; 7] = [
+    "numeric_loosening",
+    "numeric_tightening",
+    "membership_narrowing",
+    "membership_widening",
+    "scope_narrowing",
+    "scope_widening",
+    "scope_divergence",
+];
+
+/// The contradiction detector's measurement over one corpus (ADR 0043 decision 6). Labels come from
+/// the corpus (`equivalent`, or a `direction:` label), never from the detector.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct ContradictionScore {
+    /// The pairs that must never contradict (labelled equivalent, or a nested-set direction label)
+    /// that the detector reported as a contradiction — the hard bound; empty is the expectation.
+    pub false_contradictions: Vec<String>,
+    /// Of those pairs, the comparable ones that were not a contradiction.
+    pub comparable: usize,
+    /// Of those pairs, the ones the detector could not compare (never counted as a contradiction).
+    pub not_comparable: usize,
+    /// `polarity_flip` pairs whose earlier claim is a `SHALL`: contradictions by construction.
+    pub recall_of: usize,
+    /// …of which the detector found.
+    pub recall_found: usize,
+    /// …of which the detector could not make comparable.
+    pub recall_not_comparable: usize,
+}
+
+impl ContradictionScore {
+    /// Score one pair. `equivalent` is the corpus list the pair sits in.
+    fn record(
+        &mut self,
+        pair: &crate::model::Pair,
+        equivalent: bool,
+        a: &CanonicalForm,
+        b: &CanonicalForm,
+    ) {
+        use crate::contradict::{Pair, contradicts};
+        let label = pair.direction.as_deref();
+        if equivalent || label.is_some_and(|l| NESTED_DIRECTIONS.contains(&l)) {
+            match contradicts(a, b) {
+                Pair::Contradiction { .. } => self.false_contradictions.push(pair.id.clone()),
+                Pair::Consistent => self.comparable += 1,
+                Pair::NotComparable(_) => self.not_comparable += 1,
+            }
+        }
+        if label == Some("polarity_flip") && a.modality == Some(crate::canon::Modality::Shall) {
+            self.recall_of += 1;
+            match contradicts(a, b) {
+                Pair::Contradiction { .. } => self.recall_found += 1,
+                Pair::NotComparable(_) => self.recall_not_comparable += 1,
+                Pair::Consistent => {}
+            }
+        }
+    }
+}
+
 /// Evaluate one corpus: pure, no files touched, nothing printed.
 pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
     let mut fmr_hits: Vec<String> = Vec::new();
@@ -257,6 +321,7 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
     let mut structured_equivalent: usize = 0;
     let mut unverifiable_pairs: Vec<String> = Vec::new();
     let mut tally = DirectionTally::default();
+    let mut contradiction = ContradictionScore::default();
     let mut rows: Vec<String> = Vec::new();
 
     let push_lints = |pair_id: &str,
@@ -285,6 +350,7 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
         push_lints(&pair.id, "a", &la, &mut lints);
         push_lints(&pair.id, "b", &lb, &mut lints);
         record_direction(pair, &fa, &fb, &mut tally);
+        contradiction.record(pair, true, &fa, &fb);
         rows.push(format!(
             "{:<8} {:<15} collapsed={:<5} structured={}",
             pair.id, "equivalent", collapsed, structured
@@ -307,6 +373,7 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
         push_lints(&pair.id, "a", &la, &mut lints);
         push_lints(&pair.id, "b", &lb, &mut lints);
         record_direction(pair, &fa, &fb, &mut tally);
+        contradiction.record(pair, false, &fa, &fb);
         rows.push(format!(
             "{:<8} {:<15} collapsed={}",
             pair.id, "not_equivalent", collapsed
@@ -360,6 +427,7 @@ pub fn evaluate(corpus: &Corpus, registry: &Registry) -> Evaluation {
 
     Evaluation {
         false_carry,
+        contradiction,
         verdict,
         fmr_gate: fmr,
         direction_gate: direction,
@@ -475,6 +543,21 @@ pub fn run(corpus_path: Option<&str>, root: &std::path::Path) -> i32 {
     let direction_unclassifiable = ev.direction_unclassifiable;
     let direction_mismatches = ev.direction_mismatches;
     let direction_label_errors = ev.direction_label_errors;
+    let contradiction = json!({
+        "false_contradictions": ev.contradiction.false_contradictions.len(),
+        "comparable": ev.contradiction.comparable,
+        "not_comparable": ev.contradiction.not_comparable,
+        "scored": ev.contradiction.false_contradictions.len()
+            + ev.contradiction.comparable
+            + ev.contradiction.not_comparable,
+        "pairs": ev.contradiction.false_contradictions,
+        "recall": {
+            "found": ev.contradiction.recall_found,
+            "of": ev.contradiction.recall_of,
+            "not_comparable": ev.contradiction.recall_not_comparable,
+        },
+        "note": "ADR 0043 decision 6. false_contradictions counts the pairs that must never contradict (labelled equivalent, or a nested-set direction label) reported as a contradiction: a hard bound, the analogue of FMR = 0. recall is over polarity_flip pairs whose earlier claim is a SHALL — reported, not gated."
+    });
     let false_carry: serde_json::Map<String, serde_json::Value> = ev
         .false_carry
         .iter()
@@ -501,6 +584,7 @@ pub fn run(corpus_path: Option<&str>, root: &std::path::Path) -> i32 {
         "corpus": rel,
         "corpus_sha256": corpus_sha,
         "pairs_total": pair_total,
+        "contradiction": contradiction,
         "fmr": {
             "collapses": fmr_n,
             "not_equivalent_total": ev.not_equivalent_total,

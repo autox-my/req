@@ -742,13 +742,15 @@ fn gate_json_has_the_pinned_shape() {
             "rationale_present",
             "tests_linked",
             "design_satisfied",
+            "contradictions",
             "selectors_confirmed",
         ],
         "the policies keep the order the text report and the docs name"
     );
     for policy in policies {
         // `checked` is on `pins_hold` (the pins judged), `rationale_present` (the sources with a
-        // line anchor, issue #19) and `design_satisfied` (the links judged) alone.
+        // line anchor, issue #19), `design_satisfied` (the links judged) and `contradictions` (the
+        // comparable pairs examined) alone.
         if policy["policy"] == "pins_hold" {
             assert_keys(policy, &["checked", "details", "outcome", "policy"]);
             // The starter claim pins three keys (operator, value, unit); nothing else here pins.
@@ -768,6 +770,15 @@ fn gate_json_has_the_pinned_shape() {
             assert_keys(policy, &["checked", "details", "outcome", "policy"]);
             assert_eq!(policy["checked"], 0, "{policy}");
             assert_eq!(policy["outcome"], "pass");
+            continue;
+        }
+        // `contradictions` (ADR 0043) carries `checked` as the comparable pairs it examined: this
+        // fixture's two claims differ in subject, so none were comparable, and the document says so.
+        if policy["policy"] == "contradictions" {
+            assert_keys(policy, &["checked", "details", "outcome", "policy"]);
+            assert_eq!(policy["checked"], 0, "{policy}");
+            assert_eq!(policy["outcome"], "pass");
+            assert_eq!(policy["details"], serde_json::json!([]));
             continue;
         }
         // `counts` (the claims by verdict, issue #20) is on `tests_linked` alone.

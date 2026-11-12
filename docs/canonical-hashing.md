@@ -322,6 +322,8 @@ third. Labels are versioned YAML in the repository.
 | Trap-class FMR | per adversarial class (LE/LT, modality, unit, condition, subject) | = 0.0 per class |
 | Direction accuracy | correct / classified labelled pairs on the direction gold set | reported; soft target ≥ 0.95 |
 | Dangerous direction confusion | a safety-relevant change reported as *no change*, or as the **opposite** direction | **= 0 — hard gate** (see below) |
+| False contradiction | a pair that must never contradict (labelled equivalent, or a nested-set `numeric_*` / `membership_*` / `scope_*` direction pair) reported by the structural contradiction detector (ADR 0043) | **= 0 — hard bound**; the detector judges only once it holds on every corpus (`contradict::DETECTOR_ADMITTED`) |
+| Contradiction recall | `polarity_flip` direction pairs whose earlier claim is a `SHALL`, found by the detector; the pairs it could not compare are counted | reported, never gated |
 | Tier-2 stability | provider output flip rate over ≥ 20 identical runs | ≤ 2% or the provider is not review-trustworthy (measured by `experiments/tier2/`, not a core gate: REQ-0011 is retired, ADR 0021) |
 | Tier-2 precision/recall | proposals vs labels | reported, never auto-applied |
 
@@ -333,6 +335,16 @@ requirement gets ratified — the direction analogue of a false merge. So the ha
 **dangerous confusions = 0**, and accuracy is reported against a 0.95 soft target,
 exactly as FMR is hard and FSR is soft.
 
+**False contradictions, beside FMR (ADR 0043).** The contradiction detector (`src/contradict.rs`) is the same slot
+equality the fingerprint rests on, so it inherits the same asymmetry: a **false contradiction** — two statements of the
+same meaning, or a nested-set direction pair (a bound moved, a member added, a condition added), reported as a pair no
+value satisfies — is a defect nobody should have to look at twice, and the bound is **0**, measured over every pair labelled
+equivalent and every `numeric_*` / `membership_*` / `scope_*` direction pair, with labels from the corpus and never from
+the detector. Each record carries a `contradiction` block (`false_contradictions`, the comparable and not-comparable pairs
+behind the zero, and `recall` over the `polarity_flip` pairs). The gate's `contradictions` policy FAILs an unrecorded
+contradiction only while `DETECTOR_ADMITTED` is true, which is pinned to the records by `tests/contradict.rs`: a rules bump
+or a corpus that breaks the bound fails CI until the constant is changed on purpose.
+
 The harness reports **PASS / FAIL / UNVERIFIABLE** as three distinct outcomes — a broken
 corpus or harness is never accidentally a pass (the same principle as ADR 0005). A
 denominator that is empty is UNVERIFIABLE, not PASS: with no not-equivalent pairs the FMR
@@ -341,6 +353,16 @@ cannot read as a clean gate. A definite defect still outranks the open question,
 as `req gate` lets Fail outrank Unverifiable.
 
 #### Recorded runs (append-only)
+
+- **Contradiction measurement, rules v9** (C-1; the `contradiction` block added to every `bench/results/*-rules-v9.json`;
+  ADR 0043 decision 6) — **false contradictions 0 on every corpus**: parity 0 of 12 scored pairs (9 comparable, 3 not),
+  external-v1 0/178 (150, 28), external-v2 0/178 (150, 28), external-v3 0/499 (383, 116), external-v4 0/499 (383, 116),
+  direction-v1 0/533 (392, 141), direction-v2 0/548 (401, 147), direction-v3 0/992 (433, 559). **Recall** on the
+  `polarity_flip` pairs whose earlier claim is a `SHALL`: 176 of 176 found, 0 not comparable, on each direction corpus
+  (reported, not gated). The detector is admitted (`DETECTOR_ADMITTED = true`). Support is thin where it matters
+  least to the claim: the direction corpora hold at most 46 `numeric_*` pairs (23 loosening, 23 tightening in v3) and no `membership_*` pair, so the
+  nested-set bound is carried mostly by the equivalent and `scope_*` pairs. No `RULES_V` bump; the diff of each
+  `*-rules-v9.json` is the new key and nothing else.
 
 - **Direction gold set v3, rules v9** (R-2; `bench/results/direction-v3-rules-v9.json`; ADR 0044) — 1827 pairs
   (v2's plus 436 compound and 16 prohibition-bound pairs, each also swapped): FMR 0/1548 (240 structurally

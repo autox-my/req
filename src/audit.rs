@@ -133,6 +133,21 @@ pub fn packet_with_omissions(
     roots: &BTreeSet<String>,
     unsatisfied: &[String],
 ) -> String {
+    packet_with_contradictions(rows, context, baseline, roots, unsatisfied, None)
+}
+
+/// [`packet_with_omissions`], with the *Contradictions and Conflicts* section (ADR 0043): the Tier-1
+/// contradictions among the applying claims and the recorded Conflicts that bind two of them.
+/// `None` prints no section — the caller had no corpus to find them in, and an absent section is not
+/// "none found".
+pub fn packet_with_contradictions(
+    rows: &[Row],
+    context: &Context,
+    baseline: Option<&Manifest>,
+    roots: &BTreeSet<String>,
+    unsatisfied: &[String],
+    contradictions: Option<&crate::contradict::Findings>,
+) -> String {
     // Sorted here rather than assumed: the packet is read by someone else, and its order must
     // not depend on the order the caller happened to load claims in. (`view::load_rows` returns
     // sorted claims today, which is exactly why an unsorted packet would hide until a different
@@ -297,6 +312,10 @@ pub fn packet_with_omissions(
         ));
     }
 
+    if let Some(found) = contradictions {
+        out.push_str(&contradictions_section(found));
+    }
+
     let (failed, open) = findings(rows, baseline, coverage.as_ref());
     if !failed.is_empty() || !open.is_empty() {
         out.push_str("\n## Findings\n");
@@ -306,6 +325,48 @@ pub fn packet_with_omissions(
         for reason in &open {
             out.push_str(&format!("- UNVERIFIABLE: {reason}\n"));
         }
+    }
+    out
+}
+
+/// The *Contradictions and Conflicts* section (ADR 0043 decision 4): reported beside the verdict, which
+/// is `req gate`'s `contradictions` policy — this packet lists what it examined and never says the
+/// claims are consistent.
+fn contradictions_section(found: &crate::contradict::Findings) -> String {
+    let mut out = String::from("\n## Contradictions and Conflicts\n");
+    if !crate::contradict::DETECTOR_ADMITTED {
+        out.push_str(
+            "detector reported, not judged (ADR 0043 decision 6): a contradiction nobody recorded is \
+             listed here and does not fail the gate yet\n",
+        );
+    }
+    let unrecorded: Vec<&crate::contradict::Contradiction> = found.unrecorded().collect();
+    for contradiction in &unrecorded {
+        out.push_str(&format!("- contradiction: {}\n", contradiction.describe()));
+    }
+    for (a, b) in &found.conflicts {
+        let also = found
+            .contradictions
+            .iter()
+            .find(|c| &c.a_id == a && &c.b_id == b)
+            .map(|c| format!(" (Tier 1 also finds it: {})", c.describe()))
+            .unwrap_or_default();
+        out.push_str(&format!(
+            "- recorded Conflict: {a} conflicts-with {b} — UNVERIFIABLE until resolved by an edit, a \
+             retirement or an applicability predicate{also}\n"
+        ));
+    }
+    for (from, to) in &found.dangling {
+        out.push_str(&format!(
+            "- dangling Conflict: {from} conflicts-with {to} — {to} is not in the corpus, so it cannot \
+             be shown resolved\n"
+        ));
+    }
+    if unrecorded.is_empty() && found.conflicts.is_empty() && found.dangling.is_empty() {
+        out.push_str(&format!(
+            "none found among {} comparable pairs, {} not comparable\n",
+            found.comparable, found.not_comparable
+        ));
     }
     out
 }
@@ -586,14 +647,20 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         println!("{}", format::document(&document));
         return code;
     }
+    // The forms were read when the rows were; a corpus that cannot be read a second time leaves the
+    // section out rather than printing "none found" over nothing.
+    let contradictions = crate::contradict::forms_of(root)
+        .ok()
+        .map(|forms| crate::contradict::find(&rows, &forms));
     print!(
         "{}",
-        packet_with_omissions(
+        packet_with_contradictions(
             &rows,
             &effective,
             manifest.as_ref(),
             &roots,
-            unsatisfied.as_deref().unwrap_or(&[])
+            unsatisfied.as_deref().unwrap_or(&[]),
+            contradictions.as_ref()
         )
     );
     println!(
