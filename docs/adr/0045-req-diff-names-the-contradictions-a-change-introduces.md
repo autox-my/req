@@ -64,3 +64,26 @@ This decision is wrong if any of these is observed:
 2. a pair whose two claims never apply in the same line is reported;
 3. the flag is raised, or `--fail-on contradiction-added` fires, while the detector is not admitted;
 4. a contradiction recorded as a Conflict at head is reported as added.
+
+## Implementation note — 2026-11-12 (D-1: the code)
+
+Decisions 1–6 are implemented in `src/diff.rs`; `src/check.rs` only made its `.req/variants` reader and parser
+`pub(crate)`, so there is one parser. `contradict::find` is called, unchanged, on each side's rows per line.
+
+- **"Holds" means outstanding.** Decision 2 reads a contradiction that is *unrecorded* as the one that holds, the same word
+  the gate uses (ADR 0043). So *added* is outstanding at head and not outstanding at base under that line, and *resolved* is
+  the reverse. Read the other way (a pair "holds" whether or not a Conflict records it), a pair recorded at base and at head
+  would be listed as resolved in every diff for ever. The consequence a reviewer should know: a pair recorded at base whose
+  `conflicts-with` is deleted at head is **added** (outstanding again), and a pair recorded on both sides is not news.
+- **One list, read from head.** With no `--head` the working tree's `.req/variants` is read; with `--head <rev>` that revision's
+  blob (so a working-tree edit does not move a `--head` report). A list that cannot be read (malformed, not a regular file, not
+  UTF-8) is exit 3 naming `.req/variants:<line>`; a base list is never read. Lines with identical words count once.
+- **Order.** Pairs are sorted by the line's position in the list, then by the two ids.
+- **The admission is a parameter** (`flagged_claims(delta, admitted)`; `contradictions_block(delta, n, admitted)`), so falsification
+  3 is tested while `DETECTOR_ADMITTED` is `true`. `req diff` passes the constant.
+- **Cost.** Rows are built with `view::load_rows` per line per side, which reloads the corpus each time: one detector pass and
+  one load per line per side. A corpus with many lines pays for each; the loader is the cost, not the detector.
+- **Verified.** The three falsification-driven mutations each fail a test: ignoring the base side (falsification 1, and the
+  list-from-head test), reading `.req/variants` per side (the list-from-head test and the malformed-list test), flagging
+  regardless of admission (the admission seam test).
+

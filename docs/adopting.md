@@ -1235,6 +1235,8 @@ Beside its class a claim carries **flags**:
 | `tests-lost`, `tests-added` | a linked test id present on one side only |
 | `same-address-as <id>` | an `added` claim has the meaning fingerprint of a `removed` one: a candidate renumber, reported as a candidate and never inferred as a rename (both stay `added` and `removed`) |
 
+A `contradictions:` section follows the claims: the structural contradictions (ADR 0043) the change **added or resolved**, each with its `.req/variants` line, both ids and the two values. Contradiction belongs to a selection, so it is judged once per line of the **head's** list on both sides (no list is the bare selection), and each claim in an added pair carries the flag `contradiction-added <other-id>`, which `--fail-on contradiction-added` turns into exit 1; an unchanged claim is then listed so the flag shows.
+
 A line is `<class> <claim_id> [<direction>] [flags…]`, sorted by claim id; the direction word is the one
 `req compare` prints. From a real run, where a claim went from SHALL to SHOULD and its bound from 200 ms to
 300 ms:
@@ -1243,12 +1245,13 @@ A line is `<class> <claim_id> [<direction>] [flags…]`, sorted by claim id; the
 # req diff: HEAD~1 (28c74120701e) -> HEAD (6f0e62468662)
 registry: unchanged
 weakened REQ-0001 modality_weakening pin-flagged
+contradictions: none added or resolved across 1 selection(s)
 counts: added 0, removed 0, weakened 1, tightened 0, reshaped 0, not-judged 0, reworded 0, metadata 0, unchanged 0
 fail-on: weakened,removed,pins-changed,tests-lost — 1 triggered
 ```
 
 **`--fail-on` decides what blocks a merge.** Its value is a comma-separated subset of `weakened`, `removed`,
-`reshaped`, `not-judged`, `pins-changed`, `pin-flagged`, `tests-lost`; any other spelling, or an empty list, is
+`reshaped`, `not-judged`, `pins-changed`, `pin-flagged`, `tests-lost`, `contradiction-added`; any other spelling, or an empty list, is
 exit 2. Nothing is on by default, and an unlisted class is still printed. A reasonable first set is
 `weakened,removed,pins-changed,tests-lost`: the movements a team most often wants a second pair of eyes on.
 Widen it (`reshaped`, `not-judged`, `pin-flagged`) once the reports have been read for a while, or narrow it;

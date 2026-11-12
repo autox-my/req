@@ -14,17 +14,26 @@
 //! no user or system configuration, no command used runs a hook, and none fetches or touches a
 //! network. The temporary directory is removed on every way out, including a signal (see `Staging`).
 //!
+//! Contradictions (ADR 0045) are the one thing here that is a property of a *selection*, not of a
+//! claim: [`contradict::find`] is run per line of the **head** side's `.req/variants`, on each side's
+//! claims, and the pairs that appear or disappear are listed in a `contradictions:` section. A claim
+//! in an added pair carries the flag `contradiction-added <other-id>`; the class stays about the
+//! claim's own change.
+//!
 //! The exit is not a verdict. 0 the report was produced; 1 only with `--fail-on` and a named class
 //! or flag present; 3 UNVERIFIABLE (it cannot be produced); 2 usage. The words PASS, FAIL and
 //! UNVERIFIABLE never reach stdout: this describes a change, `req check` is the release verdict.
 
-use crate::canon::{self, LoadedClaim, Modality};
+use crate::canon::{self, CanonicalForm, LoadedClaim, Modality};
+use crate::check::{self, Listing};
 use crate::compare::{self, Direction, Effect};
+use crate::contradict::{self, Contradiction, Findings};
 use crate::format::{self, Format};
+use crate::select::Context;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::{BufRead, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 /// The document's schema string (ADR 0026 §6), versioned independently of `RULES_V` like every
@@ -109,6 +118,10 @@ enum Flag {
     /// An added claim has the meaning fingerprint of a removed one: a candidate renumber, reported
     /// as a candidate and never inferred as a rename (ADR 0017 §2).
     SameAddressAs(String),
+    /// This claim is one side of a contradiction the change introduced, under some line of the
+    /// head's `.req/variants`; the other side is named (ADR 0045 decision 3). Raised only while the
+    /// detector is admitted ([`flagged_claims`]).
+    ContradictionAdded(String),
 }
 
 impl Flag {
@@ -119,6 +132,7 @@ impl Flag {
             Flag::TestsLost => "tests-lost".to_string(),
             Flag::TestsAdded => "tests-added".to_string(),
             Flag::SameAddressAs(id) => format!("same-address-as {id}"),
+            Flag::ContradictionAdded(id) => format!("contradiction-added {id}"),
         }
     }
 }
@@ -133,21 +147,26 @@ enum FailOn {
     PinsChanged,
     PinFlagged,
     TestsLost,
+    ContradictionAdded,
 }
 
 impl FailOn {
+    /// Every spelling, in the order the help page lists and the report prints them.
+    const ALL: [FailOn; 8] = [
+        FailOn::Weakened,
+        FailOn::Removed,
+        FailOn::Reshaped,
+        FailOn::NotJudged,
+        FailOn::PinsChanged,
+        FailOn::PinFlagged,
+        FailOn::TestsLost,
+        FailOn::ContradictionAdded,
+    ];
+
     fn parse(word: &str) -> Option<FailOn> {
-        [
-            FailOn::Weakened,
-            FailOn::Removed,
-            FailOn::Reshaped,
-            FailOn::NotJudged,
-            FailOn::PinsChanged,
-            FailOn::PinFlagged,
-            FailOn::TestsLost,
-        ]
-        .into_iter()
-        .find(|candidate| candidate.as_str() == word)
+        FailOn::ALL
+            .into_iter()
+            .find(|candidate| candidate.as_str() == word)
     }
 
     fn as_str(self) -> &'static str {
@@ -159,6 +178,7 @@ impl FailOn {
             FailOn::PinsChanged => "pins-changed",
             FailOn::PinFlagged => "pin-flagged",
             FailOn::TestsLost => "tests-lost",
+            FailOn::ContradictionAdded => "contradiction-added",
         }
     }
 
@@ -171,6 +191,7 @@ impl FailOn {
             FailOn::PinsChanged => entry.flags.contains(&Flag::PinsChanged),
             FailOn::PinFlagged => entry.flags.contains(&Flag::PinFlagged),
             FailOn::TestsLost => entry.flags.contains(&Flag::TestsLost),
+            FailOn::ContradictionAdded => entry.flags.iter().any(is_contradiction_flag),
         }
     }
 }
@@ -228,18 +249,7 @@ fn parse_options(args: &[String]) -> Result<Options, i32> {
             let mut classes = BTreeSet::new();
             for word in list.split(',') {
                 let Some(class) = FailOn::parse(word) else {
-                    let known: Vec<&str> = [
-                        FailOn::Weakened,
-                        FailOn::Removed,
-                        FailOn::Reshaped,
-                        FailOn::NotJudged,
-                        FailOn::PinsChanged,
-                        FailOn::PinFlagged,
-                        FailOn::TestsLost,
-                    ]
-                    .iter()
-                    .map(|c| c.as_str())
-                    .collect();
+                    let known: Vec<&str> = FailOn::ALL.iter().map(|c| c.as_str()).collect();
                     return usage_error(&format!(
                         "`--fail-on` takes a comma-separated subset of {}, not {word:?}",
                         known.join(", ")
@@ -605,6 +615,9 @@ impl Staging {
 
 /// One side of the comparison, loaded.
 struct Side {
+    /// The directory the claims were loaded from: a staged revision, or the corpus root itself.
+    /// Selection (`view::load_rows`) reads the same directory the loader did.
+    dir: PathBuf,
     claims: Vec<LoadedClaim>,
     /// `aliases/subjects.yml` as bytes (`None` when absent), compared for `registry: changed`.
     registry: Option<Vec<u8>>,
@@ -622,7 +635,11 @@ impl Side {
         };
         let claims = canon::load_claims(dir).map_err(relabel)?;
         let registry = std::fs::read(dir.join("aliases/subjects.yml")).ok();
-        Ok(Side { claims, registry })
+        Ok(Side {
+            dir: dir.to_path_buf(),
+            claims,
+            registry,
+        })
     }
 
     fn by_id(&self) -> BTreeMap<&str, &LoadedClaim> {
@@ -651,6 +668,16 @@ struct Report {
     entries: Vec<Entry>,
     counts: BTreeMap<Class, usize>,
     registry_changed: bool,
+    /// The contradictions the change added and resolved, under the head's selections (ADR 0045).
+    contradictions: ContradictionDelta,
+    /// How many selections (distinct lines of the head's `.req/variants`) were judged.
+    selections: usize,
+    /// Whether the detector is admitted: unadmitted, the pairs are reported and nothing is flagged.
+    admitted: bool,
+}
+
+fn is_contradiction_flag(flag: &Flag) -> bool {
+    matches!(flag, Flag::ContradictionAdded(_))
 }
 
 fn flagged(loaded: &LoadedClaim) -> bool {
@@ -740,7 +767,14 @@ fn classify_pair(base: &LoadedClaim, head: &LoadedClaim) -> Entry {
     }
 }
 
-fn compare_sides(base: &Side, head: &Side) -> Report {
+fn compare_sides(
+    base: &Side,
+    head: &Side,
+    contradictions: ContradictionDelta,
+    selections: usize,
+    admitted: bool,
+) -> Report {
+    let flagged_by_pair = flagged_claims(&contradictions, admitted);
     let (base_by_id, head_by_id) = (base.by_id(), head.by_id());
     let ids: BTreeSet<&str> = base_by_id
         .keys()
@@ -751,7 +785,7 @@ fn compare_sides(base: &Side, head: &Side) -> Report {
     let mut entries = Vec::new();
     let mut counts: BTreeMap<Class, usize> = Class::ALL.iter().map(|c| (*c, 0)).collect();
     for id in ids {
-        let entry = match (base_by_id.get(id), head_by_id.get(id)) {
+        let mut entry = match (base_by_id.get(id), head_by_id.get(id)) {
             (None, Some(added)) => Entry {
                 claim_id: id.to_string(),
                 class: Class::Added,
@@ -777,8 +811,15 @@ fn compare_sides(base: &Side, head: &Side) -> Report {
             (Some(before), Some(after)) => classify_pair(before, after),
             (None, None) => continue,
         };
+        if let Some(others) = flagged_by_pair.get(id) {
+            entry
+                .flags
+                .extend(others.iter().cloned().map(Flag::ContradictionAdded));
+        }
         *counts.entry(entry.class).or_insert(0) += 1;
-        if entry.class != Class::Unchanged {
+        // An unchanged claim is counted, never listed; a flag is the one thing that lists it, since
+        // the other side of a contradiction a change added may not have been touched (ADR 0045).
+        if entry.class != Class::Unchanged || entry.flags.iter().any(is_contradiction_flag) {
             entries.push(entry);
         }
     }
@@ -805,7 +846,274 @@ fn compare_sides(base: &Side, head: &Side) -> Report {
         entries,
         counts,
         registry_changed: base.registry != head.registry,
+        contradictions,
+        selections,
+        admitted,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Contradictions (ADR 0045)
+// ---------------------------------------------------------------------------
+
+/// What one selection (one line of the head's `.req/variants`) found on one side.
+#[derive(Debug, Clone)]
+pub struct SelectionFindings {
+    /// The line's words, joined by one space (the label `req check` carries), or the default's.
+    pub line: String,
+    pub findings: Findings,
+}
+
+/// One contradiction that appeared or disappeared, under one line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PairChange {
+    pub line: String,
+    pub contradiction: Contradiction,
+}
+
+/// The contradictions a change added and resolved, each sorted by the line's position in the list
+/// and then by the two claim ids.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ContradictionDelta {
+    pub added: Vec<PairChange>,
+    pub resolved: Vec<PairChange>,
+}
+
+type PairKey = (String, String, String);
+
+/// The contradictions a side leaves **outstanding**: Tier-1 contradictions no human recorded as a
+/// Conflict, keyed by the line and the unordered pair. A recorded pair is a Conflict, not a defect
+/// (ADR 0043), so it is not one the change could add.
+fn outstanding(side: &[SelectionFindings]) -> BTreeMap<PairKey, PairChange> {
+    let mut out = BTreeMap::new();
+    for selection in side {
+        for found in selection.findings.unrecorded() {
+            out.insert(
+                (
+                    selection.line.clone(),
+                    found.a_id.clone(),
+                    found.b_id.clone(),
+                ),
+                PairChange {
+                    line: selection.line.clone(),
+                    contradiction: found.clone(),
+                },
+            );
+        }
+    }
+    out
+}
+
+/// What a change did to the contradictions (ADR 0045 decision 2). `head`'s lines are the lines
+/// judged on **both** sides, so a pair is the same pair when its line text and its two ids are.
+///
+/// *Added*: outstanding at head, and not outstanding at base under that line. *Resolved*:
+/// outstanding at base, and not outstanding at head — gone, or recorded as a Conflict. A pair
+/// recorded on both sides is not news, and one whose record was deleted is outstanding again.
+pub fn contradiction_delta(
+    base: &[SelectionFindings],
+    head: &[SelectionFindings],
+) -> ContradictionDelta {
+    let (before, after) = (outstanding(base), outstanding(head));
+    let mut lines: Vec<&str> = head.iter().map(|s| s.line.as_str()).collect();
+    for selection in base {
+        if !lines.contains(&selection.line.as_str()) {
+            lines.push(&selection.line);
+        }
+    }
+    let position = |line: &str| lines.iter().position(|l| *l == line).unwrap_or(lines.len());
+    let sorted = |from: &BTreeMap<PairKey, PairChange>, not_in: &BTreeMap<PairKey, PairChange>| {
+        let mut changes: Vec<PairChange> = from
+            .iter()
+            .filter(|(key, _)| !not_in.contains_key(*key))
+            .map(|(_, change)| change.clone())
+            .collect();
+        changes.sort_by(|x, y| {
+            (
+                position(&x.line),
+                &x.contradiction.a_id,
+                &x.contradiction.b_id,
+            )
+                .cmp(&(
+                    position(&y.line),
+                    &y.contradiction.a_id,
+                    &y.contradiction.b_id,
+                ))
+        });
+        changes
+    };
+    ContradictionDelta {
+        added: sorted(&after, &before),
+        resolved: sorted(&before, &after),
+    }
+}
+
+/// The claims an added contradiction flags, each with the claims it contradicts. Empty while the
+/// detector is not `admitted`: it is then reported and never judged, as at the gate (ADR 0043
+/// decision 6, ADR 0045 decision 4). The admission is a parameter so the rule is testable.
+pub fn flagged_claims(
+    delta: &ContradictionDelta,
+    admitted: bool,
+) -> BTreeMap<String, BTreeSet<String>> {
+    let mut flagged: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    if !admitted {
+        return flagged;
+    }
+    for pair in &delta.added {
+        let found = &pair.contradiction;
+        flagged
+            .entry(found.a_id.clone())
+            .or_default()
+            .insert(found.b_id.clone());
+        flagged
+            .entry(found.b_id.clone())
+            .or_default()
+            .insert(found.a_id.clone());
+    }
+    flagged
+}
+
+/// The `contradictions:` block of the text report: one line per added or resolved pair, or a single
+/// line saying none were, across `selections` lines. `admitted` false appends `(reported, not
+/// judged)`.
+pub fn contradictions_block(
+    delta: &ContradictionDelta,
+    selections: usize,
+    admitted: bool,
+) -> String {
+    let across = format!("across {selections} selection(s)");
+    if delta.added.is_empty() && delta.resolved.is_empty() {
+        return format!("contradictions: none added or resolved {across}\n");
+    }
+    let mut out = format!(
+        "contradictions: {} added, {} resolved {across}\n",
+        delta.added.len(),
+        delta.resolved.len()
+    );
+    let suffix = if admitted {
+        ""
+    } else {
+        " (reported, not judged)"
+    };
+    for (word, changes) in [("added", &delta.added), ("resolved", &delta.resolved)] {
+        for change in changes {
+            out.push_str(&format!(
+                "  {word} [{}] {}{suffix}\n",
+                change.line,
+                change.contradiction.describe()
+            ));
+        }
+    }
+    out
+}
+
+/// What the selection a pair is judged under is called when `.req/variants` names none: the bare
+/// selection `req check` uses (ADR 0023).
+const DEFAULT_SELECTION: &str = "(the default variant)";
+
+/// One line of the head's `.req/variants`, parsed.
+struct Selection {
+    label: String,
+    context: Context,
+}
+
+/// The selections to judge: one per distinct line of the list, or the bare selection when there is
+/// no list or it holds no line. A list that cannot be used is UNVERIFIABLE (the `Err`), never the
+/// default: a skipped check is never a pass.
+fn selections_from(listing: Listing, side: &str) -> Result<Vec<Selection>, String> {
+    let lines = match listing {
+        Listing::Absent => Vec::new(),
+        Listing::Unreadable(reason) => return Err(format!("{side}: {reason}")),
+        Listing::Text(text) => check::parse_variants(&text).map_err(|errors| {
+            format!(
+                "{side}: {} is malformed — {}\nnothing was compared: a list that cannot be read \
+                 is not an empty one",
+                check::VARIANTS,
+                errors.join("\n")
+            )
+        })?,
+    };
+    let mut selections: Vec<Selection> = Vec::new();
+    for line in lines {
+        if !selections.iter().any(|s| s.label == line.text) {
+            selections.push(Selection {
+                label: line.text,
+                context: line.context,
+            });
+        }
+    }
+    if selections.is_empty() {
+        selections.push(Selection {
+            label: DEFAULT_SELECTION.to_string(),
+            context: Context::new(),
+        });
+    }
+    Ok(selections)
+}
+
+/// `.req/variants` of a revision, beside the corpus (`prefix` is the corpus root's place in the work
+/// tree): a raw blob read the way the claims are, absent when the revision has none. Only a regular
+/// file is a list; anything else (a directory, a link) is unreadable, as it is for `req check`.
+fn revision_listing(
+    root: &Path,
+    revision: &Revision,
+    prefix: &str,
+    scratch: &Path,
+) -> Result<Listing, String> {
+    let path = format!("{prefix}{}", check::VARIANTS);
+    let bytes = git_output(
+        root,
+        &["ls-tree", "-z", "--full-tree", &revision.sha, "--", &path],
+    )?;
+    let Some(record) = bytes.split(|b| *b == 0).find(|r| !r.is_empty()) else {
+        return Ok(Listing::Absent);
+    };
+    let record = String::from_utf8_lossy(record).into_owned();
+    let unreadable = |what: &str| {
+        Ok(Listing::Unreadable(format!(
+            "{path} in {} {what}: a pinned list that became unusable is not absent, and a skipped \
+             check is never a pass",
+            revision.label
+        )))
+    };
+    let Some((meta, _)) = record.split_once('\t') else {
+        return unreadable("is an unreadable `git ls-tree` record");
+    };
+    let fields: Vec<&str> = meta.split(' ').collect();
+    let [mode, kind, oid] = fields.as_slice() else {
+        return unreadable("is an unreadable `git ls-tree` record");
+    };
+    if *kind != "blob" || !matches!(*mode, "100644" | "100755") {
+        return unreadable("is not a regular file");
+    }
+    let blobs = read_blobs(root, scratch, &[oid])?;
+    let Some(bytes) = blobs.into_iter().next() else {
+        return unreadable("could not be read");
+    };
+    match String::from_utf8(bytes) {
+        Ok(text) => Ok(Listing::Text(text)),
+        Err(_) => unreadable("is not valid UTF-8 text"),
+    }
+}
+
+/// What every selection finds among one side's applying claims. Rows are built by the seam `req
+/// gate` and `req check` use; the forms come from the claims this side already loaded.
+fn side_findings(side: &Side, selections: &[Selection]) -> Result<Vec<SelectionFindings>, String> {
+    let forms: BTreeMap<String, CanonicalForm> = side
+        .claims
+        .iter()
+        .map(|loaded| (loaded.claim.claim_id.clone(), loaded.derived.form.clone()))
+        .collect();
+    selections
+        .iter()
+        .map(|selection| {
+            let rows = crate::view::load_rows(&selection.context, &side.dir)?;
+            Ok(SelectionFindings {
+                line: selection.label.clone(),
+                findings: contradict::find(&rows, &forms),
+            })
+        })
+        .collect()
 }
 
 /// The `--fail-on` words that matched at least one claim, and how many claims matched.
@@ -858,6 +1166,11 @@ fn render_text(
         }
         out.push('\n');
     }
+    out.push_str(&contradictions_block(
+        &report.contradictions,
+        report.selections,
+        report.admitted,
+    ));
     let counts: Vec<String> = Class::ALL
         .iter()
         .map(|class| {
@@ -882,6 +1195,23 @@ fn render_text(
         }
     }
     out
+}
+
+fn pairs_json(changes: &[PairChange]) -> Vec<serde_json::Value> {
+    changes
+        .iter()
+        .map(|change| {
+            let found = &change.contradiction;
+            serde_json::json!({
+                "line": change.line,
+                "a": found.a_id,
+                "b": found.b_id,
+                "slot": found.slot,
+                "a_value": found.a,
+                "b_value": found.b,
+            })
+        })
+        .collect()
 }
 
 fn render_json(
@@ -936,6 +1266,10 @@ fn render_json(
         "triggered": matched,
         "counts": counts,
         "claims": claims,
+        "contradictions": {
+            "added": pairs_json(&report.contradictions.added),
+            "resolved": pairs_json(&report.contradictions.resolved),
+        },
     });
     format!("{}\n", format::document(&document))
 }
@@ -1014,7 +1348,30 @@ fn produce(options: &Options, root: &Path) -> Result<(String, i32), String> {
         None => Side::load(root, None)?,
     };
 
-    let report = compare_sides(&base_side, &head_side);
+    // One list for both sides, read from head: a pair is "new" only against the same line (ADR 0045
+    // decision 1). A list the head side cannot use is UNVERIFIABLE before any report is produced.
+    let listing = match &head {
+        Some(revision) => {
+            revision_listing(root, revision, &prefix, &staging.path().join("scratch"))?
+        }
+        None => check::read_list(root, check::VARIANTS),
+    };
+    let side_name = head.as_ref().map_or_else(
+        || WORKING_TREE.to_string(),
+        |revision| revision.label.clone(),
+    );
+    let selections = selections_from(listing, &side_name)?;
+    let delta = contradiction_delta(
+        &side_findings(&base_side, &selections)?,
+        &side_findings(&head_side, &selections)?,
+    );
+    let report = compare_sides(
+        &base_side,
+        &head_side,
+        delta,
+        selections.len(),
+        contradict::DETECTOR_ADMITTED,
+    );
     let text = match options.format {
         Format::Text => render_text(&base, head.as_ref(), &report, options.fail_on.as_ref()),
         Format::Json => render_json(&base, head.as_ref(), &report, options.fail_on.as_ref()),

@@ -1764,3 +1764,675 @@ fn the_json_report_lists_every_moved_axis() {
         "an added claim moved no axis"
     );
 }
+
+// ADR 0045 (unit D-1): the contradictions a change introduces ------------------------------------
+//
+// Every oracle is the ADR's decision or its *Falsification* list, written before the code. The pair
+// of statements below is the standing example: at most 100 ms against at least 200 ms has no common
+// value (ADR 0043 decision 2), and the subject/action/qualifier slots are equal, so Tier 1 compares
+// them.
+
+const FAST: &str = "The system shall respond in no more than 100 ms.";
+const SLOW: &str = "The system shall respond in at least 200 ms.";
+/// Consistent with `FAST`: 50 ms satisfies both.
+const FASTER: &str = "The system shall respond in no more than 50 ms.";
+
+/// A claim file with an applicability list and outgoing relations (the shared `claim_file` has
+/// neither).
+fn claim_with(
+    id: &str,
+    statement: &str,
+    applicability: &[&str],
+    relations: &[(&str, &str)],
+) -> String {
+    let applicability = if applicability.is_empty() {
+        "applicability: []\n".to_string()
+    } else {
+        let items: Vec<String> = applicability.iter().map(|p| format!("  - {p}\n")).collect();
+        format!("applicability:\n{}", items.concat())
+    };
+    let relations = if relations.is_empty() {
+        "relations: []\n".to_string()
+    } else {
+        let items: Vec<String> = relations
+            .iter()
+            .map(|(kind, to)| format!("  - type: {kind}\n    to: {to}\n"))
+            .collect();
+        format!("relations:\n{}", items.concat())
+    };
+    format!(
+        "schema: req.claim/2\nclaim_id: {id}\nstatement: {}\n{applicability}\
+         rationale:\n  source: tests/diff.rs\n  date: 2026-11-12\n  rejected_alternatives: []\n  assumptions: []\n{relations}",
+        serde_json::to_string(statement).expect("a JSON string")
+    )
+}
+
+impl Repo {
+    fn put(&self, id: &str, statement: &str, applicability: &[&str], relations: &[(&str, &str)]) {
+        self.write(
+            &format!("claims/{id}.yml"),
+            &claim_with(id, statement, applicability, relations),
+        );
+    }
+}
+
+/// The per-claim lines of a text report, including `unchanged` ones a flag made visible. Indented
+/// lines belong to the `contradictions:` block, not to a claim.
+fn claim_lines(stdout: &str) -> BTreeMap<String, Vec<String>> {
+    let mut out = BTreeMap::new();
+    for line in stdout.lines().filter(|l| !l.starts_with(' ')) {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        if let [class, id, rest @ ..] = words.as_slice()
+            && (CLASSES.contains(class) || *class == "unchanged")
+        {
+            let mut all = vec![(*class).to_string()];
+            all.extend(rest.iter().map(|w| (*w).to_string()));
+            out.insert((*id).to_string(), all);
+        }
+    }
+    out
+}
+
+/// The indented lines under `contradictions:`.
+fn pair_lines(stdout: &str) -> Vec<String> {
+    stdout
+        .lines()
+        .filter(|l| l.starts_with("  "))
+        .map(|l| l.trim().to_string())
+        .collect()
+}
+
+fn contradiction_json(repo: &Repo, args: &[&str]) -> (Run, serde_json::Value) {
+    let mut all = args.to_vec();
+    all.extend_from_slice(&["--format", "json"]);
+    let run = diff(repo, &all);
+    let doc = serde_json::from_str(&run.stdout)
+        .unwrap_or_else(|e| panic!("one JSON document ({e}):\n{}{}", run.stdout, run.stderr));
+    (run, doc)
+}
+
+const BASE_HEAD: [&str; 4] = ["--base", "base", "--head", "head"];
+
+fn with_fail_on(word: &str) -> Vec<&str> {
+    let mut args = BASE_HEAD.to_vec();
+    args.extend_from_slice(&["--fail-on", word]);
+    args
+}
+
+/// The words of a claim's line after its id, e.g. `["added", "contradiction-added", "REQ-0001"]`.
+fn line_of(run: &Run, id: &str) -> Vec<String> {
+    claim_lines(&run.stdout)
+        .get(id)
+        .cloned()
+        .unwrap_or_else(|| panic!("{id} is not listed:\n{}{}", run.stdout, run.stderr))
+}
+
+fn flagged(run: &Run, id: &str) -> bool {
+    claim_lines(&run.stdout)
+        .get(id)
+        .is_some_and(|words| words.iter().any(|w| w == "contradiction-added"))
+}
+
+#[test]
+fn a_claim_added_against_an_existing_one_lists_the_pair_flags_both_and_fails_on_request() {
+    let repo = Repo::new("added-pair");
+    repo.put("REQ-0001", FAST, &[], &[]);
+    repo.commit("base");
+    repo.put("REQ-0002", SLOW, &[], &[]);
+    repo.commit("head");
+
+    let run = diff(&repo, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 1, "{}{}", run.stdout, run.stderr);
+    // The added claim carries the flag naming the other; the unchanged one is listed, not just
+    // counted, so the flag is visible (spec choice 4).
+    assert_eq!(
+        line_of(&run, "REQ-0002"),
+        ["added", "contradiction-added", "REQ-0001"],
+        "{}",
+        run.stdout
+    );
+    assert_eq!(
+        line_of(&run, "REQ-0001"),
+        ["unchanged", "contradiction-added", "REQ-0002"],
+        "{}",
+        run.stdout
+    );
+    // The unchanged claim is still counted as unchanged.
+    assert!(run.stdout.contains("unchanged 1"), "{}", run.stdout);
+    // The block names the line, both ids, the slot and the two values, and says it is not a verdict.
+    let pairs = pair_lines(&run.stdout);
+    assert_eq!(pairs.len(), 1, "{}", run.stdout);
+    let pair = &pairs[0];
+    assert!(pair.starts_with("added "), "{pair}");
+    for needle in [
+        "(the default variant)",
+        "REQ-0001 vs REQ-0002",
+        "bounds",
+        "SHALL LE 0.1 s",
+        "SHALL GE 0.2 s",
+    ] {
+        assert!(pair.contains(needle), "{needle:?} in {pair:?}");
+    }
+    assert!(run.stdout.contains("contradictions:"), "{}", run.stdout);
+    assert!(
+        run.stdout
+            .contains("fail-on: contradiction-added — 2 triggered"),
+        "{}",
+        run.stdout
+    );
+    // Without the spelling the same report is exit 0: nothing blocks by default.
+    let plain = diff(&repo, &BASE_HEAD);
+    assert_eq!(plain.code, 0, "{}{}", plain.stdout, plain.stderr);
+    assert!(flagged(&plain, "REQ-0001") && flagged(&plain, "REQ-0002"));
+    for word in ["PASS", "FAIL", "UNVERIFIABLE"] {
+        assert!(
+            !run.stdout.contains(word),
+            "a description never says {word}: {}",
+            run.stdout
+        );
+    }
+}
+
+/// Falsification 1: a contradiction that already held at base, under the same line, is not added.
+#[test]
+fn a_contradiction_that_already_held_at_base_is_not_reported_as_added() {
+    let repo = Repo::new("held-at-base");
+    repo.put("REQ-0001", FAST, &[], &[]);
+    repo.put("REQ-0002", SLOW, &[], &[]);
+    repo.commit("base");
+    repo.put("REQ-0003", "The system shall log each command.", &[], &[]);
+    repo.commit("head");
+
+    let run = diff(&repo, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert!(
+        run.stdout
+            .contains("contradictions: none added or resolved across 1 selection(s)"),
+        "{}",
+        run.stdout
+    );
+    assert!(pair_lines(&run.stdout).is_empty(), "{}", run.stdout);
+    assert!(!flagged(&run, "REQ-0003"), "{}", run.stdout);
+    assert!(
+        !claim_lines(&run.stdout).contains_key("REQ-0001"),
+        "an untouched claim stays unlisted: {}",
+        run.stdout
+    );
+}
+
+/// Falsification 2: a pair whose two claims never apply in the same line is not reported, even
+/// though their forms contradict and their conditions nest.
+#[test]
+fn a_pair_that_never_applies_together_in_a_line_is_not_reported() {
+    let repo = Repo::new("never-together");
+    // REQ-0002's applicability is REQ-0001's plus one more predicate, so the conditions nest. The
+    // lines below never decide `field`, so REQ-0002 is UNKNOWN in the first and excluded in the
+    // second: it applies in neither.
+    repo.write(
+        ".req/variants",
+        "deployment_mode=air_gapped\ndeployment_mode=connected\n",
+    );
+    repo.put("REQ-0001", FAST, &["deployment_mode == air_gapped"], &[]);
+    repo.commit("base");
+    repo.put(
+        "REQ-0002",
+        SLOW,
+        &["deployment_mode == air_gapped", "field == value"],
+        &[],
+    );
+    repo.commit("head");
+
+    let run = diff(&repo, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert!(
+        run.stdout
+            .contains("contradictions: none added or resolved across 2 selection(s)"),
+        "{}",
+        run.stdout
+    );
+    assert!(!flagged(&run, "REQ-0001") && !flagged(&run, "REQ-0002"));
+    // The same pair does contradict where both apply: a line that decides `field` too.
+    repo.write(".req/variants", "deployment_mode=air_gapped field=value\n");
+    let both = diff(
+        &repo,
+        &["--base", "base", "--fail-on", "contradiction-added"],
+    );
+    assert_eq!(both.code, 1, "{}{}", both.stdout, both.stderr);
+    assert!(flagged(&both, "REQ-0001") && flagged(&both, "REQ-0002"));
+}
+
+/// An applicability edit that brings two contradicting claims into one line is added; the edited
+/// claim's class is its own change, the other claim is unchanged-but-listed.
+#[test]
+fn an_applicability_edit_that_brings_a_contradicting_pair_into_one_line_is_added() {
+    let repo = Repo::new("applicability-edit");
+    repo.write(
+        ".req/variants",
+        "deployment_mode=air_gapped\ndeployment_mode=connected\n",
+    );
+    repo.put("REQ-0001", FAST, &["deployment_mode == connected"], &[]);
+    repo.put("REQ-0002", SLOW, &["deployment_mode == air_gapped"], &[]);
+    repo.commit("base");
+    repo.put("REQ-0002", SLOW, &["deployment_mode == connected"], &[]);
+    repo.commit("head");
+
+    let run = diff(&repo, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 1, "{}{}", run.stdout, run.stderr);
+    let edited = line_of(&run, "REQ-0002");
+    assert_ne!(edited[0], "unchanged", "{}", run.stdout);
+    assert_ne!(edited[0], "added", "{}", run.stdout);
+    assert!(
+        edited.iter().any(|w| w == "contradiction-added"),
+        "{edited:?}"
+    );
+    assert_eq!(
+        line_of(&run, "REQ-0001"),
+        ["unchanged", "contradiction-added", "REQ-0002"],
+        "{}",
+        run.stdout
+    );
+    let pairs = pair_lines(&run.stdout);
+    assert_eq!(pairs.len(), 1, "{}", run.stdout);
+    assert!(
+        pairs[0].contains("deployment_mode=connected") && !pairs[0].contains("air_gapped"),
+        "only the line both claims now apply in: {}",
+        pairs[0]
+    );
+}
+
+#[test]
+fn editing_one_side_so_the_pair_no_longer_contradicts_lists_it_as_resolved_with_no_flag() {
+    let repo = Repo::new("resolved-by-edit");
+    repo.put("REQ-0001", FAST, &[], &[]);
+    repo.put("REQ-0002", SLOW, &[], &[]);
+    repo.commit("base");
+    repo.put(
+        "REQ-0002",
+        "The system shall respond in at least 10 ms.",
+        &[],
+        &[],
+    );
+    repo.commit("head");
+
+    let run = diff(&repo, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    let pairs = pair_lines(&run.stdout);
+    assert_eq!(pairs.len(), 1, "{}", run.stdout);
+    assert!(
+        pairs[0].starts_with("resolved ") && pairs[0].contains("REQ-0001 vs REQ-0002"),
+        "{}",
+        pairs[0]
+    );
+    assert!(!flagged(&run, "REQ-0001") && !flagged(&run, "REQ-0002"));
+    // Removing a claim resolves it too (absent at head).
+    let gone = Repo::new("resolved-by-removal");
+    gone.put("REQ-0001", FAST, &[], &[]);
+    gone.put("REQ-0002", SLOW, &[], &[]);
+    gone.commit("base");
+    gone.remove("REQ-0002");
+    gone.commit("head");
+    let run = diff(&gone, &BASE_HEAD);
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert!(
+        pair_lines(&run.stdout)
+            .iter()
+            .any(|l| l.starts_with("resolved ") && l.contains("REQ-0001 vs REQ-0002")),
+        "{}",
+        run.stdout
+    );
+}
+
+/// Falsification 4: a contradiction recorded as a Conflict at head is not added, and a recorded one
+/// resolves the contradiction it names.
+#[test]
+fn recording_conflicts_with_at_head_resolves_the_pair_and_a_recorded_pair_is_never_added() {
+    let repo = Repo::new("recorded");
+    repo.put("REQ-0001", FAST, &[], &[]);
+    repo.put("REQ-0002", SLOW, &[], &[]);
+    repo.commit("base");
+    repo.put("REQ-0001", FAST, &[], &[("conflicts-with", "REQ-0002")]);
+    repo.commit("head");
+    let run = diff(&repo, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    let pairs = pair_lines(&run.stdout);
+    assert_eq!(pairs.len(), 1, "{}", run.stdout);
+    assert!(pairs[0].starts_with("resolved "), "{}", pairs[0]);
+    assert!(!flagged(&run, "REQ-0001") && !flagged(&run, "REQ-0002"));
+
+    // A claim introduced already recording the Conflict is never added: it is a Conflict, not a
+    // defect (and, absent from base, there is nothing to have resolved).
+    let born = Repo::new("recorded-on-arrival");
+    born.put("REQ-0001", FAST, &[], &[]);
+    born.commit("base");
+    born.put("REQ-0002", SLOW, &[], &[("conflicts-with", "REQ-0001")]);
+    born.commit("head");
+    let run = diff(&born, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert!(
+        pair_lines(&run.stdout).is_empty(),
+        "recorded on arrival is neither added nor resolved: {}",
+        run.stdout
+    );
+    assert!(!flagged(&run, "REQ-0001") && !flagged(&run, "REQ-0002"));
+}
+
+#[test]
+fn a_pair_that_contradicts_under_only_one_variants_line_names_that_line() {
+    let repo = Repo::new("one-line");
+    repo.write(
+        ".req/variants",
+        "deployment_mode=air_gapped\ndeployment_mode=connected\n",
+    );
+    repo.put("REQ-0001", FAST, &[], &[]);
+    repo.commit("base");
+    repo.put("REQ-0002", SLOW, &["deployment_mode == connected"], &[]);
+    repo.commit("head");
+    let run = diff(&repo, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 1, "{}{}", run.stdout, run.stderr);
+    let pairs = pair_lines(&run.stdout);
+    assert_eq!(pairs.len(), 1, "{}", run.stdout);
+    assert!(
+        pairs[0].contains("deployment_mode=connected") && !pairs[0].contains("air_gapped"),
+        "{}",
+        pairs[0]
+    );
+    // The same pair under two lines is two entries, one per line, in the order the list gives.
+    repo.write(
+        ".req/variants",
+        "deployment_mode=connected\ndeployment_mode=connected field=value\n",
+    );
+    let run = diff(&repo, &["--base", "base"]);
+    let pairs = pair_lines(&run.stdout);
+    assert_eq!(pairs.len(), 2, "{}", run.stdout);
+    assert!(
+        pairs[0].contains("[deployment_mode=connected]"),
+        "{}",
+        pairs[0]
+    );
+    assert!(pairs[1].contains("field=value"), "{}", pairs[1]);
+    assert!(
+        run.stdout
+            .contains("contradictions: 2 added, 0 resolved across 2 selection(s)"),
+        "{}",
+        run.stdout
+    );
+}
+
+#[test]
+fn the_variants_list_is_read_from_head_for_both_sides() {
+    // Base lists `release=1`; head renames it to `release=2` and leaves the claims alone. Read from
+    // each side, every contradiction under the renamed line would look new (ADR 0045, *Rejected*).
+    let repo = Repo::new("list-from-head");
+    repo.write(".req/variants", "release=1\n");
+    repo.put("REQ-0001", FAST, &[], &[]);
+    repo.put("REQ-0002", SLOW, &[], &[]);
+    repo.commit("base");
+    repo.write(".req/variants", "release=2\n");
+    repo.commit("head");
+    let run = diff(&repo, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert!(
+        run.stdout
+            .contains("contradictions: none added or resolved across 1 selection(s)"),
+        "{}",
+        run.stdout
+    );
+}
+
+#[test]
+fn head_reads_that_revisions_list_not_the_working_trees() {
+    let repo = Repo::new("head-rev-list");
+    repo.put("REQ-0001", FAST, &[], &[]);
+    repo.commit("base");
+    repo.write(".req/variants", "release=1\nrelease=2\n");
+    repo.put("REQ-0002", SLOW, &[], &[]);
+    repo.commit("head");
+    // The working tree now holds a different list, and then a malformed one; the revision's list
+    // is the only one `--head head` may read.
+    repo.write(".req/variants", "release=3\n");
+    let run = diff(&repo, &BASE_HEAD);
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert!(
+        run.stdout
+            .contains("contradictions: 2 added, 0 resolved across 2 selection(s)"),
+        "{}",
+        run.stdout
+    );
+    assert!(
+        pair_lines(&run.stdout)
+            .iter()
+            .any(|l| l.contains("release=1"))
+            && pair_lines(&run.stdout)
+                .iter()
+                .any(|l| l.contains("release=2"))
+            && !pair_lines(&run.stdout)
+                .iter()
+                .any(|l| l.contains("release=3")),
+        "{}",
+        run.stdout
+    );
+    repo.write(".req/variants", "--oops\n");
+    let run = diff(&repo, &BASE_HEAD);
+    assert_eq!(
+        run.code, 0,
+        "a malformed working-tree list is not head's: {}{}",
+        run.stdout, run.stderr
+    );
+    // With no `--head`, the working tree's list is the one read.
+    let wt = diff(&repo, &["--base", "base"]);
+    assert_eq!(wt.code, 3, "{}{}", wt.stdout, wt.stderr);
+}
+
+#[test]
+fn a_malformed_head_variants_list_is_exit_3_naming_the_line() {
+    let repo = Repo::new("bad-list");
+    repo.put("REQ-0001", FAST, &[], &[]);
+    repo.commit("base");
+    repo.write(".req/variants", "release=1\n--oops\nnoequals\n");
+    repo.commit("head");
+    let run = diff(&repo, &BASE_HEAD);
+    assert_eq!(run.code, 3, "{}{}", run.stdout, run.stderr);
+    assert!(run.stdout.is_empty(), "no report: {:?}", run.stdout);
+    assert!(
+        run.stderr.contains("[UNVERIFIABLE]")
+            && run.stderr.contains(".req/variants:2")
+            && run.stderr.contains(".req/variants:3"),
+        "{}",
+        run.stderr
+    );
+    // The working-tree form is the same refusal.
+    let wt = diff(&repo, &["--base", "base"]);
+    assert_eq!(wt.code, 3, "{}{}", wt.stdout, wt.stderr);
+    assert!(wt.stderr.contains(".req/variants:2"), "{}", wt.stderr);
+    // A base list that is malformed is not read at all: only head's list is.
+    let only_base = Repo::new("bad-base-list");
+    only_base.put("REQ-0001", FAST, &[], &[]);
+    only_base.write(".req/variants", "--oops\n");
+    only_base.commit("base");
+    only_base.write(".req/variants", "release=1\n");
+    only_base.commit("head");
+    let run = diff(&only_base, &BASE_HEAD);
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+}
+
+#[test]
+fn a_corpus_with_selectors_and_no_variants_list_reports_no_contradiction() {
+    // No applying claim under the bare selection (ADR 0045, *Consequences*): matches the gate.
+    let repo = Repo::new("selectors-no-list");
+    repo.put("REQ-0001", FAST, &["deployment_mode == connected"], &[]);
+    repo.commit("base");
+    repo.put("REQ-0002", SLOW, &["deployment_mode == connected"], &[]);
+    repo.commit("head");
+    let run = diff(&repo, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert!(
+        run.stdout
+            .contains("contradictions: none added or resolved across 1 selection(s)"),
+        "{}",
+        run.stdout
+    );
+}
+
+#[test]
+fn an_empty_variants_list_is_the_default_selection() {
+    let repo = Repo::new("empty-list");
+    repo.write(".req/variants", "# no release yet\n\n");
+    repo.put("REQ-0001", FAST, &[], &[]);
+    repo.commit("base");
+    repo.put("REQ-0002", SLOW, &[], &[]);
+    repo.commit("head");
+    let run = diff(&repo, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 1, "{}{}", run.stdout, run.stderr);
+    assert!(
+        run.stdout.contains("across 1 selection(s)"),
+        "{}",
+        run.stdout
+    );
+}
+
+#[test]
+fn a_consistent_addition_lists_no_pair() {
+    let repo = Repo::new("consistent");
+    repo.put("REQ-0001", FAST, &[], &[]);
+    repo.commit("base");
+    repo.put("REQ-0002", FASTER, &[], &[]);
+    repo.commit("head");
+    let run = diff(&repo, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert!(pair_lines(&run.stdout).is_empty(), "{}", run.stdout);
+    assert!(!flagged(&run, "REQ-0002"));
+}
+
+#[test]
+fn json_carries_contradictions_added_and_resolved_and_the_flag() {
+    let repo = Repo::new("json-pairs");
+    repo.write(".req/variants", "release=1\n");
+    repo.put("REQ-0001", FAST, &[], &[]);
+    repo.put(
+        "REQ-0003",
+        "The system shall archive each report.",
+        &[],
+        &[],
+    );
+    repo.put(
+        "REQ-0004",
+        "The system shall archive each report in no more than 5 s.",
+        &[],
+        &[],
+    );
+    repo.commit("base");
+    repo.put("REQ-0002", SLOW, &[], &[]);
+    repo.commit("head");
+    let (run, doc) = contradiction_json(&repo, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 1, "{}{}", run.stdout, run.stderr);
+    assert_eq!(doc["schema"], "req.diff/1", "additive: the schema stays");
+    assert_eq!(doc["triggered"], serde_json::json!(["contradiction-added"]));
+    assert_eq!(doc["fail_on"], serde_json::json!(["contradiction-added"]));
+    let added = doc["contradictions"]["added"].as_array().expect("added[]");
+    assert_eq!(added.len(), 1, "{}", run.stdout);
+    let pair = &added[0];
+    assert_eq!(pair["line"], "release=1");
+    assert_eq!(pair["a"], "REQ-0001");
+    assert_eq!(pair["b"], "REQ-0002");
+    assert_eq!(pair["slot"], "bounds");
+    assert_eq!(pair["a_value"], "SHALL LE 0.1 s");
+    assert_eq!(pair["b_value"], "SHALL GE 0.2 s");
+    assert_eq!(
+        doc["contradictions"]["resolved"],
+        serde_json::json!([]),
+        "{}",
+        run.stdout
+    );
+    let claims = doc["claims"].as_array().expect("claims[]");
+    let flags_of = |id: &str| {
+        claims
+            .iter()
+            .find(|c| c["claim_id"] == id)
+            .unwrap_or_else(|| panic!("{id} is listed: {}", run.stdout))["flags"]
+            .clone()
+    };
+    assert_eq!(
+        flags_of("REQ-0002"),
+        serde_json::json!(["contradiction-added REQ-0001"])
+    );
+    assert_eq!(
+        flags_of("REQ-0001"),
+        serde_json::json!(["contradiction-added REQ-0002"])
+    );
+    let unchanged = claims
+        .iter()
+        .find(|c| c["claim_id"] == "REQ-0001")
+        .expect("listed");
+    assert_eq!(unchanged["class"], "unchanged");
+
+    // Resolved, in the other direction.
+    let (run, doc) = contradiction_json(&repo, &["--base", "head", "--head", "base"]);
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert_eq!(doc["contradictions"]["added"], serde_json::json!([]));
+    let resolved = doc["contradictions"]["resolved"]
+        .as_array()
+        .expect("resolved[]");
+    assert_eq!(resolved.len(), 1, "{}", run.stdout);
+    assert_eq!(resolved[0]["a"], "REQ-0001");
+    assert_eq!(resolved[0]["b"], "REQ-0002");
+
+    // The document stays deterministic with the new key: sorted keys, no float.
+    let again = contradiction_json(&repo, &with_fail_on("contradiction-added")).0;
+    let first = diff(
+        &repo,
+        &[
+            "--base",
+            "base",
+            "--head",
+            "head",
+            "--fail-on",
+            "contradiction-added",
+            "--format",
+            "json",
+        ],
+    );
+    assert_eq!(again.stdout, first.stdout, "two runs are byte-identical");
+}
+
+#[test]
+fn contradiction_added_is_a_fail_on_spelling_and_the_help_page_names_the_section() {
+    let repo = one_claim_change(
+        "spelling",
+        SHALL_200,
+        "The system should respond within 200 ms.",
+    );
+    // Combined with another spelling, in the order the page lists them.
+    let run = diff(&repo, &with_fail_on("contradiction-added,weakened"));
+    assert_eq!(run.code, 1, "{}{}", run.stdout, run.stderr);
+    assert!(
+        run.stdout
+            .contains("fail-on: weakened,contradiction-added — 1 triggered"),
+        "{}",
+        run.stdout
+    );
+    let help = Command::new(req_bin())
+        .args(["diff", "--help"])
+        .output()
+        .expect("runs req diff --help");
+    // Whitespace-collapsed: a phrase may wrap across lines of the page.
+    let page = String::from_utf8_lossy(&help.stdout)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for needle in [
+        "contradictions:",
+        "contradiction-added <other-id>",
+        ".req/variants",
+        "reported, not judged",
+        "tests-lost`, `contradiction-added`",
+    ] {
+        assert!(
+            page.contains(needle),
+            "the help page names {needle:?}:\n{page}"
+        );
+    }
+    // The usage error for an unknown class lists it.
+    let bad = diff(&repo, &with_fail_on("bogus"));
+    assert_eq!(bad.code, 2);
+    assert!(bad.stderr.contains("contradiction-added"), "{}", bad.stderr);
+}

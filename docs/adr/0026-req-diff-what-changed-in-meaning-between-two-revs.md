@@ -8,6 +8,8 @@ Amended by [ADR 0041](0041-a-condition-added-to-an-obligation-weakens-it.md) (§
 prohibition is `weakened` and a guard removed is `tightened`, the reverse of what §2 says below; a guard changed on a
 permission is `reshaped`.
 
+Extended by [ADR 0045](0045-req-diff-names-the-contradictions-a-change-introduces.md): a `contradictions:` section and the flag `contradiction-added <other-id>` (with `--fail-on contradiction-added`), judged per line of the head's `.req/variants`.
+
 Amended by [ADR 0044](0044-a-change-on-several-axes-has-a-direction-only-when-they-agree.md) (§2): a change on several axes is `weakened` or `tightened` only when every axis that moved agrees, and is `reshaped` otherwise.
 
 ## Context
