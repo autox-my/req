@@ -314,8 +314,9 @@ unauditable.
    identical repeat of an earlier statement is kept once, and **every statement of the pool was read by hand** and its
    comparator classified as the obligation's own bound or as a bound on the *domain* (what is detected, handled or
    configured; a bound in the condition clause; a clause the SHALL does not govern). The second kind is excluded, never
-   relabelled, in the generator's ordered `DOMAIN_COMPARATOR` list (7 statements), because there raising the number can
-   oblige more and a "numeric loosening" label would be wrong; the hand-read list, not a rule, is the authority. The
+   relabelled, in the generator's ordered `DOMAIN_COMPARATOR` list (8 statements), because there raising the number can
+   oblige more and a "numeric loosening" label would be wrong; the hand-read list, not a rule, is the authority (review judged the three `2004 - rlcs` entries probably
+   labellable, a capability floor; they stay excluded, which costs support, not correctness). The
    header counts each. No sentence is ever edited, and a PURE `a` is a sentence as extracted, not a verified
    requirement. The families are the existing ones — numeric loosening and tightening (and the LE-to-LT
    tightening) with mirrors, modality, compound, and numeric mutations on a **native** `shall not` statement (none is
@@ -381,22 +382,26 @@ as `req gate` lets Fail outrank Unverifiable.
 
 #### Recorded runs (append-only)
 
-- **Direction gold set v4, rules v9** (G-1, corrected by G-1-fix; `bench/results/direction-v4-rules-v9.json`; PURE, §6.1) —
-  2679 pairs (v3's 1827 plus 852 from a pool of 63 PURE statements, 53 of them with exactly one numbered comparator
-  phrase): FMR 0/2400 (308 structurally unverifiable), FSR 0/199, hard gate PASS, **0 dangerous confusions**, accuracy
-  0.9772 over 2371 classified pairs (2317 correct), 0 false contradictions over 833 comparable pairs. No `RULES_V` bump;
-  v1–v3 and every earlier record are byte-identical. Of the 31,682 sentences PURE's 62 PDFs yield, 4,487 say "shall",
-  4,178 of those are 300 characters or fewer, 82 carry a numbered comparator phrase (a narrower reading than the task's
-  broader 124: 36 more carry `up to`, `exceed`, `maximum`, `minimum` or `or less`, not taken). Of the 82, 9 were page
-  furniture and 2 interleaved table columns (0 replacement characters, 0 hyphenated line ends), 1 an identical repeat
-  (`2004 - rlcs` #589 of #377) and 7 **domain comparators** excluded by hand (`1999 - tcs` #487; `2002 - evla back` #162;
-  `2004 - rlcs` #409, #410, #416; `2007 - eirene fun 7` #507; `2007 - ertms` #229), leaving 63; 5 of those yield no pair.
-  The first run of this corpus (G-1, 972 pairs, support 154) had labelled `tcs` #487 ("detecting any deviations greater
-  than 10%") and `evla back` #162 ("lag frames of less than 128") `numeric_loosening` for a change that obliges more:
-  review found it, and the fix excludes rather than relabels.
-  - **PURE pairs by family**: single mutations 188 (`MW` 56, `NL` 50, `NT` 50, `LT` 32, `MS` 0) + 188 mirrors; compound 234
-    + 234 mirrors; numeric mutations on a native `shall not` 4 + 4 mirrors, from **2** statements (`1999 - tcs` #423,
-    `2007 - eirene fun 7` #189), both read correctly in both senses. Of the 852, 754 are correct, 68 unclassifiable and 30
+- **Direction gold set v4, rules v9** (G-1, corrected by G-1-fix and G-1-fix-2; `bench/results/direction-v4-rules-v9.json`;
+  PURE, §6.1) — 2661 pairs (v3's 1827 plus 834 from a pool of 62 PURE statements, 52 of them with exactly one numbered
+  comparator phrase): FMR 0/2382 (308 structurally unverifiable), FSR 0/199, hard gate PASS, **0 dangerous confusions**,
+  accuracy 0.9771 over 2353 classified pairs (2299 correct), 0 false contradictions over 823 comparable pairs (801 not
+  comparable). No `RULES_V` bump; v1–v3 and every earlier record are byte-identical. Of the 31,682 sentences PURE's 62 PDFs
+  yield, 4,487 say "shall", 4,178 of those are 300 characters or fewer, 82 carry a numbered comparator phrase (a narrower
+  reading than the task's broader 124: 36 more carry `up to`, `exceed`, `maximum`, `minimum` or `or less`, not taken). Of
+  the 82, 9 were page furniture and 2 interleaved table columns (0 replacement characters, 0 hyphenated line ends), 1 an
+  identical repeat (`2004 - rlcs` #589 of #377) and 8 **domain comparators** excluded by hand (`1999 - tcs` #487; `2002 -
+  evla back` #162; `2004 - rlcs` #409, #410, #416; `2007 - eirene fun 7` #507; `2007 - ertms` #229; `2010 - home 1.3`
+  #146), leaving 62; 5 of those yield no pair. Who found them: review G-1-review-1 found the first two (`tcs` #487,
+  `evla back` #162), the writer's hand-read of the pool found five more (`rlcs` ×3, `eirene fun 7` #507, `ertms` #229),
+  and review G-1-review-2 found `home 1.3` #146 (a reach bound, not a deadline). The first run of this corpus (G-1, 972
+  pairs, support 154) had labelled `tcs` #487 ("detecting any deviations greater than 10%") and `evla back` #162 ("lag
+  frames of less than 128") `numeric_loosening` for a change that obliges more; the fix excludes rather than relabels.
+  Review 2 judged the three `rlcs` exclusions probably labellable (a capability floor, which costs a false split, not a
+  wrong label); they stay excluded, which costs support, not correctness.
+  - **PURE pairs by family**: single mutations 184 (`MW` 55, `NL` 49, `NT` 49, `LT` 31, `MS` 0) + 184 mirrors; compound 229
+    + 229 mirrors; numeric mutations on a native `shall not` 4 + 4 mirrors, from **2** statements (`1999 - tcs` #423,
+    `2007 - eirene fun 7` #189), both read correctly in both senses. Of the 834, 736 are correct, 68 unclassifiable and 30
     mismatched, all harmless: three statements (`2007 - eirene fun 7` #667 and #675; `2008 - caiso` #83) whose scaled number
     is not the parser's value slot read `scope_divergence` (or `unrelated` for the LT pair), the same parse-coverage fact as
     v1's PROMISE pairs. **Never a loosening reported as no change or as the opposite.**
@@ -404,22 +409,22 @@ as `req gate` lets Fail outrank Unverifiable.
 
     | weakening class | false carries | support (scored opposing pairs) | `admitted` in this record |
     | --- | --- | --- | --- |
-    | `modality_weakening` | 0 | 273 (v3: 181) | yes |
-    | `numeric_loosening` | 0 | **142** (v3: 17; v2: 9) | **yes** |
+    | `modality_weakening` | 0 | 271 (v3: 181) | yes |
+    | `numeric_loosening` | 0 | **139** (v3: 17; v2: 9) | **yes** |
     | `membership_widening` | 0 | 0 | no — no pair exists |
 
-    **`numeric_loosening` still reaches the floor on v4 after the exclusions: 0 false carries over 142 scored numeric
-    tightenings** (154 before them). Read it for what it is. The 125 pairs PURE adds are not 125 samples: they are
-    mutations of the number in about 45 statements the parser reads with a value slot (43 of the 50 obligations with one
-    bound, plus the 2 native prohibitions; 4 further statements are unclassifiable and 3 read `scope_divergence`), each
-    yielding several pairs (`NT`, `LT`, the mirrored `NL`, …), and the 63-statement pool comes from 12 documents, 26 of
-    its statements from one. Every pair scales a bound by 1.25 or 0.8 over the comparator phrases PURE happens to use, the
-    hand classification of "own bound" against "domain" is one reviewer's reading, and the measurement does not cover
-    phrases or units that no source has. It is a public-corpus measurement of a rule req already has, not the
-    external-corpora falsification of the bet.
+    **`numeric_loosening` still reaches the floor on v4 after the exclusions: 0 false carries over 139 scored numeric
+    tightenings** (154 before the exclusions, 142 before `home 1.3` #146). Read it for what it is. The 122 pairs PURE adds
+    are not 122 samples: they are mutations of the number in about 44 statements the parser reads with a value slot (42 of
+    the 49 obligations with one bound, plus the 2 native prohibitions; 4 further statements are unclassifiable and 3 read
+    `scope_divergence`), each yielding several pairs (`NT`, `LT`, the mirrored `NL`, …), and the 62-statement pool comes from
+    11 documents, 26 of its statements from one. Every pair scales a bound by 1.25 or 0.8 over the comparator phrases PURE
+    happens to use, the hand classification of "own bound" against "domain" is a reading (a reviewer found one more after
+    the writer's), and the measurement does not cover phrases or units that no source has. It is a public-corpus
+    measurement of a rule req already has, not the external-corpora falsification of the bet.
   - **Admission is not changed by this run.** `ADMITTED_CARRIES` stays pinned to `direction-v2-rules-v<RULES_V>.json`
     (S-2): `numeric_loosening` is `admitted: false` there (support 9). Moving the measurement to v4 and admitting the class
-    is an owner decision for a later unit.
+    is an owner decision for a later unit. Every number above is pinned in `tests/direction_pure.rs`.
 
 - **Contradiction measurement, rules v9** (C-1; the `contradiction` block added to every `bench/results/*-rules-v9.json`;
   ADR 0043 decision 6) — **false contradictions 0 on every corpus**: parity 0 of 12 scored pairs (9 comparable, 3 not),

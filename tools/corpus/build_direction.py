@@ -494,6 +494,7 @@ DOMAIN_COMPARATOR = [
     ("2004 - rlcs.pdf", 416, "bound on the configurable values the system supports: 'configurable ... to more than 2 seconds'; lowering it obliges a wider range"),
     ("2007 - eirene fun 7.pdf", 507, "bound inside the condition clause ('If no selection is made ... within 10 seconds'): it says when the obligation applies, not how much it demands"),
     ("2007 - ertms.pdf", 229, "bound belongs to 'need only be stored for at least 24 hours', a clause the SHALL ('shall be very detailed') does not govern"),
+    ("2010 - home 1.3.pdf", 146, "bound on reach, not a deadline: 'shall have to be within 1000 feet of the master control device, in order to be in communication' names the range over which the system communicates; raising it obliges more reach"),
 ]
 # Word-salad sentences: table columns the extractor interleaved. Read by hand, dropped as a named noise rule.
 INTERLEAVED_COLUMNS = [
@@ -983,7 +984,9 @@ def main(version: int = 1, pure_zip: str = "", pdftotext: str = "pdftotext") -> 
             "classified as the obligation's own bound or as a bound on the domain (what is detected, handled "
             "or configured, a bound inside the condition clause, or a clause the SHALL does not govern), where "
             "raising the number can oblige more, so a numeric-loosening label would be wrong; those are "
-            f"excluded, never relabelled, and listed in the generator's `DOMAIN_COMPARATOR`: {dom}. "
+            f"excluded, never relabelled, and listed in the generator's `DOMAIN_COMPARATOR`: {dom}. Review judged "
+            "the three `2004 - rlcs` entries (#409, #410, #416) probably labellable (a capability floor, which "
+            "costs a false split, not a wrong label); they stay excluded, which costs support, not correctness. "
             f"{st['pool']} statements remain ({st['single_bound']} with exactly one numbered comparator phrase, "
             f"the only ones the numeric families mutate; {st['no_pair']} of the {st['pool']} yield no pair; "
             f"by document: {by_doc}). No sentence is edited. Pairs: {c['single']} single mutations (modality "

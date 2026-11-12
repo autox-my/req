@@ -1,8 +1,8 @@
 {
   "contradiction": {
-    "comparable": 833,
+    "comparable": 823,
     "false_contradictions": 0,
-    "not_comparable": 805,
+    "not_comparable": 801,
     "note": "ADR 0043 decision 6. false_contradictions counts the pairs that must never contradict (labelled equivalent, or a nested-set direction label) reported as a contradiction: a hard bound, the analogue of FMR = 0. recall is over polarity_flip pairs whose earlier claim is a SHALL — reported, not gated.",
     "pairs": [],
     "recall": {
@@ -10,15 +10,15 @@
       "not_comparable": 0,
       "of": 176
     },
-    "scored": 1638
+    "scored": 1624
   },
   "corpus": "bench/corpus/direction-v4.yml",
-  "corpus_sha256": "ed29bdedb6bd43e4f586e65974d06b05dedcbcb055baa71d383e3c0c3a1dc7e8",
+  "corpus_sha256": "23d60a459122a9a5acb8ad32360b512ab1e9127a87f2b443841446cfb532ab6a",
   "degraded": [],
   "direction": {
-    "accuracy": 0.9772247996625896,
-    "checked": 2371,
-    "correct": 2317,
+    "accuracy": 0.9770505737356566,
+    "checked": 2353,
+    "correct": 2299,
     "dangerous_confusions": [],
     "false_carry": {
       "membership_widening": {
@@ -31,13 +31,13 @@
         "admitted": true,
         "count": 0,
         "pairs": [],
-        "support": 273
+        "support": 271
       },
       "numeric_loosening": {
         "admitted": true,
         "count": 0,
         "pairs": [],
-        "support": 142
+        "support": 139
       }
     },
     "hard_gate": "PASS",
@@ -415,7 +415,7 @@
     "collapses": 0,
     "hard_gate": "PASS",
     "hit_pairs": [],
-    "not_equivalent_total": 2400,
+    "not_equivalent_total": 2382,
     "rate": 0.0,
     "structurally_unverifiable_ids": [
       "D-ST-SDOC-SSS-61-MW",
@@ -5682,54 +5682,6 @@
     },
     {
       "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MW",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MW",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-NL",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-NL",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-NT",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-NT",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-LT",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-LT",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
       "detail": "number \"3.1.1.1\" is not exactly representable",
       "pair": "D-PU-1999-tcs-336-MWr",
       "side": "a"
@@ -5870,54 +5822,6 @@
       "code": "uncovered_content",
       "detail": "defined, standards, -, some, within",
       "pair": "D-PU-2007-nde-464-MWr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-NLr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-NLr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-NTr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-NTr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-LTr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-LTr",
       "side": "b"
     },
     {
@@ -6096,66 +6000,6 @@
     },
     {
       "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWxNL",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWxNL",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWxNT",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWxNT",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWxSN",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWxSN",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-SNxNL",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-SNxNL",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-SNxNT",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-SNxNT",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
       "detail": "number \"3.1.1.1\" is not exactly representable",
       "pair": "D-PU-1999-tcs-336-MWxNLr",
       "side": "a"
@@ -6327,69 +6171,9 @@
       "detail": "defined, standards, -, some, within",
       "pair": "D-PU-2007-nde-464-MWxSNr",
       "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWxNLr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWxNLr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWxNTr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWxNTr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWxSNr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-MWxSNr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-SNxNLr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-SNxNLr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-SNxNTr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"feet\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2010-home-1-3-146-SNxNTr",
-      "side": "b"
     }
   ],
-  "pairs_total": 2679,
+  "pairs_total": 2661,
   "rules_v": 9,
   "schema": "req.bench.result/1",
   "tier2": {
