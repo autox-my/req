@@ -3,8 +3,8 @@
 Extends ADR 0026 (`req diff`) with the follow-up ADR 0043 named in *Not decided here* ("contradictions introduced by a
 change"). No class is added or renamed, no `RULES_V` bump, no claim-schema or Baseline change.
 
-**Status: proposed.** The owner ratifies it by merging the pull request that carries it, together with the code (task
-D-1). Asked for by the owner on 2026-11-12, as the second item after PR #60 merged. Date proposed: 2026-11-12.
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it, together with the code (task
+D-1; 2026-11-12, GitHub PR #62). Asked for by the owner on 2026-11-12, as the second item after PR #60 merged. Date proposed: 2026-11-12.
 
 ## Context
 
