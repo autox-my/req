@@ -653,8 +653,26 @@ id out of the report; do not retype it. Outcomes map as pytest means them: **pas
 **failed**, a strict XPASS and a setup error are failed; `skip` and `xfail` are **skipped**, and a
 skipped test is not a pass. One shape is refused whole: a **collection error** (an import that fails
 while pytest gathers tests) is written with an empty `classname` and interrupts the run, so nothing
-else in that report is evidence — the message says so; fix the collection and rerun. Other producers
-are unpromised until a real report from them has been tested.
+else in that report is evidence — the message says so; fix the collection and rerun.
+
+**Swift Testing writes its own file.** `swift test --xunit-output <dir>/junit.xml` puts Swift Testing's
+results in the sibling `<dir>/junit-swift-testing.xml`; with only Swift Testing in the package the
+requested `junit.xml` is never created, so read the file that appeared rather than the one that was
+asked for. The parent directory must already exist — SwiftPM does not make it. The id is again
+`classname::name`, and both halves carry what a machine needs: `classname` is the suite path
+(`DiskTriageCLITests.ImagingMapfileTests`) and `name` keeps its trailing `()` and its XML escaping
+(`DiskTriageCLITests.ImagingMapfileTests::REQ0108_partialMapfileClipsTheUnboundedTail()`), so a claim id
+written into the function name is enough to generate the link — copy the id out of the report all the
+same. **A parameterised test is one case**: `@Test(arguments: [1, 2]) func f(_ v: Int)` yields a single
+`testcase` named `f(_:)`, with no per-argument case as pytest's `f[1]` and `f[2]`, so a failure in any
+argument fails the whole case and no single argument can be linked on its own. A skipped case is a
+`<skipped/>` element, which is not a pass, as elsewhere. A filtered or empty run exits 0 with a report
+holding **zero test cases**, which is UNVERIFIABLE — the answer the policy already gives, not a hole.
+
+Measured on one adopter package (disktriage, Swift 6.4, Swift Testing only, macOS):
+`req gate --test-report` consumed the report **with no change to req**. That is one shape from one
+package, not a promise for every Swift project; other producers are unpromised until a real report from
+them has been tested.
 
 **A command is a test case.** A shell check, a self-test or a script that exits 0 / 1 / 3 has no report
 of its own; `tools/junit_case.py` (stdlib Python 3, copy and adjust like `tools/adopt.py`; req still
