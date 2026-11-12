@@ -901,7 +901,7 @@ fn neither_the_module_nor_the_gate_path_calls_a_provider() {
 // Falsification 1 and the admission: the bound is measured, never asserted
 // ---------------------------------------------------------------------------
 
-const CORPORA: [&str; 8] = [
+const CORPORA: [&str; 9] = [
     "parity",
     "external-v1",
     "external-v2",
@@ -910,6 +910,7 @@ const CORPORA: [&str; 8] = [
     "direction-v1",
     "direction-v2",
     "direction-v3",
+    "direction-v4",
 ];
 
 const NESTED_LABELS: [&str; 7] = [

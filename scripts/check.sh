@@ -448,6 +448,10 @@ run cargo run -q -- bench   # seed parity corpus: 0 PASS / 1 FAIL / 3 UNVERIFIAB
   # numeric mutations on a prohibition, labelled by the ADR's rule. Same hard gates; the false-carry
   # measurement that ADR 0040 admits on stays v2's (its support is single-axis pairs).
   run cargo run -q -- bench bench/corpus/direction-v3.yml
+  # v4 (G-1) = v3 plus pairs from PURE's numeric statements (Zenodo 1414117, CC BY 4.0), through the pinned
+  # pdftotext: the support ADR 0040's false-carry measurement lacked. Same hard gates; it measures, and
+  # ADMITTED_CARRIES stays pinned to v2. The generator is never run here (it needs the 33 MB archive).
+  run cargo run -q -- bench bench/corpus/direction-v4.yml
   fi
 
 # The release check over this repository's own corpus: `req check` (ADR 0023). It reads the two

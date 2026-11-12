@@ -296,6 +296,24 @@ unauditable.
    flipped to SHALL NOT (the base is synthesised; the label is the numeric mutation's, swapped). Only
    single-sentence statements with one quantity and no other negation enter the new families. v1 and v2
    regenerate byte-identical, and their records are unchanged.
+   **Version 4** (`bench/corpus/direction-v4.yml`, `build_direction.py --version 4 --pure-zip requirements.zip`; G-1)
+   is every v3 pair plus pairs from the numeric statements of **PURE** — A. Ferrari, G. O. Spagnolo, S. Gnesi, "PURE: A
+   Dataset of Public Requirements Documents", RE 2017 (Zenodo record 1414117, DOI `10.5281/zenodo.1414117`, version 1.0,
+   licence **CC BY 4.0**, per the record's `license` field; the corpus header names the authors, title, DOI and licence, as
+   the licence requires). The 62 PDFs of `requirements.zip` (33,623,628 bytes, md5 `bc319fe28619f6290badff328ca159dd`; the
+   header also records the sha256) are read through **`pdftotext` (poppler) 26.11.0** in its default reading order. The
+   archive and the extractor are **generator provenance**, as the OCR pin is review provenance: the generator refuses any
+   other `pdftotext` version or any other archive, naming both, before it fetches or runs anything; the core never runs it
+   and `scripts/check.sh` never regenerates. The pool is every sentence that says "shall", is 300 characters or fewer after
+   whitespace normalisation and carries a comparator phrase followed by a number; extraction noise is dropped by named rules
+   (a replacement character; a sentence holding a line that recurs on three or more pages of its document, i.e. page
+   furniture; a hyphenated line end, which is not rejoined because that needs a dictionary), counted in the header, and no
+   sentence is ever edited. The families are the existing ones — numeric loosening and tightening (and the LE-to-LT
+   tightening) with mirrors, modality, compound, and numeric mutations on a **native** `shall not` statement (none is
+   flipped) — with the bound found by its comparator phrase rather than by the sources' unit list, because PURE's units
+   ("hours", "days") are not theirs and widening `NUMBER_UNIT` would change v1–v3. Labels are the mutation, never req's
+   answer. PURE holds no `one of` enumeration, so `membership_widening` is unmoved and none is synthesised; the polarity,
+   scope, unrelated and cosmetic families are not run on it. v1, v2 and v3 regenerate byte-identical.
 4. **Natural duplicate run** — whole real documents; measures collapse of true
    duplicates vs near-duplicates. Not yet implemented.
 5. **Evaluated and excluded — Sphinx-Needs.** Its own documentation uses standard
@@ -353,6 +371,38 @@ cannot read as a clean gate. A definite defect still outranks the open question,
 as `req gate` lets Fail outrank Unverifiable.
 
 #### Recorded runs (append-only)
+
+- **Direction gold set v4, rules v9** (G-1; `bench/results/direction-v4-rules-v9.json`; PURE, §6.1) — 2799 pairs (v3's 1827
+  plus 972 from a pool of 73 PURE statements, 61 of them with exactly one numbered comparator phrase): FMR 0/2520 (332 structurally
+  unverifiable), FSR 0/199, hard gate PASS, **0 dangerous confusions**, accuracy 0.9781 over 2467 classified pairs (2413
+  correct), 0 false contradictions over 881 comparable pairs. No `RULES_V` bump; v1–v3 and every earlier record are
+  byte-identical. Of the 31,682 sentences PURE's 62 PDFs yield, 4,487 say "shall", 4,178 of those are 300 characters or fewer,
+  82 carry a numbered comparator phrase, 9 were dropped as page furniture (0 replacement characters, 0 hyphenated line ends)
+  and 73 remain; the numeric ones are concentrated (`2007 - nde` 28, `2004 - rlcs` 10, `1999 - tcs` 9, `2007 - eirene fun 7` 7).
+  - **PURE pairs by family**: single mutations 212 (`MW` 66, `NL` 57, `NT` 57, `LT` 32, `MS` 0) + 212 mirrors; compound 270 + 270 mirrors; numeric mutations on a native
+    `shall not` 4 + 4 mirrors, from **2** statements (`1999 - tcs` #423, `2007 - eirene fun 7` #189), both read correctly in
+    both senses. Of the 972, 850 are correct, 92 unclassifiable and 30 mismatched, all 30 harmless: three statements
+    (`2007 - eirene fun 7` #667 and #675, "up to ten functional numbers … within 30 seconds"; `2008 - caiso` #83) whose scaled
+    number is not the parser's value slot read `scope_divergence` (or `unrelated` for the LT pair), the same parse-coverage
+    fact as v1's PROMISE pairs. **Never a loosening reported as no change or as the opposite.**
+  - **false carry** (`direction.false_carry`; reported, `admitted` = count 0 and support ≥ 100):
+
+    | weakening class | false carries | support (scored opposing pairs) | `admitted` in this record |
+    | --- | --- | --- | --- |
+    | `modality_weakening` | 0 | 285 (v3: 181) | yes |
+    | `numeric_loosening` | 0 | **154** (v3: 17; v2: 9) | **yes** |
+    | `membership_widening` | 0 | 0 | no — no pair exists |
+
+    **`numeric_loosening` reaches the floor on v4: 0 false carries over 154 scored numeric tightenings.** Read it for
+    what it is. The 137 pairs PURE adds are not 137 samples: they are mutations of the number in about 51 statements the
+    parser reads with a value slot (49 of the 57 obligations with one bound, plus the 2 native prohibitions; 5 further
+    statements are unclassifiable and 3 read `scope_divergence`), each yielding several pairs (`NT`, `LT`, the mirrored
+    `NL`, …), and the 73-statement pool comes from 13 documents, 28 of its statements from one. Every pair scales a bound by 1.25 or 0.8
+    over the comparator phrases PURE happens to use, so the measurement does not cover phrases or units that no source has.
+    It is a public-corpus measurement of a rule req already has, not the external-corpora falsification of the bet.
+  - **Admission is not changed by this run.** `ADMITTED_CARRIES` stays pinned to `direction-v2-rules-v<RULES_V>.json`
+    (S-2): `numeric_loosening` is `admitted: false` there (support 9). Moving the measurement to v4 and admitting the class
+    is an owner decision for a later unit.
 
 - **Contradiction measurement, rules v9** (C-1; the `contradiction` block added to every `bench/results/*-rules-v9.json`;
   ADR 0043 decision 6) — **false contradictions 0 on every corpus**: parity 0 of 12 scored pairs (9 comparable, 3 not),

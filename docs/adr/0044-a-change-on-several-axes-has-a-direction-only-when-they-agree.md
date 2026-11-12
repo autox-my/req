@@ -97,3 +97,5 @@ none with one bound; the bases are flipped SHALLs, said so in the corpus header)
 those same two statements, so decision 5 is measured on two statements here, plus `tests/compare.rs`. The v1 and v2
 records are byte-identical before and after (falsification 2 not observed on either), and the false-carry
 measurement stays on v2.
+
+- **2026-11-12 (G-1: PURE).** The prohibition family now also measures decision 5 on **native** `shall not` statements: `direction-v4` takes two from PURE (`1999 - tcs` #423 and `2007 - eirene fun 7` #189, each with one bound, none flipped), and the classifier reads the swapped sense correctly on both, in both directions (8 pairs, all correct; no dangerous confusion on the 972 PURE pairs). It is two statements, not a population; the v3 bases above stay flipped SHALLs.

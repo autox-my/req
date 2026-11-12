@@ -140,6 +140,8 @@ Not an edit of the decisions above; where they now live.
   `need design` in `.req/completeness` adds the `unsatisfied` omission to the completeness step and to `req audit`'s
   *Structural omissions* section. A malformed `.req/design` line is exit 2 in `satisfy` and `check`.
 
+- **2026-11-12 (G-1: PURE).** `direction-v4` (v3 plus pairs from the numeric statements of PURE, Zenodo 1414117, CC BY 4.0) measures `numeric_loosening` at **0 false carries over a support of 154** (v3: 17, v2: 9), and `modality_weakening` at 0 over 285; its record reports both `admitted: true`. The support is pairs, not statements (about 51 PURE statements the parser reads with a value slot, each giving several pairs), and `ADMITTED_CARRIES` is **unchanged** and still pinned to the v2 record, so only `modality_weakening` may carry a link today; moving the measurement to v4 and admitting `numeric_loosening` is a separate owner decision. docs/canonical-hashing.md, *Recorded runs*.
+
 ## Falsification
 
 This decision is wrong if any of these is observed:
