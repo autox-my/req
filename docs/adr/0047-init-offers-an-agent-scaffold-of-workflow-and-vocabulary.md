@@ -6,7 +6,9 @@ it writes is derived (ADR 0022).
 
 **Status: proposed.** The owner ratifies it by merging the pull request that carries it. Raised from a comparative
 review of an adopter-surface tool (reqord, `f043777`) that solves the same problem this repository solves internally
-with `AGENTS.md` and `CONTEXT.md`, and solves it for adopters. Date proposed: 2026-11-12.
+with `AGENTS.md` and `CONTEXT.md`, and solves it for adopters. Revised 2026-11-13 after review (PR #66): decision 3
+judged a file the scaffold tells the adopter to fill in, and decision 5 did not say what a repository with an existing
+`AGENTS.md` gets. Date proposed: 2026-11-12.
 
 ## Context
 
@@ -31,14 +33,18 @@ would never check them, and hosting them would make this a second wiki with a re
 2. **No product, technical or domain context.** req stores no vision, no stack, no security policy, no API standards.
    Those belong to the adopter's repository, where their own tools can read them, and where no requirement address
    depends on them.
-3. **Templates are versioned and re-renderable.** `req init --agent --check` re-renders both templates to stdout and
-   diffs against the files on disk: **0** current, **1** drifted or edited, **3** cannot judge. It writes nothing and
-   records nothing.
+3. **`--check` judges `AGENTS.md` and nothing else**, because it is the only file the adopter is not asked to edit. A
+   re-render is diffed against `AGENTS.md` on disk: **0** current, **1** drifted or edited, **3** cannot judge.
+   `CONTEXT.md` is never judged — it ships empty precisely so the adopter fills it, and a check that reddened on the
+   instruction it gave would be worse than no check. `--check` writes nothing and records nothing.
 4. **Drift of an adopted document is not a policy.** The answer is printed by the check, never folded into
    `PolicyResult`: the fold has exactly three outcomes (ADR 0023), and an advisory fourth for a cosmetic concern would
    dilute the one thing the gate is for.
-5. **The refusal contract is unchanged.** Existing paths are still refused with exit 1, and `--agent` adds its files to
-   the same `Created` ledger, so a failure mid-run removes only what this run created.
+5. **A repository that already has `AGENTS.md` is refused whole, before anything is written** — exit 1, naming the
+   path, with `--check` as the read-only way to see the template and take what is wanted. A partial write (one file
+   created, one refused) would leave the corpus in a state neither the adopter nor the rollback chose, so the run is
+   all-or-nothing, as `init` already is. `--agent` adds its files to the same `Created` ledger, so a failure mid-run
+   removes only what this run created.
 6. **The flag is opt-in.** Plain `req init` stays three paths. The quickstart rehearsal in `tools/quickstart.sh` and its
    `QUICKSTART <n>s` claim rehearse the plain form, so their timing statement stays true without re-measuring.
 7. **The templates are the contract, not a copy of this repository's files.** They carry the rules an adopter's agent
@@ -70,7 +76,9 @@ would never check them, and hosting them would make this a second wiki with a re
 This decision is wrong if any of these is observed:
 
 1. `--agent` writes anything beyond `AGENTS.md` and `CONTEXT.md`;
-2. a re-render with no edit reports drift, or an edit reports current;
-3. drift makes `req check` fail, or adds a policy result to the fold;
-4. an existing path is overwritten, or a rollback removes a file the run did not create;
-5. the plain `req init` output, exit codes or quickstart timing change as a side effect.
+2. a re-render with no edit reports drift, or an edit to `AGENTS.md` reports current;
+3. an edit to `CONTEXT.md` is reported as drift — the check would punish the fill-in its own scaffold asked for;
+4. drift makes `req check` fail, or adds a policy result to the fold;
+5. an existing path is overwritten; a refusal leaves behind a file this run created; or a rollback removes a file the
+   run did not create;
+6. the plain `req init` output, exit codes or quickstart timing change as a side effect.
