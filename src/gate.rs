@@ -504,17 +504,34 @@ pub fn evaluate_claims(rows: &[Row], context: &Context) -> Vec<PolicyResult> {
     //    claim that does not exist cannot be checked, so it is unverifiable — never
     //    silently dropped, which would understate the graph being released.
     let mut unverifiable = Vec::new();
-    for row in &applying {
+    for row in rows {
         for (kind, to) in &row.relations {
-            if !known.contains(to.as_str()) {
+            if known.contains(to.as_str()) {
+                continue;
+            }
+            // ADR 0049 decision 6: a `supersedes` that names nothing is reported whether or not its
+            // successor applies here — an edge that silently names nothing is decay. Every other
+            // kind keeps the applying-only rule.
+            if row.applies == Applies::Yes || kind == crate::view::SUPERSEDES {
                 unverifiable.push(format!("{} -{kind}-> {to}", row.claim_id));
             }
         }
     }
+    // ADR 0049 decision 5: a `supersedes` cycle is a defect in every selection, whether or not its
+    // members apply, so it is judged over the whole corpus and never withdraws a member.
+    let cycles: Vec<String> = crate::view::supersession(rows)
+        .cycles
+        .iter()
+        .map(|cycle| {
+            let mut path = cycle.clone();
+            path.extend(cycle.first().cloned());
+            format!("supersedes cycle: {}", path.join(" -> "))
+        })
+        .collect();
     let relations = PolicyResult::new(
         "relations_resolve",
         "every relation of an applying claim resolves to a claim in the corpus",
-        Vec::new(),
+        cycles,
         unverifiable,
     );
 
@@ -642,11 +659,24 @@ fn undecided_document(rows: &[Row], context: &Context) -> Vec<UndecidedDocument>
         .filter(|row| row.applies == Applies::Unknown)
         .collect();
     sorted.sort_by(|a, b| a.claim_id.cmp(&b.claim_id));
+    let supersession = crate::view::supersession(rows);
     sorted
         .into_iter()
         .map(|row| {
             let mut missing: BTreeSet<String> = BTreeSet::new();
-            for text in &row.selectors {
+            // A claim can be undecided because a successor that supersedes it is (ADR 0049), so the
+            // successors' selectors name what is missing as well as the claim's own.
+            let successors: Vec<&Row> = supersession
+                .successors
+                .get(&row.claim_id)
+                .into_iter()
+                .flatten()
+                .filter_map(|id| rows.iter().find(|r| &r.claim_id == id))
+                .collect();
+            for text in std::iter::once(row)
+                .chain(successors)
+                .flat_map(|r| r.selectors.iter())
+            {
                 let predicate = parse_predicate(text);
                 if evaluate_predicate(&predicate, context) != Applies::Unknown {
                     continue;

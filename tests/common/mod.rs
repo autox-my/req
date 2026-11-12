@@ -98,6 +98,7 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
         pins: Vec::new(),
         rationale_source: provenance.source,
         rationale_date: provenance.date,
+        superseded_by: Vec::new(),
     }
 }
 

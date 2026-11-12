@@ -354,7 +354,8 @@ Reports which claims apply in a variant, tri-state: a claim whose applicability 
 the context does not decide is UNKNOWN, never excluded — that would drop a safety claim out
 of a variant silently. Selection changes no address: a variant is a projection over one
 model. The predicate grammar is deliberately tiny — `key == value` and `key >= number`;
-anything else is UNKNOWN, with its text shown.
+anything else is UNKNOWN, with its text shown. A claim whose successor (`supersedes`, ADR 0049) applies
+in the variant is withdrawn: it does not apply, and its line names the successor.
 
 exit: 0 every claim decided, 3 at least one claim left undecided, 2 usage.
 
@@ -365,7 +366,9 @@ usage: req render [--out <path>] [--check <path>] [--format text|json] [key=valu
 
 Prints the spec view for a selection: every applying claim's address, modality, statement,
 selector and outgoing relations, with the undecided claims in their own section and the
-outside-the-selection ones named. It is a projection: it reads claims, never writes one.
+outside-the-selection ones named — a claim withdrawn by a successor that applies (`supersedes`,
+ADR 0049) reads `does not apply (superseded by REQ-X)`, and `--format json` rows carry
+`superseded_by`. It is a projection: it reads claims, never writes one.
 
 `--out <path>` commits the projection: the same view, preceded by an HTML-comment header naming
 the generator, rules_v, selection, applying-claim count and an identity digest over the sorted
@@ -430,6 +433,11 @@ UNVERIFIABLE.
 `pins_hold` fails on any pin of an applying claim that the parse derived at load does not hold
 — a contradiction, or a value the parse does not carry (ADR 0022). With no pin in the selection
 it passes and says so: it ran over zero pins, it was not skipped.
+
+`relations_resolve` is UNVERIFIABLE for a relation of an applying claim whose `to` the corpus does not hold,
+and for a `supersedes` that names a claim the corpus does not hold even when its claim does not apply
+here. A `supersedes` cycle (a claim that supersedes itself, or any longer loop) FAILS in every selection,
+naming the cycle in id order (ADR 0049); nothing in a cycle is withdrawn.
 
 `selectors_confirmed` judges the invocation: a `key=value` entry no applicability predicate in
 the corpus mentions decided nothing, and an `==` entry whose value the corpus never declares is

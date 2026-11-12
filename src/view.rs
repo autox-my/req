@@ -38,6 +38,7 @@ use crate::model::Evidence;
 use crate::select::{Applies, Context, applies, parse_predicate};
 use serde::Serialize;
 use serde::ser::{SerializeStruct, Serializer};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// One claim, as the view needs it: its identity, what it says, and how it selected.
@@ -76,6 +77,9 @@ pub struct Row {
     /// Provenance, for the audit policy and the view.
     pub rationale_source: String,
     pub rationale_date: String,
+    /// ADR 0049: the successors that withdrew this claim in this selection, sorted; empty unless
+    /// the claim is withdrawn (then `applies` is `No`).
+    pub superseded_by: Vec<String>,
 }
 
 /// What a trace could not settle. Both are outcomes, not warnings: `dangling` is
@@ -132,8 +136,17 @@ pub fn render(rows: &[Row], context: &Context) -> String {
     if outside.is_empty() {
         out.push_str("(none)\n");
     } else {
-        let ids: Vec<&str> = outside.iter().map(|r| r.claim_id.as_str()).collect();
-        out.push_str(&format!("{}\n", ids.join(", ")));
+        // ADR 0049 decision 7: a withdrawn claim is named with its successors on a line of its own,
+        // and only when some claim is withdrawn, so a corpus without `supersedes` prints as before.
+        let (withdrawn, plain): (Vec<&&Row>, Vec<&&Row>) =
+            outside.iter().partition(|r| !r.superseded_by.is_empty());
+        if !plain.is_empty() {
+            let ids: Vec<&str> = plain.iter().map(|r| r.claim_id.as_str()).collect();
+            out.push_str(&format!("{}\n", ids.join(", ")));
+        }
+        for row in withdrawn {
+            out.push_str(&format!("{}  {}\n", row.claim_id, not_applying(row)));
+        }
     }
     out
 }
@@ -180,6 +193,15 @@ pub fn trace(rows: &[Row], context: &Context) -> (String, TraceFindings) {
                         out.push_str(&format!(
                             "- {} -{kind}-> {to}  [target undecided]\n",
                             row.claim_id
+                        ));
+                    } else if let Some(withdrawn) = sorted
+                        .iter()
+                        .find(|r| r.claim_id == *to && !r.superseded_by.is_empty())
+                    {
+                        out.push_str(&format!(
+                            "- {} -{kind}-> {to}  [target {}]\n",
+                            row.claim_id,
+                            not_applying(withdrawn)
                         ));
                     } else {
                         out.push_str(&format!(
@@ -229,6 +251,16 @@ pub fn trace(rows: &[Row], context: &Context) -> (String, TraceFindings) {
         out.push_str(&format!("- undecided edge: {line}\n"));
     }
     (out, findings)
+}
+
+/// How a text view says a *withdrawn* claim does not apply (ADR 0049 decision 7): it names its
+/// successors. Callers use it only for a row whose `superseded_by` is non-empty; every other claim
+/// keeps the plain wording the view already had.
+pub fn not_applying(row: &Row) -> String {
+    format!(
+        "does not apply (superseded by {})",
+        row.superseded_by.join(", ")
+    )
 }
 
 fn describe(context: &Context) -> String {
@@ -283,7 +315,7 @@ impl Serialize for Row {
             source: &self.rationale_source,
             date: &self.rationale_date,
         };
-        let mut row = serializer.serialize_struct("Row", 8)?;
+        let mut row = serializer.serialize_struct("Row", 9)?;
         row.serialize_field("claim_id", &self.claim_id)?;
         row.serialize_field("statement", &self.statement)?;
         row.serialize_field("modality", &self.modality)?;
@@ -294,6 +326,7 @@ impl Serialize for Row {
         row.serialize_field("selectors", &self.selectors)?;
         row.serialize_field("relations", &relations)?;
         row.serialize_field("rationale", &rationale)?;
+        row.serialize_field("superseded_by", &self.superseded_by)?;
         row.end()
     }
 }
@@ -1104,7 +1137,161 @@ pub fn load_rows(context: &Context, root: &std::path::Path) -> Result<Vec<Row>, 
             pins: derived.pins.clone(),
             rationale_source: claim.rationale.source.clone(),
             rationale_date: claim.rationale.date.clone(),
+            superseded_by: Vec::new(),
         });
     }
+    withdraw_superseded(&mut rows);
     Ok(rows)
+}
+
+/// The relation kind ADR 0049 gives a meaning: authored on the **successor**, pointing at the claim
+/// it replaces.
+pub const SUPERSEDES: &str = "supersedes";
+
+/// What the `supersedes` relations of a corpus say, computed once from the rows and shared by the
+/// loader (which folds it), the gate (which fails a cycle and names what decides an undecided
+/// claim) and every text view (ADR 0049 decisions 2 and 5).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Supersession {
+    /// Target id -> the ids that supersede it. A member of a cycle is excluded as a successor and as
+    /// a target, and an edge whose `to` the corpus does not hold is not here (it withdraws nothing).
+    pub successors: BTreeMap<String, BTreeSet<String>>,
+    /// Cycles, self-loops included, each named once and rotated to start at its lowest id
+    /// (`[REQ-A, REQ-B]` is `REQ-A -> REQ-B -> REQ-A`), sorted. Every member of a cycle appears in at
+    /// least one of them; a component with chords may hold cycles that are not named. A cycle is a
+    /// defect, never a withdrawal.
+    pub cycles: Vec<Vec<String>>,
+}
+
+/// Read the `supersedes` relations of `rows`, which hold the whole corpus (not one selection's
+/// applying claims): a cycle is a property of the corpus, so it is found in every selection.
+///
+/// Deterministic: ordered maps and sets throughout, and the shortest cycle through a member is found
+/// by a breadth-first search that takes neighbours in id order.
+pub fn supersession(rows: &[Row]) -> Supersession {
+    let known: BTreeSet<&str> = rows.iter().map(|row| row.claim_id.as_str()).collect();
+    // `edges[a]` = the claims `a` supersedes, as a successor-to-target graph.
+    let mut edges: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for row in rows {
+        for (kind, to) in &row.relations {
+            if kind == SUPERSEDES && known.contains(to.as_str()) {
+                edges
+                    .entry(row.claim_id.as_str())
+                    .or_default()
+                    .insert(to.as_str());
+            }
+        }
+    }
+
+    // A claim is on a cycle exactly when a path leads from it back to itself. The shortest such
+    // path is the cycle that is named for it.
+    let mut members: BTreeSet<&str> = BTreeSet::new();
+    let mut named: BTreeSet<Vec<String>> = BTreeSet::new();
+    let mut covered: BTreeSet<&str> = BTreeSet::new();
+    for start in edges.keys().copied() {
+        let Some(path) = shortest_cycle(&edges, start) else {
+            continue;
+        };
+        members.insert(start);
+        if covered.contains(start) {
+            continue;
+        }
+        covered.extend(path.iter().copied());
+        let lowest = path
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| a.cmp(b))
+            .map(|(at, _)| at)
+            .unwrap_or(0);
+        let mut rotated: Vec<String> = path[lowest..].iter().map(|id| (*id).to_string()).collect();
+        rotated.extend(path[..lowest].iter().map(|id| (*id).to_string()));
+        named.insert(rotated);
+    }
+
+    let mut successors: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (from, targets) in &edges {
+        if members.contains(from) {
+            continue;
+        }
+        for to in targets {
+            if !members.contains(to) {
+                successors
+                    .entry((*to).to_string())
+                    .or_default()
+                    .insert((*from).to_string());
+            }
+        }
+    }
+    Supersession {
+        successors,
+        cycles: named.into_iter().collect(),
+    }
+}
+
+/// The shortest path `start -> ... -> start` (the nodes of it, `start` first), or `None` when no edge
+/// path leads back to `start`.
+fn shortest_cycle<'a>(
+    edges: &BTreeMap<&'a str, BTreeSet<&'a str>>,
+    start: &'a str,
+) -> Option<Vec<&'a str>> {
+    let mut parent: BTreeMap<&str, &str> = BTreeMap::new();
+    let mut queue: std::collections::VecDeque<&str> = std::collections::VecDeque::from([start]);
+    while let Some(current) = queue.pop_front() {
+        for next in edges.get(current).into_iter().flatten().copied() {
+            if next == start {
+                let mut path = vec![current];
+                let mut at = current;
+                while at != start {
+                    at = parent.get(at).copied()?;
+                    path.push(at);
+                }
+                path.reverse();
+                return Some(path);
+            }
+            if !parent.contains_key(next) {
+                parent.insert(next, current);
+                queue.push_back(next);
+            }
+        }
+    }
+    None
+}
+
+/// ADR 0049 decision 2: fold each claim's own answer with the **own** answer of each successor (the
+/// successor's predicate, not its folded state, so a chain needs no recursion and a withdrawn B never
+/// brings A back).
+///
+/// * a successor applies -> the claim is withdrawn: it does not apply, and names the applying
+///   successors;
+/// * else a successor is undecided and the claim's own answer is not *does not apply* -> undecided;
+/// * else the claim keeps its own answer.
+fn withdraw_superseded(rows: &mut [Row]) {
+    let supersession = supersession(rows);
+    if supersession.successors.is_empty() {
+        return;
+    }
+    let own: BTreeMap<String, Applies> = rows
+        .iter()
+        .map(|row| (row.claim_id.clone(), row.applies))
+        .collect();
+    for row in rows.iter_mut() {
+        let Some(successors) = supersession.successors.get(&row.claim_id) else {
+            continue;
+        };
+        let applying: Vec<String> = successors
+            .iter()
+            .filter(|id| own.get(*id) == Some(&Applies::Yes))
+            .cloned()
+            .collect();
+        if !applying.is_empty() {
+            row.applies = Applies::No;
+            row.superseded_by = applying;
+        } else if row.applies != Applies::No
+            && successors
+                .iter()
+                .any(|id| own.get(id) == Some(&Applies::Unknown))
+        {
+            row.applies = Applies::Unknown;
+        }
+    }
 }

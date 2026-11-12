@@ -108,6 +108,13 @@ pins:
 Reference types (`to`, `source`) use `claim_id`s, addresses, or repo paths —
 whatever stays stable under rewording.
 
+`supersedes` is the one relation type that changes what a view says (ADR 0049). It is authored on the **successor** and points
+at the claim it replaces — "REQ-0050 supersedes REQ-0012" is `relations: [{type: supersedes, to: REQ-0012}]` in REQ-0050's file.
+In a selection where REQ-0050 applies, REQ-0012 is *withdrawn*: it does not apply there, and every view names REQ-0050 as the
+reason. Where REQ-0050 does not apply (a successor scoped to one variant) REQ-0012 is untouched, and where REQ-0050 is undecided
+REQ-0012 is undecided too. A claim stays in the corpus and keeps its address when withdrawn. A `supersedes` cycle, including a
+claim that supersedes itself, fails `relations_resolve` and withdraws nothing.
+
 A `rationale.source` that is a repo path **with a line anchor** (`docs/plan.md#L390`, `#L390-L395`, `#L390-395`) is checked by
 `req gate` (`rationale_present`): the file must exist and have that many lines, because a plan that shrinks leaves the anchor
 pointing at nothing. That is all it can check; whether the line still says what the claim was written from is a human reading.

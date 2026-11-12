@@ -2040,6 +2040,29 @@ fn an_applicability_edit_that_brings_a_contradicting_pair_into_one_line_is_added
     );
 }
 
+/// ADR 0049 decision 4: adding the successor's `supersedes` relation at head withdraws the claim it
+/// replaces, so the pair no longer joins two applying claims and the pass lists it as resolved.
+#[test]
+fn adding_the_successors_supersedes_relation_lists_the_pair_as_resolved() {
+    let repo = Repo::new("resolved-by-supersedes");
+    repo.put("REQ-0001", FAST, &[], &[]);
+    repo.put("REQ-0002", SLOW, &[], &[]);
+    repo.commit("base");
+    repo.put("REQ-0002", SLOW, &[], &[("supersedes", "REQ-0001")]);
+    repo.commit("head");
+
+    let run = diff(&repo, &with_fail_on("contradiction-added"));
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    let pairs = pair_lines(&run.stdout);
+    assert_eq!(pairs.len(), 1, "{}", run.stdout);
+    assert!(
+        pairs[0].starts_with("resolved ") && pairs[0].contains("REQ-0001 vs REQ-0002"),
+        "{}",
+        pairs[0]
+    );
+    assert!(!flagged(&run, "REQ-0001") && !flagged(&run, "REQ-0002"));
+}
+
 #[test]
 fn editing_one_side_so_the_pair_no_longer_contradicts_lists_it_as_resolved_with_no_flag() {
     let repo = Repo::new("resolved-by-edit");

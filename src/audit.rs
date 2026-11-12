@@ -286,6 +286,24 @@ pub fn packet_with_contradictions(
         }
     }
 
+    // ADR 0049 decision 7: a withdrawn claim is not an applying one, and the packet says which and
+    // why. Printed only when some claim is withdrawn, so a corpus without `supersedes` is unchanged.
+    let mut withdrawn: Vec<&Row> = rows
+        .iter()
+        .filter(|row| !row.superseded_by.is_empty())
+        .collect();
+    withdrawn.sort_by(|a, b| a.claim_id.cmp(&b.claim_id));
+    if !withdrawn.is_empty() {
+        out.push_str("\n## Superseded (withdrawn: not applying here, kept in the corpus)\n");
+        for row in &withdrawn {
+            out.push_str(&format!(
+                "- {}  superseded by {}\n",
+                row.claim_id,
+                row.superseded_by.join(", ")
+            ));
+        }
+    }
+
     // ADR 0039 §4: the structural omission this selection can show. `in_no_baseline` is already
     // the coverage above (`uncovered`), and `in_no_release` is a property across release lines,
     // which is `req check`'s question; what remains per selection is an applying claim with no
