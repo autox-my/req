@@ -266,6 +266,7 @@ fn signed_coverage(root: &Path) -> (BTreeSet<String>, Vec<String>, Vec<String>) 
 pub fn evaluate(root: &Path, releases: &[Context], policy: &Policy) -> Result<Findings, String> {
     let mut applies_somewhere: BTreeSet<String> = BTreeSet::new();
     let mut undecided_somewhere: BTreeSet<String> = BTreeSet::new();
+    let mut withdrawn_somewhere: BTreeSet<String> = BTreeSet::new();
     let mut all_rows: Option<Vec<Row>> = None;
     for context in releases {
         let rows = crate::view::load_rows(context, root)?;
@@ -277,7 +278,11 @@ pub fn evaluate(root: &Path, releases: &[Context], policy: &Policy) -> Result<Fi
                 Applies::Unknown => {
                     undecided_somewhere.insert(row.claim_id.clone());
                 }
-                Applies::No => {}
+                Applies::No => {
+                    if !row.superseded_by.is_empty() {
+                        withdrawn_somewhere.insert(row.claim_id.clone());
+                    }
+                }
             }
         }
         if all_rows.is_none() {
@@ -294,10 +299,16 @@ pub fn evaluate(root: &Path, releases: &[Context], policy: &Policy) -> Result<Fi
 
     // Excluded by every declared release. A claim some line leaves undecided is already that
     // line's UNVERIFIABLE (ADR 0015); calling it a defect here would outrank the open question
-    // with a FAIL nobody established, so it is not named twice.
+    // with a FAIL nobody established, so it is not named twice. A claim a release *withdraws* (its
+    // successor applies there) was examined by that release and is kept on purpose: ADR 0049
+    // decision 3 rejects deletion, so telling its author to "retire it" would contradict the decision.
     let in_no_release: Vec<String> = ids
         .iter()
-        .filter(|id| !applies_somewhere.contains(**id) && !undecided_somewhere.contains(**id))
+        .filter(|id| {
+            !applies_somewhere.contains(**id)
+                && !undecided_somewhere.contains(**id)
+                && !withdrawn_somewhere.contains(**id)
+        })
         .map(|id| (*id).to_string())
         .collect();
     let (covered, baselines, not_counted) = signed_coverage(root);

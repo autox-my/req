@@ -111,9 +111,12 @@ Decisions 1–7 are implemented as written; nothing in them moved.
 - **`select` now reads the loader's rows.** It used to evaluate predicates on its own, which would have left it the one view
   that did not know a claim was withdrawn. Its output is unchanged without a `supersedes` relation.
 - **Cycles.** Every claim with a path back to itself is excluded from the fold as a successor and as a target. Each cycle is
-  named once (the shortest cycle through its lowest member, rotated to start at its lowest id), so a component with chords is
-  named by every distinct cycle the members need, and no member goes unnamed. `relations_resolve` FAILs naming each in every
-  selection, whether or not its members apply.
+  named once (the shortest cycle through its lowest member, rotated to start at its lowest id), so every member of a cycle
+  appears in at least one named cycle, and a component with chords may hold cycles that are not named (1 -> 2 -> 3 -> 4 -> 1 with a
+  chord 3 -> 2 names the 4-cycle, not 2 -> 3 -> 2). `relations_resolve` FAILs naming each in every selection, whether or not its
+  members apply.
+- **`req check`.** The completeness step's `in_no_release` does not count a withdrawn claim: a release that withdraws it examined it, and
+  deletion is what decision 3 rejects.
 - **Dangling.** `relations_resolve` lists a `supersedes` whose `to` is missing as UNVERIFIABLE even when its claim does not
   apply; every other relation kind keeps the applying-only rule.
 - **Text.** `render` (outside-the-selection list), `trace` (`[target …]`), `select` and `impact` say `does not apply

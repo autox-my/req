@@ -1156,9 +1156,10 @@ pub struct Supersession {
     /// Target id -> the ids that supersede it. A member of a cycle is excluded as a successor and as
     /// a target, and an edge whose `to` the corpus does not hold is not here (it withdraws nothing).
     pub successors: BTreeMap<String, BTreeSet<String>>,
-    /// Every cycle, self-loops included, each named once and rotated to start at its lowest id
-    /// (`[REQ-A, REQ-B]` is `REQ-A -> REQ-B -> REQ-A`), sorted. A cycle is a defect, never a
-    /// withdrawal.
+    /// Cycles, self-loops included, each named once and rotated to start at its lowest id
+    /// (`[REQ-A, REQ-B]` is `REQ-A -> REQ-B -> REQ-A`), sorted. Every member of a cycle appears in at
+    /// least one of them; a component with chords may hold cycles that are not named. A cycle is a
+    /// defect, never a withdrawal.
     pub cycles: Vec<Vec<String>>,
 }
 

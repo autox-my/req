@@ -746,6 +746,107 @@ fn a_baseline_emitted_over_a_withdrawn_claim_omits_it_from_the_manifest() {
 }
 
 // ---------------------------------------------------------------------------
+// decision 3: the completeness step counts a withdrawn claim as examined
+// ---------------------------------------------------------------------------
+
+/// A placeholder signed manifest naming every claim, so `req check`'s completeness step leaves its
+/// `in_no_release` answer to the corpus under test (the same device `tests/contradict.rs` uses).
+fn sign_every_claim(s: &Scratch) {
+    let mut ids: Vec<String> = fs::read_dir(s.path().join("claims"))
+        .expect("lists the claims")
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .strip_suffix(".yml")
+                .map(str::to_string)
+        })
+        .collect();
+    ids.sort();
+    let hash = "0".repeat(64);
+    let claims: Vec<String> = ids
+        .iter()
+        .map(|id| {
+            format!(
+                "{{\"claim_id\":\"{id}\",\"address\":\"{hash}\",\"relations_hash\":\"{hash}\",\
+                 \"rationale_hash\":\"{hash}\",\"tests_hash\":\"{hash}\"}}"
+            )
+        })
+        .collect();
+    let manifest = format!(
+        "{{\"version\":4,\"signed_at\":\"2026-11-11T00:00:00Z\",\"authority\":{{\"head\":\"{hash}\",\
+         \"entries\":1}},\"rules_v\":8,\"selection\":{{}},\"claims\":[{}]}}",
+        claims.join(",")
+    );
+    fs::create_dir_all(s.path().join("baselines")).expect("creates baselines/");
+    fs::write(s.path().join("baselines/fixture.json"), manifest).expect("writes the manifest");
+    fs::write(
+        s.path().join("baselines/fixture.json.minisig"),
+        "untrusted comment: fixture signature, never verified by this step\n",
+    )
+    .expect("writes the signature");
+}
+
+/// ADR 0049 decision 3: a withdrawn claim is kept, not deleted, so "applies in no release" must not
+/// tell its author to retire it. The motivating pair, with one declared release line.
+#[test]
+fn check_does_not_name_a_withdrawn_claim_as_in_no_release() {
+    let s = Scratch::new("check-withdrawn");
+    motivating(&s);
+    // A claim that mentions `variant`, so the declared line is a described one and the gate's
+    // `selectors_confirmed` does not refuse it: the answer under test is the completeness step's.
+    s.claim(
+        "REQ-0003",
+        "The worker shall log each command.",
+        &["variant == x"],
+        &[],
+    );
+    fs::create_dir_all(s.path().join(".req")).expect("creates .req/");
+    fs::write(s.path().join(".req/variants"), "variant=x\n").expect("writes the list");
+    sign_every_claim(&s);
+    let out = s.req(&["check"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(
+        !out.all().contains("in_no_release"),
+        "a withdrawn claim is examined, not orphaned: {}",
+        out.all()
+    );
+}
+
+/// The control: a claim that is neither applying, undecided nor withdrawn in any line still is the
+/// defect `in_no_release` names, even beside a `supersedes` whose successor applies nowhere.
+#[test]
+fn check_still_names_a_claim_no_release_examines_and_nothing_withdrew() {
+    let s = Scratch::new("check-in-no-release");
+    s.claim("REQ-0001", LONG, &["variant == y"], &[]);
+    s.claim(
+        "REQ-0002",
+        SHORT,
+        &["variant == z"],
+        &[("supersedes", "REQ-0001")],
+    );
+    // A claim that does apply, so the line mentions `variant` and is not refused as undescribed.
+    s.claim(
+        "REQ-0003",
+        "The worker shall log each command.",
+        &["variant == x"],
+        &[],
+    );
+    fs::create_dir_all(s.path().join(".req")).expect("creates .req/");
+    fs::write(s.path().join(".req/variants"), "variant=x\n").expect("writes the list");
+    sign_every_claim(&s);
+    let out = s.req(&["check"]);
+    assert_eq!(out.code, 1, "{}", out.all());
+    assert!(
+        out.all()
+            .contains("in_no_release (FAIL): REQ-0001, REQ-0002"),
+        "{}",
+        out.all()
+    );
+}
+
+// ---------------------------------------------------------------------------
 // the committed shapes
 // ---------------------------------------------------------------------------
 
