@@ -34,7 +34,9 @@ would never check them, and hosting them would make this a second wiki with a re
    Those belong to the adopter's repository, where their own tools can read them, and where no requirement address
    depends on them.
 3. **`--check` judges `AGENTS.md` and nothing else**, because it is the only file the adopter is not asked to edit. A
-   re-render is diffed against `AGENTS.md` on disk: **0** current, **1** drifted or edited, **3** cannot judge.
+   re-render is diffed against `AGENTS.md` on disk: **0** current, **1** drifted or edited, **3** cannot judge. With no
+   `AGENTS.md` on disk the answer is **3**, not **1**: a corpus that did not adopt the scaffold has not drifted from it,
+   and calling that a defect would punish the decision not to adopt.
    `CONTEXT.md` is never judged — it ships empty precisely so the adopter fills it, and a check that reddened on the
    instruction it gave would be worse than no check. `--check` writes nothing and records nothing.
 4. **Drift of an adopted document is not a policy.** The answer is printed by the check, never folded into
