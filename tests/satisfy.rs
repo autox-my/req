@@ -254,10 +254,10 @@ fn a_modality_weakening_carried_with_another_change_is_suspect() {
 
 #[test]
 fn an_admitted_weakening_holds_and_is_named_while_an_unadmitted_loosening_is_suspect() {
-    // Falsification 3, both halves. `modality_weakening` is admitted (support 177, zero false
-    // carries): the link holds and the report says the requirement loosened. `numeric_loosening` is
-    // not (support 9 < 100): the same kind of loosening is suspect, so an unmeasured class never
-    // carries a link.
+    // Falsification 3, both halves. `modality_weakening` and `numeric_loosening` are admitted (zero
+    // false carries over 271 and 139 on direction-v4): the link holds and the report says the
+    // requirement loosened. `membership_widening` is not (support 0): the same kind of loosening is
+    // suspect, so an unmeasured class never carries a link.
     let s = Scratch::recorded("weakened");
     s.claim(
         "REQ-0001",
@@ -279,10 +279,37 @@ fn an_admitted_weakening_holds_and_is_named_while_an_unadmitted_loosening_is_sus
         None,
     );
     let out = s.req(&["satisfy"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let line = out.line_for(ELEMENT, "REQ-0001");
+    assert!(
+        line.contains("HOLDS") && line.contains("weakened") && line.contains("numeric_loosening"),
+        "{line}"
+    );
+}
+
+#[test]
+fn an_unadmitted_weakening_class_is_suspect_through_the_cli() {
+    // Falsification 3's second half, now that `numeric_loosening` is admitted: `membership_widening`
+    // has no support on any gold set, so a widened set still re-opens the link.
+    let s = Scratch::new("widened");
+    s.claim(
+        "REQ-0001",
+        "The API shall use one of {TLS1.2, TLS1.3}.",
+        None,
+    );
+    s.element(ELEMENT, &["REQ-0001"]);
+    let out = s.req(&["satisfy", "--record", ELEMENT, "REQ-0001"]);
+    assert_eq!(out.code, 0, "recording succeeds: {}", out.all());
+    s.claim(
+        "REQ-0001",
+        "The API shall use one of {TLS1.2, TLS1.3, SSL3}.",
+        None,
+    );
+    let out = s.req(&["satisfy"]);
     assert_eq!(out.code, 3, "{}", out.all());
     let line = out.line_for(ELEMENT, "REQ-0001");
     assert!(
-        line.contains("SUSPECT") && line.contains("numeric_loosening"),
+        line.contains("SUSPECT") && line.contains("membership_widening"),
         "{line}"
     );
 }

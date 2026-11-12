@@ -769,8 +769,8 @@ what meets the claim*, and keeps saying it only while the claim's meaning has no
    That writes the claim's statement, verbatim, to `.req/satisfied`. Commit the file; it is reviewed
    like `.req/variants`.
 4. **Read the answer**: `req satisfy` lists every link. A cosmetic edit to the claim leaves it
-   **HOLDS**; a weakening of a class the measurement admitted (today the modality, SHALL to SHOULD)
-   is **HOLDS (weakened)**, named, so the loosening is seen but not re-opened; anything else — a
+   **HOLDS**; a weakening of a class the measurement admitted (today the modality, SHALL to SHOULD,
+   and a loosened bound, 100 ms to 200 ms) is **HOLDS (weakened)**, named, so the loosening is seen but not re-opened; anything else — a
    strengthening, a tighter number, a flipped polarity, any scope change, a loosening class not yet
    measured — is **SUSPECT** (exit 3, naming element, claim and direction) until a human has looked at
    the design and re-recorded it. A declared link never recorded is **UNRATIFIED**, a link to a claim

@@ -2,7 +2,8 @@
 //! the library seam: the judging function and the compiled-in admitted set.
 //!
 //! The admitted set is *pinned to the measurement*: the measurement's record (`req bench` writes
-//! `bench/results/direction-v2-rules-v<RULES_V>.json`) says which weakening classes had zero false
+//! `bench/results/direction-v4-rules-v<RULES_V>.json`, the largest direction gold set; N-1 moved it from
+//! v2) says which weakening classes had zero false
 //! carries with enough support, and the constant must agree with it. A rules bump, or a
 //! re-measurement that changes admission, fails here until the constant is changed on purpose. The
 //! record is read by this test only — never at runtime, where an adopter does not have it.
@@ -33,7 +34,7 @@ fn names(directions: &[Direction]) -> Vec<&'static str> {
 #[test]
 fn the_admitted_set_is_exactly_what_the_measurement_record_admits() {
     let path = format!(
-        "{}/bench/results/direction-v2-rules-v{RULES_V}.json",
+        "{}/bench/results/direction-v4-rules-v{RULES_V}.json",
         env!("CARGO_MANIFEST_DIR")
     );
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
@@ -125,8 +126,14 @@ fn judging_reads_the_direction_of_the_change_since_the_recorded_statement() {
             base,
             "The pump service shall respond to a health check within 200 ms."
         ),
-        Judgement::Suspect(Direction::NumericLoosening),
-        "numeric_loosening is a weakening class the measurement has not admitted"
+        Judgement::HoldsWeakened(Direction::NumericLoosening),
+        "numeric_loosening is admitted on direction-v4 (0 false carries over 139; N-1)"
+    );
+    let set = "The API shall use one of {TLS1.2, TLS1.3}.";
+    assert_eq!(
+        judged(set, "The API shall use one of {TLS1.2, TLS1.3, SSL3}."),
+        Judgement::Suspect(Direction::MembershipWidening),
+        "membership_widening is a weakening class the measurement has not admitted (support 0)"
     );
     assert_eq!(
         judged(

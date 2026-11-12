@@ -582,7 +582,7 @@ token, not the file format. The element's id is its repo-relative path.
 `req satisfy` lists every declared link with its outcome. A link is judged by the *direction* of the
 claim's change since it was recorded, both statements re-derived under the current rules:
 HOLDS (same meaning fingerprint: a cosmetic edit, or none); HOLDS (weakened) (the change is a class
-the measurement admitted — today `modality_weakening` — named, and the link is not re-opened);
+the measurement admitted — today `modality_weakening` and `numeric_loosening` — named, and the link is not re-opened);
 SUSPECT (any other direction: a strengthening, a tightening, a polarity flip, a scope change, an
 unclassifiable change, or a weakening class not admitted; UNVERIFIABLE, naming the element, the claim
 and the direction); UNRATIFIED (declared, never recorded: UNVERIFIABLE); UNKNOWN CLAIM (a declared id
