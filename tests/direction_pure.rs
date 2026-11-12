@@ -83,6 +83,17 @@ fn the_generators_self_check_holds_the_pure_filter_the_noise_rules_and_the_label
     );
 }
 
+#[test]
+fn the_generators_self_check_holds_the_curated_exclusions_the_dedupe_and_the_real_pool_filter() {
+    let out = generate(&["--self-check".as_ref()]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "the self-check fails:\n{err}");
+    assert!(
+        err.contains("pure exclusion self-check: ok"),
+        "the self-check must run the exclusion half (an excluded sentence emits no pair) and say so:\n{err}"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn a_pdftotext_that_is_not_the_pinned_version_is_refused_naming_both_versions() {
@@ -187,6 +198,25 @@ fn direction_v4_is_every_v3_pair_plus_attributed_pure_pairs() {
         );
         assert!(pair.direction.is_some(), "{}: a direction label", pair.id);
     }
+    // G-1-fix: the curated exclusions emit no pair, and the count of what was added is pinned.
+    assert_eq!(added.len(), 852, "the PURE pairs of the committed corpus");
+    for excluded in [
+        "D-PU-1999-tcs-487-",
+        "D-PU-2002-evla-back-162-",
+        "D-PU-2004-rlcs-409-",
+        "D-PU-2004-rlcs-410-",
+        "D-PU-2004-rlcs-416-",
+        "D-PU-2007-eirene-fun-7-507-",
+        "D-PU-2007-ertms-229-",
+        "D-PU-2007-nde-450-",
+        "D-PU-2007-nde-572-",
+        "D-PU-2004-rlcs-589-",
+    ] {
+        assert!(
+            !added.iter().any(|p| p.id.starts_with(excluded)),
+            "a domain-comparator, interleaved or duplicate statement must emit no pair: {excluded}"
+        );
+    }
     // Attribution (CC BY 4.0 needs it) and the extractor pin travel with the corpus.
     let rules = v4.rules.expect("the corpus header");
     for needed in [
@@ -198,6 +228,9 @@ fn direction_v4_is_every_v3_pair_plus_attributed_pure_pairs() {
         "CC BY 4.0",
         "pdftotext 26.11.0",
         "bc319fe28619f6290badff328ca159dd",
+        "DOMAIN COMPARATOR",
+        "7 by curation",
+        "interleaved_columns 2",
     ] {
         assert!(rules.contains(needed), "the header must carry `{needed}`");
     }
@@ -211,7 +244,13 @@ fn the_v4_record_is_a_passing_run_with_no_dangerous_confusion_and_no_false_carry
     let record: serde_json::Value = serde_json::from_str(&text).expect("the record is JSON");
     assert_eq!(record["corpus"], "bench/corpus/direction-v4.yml");
     assert_eq!(record["verdict"], "PASS");
+    assert_eq!(record["pairs_total"], 2679);
     assert_eq!(record["fmr"]["collapses"], 0);
+    assert_eq!(record["fmr"]["not_equivalent_total"], 2400);
+    assert_eq!(record["fsr"]["splits"], 0);
+    assert_eq!(record["contradiction"]["false_contradictions"], 0);
+    assert_eq!(record["direction"]["checked"], 2371);
+    assert_eq!(record["direction"]["correct"], 2317);
     assert_eq!(
         record["direction"]["dangerous_confusions"]
             .as_array()
@@ -224,9 +263,16 @@ fn the_v4_record_is_a_passing_run_with_no_dangerous_confusion_and_no_false_carry
         carry["modality_weakening"]["count"], 0,
         "a false carry on the admitted class is evidence against the admission"
     );
-    // ADMITTED_CARRIES stays pinned to v2 (S-2 choice 6): v4 measures, it does not admit.
-    assert!(
-        carry["numeric_loosening"]["support"].as_u64().is_some(),
-        "the numeric_loosening support is reported"
-    );
+    // The exact false-carry numbers the record reports (G-1-fix review: "is a number" pinned nothing).
+    for (class, support, admitted) in [
+        ("modality_weakening", 273, true),
+        ("numeric_loosening", 142, true),
+        ("membership_widening", 0, false),
+    ] {
+        assert_eq!(carry[class]["count"], 0, "{class}");
+        assert_eq!(carry[class]["support"], support, "{class}");
+        assert_eq!(carry[class]["admitted"], admitted, "{class}");
+    }
+    // ADMITTED_CARRIES stays pinned to v2 (S-1/S-2): v4 measures, it does not admit. The record says
+    // `admitted: true` for numeric_loosening, and the compiled set is still the v2 record's.
 }

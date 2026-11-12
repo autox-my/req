@@ -1,8 +1,8 @@
 {
   "contradiction": {
-    "comparable": 881,
+    "comparable": 833,
     "false_contradictions": 0,
-    "not_comparable": 843,
+    "not_comparable": 805,
     "note": "ADR 0043 decision 6. false_contradictions counts the pairs that must never contradict (labelled equivalent, or a nested-set direction label) reported as a contradiction: a hard bound, the analogue of FMR = 0. recall is over polarity_flip pairs whose earlier claim is a SHALL — reported, not gated.",
     "pairs": [],
     "recall": {
@@ -10,15 +10,15 @@
       "not_comparable": 0,
       "of": 176
     },
-    "scored": 1724
+    "scored": 1638
   },
   "corpus": "bench/corpus/direction-v4.yml",
-  "corpus_sha256": "6de1ab9de722d1b11d5ee112672fcac7f54c4ac7f027464d6e8927afd3570def",
+  "corpus_sha256": "ed29bdedb6bd43e4f586e65974d06b05dedcbcb055baa71d383e3c0c3a1dc7e8",
   "degraded": [],
   "direction": {
-    "accuracy": 0.9781110660721524,
-    "checked": 2467,
-    "correct": 2413,
+    "accuracy": 0.9772247996625896,
+    "checked": 2371,
+    "correct": 2317,
     "dangerous_confusions": [],
     "false_carry": {
       "membership_widening": {
@@ -31,13 +31,13 @@
         "admitted": true,
         "count": 0,
         "pairs": [],
-        "support": 285
+        "support": 273
       },
       "numeric_loosening": {
         "admitted": true,
         "count": 0,
         "pairs": [],
-        "support": 154
+        "support": 142
       }
     },
     "hard_gate": "PASS",
@@ -352,18 +352,12 @@
       "D-PU-2006-eirene-sys-15-239-MW",
       "D-PU-2006-eirene-sys-15-239-NL",
       "D-PU-2006-eirene-sys-15-239-NT",
-      "D-PU-2007-eirene-fun-7-507-MW",
       "D-PU-2007-ertms-131-MW",
       "D-PU-2007-ertms-131-NL",
       "D-PU-2007-ertms-131-NT",
       "D-PU-2007-ertms-131-LT",
-      "D-PU-2007-ertms-229-MW",
-      "D-PU-2007-ertms-229-NL",
-      "D-PU-2007-ertms-229-NT",
-      "D-PU-2007-nde-450-MW",
       "D-PU-2007-nde-464-MW",
       "D-PU-2007-nde-504-MW",
-      "D-PU-2007-nde-572-MW",
       "D-PU-1999-tcs-336-MWr",
       "D-PU-1999-tcs-336-NLr",
       "D-PU-1999-tcs-336-NTr",
@@ -376,18 +370,12 @@
       "D-PU-2006-eirene-sys-15-239-MWr",
       "D-PU-2006-eirene-sys-15-239-NLr",
       "D-PU-2006-eirene-sys-15-239-NTr",
-      "D-PU-2007-eirene-fun-7-507-MWr",
       "D-PU-2007-ertms-131-MWr",
       "D-PU-2007-ertms-131-NLr",
       "D-PU-2007-ertms-131-NTr",
       "D-PU-2007-ertms-131-LTr",
-      "D-PU-2007-ertms-229-MWr",
-      "D-PU-2007-ertms-229-NLr",
-      "D-PU-2007-ertms-229-NTr",
-      "D-PU-2007-nde-450-MWr",
       "D-PU-2007-nde-464-MWr",
       "D-PU-2007-nde-504-MWr",
-      "D-PU-2007-nde-572-MWr",
       "D-PU-1999-tcs-336-MWxNL",
       "D-PU-1999-tcs-336-MWxNT",
       "D-PU-1999-tcs-336-MWxSW",
@@ -402,12 +390,6 @@
       "D-PU-2007-ertms-131-MWxNL",
       "D-PU-2007-ertms-131-MWxNT",
       "D-PU-2007-ertms-131-MWxSW",
-      "D-PU-2007-ertms-229-MWxNL",
-      "D-PU-2007-ertms-229-MWxNT",
-      "D-PU-2007-ertms-229-MWxSN",
-      "D-PU-2007-ertms-229-SNxNL",
-      "D-PU-2007-ertms-229-SNxNT",
-      "D-PU-2007-nde-450-MWxSN",
       "D-PU-2007-nde-464-MWxSN",
       "D-PU-2007-nde-504-MWxSN",
       "D-PU-1999-tcs-336-MWxNLr",
@@ -424,12 +406,6 @@
       "D-PU-2007-ertms-131-MWxNLr",
       "D-PU-2007-ertms-131-MWxNTr",
       "D-PU-2007-ertms-131-MWxSWr",
-      "D-PU-2007-ertms-229-MWxNLr",
-      "D-PU-2007-ertms-229-MWxNTr",
-      "D-PU-2007-ertms-229-MWxSNr",
-      "D-PU-2007-ertms-229-SNxNLr",
-      "D-PU-2007-ertms-229-SNxNTr",
-      "D-PU-2007-nde-450-MWxSNr",
       "D-PU-2007-nde-464-MWxSNr",
       "D-PU-2007-nde-504-MWxSNr"
     ],
@@ -439,7 +415,7 @@
     "collapses": 0,
     "hard_gate": "PASS",
     "hit_pairs": [],
-    "not_equivalent_total": 2520,
+    "not_equivalent_total": 2400,
     "rate": 0.0,
     "structurally_unverifiable_ids": [
       "D-ST-SDOC-SSS-61-MW",
@@ -694,18 +670,12 @@
       "D-PU-2006-eirene-sys-15-239-MW",
       "D-PU-2006-eirene-sys-15-239-NL",
       "D-PU-2006-eirene-sys-15-239-NT",
-      "D-PU-2007-eirene-fun-7-507-MW",
       "D-PU-2007-ertms-131-MW",
       "D-PU-2007-ertms-131-NL",
       "D-PU-2007-ertms-131-NT",
       "D-PU-2007-ertms-131-LT",
-      "D-PU-2007-ertms-229-MW",
-      "D-PU-2007-ertms-229-NL",
-      "D-PU-2007-ertms-229-NT",
-      "D-PU-2007-nde-450-MW",
       "D-PU-2007-nde-464-MW",
       "D-PU-2007-nde-504-MW",
-      "D-PU-2007-nde-572-MW",
       "D-PU-1999-tcs-336-MWr",
       "D-PU-1999-tcs-336-NLr",
       "D-PU-1999-tcs-336-NTr",
@@ -718,18 +688,12 @@
       "D-PU-2006-eirene-sys-15-239-MWr",
       "D-PU-2006-eirene-sys-15-239-NLr",
       "D-PU-2006-eirene-sys-15-239-NTr",
-      "D-PU-2007-eirene-fun-7-507-MWr",
       "D-PU-2007-ertms-131-MWr",
       "D-PU-2007-ertms-131-NLr",
       "D-PU-2007-ertms-131-NTr",
       "D-PU-2007-ertms-131-LTr",
-      "D-PU-2007-ertms-229-MWr",
-      "D-PU-2007-ertms-229-NLr",
-      "D-PU-2007-ertms-229-NTr",
-      "D-PU-2007-nde-450-MWr",
       "D-PU-2007-nde-464-MWr",
       "D-PU-2007-nde-504-MWr",
-      "D-PU-2007-nde-572-MWr",
       "D-PU-1999-tcs-336-MWxNL",
       "D-PU-1999-tcs-336-MWxNT",
       "D-PU-1999-tcs-336-MWxSW",
@@ -744,12 +708,6 @@
       "D-PU-2007-ertms-131-MWxNL",
       "D-PU-2007-ertms-131-MWxNT",
       "D-PU-2007-ertms-131-MWxSW",
-      "D-PU-2007-ertms-229-MWxNL",
-      "D-PU-2007-ertms-229-MWxNT",
-      "D-PU-2007-ertms-229-MWxSN",
-      "D-PU-2007-ertms-229-SNxNL",
-      "D-PU-2007-ertms-229-SNxNT",
-      "D-PU-2007-nde-450-MWxSN",
       "D-PU-2007-nde-464-MWxSN",
       "D-PU-2007-nde-504-MWxSN",
       "D-PU-1999-tcs-336-MWxNLr",
@@ -766,16 +724,10 @@
       "D-PU-2007-ertms-131-MWxNLr",
       "D-PU-2007-ertms-131-MWxNTr",
       "D-PU-2007-ertms-131-MWxSWr",
-      "D-PU-2007-ertms-229-MWxNLr",
-      "D-PU-2007-ertms-229-MWxNTr",
-      "D-PU-2007-ertms-229-MWxSNr",
-      "D-PU-2007-ertms-229-SNxNLr",
-      "D-PU-2007-ertms-229-SNxNTr",
-      "D-PU-2007-nde-450-MWxSNr",
       "D-PU-2007-nde-464-MWxSNr",
       "D-PU-2007-nde-504-MWxSNr"
     ],
-    "structurally_unverifiable_pairs": 332
+    "structurally_unverifiable_pairs": 308
   },
   "fsr": {
     "hit_pairs": [],
@@ -5682,42 +5634,6 @@
     },
     {
       "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MW",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MW",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-NL",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-NL",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-NT",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-NT",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
       "detail": "unit \"kbit/s\" is not in the T1.4 table; kept verbatim",
       "pair": "D-PU-2007-eirene-fun-7-145-MW",
       "side": "a"
@@ -5750,18 +5666,6 @@
       "code": "untestable_quantity",
       "detail": "unit \"kbit/s\" is not in the T1.4 table; kept verbatim",
       "pair": "D-PU-2007-eirene-fun-7-145-NT",
-      "side": "b"
-    },
-    {
-      "code": "multiple_obligations",
-      "detail": "a second obligation follows; claim-format requires one obligation per claim",
-      "pair": "D-PU-2007-nde-450-MW",
-      "side": "a"
-    },
-    {
-      "code": "multiple_obligations",
-      "detail": "a second obligation follows; claim-format requires one obligation per claim",
-      "pair": "D-PU-2007-nde-450-MW",
       "side": "b"
     },
     {
@@ -5922,42 +5826,6 @@
     },
     {
       "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-NLr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-NLr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-NTr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-NTr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
       "detail": "unit \"kbit/s\" is not in the T1.4 table; kept verbatim",
       "pair": "D-PU-2007-eirene-fun-7-145-MWr",
       "side": "a"
@@ -5990,18 +5858,6 @@
       "code": "untestable_quantity",
       "detail": "unit \"kbit/s\" is not in the T1.4 table; kept verbatim",
       "pair": "D-PU-2007-eirene-fun-7-145-NTr",
-      "side": "b"
-    },
-    {
-      "code": "multiple_obligations",
-      "detail": "a second obligation follows; claim-format requires one obligation per claim",
-      "pair": "D-PU-2007-nde-450-MWr",
-      "side": "a"
-    },
-    {
-      "code": "multiple_obligations",
-      "detail": "a second obligation follows; claim-format requires one obligation per claim",
-      "pair": "D-PU-2007-nde-450-MWr",
       "side": "b"
     },
     {
@@ -6158,66 +6014,6 @@
       "code": "untestable_quantity",
       "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
       "pair": "D-PU-2004-rlcs-377-SNxNT",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWxNL",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWxNL",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWxNT",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWxNT",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWxSN",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWxSN",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-SNxNL",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-SNxNL",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-SNxNT",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-SNxNT",
       "side": "b"
     },
     {
@@ -6287,18 +6083,6 @@
       "side": "b"
     },
     {
-      "code": "multiple_obligations",
-      "detail": "a second obligation follows; claim-format requires one obligation per claim",
-      "pair": "D-PU-2007-nde-450-MWxSN",
-      "side": "a"
-    },
-    {
-      "code": "multiple_obligations",
-      "detail": "a second obligation follows; claim-format requires one obligation per claim",
-      "pair": "D-PU-2007-nde-450-MWxSN",
-      "side": "b"
-    },
-    {
       "code": "uncovered_content",
       "detail": "defined, standards, -, some, within",
       "pair": "D-PU-2007-nde-464-MWxSN",
@@ -6464,66 +6248,6 @@
       "code": "untestable_quantity",
       "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
       "pair": "D-PU-2004-rlcs-377-SNxNTr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWxNLr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWxNLr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWxNTr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWxNTr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWxSNr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-MWxSNr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-SNxNLr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-SNxNLr",
-      "side": "b"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-SNxNTr",
-      "side": "a"
-    },
-    {
-      "code": "untestable_quantity",
-      "detail": "unit \"bits\" is not in the T1.4 table; kept verbatim",
-      "pair": "D-PU-2004-rlcs-589-SNxNTr",
       "side": "b"
     },
     {
@@ -6591,18 +6315,6 @@
       "detail": "number \"4.1.4.2\" is not exactly representable",
       "pair": "D-PU-2007-ertms-131-MWxSWr",
       "side": "a"
-    },
-    {
-      "code": "multiple_obligations",
-      "detail": "a second obligation follows; claim-format requires one obligation per claim",
-      "pair": "D-PU-2007-nde-450-MWxSNr",
-      "side": "a"
-    },
-    {
-      "code": "multiple_obligations",
-      "detail": "a second obligation follows; claim-format requires one obligation per claim",
-      "pair": "D-PU-2007-nde-450-MWxSNr",
-      "side": "b"
     },
     {
       "code": "uncovered_content",
@@ -6677,7 +6389,7 @@
       "side": "b"
     }
   ],
-  "pairs_total": 2799,
+  "pairs_total": 2679,
   "rules_v": 9,
   "schema": "req.bench.result/1",
   "tier2": {

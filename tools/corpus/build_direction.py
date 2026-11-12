@@ -474,10 +474,35 @@ PURE_MAX_LEN = 300
 # A number: digit-grouped ("10,000"), decimal, or plain. A backslash before it is an escape, not a quantity.
 PURE_NUM = r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?"
 HYPHEN_BREAK = "\x01"   # marks a hyphenated line end while the text is still in lines
-NOISE_RULES = ("replacement_character", "page_furniture", "hyphen_break")
+NOISE_RULES = ("replacement_character", "page_furniture", "hyphen_break", "interleaved_columns")
 # A line that recurs on this many pages, is at least this long and says no "shall" is page furniture.
 FURNITURE_PAGES = 3
 FURNITURE_MIN_LEN = 15
+
+# Curated by hand, in (file, position) order, and the authority: every statement of the pool was read and its
+# comparator classified as the obligation's own bound (a change that loosens the number loosens the obligation)
+# or as a bound on the *domain* of the obligation (what is detected, handled, configured or counted, or a bound
+# inside the clause that says when the obligation applies, or in a clause the SHALL does not govern), where
+# raising the number can oblige more, so the "numeric loosening" label would be wrong. The second kind is
+# EXCLUDED, never relabelled. Nothing here is req's answer; no sentence is edited. A stale entry (one that
+# matches no pool statement) stops the generator.
+DOMAIN_COMPARATOR = [
+    ("1999 - tcs.pdf", 487, "bound on what is detected: 'detecting any deviations greater than 10%'; lowering it obliges more detection"),
+    ("2002 - evla back.pdf", 162, "bound on what is handled: 'handle lag frames of less than 128 values'; raising it obliges more"),
+    ("2004 - rlcs.pdf", 409, "bound on the configurable values the system supports: 'configurable ... to more than 2 seconds'; lowering it obliges a wider range"),
+    ("2004 - rlcs.pdf", 410, "bound on the configurable values the system supports: 'configurable ... to more than 2 seconds'; lowering it obliges a wider range"),
+    ("2004 - rlcs.pdf", 416, "bound on the configurable values the system supports: 'configurable ... to more than 2 seconds'; lowering it obliges a wider range"),
+    ("2007 - eirene fun 7.pdf", 507, "bound inside the condition clause ('If no selection is made ... within 10 seconds'): it says when the obligation applies, not how much it demands"),
+    ("2007 - ertms.pdf", 229, "bound belongs to 'need only be stored for at least 24 hours', a clause the SHALL ('shall be very detailed') does not govern"),
+]
+# Word-salad sentences: table columns the extractor interleaved. Read by hand, dropped as a named noise rule.
+INTERLEAVED_COLUMNS = [
+    ("2007 - nde.pdf", 450, "interleaved table columns: two sentences' words alternate"),
+    ("2007 - nde.pdf", 572, "interleaved table columns: a second cell's words are inside the sentence"),
+]
+# Comparator forms the PURE phrase reading does not cover (only informational: counted, not mutated).
+UNREAD_COMPARATORS = (r"\bup to\s+\d|\bexceed\w*\s+\d|\bmaxim\w+\s+(?:of\s+)?\d|\bminim\w+\s+(?:of\s+)?\d|"
+                      r"\d[\d.,]*\s*(?:\w+\s+)?or (?:more|less|fewer)")
 
 
 def pdftotext_version(exe: str) -> str:
@@ -570,18 +595,26 @@ def noise_rule(sentence: str, furniture):
     return None
 
 
+_PURE_AFTER_PHRASE = re.compile(rf"\s+(?<!\\)({PURE_NUM})(?![\d])")
+
+
 def pure_bounds(s: str):
     """[(side, phrase, number_start, number_end)] for every comparator phrase followed by a number.
 
-    The longest phrase decides (`_phrase_hits`), the phrase must start a word, and a number after a
-    backslash is not a quantity."""
+    The longest phrase decides (`_phrase_hits`), the phrase must start a word, and the number must follow the
+    phrase after whitespace and must not be preceded by a backslash (an escape sequence is not a quantity, as
+    in `NUMBER_UNIT`); the match is made against the whole statement so the look-behind sees the real
+    preceding character. A text whose lower-cased form changes length is skipped (the indices would drift)."""
+    low = s.lower()
+    if len(low) != len(s):
+        return []
     out = []
-    for i, j, side in sorted(_phrase_hits(s.lower())):
+    for i, j, side in sorted(_phrase_hits(low)):
         if i > 0 and s[i - 1].isalnum():
             continue
-        m = re.match(rf"\s+(?<!\\)({PURE_NUM})(?![\d])", s[j:])
+        m = _PURE_AFTER_PHRASE.match(s, j)
         if m:
-            out.append((side, s[i:j].lower(), j + m.start(1), j + m.end(1)))
+            out.append((side, low[i:j], m.start(1), m.end(1)))
     return out
 
 
@@ -679,10 +712,19 @@ PURE_COMPOUNDS = [(code, (l1, _PURE_SWAP.get(f1, f1)), (l2, _PURE_SWAP.get(f2, f
                   for code, (l1, f1), (l2, f2), needs in COMPOUNDS]
 
 
+def says_shall(s: str) -> bool:
+    return bool(re.search(r"\bshall\b", s, re.I))
+
+
+def short_enough(s: str) -> bool:
+    """`PURE_MAX_LEN` characters or fewer; a hyphen-break marker is not a character of the sentence."""
+    return len(s.replace(HYPHEN_BREAK, "")) <= PURE_MAX_LEN
+
+
 def in_pool(s: str) -> bool:
     """A PURE statement enters the pool when it says SHALL, is `PURE_MAX_LEN` characters or fewer, and
-    carries a comparator phrase with a number."""
-    return bool(re.search(r"\bshall\b", s, re.I)) and len(s) <= PURE_MAX_LEN and bool(pure_bounds(s))
+    carries a comparator phrase with a number. The generator uses exactly this predicate."""
+    return says_shall(s) and short_enough(s) and bool(pure_bounds(s))
 
 
 def pure_statement_pairs(text: str):
@@ -698,30 +740,51 @@ def pure_statement_pairs(text: str):
     return single, compound, prohibition
 
 
-def build_pure(docs):
+def build_pure(docs, domain=None, interleaved=None):
     """(pairs, stats): every PURE pair in the corpus order — single mutations, their mirrors, compounds and
-    their mirrors, native prohibitions and their mirrors — and the counts the corpus header states."""
+    their mirrors, native prohibitions and their mirrors — and the counts the corpus header states.
+
+    A pool candidate is dropped, in this order, by a noise rule (the curated `interleaved` list is one), as a
+    repeat of an earlier identical statement, or by the curated `domain` list; each is counted. The lists
+    default to the module's; every entry must match a candidate or the generator stops."""
+    domain = DOMAIN_COMPARATOR if domain is None else domain
+    interleaved = INTERLEAVED_COLUMNS if interleaved is None else interleaved
+    domain_keys = {(f, n): why for f, n, why in domain}
+    inter_keys = {(f, n): why for f, n, why in interleaved}
+    matched = set()
     stats = {"documents": len(docs), "sentences": 0, "shall": 0, "short": 0, "pool_candidates": 0,
-             "drops": {r: 0 for r in NOISE_RULES}, "pool": 0, "pool_docs": {}, "native_prohibitions": 0,
-             "single_bound": 0}
+             "drops": {r: 0 for r in NOISE_RULES}, "duplicates": 0, "domain": 0, "pool": 0, "pool_docs": {},
+             "native_prohibitions": 0, "single_bound": 0, "no_pair": 0, "unread_comparators": 0}
     singles, compounds, prohibitions, components = [], [], [], {}
+    seen = set()
     for name, pages in docs:
         slug = re.sub(r"[^a-z0-9]+", "-", os.path.splitext(name)[0].lower()).strip("-")
         furniture = furniture_lines(pages)
         for n, sent in pure_sentences(pages):
             stats["sentences"] += 1
-            if not re.search(r"\bshall\b", sent, re.I):
-                continue
-            stats["shall"] += 1
-            if len(sent.replace(HYPHEN_BREAK, "")) > PURE_MAX_LEN:
-                continue
-            stats["short"] += 1
-            if not pure_bounds(sent):
+            if says_shall(sent):
+                stats["shall"] += 1
+                if short_enough(sent):
+                    stats["short"] += 1
+            if not in_pool(sent):
+                if says_shall(sent) and short_enough(sent) and re.search(UNREAD_COMPARATORS, sent, re.I):
+                    stats["unread_comparators"] += 1
                 continue
             stats["pool_candidates"] += 1
             rule = noise_rule(sent, furniture)
+            if not rule and (name, n) in inter_keys:
+                rule = "interleaved_columns"
+                matched.add(("interleaved", name, n))
             if rule:
                 stats["drops"][rule] += 1
+                continue
+            if sent in seen:
+                stats["duplicates"] += 1
+                continue
+            seen.add(sent)
+            if (name, n) in domain_keys:
+                matched.add(("domain", name, n))
+                stats["domain"] += 1
                 continue
             stats["pool"] += 1
             stats["pool_docs"][slug] = stats["pool_docs"].get(slug, 0) + 1
@@ -729,6 +792,7 @@ def build_pure(docs):
             single, compound, prohibition = pure_statement_pairs(sent)
             stats["single_bound"] += 1 if pure_bound(sent) else 0
             stats["native_prohibitions"] += 1 if prohibition else 0
+            stats["no_pair"] += 0 if (single or compound or prohibition) else 1
             singles += [(f"D-PU-{slug}-{n}-{c}", a, b, src, label, note) for c, label, a, b, note, _ in single]
             for c, label, a, b, note, parts in compound:
                 pid = f"D-PU-{slug}-{n}-{c}"
@@ -736,6 +800,10 @@ def build_pure(docs):
                 components[pid] = (parts[0], parts[1], True)
             prohibitions += [(f"D-PU-{slug}-{n}-{c}", a, b, src, label, note)
                              for c, label, a, b, note, _ in prohibition]
+    for kind, keys in (("domain", domain_keys), ("interleaved", inter_keys)):
+        stale = sorted(k for k in keys if (kind, *k) not in matched)
+        if stale:
+            raise SystemExit(f"stale {kind} entries (no pool statement at these positions): {stale}")
     single_mirrors = [m for m in (mirror(p) for p in singles) if m]
     compound_mirrors = []
     for p in compounds:
@@ -883,28 +951,50 @@ def main(version: int = 1, pure_zip: str = "", pdftotext: str = "pdftotext") -> 
         st, c = pure_stats, pure_stats["counts"]
         drops = ", ".join(f"{r} {st['drops'][r]}" for r in NOISE_RULES)
         by_doc = ", ".join(f"{k} {v}" for k, v in sorted(st["pool_docs"].items(), key=lambda kv: (-kv[1], kv[0])))
+        dropped = sum(st["drops"].values())
+        dom = "; ".join(f"{f} #{n} ({why})" for f, n, why in DOMAIN_COMPARATOR)
+        inter = "; ".join(f"{f} #{n}" for f, n, _why in INTERLEAVED_COLUMNS)
         v4_note = (
             f" Version 4 (G-1) = every v3 pair, plus {len(pure_pairs)} pairs from the numeric statements of the "
             f"PURE dataset: {PURE_CITATION} (attribution as that licence requires; the corpus is a derivative of "
             f"statements it contains, mutated). Source: requirements.zip, {PURE_ZIP_BYTES} bytes, md5 {md5}, "
             f"sha256 {sha256}; text extracted by pdftotext {tool_v} (poppler) in its default reading order, "
-            f"{st['documents']} PDFs yielding text ({pdf_empty} yielding none). The pool is every sentence that "
-            f"says SHALL, is {PURE_MAX_LEN} characters or fewer after whitespace normalisation and carries a "
-            f"comparator phrase followed by a number: {st['sentences']} sentences, {st['shall']} with SHALL, "
-            f"{st['short']} of them short enough, {st['pool_candidates']} with a numbered comparator phrase, "
-            f"of which extraction-noise rules dropped {st['pool_candidates'] - st['pool']} ({drops}: a "
-            f"replacement character, a sentence holding a line that recurs on {FURNITURE_PAGES} or more pages "
-            f"of its document, a hyphenated line end that is not rejoined) and {st['pool']} remain "
-            f"({st['single_bound']} with exactly one numbered comparator phrase, the only ones the numeric "
-            f"families mutate; by document: {by_doc}). No sentence is edited. Pairs: {c['single']} single "
-            f"mutations (modality weakening and strengthening, numeric loosening and tightening, the LE-to-LT "
-            f"tightening) + {c['single_mirrors']} mirrors, {c['compound']} compound + {c['compound_mirrors']} "
-            f"mirrors, {c['prohibition']} numeric mutations on a native SHALL NOT + {c['prohibition_mirrors']} "
-            f"mirrors ({st['native_prohibitions']} native prohibition statements; none is flipped, so the "
-            "decision-5 sense is measured on the statements PURE wrote). Ids `D-PU-<document>-<n>-<code>`, "
-            f"`source:` `{PURE_ID} <file> #<n>` (n = the sentence's position in the document). PURE holds no "
-            "`one of` enumeration, so `membership_widening` is not moved and none was synthesised; the "
-            "polarity, scope, unrelated and cosmetic families are not run on PURE.")
+            f"{st['documents']} PDFs yielding text ({pdf_empty} yielding none). A PURE `a` is a sentence as "
+            "extracted, not a verified requirement: the extractor can garble table cells, the hand-read ones are "
+            "dropped by name below, and a garbled sentence that no rule or reading caught would stay. The pool "
+            f"is every sentence that says SHALL, is {PURE_MAX_LEN} characters or fewer after whitespace "
+            f"normalisation and carries a comparator phrase (at least, at most, within, no later than, less "
+            f"than, fewer than, under, no more than, not more than, no greater than, not greater than, no less "
+            f"than, not less than, no fewer than, not fewer than, greater than, more than) followed by a "
+            f"number: {st['sentences']} sentences, {st['shall']} with SHALL, {st['short']} of them short "
+            f"enough, {st['pool_candidates']} with a numbered comparator phrase. The task spec's earlier "
+            "figure of 124 came from a broader regex (not req's parser, and not reproduced here) that took "
+            "more comparator forms; the difference measured here is "
+            f"{st['unread_comparators']} further short SHALL statements carrying an `up to`, `exceed`, "
+            "`maximum`, `minimum` or `or less|more` form that this reading does not take (`up to` and "
+            "`maximum of` mostly name a capacity, a domain comparator, so they are a gap stated, not "
+            "closed), and the rest of the 124 is not accounted for by name. "
+            f"Of the {st['pool_candidates']} candidates {dropped} were dropped by extraction-noise rules "
+            f"({drops}: a replacement character; a sentence holding a line that recurs on {FURNITURE_PAGES} or "
+            "more pages of its document; a hyphenated line end that is not rejoined; and, from a list read by "
+            f"hand, interleaved table columns: {inter}), {st['duplicates']} as an identical repeat of an "
+            f"earlier statement (the first by file name and position is kept), and {st['domain']} by "
+            "curation as a DOMAIN COMPARATOR: every statement of the pool was read and its comparator "
+            "classified as the obligation's own bound or as a bound on the domain (what is detected, handled "
+            "or configured, a bound inside the condition clause, or a clause the SHALL does not govern), where "
+            "raising the number can oblige more, so a numeric-loosening label would be wrong; those are "
+            f"excluded, never relabelled, and listed in the generator's `DOMAIN_COMPARATOR`: {dom}. "
+            f"{st['pool']} statements remain ({st['single_bound']} with exactly one numbered comparator phrase, "
+            f"the only ones the numeric families mutate; {st['no_pair']} of the {st['pool']} yield no pair; "
+            f"by document: {by_doc}). No sentence is edited. Pairs: {c['single']} single mutations (modality "
+            "weakening and strengthening, numeric loosening and tightening, the LE-to-LT tightening) + "
+            f"{c['single_mirrors']} mirrors, {c['compound']} compound + {c['compound_mirrors']} mirrors, "
+            f"{c['prohibition']} numeric mutations on a native SHALL NOT + {c['prohibition_mirrors']} mirrors "
+            f"({st['native_prohibitions']} native prohibition statements; none is flipped, so the decision-5 "
+            "sense is measured on the statements PURE wrote). Ids `D-PU-<document>-<n>-<code>`, `source:` "
+            f"`{PURE_ID} <file> #<n>` (n = the sentence's position in the document). PURE holds no `one of` "
+            "enumeration, so `membership_widening` is not moved and none was synthesised; the polarity, scope, "
+            "unrelated and cosmetic families are not run on PURE.")
     out = ["schema: req.bench.corpus/0", f"version: {version}"]
     out.append("rules: " + yaml_scalar(
         "Direction gold set: every pair is a real requirement from another project (pinned "
@@ -1080,7 +1170,8 @@ def pure_self_check() -> int:
     assert any(HYPHEN_BREAK in x and noise_rule(x, []) == "hyphen_break" for x in sentences), sentences
     assert not any("inter-rupted" in x for x in sentences), "a line-end hyphen is never rejoined"
     # Ids and sources are `D-PU-<doc>-<n>-<code>` and `pure@zenodo-1414117 <file> #<n>`.
-    pairs, stats = build_pure([("2007 - nde.pdf", ["The System shall archive the logs within 180 days. Other text.\n"])])
+    pairs, stats = build_pure([("2007 - nde.pdf", ["The System shall archive the logs within 180 days. Other text.\n"])],
+                          domain=[], interleaved=[])
     assert stats["pool"] == 1 and stats["documents"] == 1
     assert pairs and all(x[0].startswith("D-PU-2007-nde-0-") for x in pairs), pairs
     assert all(x[3] == "pure@zenodo-1414117 2007 - nde.pdf #0" for x in pairs), pairs
@@ -1088,6 +1179,54 @@ def pure_self_check() -> int:
     assert labels["NL"] == "numeric_loosening" and labels["NLr"] == "numeric_tightening", labels
     assert labels["MW"] == "modality_weakening" and labels["MWr"] == "modality_strengthening", labels
     print("pure source self-check: ok", file=sys.stderr)
+    return pure_exclusion_self_check()
+
+
+def pure_exclusion_self_check() -> int:
+    """G-1-fix: the curated exclusions, the dedupe, the real pool filter and the escape guard."""
+    text = "The System shall detect any deviations greater than 10% from the flight path."
+    page = [f"{text} The System shall archive the logs within 180 days.\n"]
+    doc = [("1999 - tcs.pdf", page)]
+    # A statement on the curated list emits no pair; without the entry it does (the negative control).
+    pairs, stats = build_pure(doc, domain=[], interleaved=[])
+    assert any(x[0].startswith("D-PU-1999-tcs-0-NL") for x in pairs) and stats["domain"] == 0, pairs
+    assert p_numeric_loosening(text) == text.replace("10%", "8%"), "the label would have been a tightening"
+    pairs, stats = build_pure(doc, domain=[("1999 - tcs.pdf", 0, "bound on what is detected")], interleaved=[])
+    assert not any("-tcs-0-" in x[0] for x in pairs), "an excluded sentence emits no pair"
+    assert any("-tcs-1-" in x[0] for x in pairs), "its neighbour is untouched"
+    assert stats["domain"] == 1 and stats["pool"] == 1, stats
+    # An interleaved-columns entry is a named noise drop, counted with the rules.
+    pairs, stats = build_pure(doc, domain=[], interleaved=[("1999 - tcs.pdf", 0, "interleaved columns")])
+    assert stats["drops"]["interleaved_columns"] == 1 and not any("-tcs-0-" in x[0] for x in pairs), stats
+    # A stale entry stops the generator.
+    try:
+        build_pure(doc, domain=[("1999 - tcs.pdf", 99, "nothing here")], interleaved=[])
+    except SystemExit as e:
+        assert "stale domain entries" in str(e), e
+    else:
+        raise AssertionError("a stale curated entry must stop the generator")
+    # The real lists are in (file, position) order, each with a reason.
+    for lst in (DOMAIN_COMPARATOR, INTERLEAVED_COLUMNS):
+        assert lst == sorted(lst, key=lambda e: (e[0], e[1])) and all(e[2] for e in lst), lst
+    # An identical statement is kept once, by the deterministic order, and counted.
+    same = "The hash value returned by the function shall be at least 128 bits in length."
+    pairs, stats = build_pure([("2004 - rlcs.pdf", [f"{same}\n"]), ("2005 - znix.pdf", [f"{same}\n"])],
+                              domain=[], interleaved=[])
+    assert stats["duplicates"] == 1 and stats["pool"] == 1, stats
+    assert pairs and all(x[0].startswith("D-PU-2004-rlcs-0-") for x in pairs), "the first by file order is kept"
+    # The generator's filter IS in_pool, and a pool statement that yields no pair is counted.
+    none = "The System shall not respond within 2 s and within 3 s."
+    pairs, stats = build_pure([("2004 - rlcs.pdf", [none + "\n"])], domain=[], interleaved=[])
+    assert in_pool(none) and stats["pool_candidates"] == 1 and stats["pool"] == 1, stats
+    assert stats["no_pair"] == 1 and not pairs, (stats, pairs)
+    tail = " The System shall wait at most 5 s."
+    assert in_pool("x" * (PURE_MAX_LEN - len(tail)) + HYPHEN_BREAK + tail), "the marker is not a character"
+    assert not in_pool("x" * (PURE_MAX_LEN - len(tail) + 1) + tail)
+    # The escape guard: a number after a backslash, or glued to the phrase, is not a bound's number.
+    assert pure_bound("The System shall wait within \\92 s.") is None
+    assert pure_bound("The System shall wait within5 s.") is None
+    assert pure_bound("The System shall wait within 5 s.")[0] == "upper"
+    print("pure exclusion self-check: ok", file=sys.stderr)
     return 0
 
 
