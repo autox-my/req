@@ -49,8 +49,9 @@ ALIGN_PASSES = 4
 NODE_W, NODE_H = 130, 64
 PITCH_X, PITCH_Y = 220, 190
 # The left margin holds the gutter beside the first block (BLOCK_GAP / 2 out, 18 px of lanes) and the frame's 30 px of
-# padding with room for its title to widen it; the top margin holds the channel above the first row, then the frame's
-# 30 px of padding and its title rail (archify: label mask 16 + clearance 4 + inset 4).
+# padding with room for its title to widen it (archify widens a frame, towards both sides, until its title fits: for the
+# longest id archify draws in a node box, about 19 characters, that is 13 px); the top margin holds the channel above the
+# first row (63 px above it, and 18 px of lanes), then the frame's 30 px of padding and its title rail.
 MARGIN_X, MARGIN_Y = 130, 110
 BLOCK_GAP = 200
 PER_ROW = 6
@@ -886,7 +887,8 @@ def index_pages(ctx, groups, page_names, limit):
                 {
                     "id": page_names[g][0],
                     "type": kind,
-                    "label": group["name"],
+                    # A node box holds about 19 characters: the root id fits, "family <id>" does not.
+                    "label": group["label"] or "standalone",
                     "tag": tag,
                     "pos": [MARGIN_X + column * PITCH_X, MARGIN_Y + row * PITCH_Y],
                     "size": [NODE_W, NODE_H],

@@ -87,9 +87,10 @@ The 150-claim limit is `PAGE_LIMIT` in the converter. A test (and only a test) l
 `REQ_GRAPH_PAGE_LIMIT`, read only when set; a value that is not a positive integer is a refusal.
 
 **Why pages are no wider than that.** archify's `browser-check` fits the drawing to the reader's window and refuses text it
-would shrink below 6 px, which on a 1440 px window caps a drawing at about 1776 px; `WRAP` and `MAX_WIDTH` keep every page
-under it (the measurements are in ADR 0050's implementation note). If a page still fails a gate, read its receipt: the page
-is a valid rendering of its slice, but do not call it checked.
+would shrink below 6 px. Measured at its default 1440x900 window (archify 7e45f36): a canvas 1680 px wide passes and one 1900
+px wide fails, so `WRAP` and `MAX_WIDTH` keep every page under 1710 px (the measurements are in ADR 0050's implementation
+note). If a page still fails a gate, read its receipt: the page is a valid rendering of its slice, but do not call it
+checked.
 
 ## Rules for an agent running this
 

@@ -1766,8 +1766,18 @@ fn canvas_width(page: &Value) -> i64 {
         + MARGIN_X
 }
 
-/// A frame as archify draws it from its members: their box, padded by `FRAME_PAD` on every side.
-fn frame_rect(page: &Value, frame: &Value) -> Rect {
+/// A frame as archify 7e45f36 draws it, from the rule in its source (`renderers/architecture/render-architecture.mjs`
+/// `boundaryRect`, `boundaryLabelWidth`, `expandBoundaryForReadableTitle`, `measureBoundaryTitle`, and
+/// `desktop-readability.mjs`), read in the scratch clone and written out here as integers:
+///
+/// * the members' box padded by `FRAME_PAD` on every side, and 20 px more below;
+/// * a title is `units * font * 0.6 + 10` px wide (at least 30) with a 4 px inset each side, `font` being at least 6 px
+///   times the canvas width over 930 (a 930 px reader), so about 11 px on a canvas of `MAX_WIDTH`;
+/// * a frame narrower than its title is widened by the difference, half to each side;
+/// * the title rail is `font + 7` high (at least 16), sits 4 px above the members, and the frame reaches 4 px above it.
+///
+/// The canvas is taken at its widest, `MAX_WIDTH`, so the font is the largest a page can see.
+fn archify_frame(page: &Value, frame: &Value) -> Rect {
     let members = wraps(frame);
     let inside: Vec<Rect> = boxes(page)
         .into_iter()
@@ -1775,32 +1785,46 @@ fn frame_rect(page: &Value, frame: &Value) -> Rect {
         .map(|(_, r)| r)
         .collect();
     assert!(!inside.is_empty(), "a frame wraps something: {frame}");
+    let (left, top, right, bottom) = (
+        inside.iter().map(|r| r.0).min().expect("x0"),
+        inside.iter().map(|r| r.1).min().expect("y0"),
+        inside.iter().map(|r| r.2).max().expect("x1"),
+        inside.iter().map(|r| r.3).max().expect("y1"),
+    );
+    let units = i64::try_from(frame["label"].as_str().expect("a label").chars().count())
+        .expect("a short label");
+    let title = ((units * 36 * MAX_WIDTH + 9299) / 9300 + 10).max(30) + 8;
+    let width = right - left + 2 * FRAME_PAD;
+    let extra = (title - width).max(0);
+    let height = ((6 * MAX_WIDTH + 929) / 930 + 7).max(16);
     (
-        inside.iter().map(|r| r.0).min().expect("x0") - FRAME_PAD,
-        inside.iter().map(|r| r.1).min().expect("y0") - FRAME_PAD,
-        inside.iter().map(|r| r.2).max().expect("x1") + FRAME_PAD,
-        inside.iter().map(|r| r.3).max().expect("y1") + FRAME_PAD,
+        left - FRAME_PAD - (extra + 1) / 2,
+        top - FRAME_PAD.max(height + 8),
+        left - FRAME_PAD + width + extra / 2,
+        bottom + 20,
     )
 }
 
-/// Every frame lies inside the canvas the layout computes: its padded box starts at or past the origin and ends at or
-/// before the canvas width, and the first row leaves the title rail above the frame.
+/// Every frame, and every route point, lies inside the canvas: a frame as archify draws it (title widening and rail
+/// included) starts at or past the origin, and ends, with archify's 40 px margin, within `MAX_WIDTH`.
 fn assert_frames_inside_the_canvas(page: &Value) {
-    let width = canvas_width(page);
-    let top = boxes(page)
-        .iter()
-        .map(|(_, (_, y0, _, _))| *y0)
-        .min()
-        .expect("a box");
     for frame in boundaries(page) {
-        let (x0, y0, x1, _) = frame_rect(page, frame);
+        let (x0, y0, x1, _) = archify_frame(page, frame);
         assert!(x0 >= 0 && y0 >= 0, "{frame} starts at ({x0}, {y0})");
-        assert!(x1 <= width, "{frame} ends at {x1}, canvas {width}");
+        assert!(
+            x1 + 40 <= MAX_WIDTH,
+            "{frame} ends at {x1}: the canvas, with archify's margin, passes MAX_WIDTH"
+        );
     }
-    assert!(
-        top >= FRAME_PAD + 24 + 16,
-        "the title rail fits above row 0: {top}"
-    );
+    for c in page["connections"].as_array().expect("connections") {
+        for p in c["via"].as_array().expect("via") {
+            let (x, y) = (p[0].as_i64().expect("x"), p[1].as_i64().expect("y"));
+            assert!(
+                x >= 0 && y >= 0,
+                "{c} has a route point ({x}, {y}) off the canvas"
+            );
+        }
+    }
 }
 
 /// A binary heap of `n` claims numbered from `first`: claim `k` derives from (or, every third, refines) claim
@@ -1901,7 +1925,7 @@ fn a_layer_wider_than_wrap_continues_on_bands_below_in_the_same_order() {
 
 /// A block that would take the page past `MAX_WIDTH` starts a new row of blocks. Eight families of three claims, each a
 /// root with two children (two slots wide), fit three to a row of blocks: three rows. Relations run between the first
-/// and the last family, across rows of blocks.
+/// and the last family, across rows of blocks, and between two roots of the first row.
 #[test]
 fn blocks_that_would_pass_max_width_start_a_new_row_of_blocks() {
     let mut nodes = Vec::new();
@@ -1917,6 +1941,8 @@ fn blocks_that_would_pass_max_width_start_a_new_row_of_blocks() {
     }
     edges.push(edge("REQ-0001", "constrains", "REQ-0072"));
     edges.push(edge("REQ-0071", "constrains", "REQ-0003"));
+    // Two roots on the first row: its route runs in the channel above row 0, which the top margin must hold.
+    edges.push(edge("REQ-0001", "constrains", "REQ-0011"));
     let scratch = Scratch::new("block-rows");
     let page = converted(&scratch, &document(json!({}), nodes, edges));
 
@@ -1964,7 +1990,7 @@ fn a_dangling_target_is_drawn_outside_every_family_frame() {
     );
     for frame in boundaries(&page) {
         assert!(
-            !overlaps((x0, y0, x1, y1), frame_rect(&page, frame)),
+            !overlaps((x0, y0, x1, y1), archify_frame(&page, frame)),
             "REQ-0099 lies inside the frame {frame}"
         );
     }
@@ -2139,4 +2165,53 @@ fn wrap_and_max_width_are_named_constants() {
     let source = fs::read_to_string(script()).expect("the converter source");
     assert!(source.contains("WRAP = 7"));
     assert!(source.contains("MAX_WIDTH = 1710"));
+}
+
+/// A long title widens its frame past its members, and a frame on the left edge needs that room inside the margin (the
+/// failure V-2 had on a wide page, where the title scales with the canvas). Root ids of 18 characters, about the longest
+/// archify draws in a node box, make a stub title of `page family-` and the id: the frame is widened, towards both
+/// sides, and must still start inside the canvas. Longer ids are refused by archify itself (`component-label-overflow`),
+/// so this is the widest title a page can carry.
+#[test]
+fn a_long_frame_title_does_not_push_its_frame_off_the_canvas() {
+    let long = format!("REQ-{}", "A".repeat(14));
+    let child = format!("{long}1");
+    let document = document(
+        json!({}),
+        vec![
+            claim("REQ-0002"),
+            claim("REQ-0003"),
+            claim(&long),
+            claim(&child),
+        ],
+        vec![
+            edge("REQ-0003", "refines", "REQ-0002"),
+            edge(&child, "refines", &long),
+            edge("REQ-0003", "constrains", &child),
+        ],
+    );
+    // One page: the family frames carry the long root id as their title.
+    let scratch = Scratch::new("long-title-all");
+    let page = converted(&scratch, &document);
+    assert_eq!(boundaries(&page).len(), 2);
+    assert_frames_inside_the_canvas(&page);
+
+    // Split: the stub on the first family's page sits in a frame titled `page family-REQ-AAAA...`.
+    let scratch = Scratch::new("long-title-split");
+    let pages = converted_pages(&scratch, &document, Some("3"));
+    let frame = boundaries(&pages["family-REQ-0002"])
+        .into_iter()
+        .next()
+        .expect("a stub frame");
+    assert!(frame["label"].as_str().expect("label").chars().count() >= 30);
+    // The index names a group by its root id, which fits a node box; "family <id>" would not.
+    assert_eq!(
+        component(&pages["index"], &format!("family-{long}"))["label"],
+        long.as_str()
+    );
+    for page in group_pages(&pages).values() {
+        assert_frames_inside_the_canvas(page);
+        assert_no_two_nodes_overlap(page);
+        assert_every_edge_is_explicitly_placed(page);
+    }
 }

@@ -175,15 +175,31 @@ decisions left open.
 - **Wrap and width.** `WRAP = 7` and `MAX_WIDTH = 1710`, chosen from a measurement (archify 7e45f36, `browser-check` at
   its default 1440x900 window, every edge label 9 px at source): a canvas 1680 px wide, a row of seven boxes here, passes,
   and one 1900 px wide, a row of eight, fails on `viewer/projected-text-readability` (a floor of 6 px). `MAX_WIDTH` is the
-  canvas with both 130 px margins, so a page's content is at most 1450 px; archify adds about 70 px, which keeps every page
-  at or under 1650 px. A band is `(WRAP - 1) * PITCH_X` wide at most: after the coordinate fit each slot is clipped into
-  that range, in order and still a slot apart (the fit alone is a lower bound on spacing and drifted a band past it).
-  Bands are `PITCH_Y` apart, directly under their layer; blocks start a new row of blocks when the next would pass
-  `MAX_WIDTH`, and the rows of blocks sit on one row grid, with one empty row between them.
+  canvas with both 130 px margins, so a page's content is at most 1450 px. archify's own canvas is the rightmost thing it
+  draws plus 40 px, and the rightmost thing can be a route: a corridor beside the last box reaches up to 63 px past it.
+  Measured over the four documents below, the widest viewBox is **1683 px**, under `MAX_WIDTH`, so falsification 7 holds on
+  them. A band is `(WRAP - 1) * PITCH_X` wide at most: after the coordinate fit each slot is clipped into that range, in
+  order and still a slot apart (the fit alone is a lower bound on spacing and drifted a band past it). Bands are `PITCH_Y`
+  apart, directly under their layer; blocks start a new row of blocks when the next would pass `MAX_WIDTH`, and the rows of
+  blocks sit on one row grid, with one empty row between them.
 - **Margins and frames.** A frame is the box of its members padded by 30 px; its title sits in the top padding, and archify
-  widens a frame to fit a long title, towards both sides. The left margin (130 px) holds the gutter beside the first block
-  and that widening; the top margin (110 px) holds the channel above the first row, the padding and the title rail. A frame
-  therefore never leaves the viewBox on a page no wider than `MAX_WIDTH` (a test computes both from these constants).
+  widens a frame to fit a long title, towards both sides, by the difference between the title's width (0.6 of its font per
+  character, plus 10 px and a 4 px inset each side; the font is at least 6 px times the canvas width over 930) and the
+  frame's. The left margin (130 px) holds the gutter beside the first block and that widening; the top margin (110 px)
+  holds the channel above the first row (63 px above it, and 18 px of lanes), the padding and the title rail. The longest
+  id archify draws in a node box is about 19 characters (`component-label-overflow` past it), and the widest title that
+  makes (`page family-` and the id) widens a frame by about 13 px, well inside the margin.
+- **The frame guard.** `tests/graph_archify.rs` holds a guard with its own oracle: it writes archify's frame rule out
+  from the source of 7e45f36 (read in a scratch clone, not copied: the pad, the title width and rail height, the widening)
+  at the widest canvas a page can have, `MAX_WIDTH`, and asserts that every frame starts at or past the origin, that every
+  route point is non-negative, and that a frame ends within `MAX_WIDTH` with archify's margin. It is able to fail on the F1
+  class: with the left margin at 40 px (past the 30 px padding, which an oracle ignoring titles accepts) the 18-character
+  stub title fails it by 4 px. It is **conservative**: it takes the widest canvas, so it can reject a small page that archify
+  accepts (at a 500 px canvas the font is 6 px and archify drew that page). It does not model archify sliding a title along
+  its rail, so it is not a substitute for `finalize`; the manual `finalize` run per page, below, stays the stated guard that
+  archify accepts a page, and is not in `check.sh`.
+- **Index labels.** An index node is labelled by its group's root id (`standalone` for that group), which fits a node box;
+  `family <id>` overflowed it for ids of about 12 characters and `validate` refused the index.
 - **Families and cycles.** A family root is a claim with no `derives-from`/`refines` edge out, and a cycle with no edge
   out of it is one root, named by its **lowest-id member** (found by strongly connected components over the layering
   edges; a cycle that leads out to a root belongs to that root's family). The layout may call another member the cycle's
@@ -210,8 +226,8 @@ diagnostic.
 | --- | --- | --- | --- |
 | this repository's graph (`.req/variants` line 1, 40 claims, two families) | 1 | 40 claims | 1650 × 2542 |
 | a 68-claim, two-family document (two 34-claim heaps, a relation each way) | 1 | 68 claims | 1650 × 3682 |
-| synthetic, 500 claims | 6 (an index, a standalone page, four family parts) | 150 claims | 1650 wide at most |
-| synthetic, 1000 claims | 9 (an index, a standalone page, seven family parts) | 150 claims | 1650 wide at most |
+| synthetic, 500 claims | 6 (an index, a standalone page, four family parts) | 150 claims | 1683 wide at most |
+| synthetic, 1000 claims | 9 (an index, a standalone page, seven family parts) | 150 claims | 1683 wide at most |
 
 On this repository's graph `routesOverSuggestedBends` is **23** (V-1: 34) and over-stretch **10** (V-1: 13), so falsification
 6 holds; that first version had 4 and 1 on a page that failed `browser-check`, so the wrap trades some route quality for
