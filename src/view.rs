@@ -80,6 +80,10 @@ pub struct Row {
     /// ADR 0049: the successors that withdrew this claim in this selection, sorted; empty unless
     /// the claim is withdrawn (then `applies` is `No`).
     pub superseded_by: Vec<String>,
+    /// Where the claim is filed (`req.claim/3`, ADR 0051): a path of stable keys, or `None`. Placement
+    /// only — outside identity and in no attested hash, so nothing but the JSON documents and
+    /// `req canon` reads it, and no text projection changes.
+    pub area: Option<String>,
 }
 
 /// What a trace could not settle. Both are outcomes, not warnings: `dangling` is
@@ -315,7 +319,7 @@ impl Serialize for Row {
             source: &self.rationale_source,
             date: &self.rationale_date,
         };
-        let mut row = serializer.serialize_struct("Row", 9)?;
+        let mut row = serializer.serialize_struct("Row", 10)?;
         row.serialize_field("claim_id", &self.claim_id)?;
         row.serialize_field("statement", &self.statement)?;
         row.serialize_field("modality", &self.modality)?;
@@ -327,6 +331,9 @@ impl Serialize for Row {
         row.serialize_field("relations", &relations)?;
         row.serialize_field("rationale", &rationale)?;
         row.serialize_field("superseded_by", &self.superseded_by)?;
+        // ADR 0051: additive, after `superseded_by` (the ADR 0049 precedent); `null` when absent, so a
+        // consumer never has to tell a missing key from an unfiled claim.
+        row.serialize_field("area", &self.area)?;
         row.end()
     }
 }
@@ -365,6 +372,7 @@ struct NodeDocument<'a> {
     address: String,
     applies: &'static str,
     superseded_by: &'a [String],
+    area: Option<&'a str>,
 }
 
 /// `trace`'s document: the nodes (every claim), the outgoing edges, the derived incoming edges
@@ -435,6 +443,7 @@ pub fn trace_document(rows: &[Row], context: &Context) -> (String, TraceFindings
             address: format!("sha256:{}", row.address),
             applies: row.applies.as_str(),
             superseded_by: &row.superseded_by,
+            area: row.area.as_deref(),
         })
         .collect();
 
@@ -1166,6 +1175,7 @@ pub fn load_rows(context: &Context, root: &std::path::Path) -> Result<Vec<Row>, 
             rationale_source: claim.rationale.source.clone(),
             rationale_date: claim.rationale.date.clone(),
             superseded_by: Vec::new(),
+            area: claim.area.clone(),
         });
     }
     withdraw_superseded(&mut rows);

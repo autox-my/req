@@ -82,6 +82,11 @@ VERSION_SCHEMA_RE = re.compile(r"^[ \t]*claim_schema[ \t]+(?P<value>\S+)[ \t]*$"
 CLAIM_SCHEMA_RE = re.compile(r"^req\.claim/\d+$")
 # The one schema `CLAIM_TEMPLATE` writes; a binary reporting another cannot load the draft.
 DRAFT_SCHEMA = "req.claim/2"
+# The schemas a `req` may report for this tool to draft against (ADR 0051 decision 6): a `req.claim/3`
+# build loads a `req.claim/2` draft as it is, and the draft carries no area, so the tool keeps
+# drafting `DRAFT_SCHEMA` and accepts either. Any other value is refused. A later format that keeps
+# `req.claim/2` readable is added here deliberately, not discovered.
+ACCEPTED_SCHEMAS = (DRAFT_SCHEMA, "req.claim/3")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 CLAIMS_DIR = "claims"
@@ -620,18 +625,20 @@ def read_axes():
             f"{completed.stderr.strip() or 'no output'}"
         )
     axes = parse_version(completed.stdout)
-    if axes is not None and axes[1] != DRAFT_SCHEMA:
+    if axes is not None and axes[1] not in ACCEPTED_SCHEMAS:
         raise Unverifiable(
             f"`{binary}` reports claim_schema {axes[1]}, but this tool drafts {DRAFT_SCHEMA} "
-            "claims: a draft under another schema would not load — use a matching req build or "
-            "the matching copy of this tool"
+            f"claims and accepts a req that reports {' or '.join(ACCEPTED_SCHEMAS)}: a draft under "
+            "another schema would not load — use a matching req build or the matching copy of "
+            "this tool"
         )
     if axes is None:
         raise Unverifiable(
             f"`{binary} --version` does not name `rules_v` and `claim_schema` — a build "
             "older than the claim format this tool writes cannot be drafted against"
         )
-    return axes
+    # The binary was judged acceptable; the draft declares the schema this tool is written for.
+    return axes[0], DRAFT_SCHEMA
 
 
 def git_date(document):

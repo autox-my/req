@@ -160,7 +160,7 @@ Exit 0, and exactly three files:
 
 | path | what it is |
 | --- | --- |
-| `claims/REQ-0001.yml` | a starter claim in `req.claim/2`: its statement, provenance and `pins:` (the bound its statement must parse to) — nothing derived; the loader derives its parse and address every time it is read (ADR 0022) |
+| `claims/REQ-0001.yml` | a starter claim in `req.claim/3`: its statement, provenance and `pins:` (the bound its statement must parse to) — nothing derived; the loader derives its parse and address every time it is read (ADR 0022) |
 | `claims/README.md` | the authoring loop and its traps, in your project's tree |
 | `aliases/subjects.yml` | the subject registry: what your prose calls a thing, and the id its address covers |
 
@@ -434,7 +434,7 @@ Every command's `--help` carries its own `exit:` line — the codes that command
 including the tri-state — and `req <command> --help` works before a corpus exists.
 
 1. **Edit `statement`, then run `req canon` to see the parse.** Nothing derived is stored in a
-   claim file (`req.claim/2`, ADR 0022): the parse, the canonical form and the address are computed
+   claim file (`req.claim/3`, ADR 0022): the parse, the canonical form and the address are computed
    every time the claim is loaded, so there is nothing to fill and nothing to hand-write. `req canon`
    prints, per claim, the derived structure, modality, subject, operator, value, unit and lints, and
    each pin's verdict.
@@ -456,13 +456,22 @@ including the tri-state — and `req <command> --help` works before a corpus exi
    delete a requirement by deleting its claim, deliberately.
 6. **A `req.claim/1` file is NOT JUDGED (exit 3).** Migrate it with `tools/migrate_claims.py` from
    req's repository — a dry run by default that prints every key it drops and every pin it creates;
-   `--write` rewrites the file. A format bump moves no address.
+   `--write` rewrites the file. A format bump moves no address. A `req.claim/2` file needs no migration:
+   a `req.claim/3` build loads it as it is.
 7. **Several authors, one id space: `req next-id`.** `req next-id --count 5` prints the next five free ids
    (highest existing number + 1; a gap is never refilled, and it reads file names, so it answers while a
    sibling claim is half-written). To hand a block to a branch, `req next-id --count 5 --reserve` also appends
    it to `.req/reserved` (`REQ-0143..REQ-0147`, committed with the branch): later calls, on any branch that has
    merged it, start after the block. Two branches that reserve at the same time edit the end of one file and
    git reports a merge conflict: that is the signal, there is no lock. See `req next-id --help`.
+8. **File a claim where your specification files it: `area`.** A claim may carry one `area: <path>`
+   (`req.claim/3`; for example `area: diagnostics/startup`), the place a reader would look for it. Each
+   segment is a short stable key (`[a-z0-9][a-z0-9-]*`), not a heading and not a section number, which move
+   when a section is inserted; the name a reader sees, in any language, is the label on that path's line
+   in `.req/areas` (`<path> <label>`). Filing is placement only: it enters no address and no Baseline, so
+   re-filing a claim needs no re-signature, and a statement still has to stand alone without its heading. A path
+   `.req/areas` does not declare is listed by `req check` as `undeclared_area` and fails only if
+   `.req/completeness` says `strict areas`. The format is in `docs/claim-format.md`, *Area*.
 
 ## Sign the Baseline
 

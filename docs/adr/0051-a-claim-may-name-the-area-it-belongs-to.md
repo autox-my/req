@@ -4,7 +4,8 @@ Extends ADR 0022 (`req.claim/2`: claims are authored, fingerprints are derived).
 No `RULES_V` bump and no address moves: the key is outside identity. The claim file format moves to `req.claim/3`
 (decision 6, the owner's ruling of 2026-11-13).
 
-**Status: proposed.** The owner ratifies it by merging; no code is attached yet. Asked for by the owner on
+**Status: proposed.** The owner ratifies it by merging; the first implementation (decisions 1–4 and 6) is
+recorded in the note at the end. Asked for by the owner on
 2026-11-13. Date proposed: 2026-11-13.
 
 ## Context
@@ -125,3 +126,34 @@ This decision is wrong if any of these is observed:
    newer format;
 5. a real adopter's sections cannot be expressed as one path of stable keys per requirement;
 6. a claim's address, applicability or derived parse changes because of its area.
+
+## Implementation note — 2026-11-13 (task A-1)
+
+Decisions 1–4 and 6 are implemented (`docs/specs/A-1-area-key.md`); decision 5 (the graph) is A-2, after V-2.
+
+- **Format.** `CLAIM_SCHEMA_V` is 3. The older formats a build loads as they are are data, `READS_AS_IS` in
+  `src/canon.rs`, holding `/2`; the loader judges one `ClaimSchema::ReadAsIs` (no message, no rewrite). `/1` is
+  still a migration candidate and `/4` a newer format. A `/2` file carrying `area` is a parse error naming the
+  key and `req.claim/3`. This repository's own claims stay `/2`, which is the live proof of decision 6.
+- **Where the finding lives (decision 3 left it to the implementation).** `req check`'s completeness step
+  (ADR 0039) reports `undeclared_area`, naming the claim and the area. It is reported and does not fail, and
+  becomes FAIL under `strict areas` in `.req/completeness`. With no `.req/areas` there is no finding; a malformed
+  one is refused as `.req/completeness` is (exit 2, `<file>:<line>`, every bad line in one run), an unreadable
+  one is the step's 3.
+- **Registry grammar.** `<path> <label>`, the label the rest of the line in any language. Only a line that
+  *starts* with `#` is a comment: unlike the other `.req/` lists a `#` inside a line is label text, because a
+  label is free text and `C# support` must not be cut to `C` without a word. The path grammar is the claim key's,
+  one function (`model::validate_area`), so the two cannot disagree.
+- **Outside identity, checked.** `area` is in no canonical form and no attested hash; a Baseline emitted over this
+  repository's corpus is byte-identical with and without an area on a claim, and so are the addresses
+  (`tests/area.rs`). `RULES_V` did not move and `req selftest`'s known answers did not change.
+- **Views.** `Row` carries `area`; every `req.*/1` document that serialises a row gains `area` after
+  `superseded_by` (`null` when absent), and `req.trace/1`'s nodes do too. No text projection changes, so
+  `docs/spec.md` and `docs/trace.md` pass `--check` unchanged. `req canon` prints the area at the end of a
+  claim's line.
+- **Importers.** `tools/adopt.py`, `tools/needs_import.py` and `tools/reqif_import.py` keep drafting
+  `req.claim/2` (their drafts carry no area) and accept a `req` that reports `/2` or `/3`. Mapping a source's
+  hierarchy onto `area` is still a later unit.
+- **Migration message.** The `/1` migration candidate's message now names the schema `tools/migrate_claims.py`
+  writes (`req.claim/2`) and says this build loads it as it is, since the tool stops at `/2`.
+

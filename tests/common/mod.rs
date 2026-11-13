@@ -99,6 +99,7 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
         rationale_source: provenance.source,
         rationale_date: provenance.date,
         superseded_by: Vec::new(),
+        area: None,
     }
 }
 

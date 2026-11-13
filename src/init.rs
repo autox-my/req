@@ -23,7 +23,7 @@
 //!
 //! # The starter claim is derived by the real path, and asserted green
 //!
-//! A `req.claim/2` claim carries nothing derived (ADR 0022): `init` writes the authored fields
+//! A claim (`req.claim/2` or `/3`) carries nothing derived (ADR 0022): `init` writes the authored fields
 //! only — statement, applicability, relations, rationale, and a `pins:` block stating what the
 //! statement must parse to — and then reads the corpus back through [`load_claims`], the loader
 //! every other command uses, which derives the parse, the form and the address and judges the
@@ -309,7 +309,7 @@ fn registry_template() -> String {
     )
 }
 
-/// The starter claim: the authored fields of `req.claim/2` and nothing derived (ADR 0022). Its
+/// The starter claim: the authored fields of the current format and nothing derived (ADR 0022). Its
 /// `pins:` state what the statement must parse to — the bound, the comparator and the unit — so
 /// an edit that changes the parse is a `pins_hold` failure rather than a silent new address.
 fn claim_template(date: &str) -> String {
@@ -689,12 +689,13 @@ jobs:
 /// text: nothing here is derived from the corpus, so it cannot drift from what was written.
 const CLAIMS_README_TEMPLATE: &str = r#"# claims/ — this project's requirement corpus
 
-One claim per file, in the req claim-file format (`req.claim/2`). The file name is the
+One claim per file, in the req claim-file format (`req.claim/3`). The file name is the
 `claim_id` it declares (`REQ-0001.yml`), the corpus is flat, and this README is not a claim
 (it is not claim-shaped, so the loader leaves it alone).
 
 A claim is **authored**: `statement`, `applicability`, `relations`, `rationale`, and optionally
-`tests`, `evidence` and `pins`. Its parse — modality, subject, comparator, value, unit,
+`tests`, `evidence`, `pins` and `area` (the one place the claim is filed, a path of stable keys such as
+`diagnostics/startup`; placement only, it moves no address). Its parse — modality, subject, comparator, value, unit,
 conditions — is **derived** from `statement` every time the claim is loaded, and so are its
 canonical form and its address. Nothing derived is stored in the file, so there is nothing to
 fill and nothing to hand-write. `pins:` states what the parse must be where it is load-bearing

@@ -154,7 +154,7 @@ fn nodes_lists_every_claim_including_one_with_no_relation_sorted_by_claim_id() {
 }
 
 #[test]
-fn a_node_carries_the_six_fields_in_order() {
+fn a_node_carries_its_seven_fields_in_order() {
     let s = Scratch::new("six-fields");
     three(&s);
     let document = s.document(&[]);
@@ -174,11 +174,17 @@ fn a_node_carries_the_six_fields_in_order() {
         [
             "address",
             "applies",
+            "area",
             "claim_id",
             "modality",
             "statement",
             "superseded_by"
         ]
+    );
+    assert_eq!(
+        first["area"],
+        serde_json::Value::Null,
+        "a claim with no area says null"
     );
     assert_eq!(first["claim_id"], "REQ-0001");
     assert_eq!(first["statement"], LONG);
@@ -252,6 +258,7 @@ fn nodes_sit_between_selection_and_edges_and_a_node_keeps_its_field_order_in_the
         "address",
         "applies",
         "superseded_by",
+        "area",
     ] {
         let next = at(cursor, key);
         assert!(next < edges, "`{key}` is a node field, before `edges`");

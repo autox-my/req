@@ -180,6 +180,10 @@ pub fn validate_tests(tests: &[String], evidence: Evidence) -> Result<(), String
     Ok(())
 }
 
+/// The format that removed [`REMOVED_V1_KEYS`]. A fact about history, not about the build: a `/3` file
+/// carrying one of them is told which format dropped it.
+pub const REMOVED_V1_KEYS_IN: &str = "req.claim/2";
+
 /// The keys `req.claim/1` carried and `req.claim/2` removed (ADR 0022): the eleven authored
 /// parse slots that re-stated the statement, and the two stored derived fields (thirteen keys). A `req.claim/2` file that
 /// still carries one is a **parse error naming the key** — never silently ignored, because the
@@ -294,8 +298,8 @@ pub fn validate_pins(pins: &Pins) -> Result<(), String> {
     Ok(())
 }
 
-/// A claim file, strictly (`req.claim/2`, ADR 0022): what a human **authors**, and nothing
-/// derived. The parse, the canonical form and the address are computed at load
+/// A claim file, strictly (`req.claim/2` and `/3`, ADR 0022 and 0051): what a human **authors**, and
+/// nothing derived. The parse, the canonical form and the address are computed at load
 /// ([`crate::canon::load_claims`]) and stored nowhere.
 ///
 /// An unrecognized key is a parse error (F2) — a removed `req.claim/1` key names itself
@@ -330,6 +334,45 @@ pub struct ClaimFile {
     /// What the claim must parse to, where the parse is load-bearing (optional; ADR 0022).
     #[serde(default)]
     pub pins: Option<Pins>,
+    /// The one place the claim is filed in the reader's layout (`req.claim/3`, ADR 0051): a path of
+    /// stable keys, `diagnostics/startup`. **Authored, optional and outside identity** — not an
+    /// input to the canonical form and in no attested hash, so re-filing a claim moves no address
+    /// and needs no signature. Judged at load by [`validate_area`] and, because only `req.claim/3`
+    /// carries it, by [`crate::canon::parse_claim`] against the declared format.
+    ///
+    /// Not serialised when absent: the serialisation of a claim without an area is the one it had
+    /// before the key existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub area: Option<String>,
+}
+
+/// The first claim file format that carries [`ClaimFile::area`] (ADR 0051 decision 6). A file that
+/// declares an earlier format and still carries the key is a parse error naming it.
+pub const AREA_SINCE_FORMAT: u32 = 3;
+
+/// The file contract for an area path (ADR 0051 decision 2), the one grammar `.req/areas` shares:
+/// segments joined by `/`, each `[a-z0-9][a-z0-9-]*`, with no empty segment and no leading or
+/// trailing `/`. A segment is a stable **key** (it must survive the source renumbering a section), so
+/// the alphabet is ASCII and lower case: a reader-facing name is the registry's label, not the key.
+///
+/// The error says what is wrong with the value and not which claim or file holds it: the caller
+/// names that, as every other file-contract check here does.
+pub fn validate_area(area: &str) -> Result<(), String> {
+    let well_formed = !area.is_empty()
+        && area.split('/').all(|segment| {
+            let mut chars = segment.chars();
+            chars
+                .next()
+                .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+                && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        });
+    if well_formed {
+        Ok(())
+    } else {
+        Err(format!(
+            "{area:?} is not an area path: segments joined by `/`, each `[a-z0-9][a-z0-9-]*`, with              no empty segment and no leading or trailing `/` (for example `diagnostics/startup`). A              segment is a stable key, not a heading or a section number; its reader-facing name is              the label in `.req/areas`"
+        ))
+    }
 }
 
 // ---------------------------------------------------------------------------

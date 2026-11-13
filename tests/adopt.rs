@@ -312,8 +312,16 @@ fn the_draft_path_is_green_end_to_end() {
         write.stdout
     );
 
-    // The drafts are legal and carry nothing derived (ADR 0022): no parse, no address, no pin.
-    let (_rules_v, schema) = version_axes();
+    // The drafts are legal and carry nothing derived (ADR 0022): no parse, no address, no pin. They
+    // are `req.claim/2` drafts: they carry no area, and a build that writes `req.claim/3` loads
+    // `req.claim/2` as it is (ADR 0051 decision 6, task A-1 choice 7), so the draft schema is the
+    // one the tool is written for and no longer the one the binary reports.
+    let (_rules_v, reported) = version_axes();
+    assert!(
+        ["req.claim/2", "req.claim/3"].contains(&reported.as_str()),
+        "the binary under test reports a format this tool drafts for: {reported}"
+    );
+    let schema = "req.claim/2";
     for (path, statement, source_line) in [
         (
             "claims/REQ-0002.yml",
@@ -468,7 +476,7 @@ fn a_req_reporting_another_claim_schema_is_unverifiable_and_writes_nothing() {
     let fake = bin.join("req");
     std::fs::write(
         &fake,
-        "#!/bin/sh\nprintf 'req 0.1.0\\n  rules_v            6\\n  claim_schema       req.claim/3\\n'\n",
+        "#!/bin/sh\nprintf 'req 0.1.0\\n  rules_v            6\\n  claim_schema       req.claim/4\\n'\n",
     )
     .expect("fake req");
     std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
@@ -493,13 +501,98 @@ fn a_req_reporting_another_claim_schema_is_unverifiable_and_writes_nothing() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(3), "stderr:\n{stderr}");
     assert!(
-        stderr.contains("req.claim/3") && stderr.contains("req.claim/2"),
+        stderr.contains("req.claim/4") && stderr.contains("req.claim/2"),
         "the message names the schema the binary reports and the one the tool drafts:\n{stderr}"
     );
     assert!(
         !fx.exists("claims/REQ-0002.yml"),
         "nothing is drafted against a schema the tool does not write"
     );
+}
+
+/// A `req` first on `PATH` that reports `claim_schema` as given and answers everything else as the
+/// built binary does: the seam for "which formats may this tool draft against".
+#[cfg(unix)]
+fn fake_req_reporting(fx: &Fixture, schema: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let bin = fx.path().join("fake-bin");
+    std::fs::create_dir_all(&bin).expect("fake bin dir");
+    let fake = bin.join("req");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  printf 'req 0.1.0\\n  rules_v            9\\n  claim_schema       {schema}\\n'\nelse\n  exec \"{}\" \"$@\"\nfi\n",
+            req_bin().display()
+        ),
+    )
+    .expect("fake req");
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    bin
+}
+
+/// ADR 0051 decision 6, for the importer: it drafts `req.claim/2` and accepts a `req` that reports
+/// `req.claim/2` or `req.claim/3` (a `/3` build loads the draft as it is). Any other value is refused
+/// with the same message as before.
+#[cfg(unix)]
+#[test]
+fn a_req_reporting_claim_schema_2_or_3_is_accepted_and_4_is_refused() {
+    for (reported, accepted) in [
+        ("req.claim/2", true),
+        ("req.claim/3", true),
+        ("req.claim/4", false),
+        ("req.claim/1", false),
+    ] {
+        let fx = Fixture::new("req-adopt-schema-accept");
+        fx.write("docs/capabilities.md", CAPABILITIES);
+        req(fx.path(), &["init"]).assert_code(0, "req init");
+        let bin = fake_req_reporting(&fx, reported);
+        let mut path_value = bin.as_os_str().to_os_string();
+        path_value.push(":");
+        path_value.push(std::env::var_os("PATH").unwrap_or_default());
+        let output = Command::new(python3())
+            .arg(adopt_py())
+            .args([
+                "--from",
+                "docs/capabilities.md",
+                "--date",
+                "2026-10-21",
+                "--write",
+            ])
+            .current_dir(fx.path())
+            .env_remove("REQ_ROOT")
+            .env("PATH", path_value)
+            .output()
+            .expect("runs tools/adopt.py");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if accepted {
+            assert_eq!(
+                output.status.code(),
+                Some(0),
+                "{reported}: stderr:\n{stderr}"
+            );
+            let draft = fx.read("claims/REQ-0002.yml");
+            assert!(
+                draft.lines().any(|l| l == "schema: req.claim/2"),
+                "{reported}: the draft stays req.claim/2:\n{draft}"
+            );
+            req(fx.path(), &["canon"]).assert_code(0, "the build loads the draft");
+        } else {
+            assert_eq!(
+                output.status.code(),
+                Some(3),
+                "{reported}: stderr:\n{stderr}"
+            );
+            assert!(
+                stderr.contains(reported) && stderr.contains("req.claim/2"),
+                "{reported}: {stderr}"
+            );
+            assert!(
+                !fx.exists("claims/REQ-0002.yml"),
+                "{reported}: nothing is drafted"
+            );
+        }
+    }
 }
 
 #[test]

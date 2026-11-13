@@ -496,13 +496,16 @@ fn a_malformed_schema_is_a_broken_file_not_a_version_question() {
 
 #[test]
 fn the_older_direction_is_a_migration_candidate_at_the_loader() {
-    // `CLAIM_SCHEMA_V` is 2 now (ADR 0022), so two older formats exist for real: a
-    // `req.claim/1` or `req.claim/0` claim is **NOT JUDGED** — a migration candidate, not a
-    // broken file and never a silent load. A format bump moves no address, so the remedy is to
-    // migrate the file (`tools/migrate_claims.py`), not to reword the claim.
-    // Every older format, so a later bump cannot quietly stop proving the earliest ones.
+    // Several older formats exist for real: a `req.claim/1` or `req.claim/0` claim is **NOT
+    // JUDGED** — a migration candidate, not a broken file and never a silent load. A format bump
+    // moves no address, so the remedy is to migrate the file (`tools/migrate_claims.py`), not to
+    // reword the claim. `req.claim/2` is the one older format this build loads as it is (ADR 0051
+    // decision 6, `READS_AS_IS`), so it is not in this list and is judged by
+    // `a_readable_older_format_loads_as_it_is`.
+    // Every other older format, so a later bump cannot quietly stop proving the earliest ones.
     assert_eq!(classify_claim_schema(&claim_schema()), ClaimSchema::Current);
-    for older_v in 0..req::canon::CLAIM_SCHEMA_V {
+    for older_v in (0..req::canon::CLAIM_SCHEMA_V).filter(|v| !req::canon::READS_AS_IS.contains(v))
+    {
         let older = format!("{}{}", req::canon::CLAIM_SCHEMA_PREFIX, older_v);
         assert_eq!(
             classify_claim_schema(&older),
@@ -545,6 +548,47 @@ fn the_older_direction_is_a_migration_candidate_at_the_loader() {
             run_claim_diagnostics_at(f.path()),
             3,
             "a migration candidate is UNVERIFIABLE, never a pass"
+        );
+    }
+}
+
+#[test]
+fn a_readable_older_format_loads_as_it_is() {
+    // ADR 0051 decision 6: the set of older formats this build loads as they are is data
+    // (`READS_AS_IS`), and each is judged `ReadAsIs` — no message, a load that succeeds — never a
+    // migration candidate and never a rewrite.
+    assert!(
+        !req::canon::READS_AS_IS.is_empty(),
+        "req.claim/2 is a readable older format"
+    );
+    for readable_v in req::canon::READS_AS_IS {
+        assert!(
+            *readable_v < req::canon::CLAIM_SCHEMA_V,
+            "it is an older format"
+        );
+        let declared = format!("{}{}", req::canon::CLAIM_SCHEMA_PREFIX, readable_v);
+        assert_eq!(
+            classify_claim_schema(&declared),
+            ClaimSchema::ReadAsIs(*readable_v)
+        );
+        assert_eq!(classify_claim_schema(&declared).reason(&declared), None);
+        let f = Fixture::new("schema-readable").claim(
+            "REQ-0001.yml",
+            &claim_text("REQ-0001").replace(
+                &format!("schema: {}", claim_schema()),
+                &format!("schema: {declared}"),
+            ),
+        );
+        let before = std::fs::read_to_string(f.path().join("claims/REQ-0001.yml")).expect("reads");
+        let loaded = load_claims(f.path()).expect("a readable older format loads");
+        assert_eq!(
+            loaded[0].claim.schema, declared,
+            "the declaration is kept, not rewritten"
+        );
+        assert_eq!(
+            std::fs::read_to_string(f.path().join("claims/REQ-0001.yml")).expect("reads"),
+            before,
+            "loading rewrites nothing"
         );
     }
 }

@@ -2014,7 +2014,7 @@ fn a_req_reporting_another_claim_schema_is_unverifiable_and_writes_nothing() {
     let fake = bin.join("req");
     fs::write(
         &fake,
-        "#!/bin/sh\nprintf 'req 0.1.0\\n  rules_v            6\\n  claim_schema       req.claim/3\\n'\n",
+        "#!/bin/sh\nprintf 'req 0.1.0\\n  rules_v            6\\n  claim_schema       req.claim/4\\n'\n",
     )
     .expect("fake req");
     fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).expect("chmod");
@@ -2035,11 +2035,79 @@ fn a_req_reporting_another_claim_schema_is_unverifiable_and_writes_nothing() {
     );
     out.assert_code(3, "a req that judges another claim schema");
     assert!(
-        out.stderr.contains("req.claim/3") && out.stderr.contains("req.claim/2"),
+        out.stderr.contains("req.claim/4") && out.stderr.contains("req.claim/2"),
         "{}",
         out.stderr
     );
     assert_eq!(fx.claims(), before);
+}
+
+/// ADR 0051 decision 6, for the importer: it drafts `req.claim/2` and accepts a `req` that reports
+/// `req.claim/2` or `req.claim/3`; any other value is refused with the message above.
+#[cfg(unix)]
+#[test]
+fn a_req_reporting_claim_schema_2_or_3_is_accepted_and_4_is_refused() {
+    use std::os::unix::fs::PermissionsExt;
+
+    for (reported, accepted) in [
+        ("req.claim/2", true),
+        ("req.claim/3", true),
+        ("req.claim/4", false),
+        ("req.claim/1", false),
+    ] {
+        let fx = Fixture::with_public("req-reqif-schema-accept", POLARION);
+        let bin = fx.path().join("fake-bin");
+        fs::create_dir_all(&bin).expect("fake bin dir");
+        let fake = bin.join("req");
+        fs::write(
+            &fake,
+            format!(
+                "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  printf 'req 0.1.0\\n  rules_v            9\\n  claim_schema       {reported}\\n'\nelse\n  exec \"{}\" \"$@\"\nfi\n",
+                req_bin().display()
+            ),
+        )
+        .expect("fake req");
+        fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).expect("chmod");
+        let before = fx.claims();
+        let out = import_in(
+            fx.path(),
+            &base(&[
+                "--type",
+                "System Requirement",
+                "--text-attr",
+                "ReqIF.Text",
+                "--write",
+            ]),
+            &Env {
+                path_first: Some(&bin),
+                ..Env::default()
+            },
+        );
+        if accepted {
+            out.assert_code(0, &format!("a req reporting {reported}"));
+            let drafted: Vec<String> = fx
+                .claims()
+                .into_iter()
+                .filter(|(name, _)| !before.contains_key(name))
+                .map(|(_, text)| text)
+                .collect();
+            assert!(!drafted.is_empty(), "{reported}: something was drafted");
+            for text in drafted {
+                assert!(
+                    text.lines().any(|l| l == "schema: req.claim/2"),
+                    "{reported}: the draft stays req.claim/2:\n{text}"
+                );
+            }
+        } else {
+            out.assert_code(3, &format!("a req reporting {reported}"));
+            assert!(
+                out.stderr.contains(reported) && out.stderr.contains("req.claim/2"),
+                "{reported}: {}",
+                out.stderr
+            );
+            assert_eq!(fx.claims(), before, "{reported}: nothing is drafted");
+        }
+    }
 }
 
 // --- (n) dates ----------------------------------------------------------------------------------------------------------------------
@@ -2109,7 +2177,9 @@ fn a_draft_carries_nothing_derived_and_the_strict_loader_accepts_it() {
         &base(&["--type", RMF_TYPE, "--text-attr", "ReqIF.Name", "--write"]),
     );
     out.assert_code(0, "RMF");
-    let schema = req::canon::claim_schema();
+    // The importers draft `req.claim/2` and do not follow the build's format: a draft carries no area, and
+    // a `req.claim/3` build loads `req.claim/2` as it is (ADR 0051 decision 6, task A-1 choice 7).
+    let schema = "req.claim/2";
     for draft in drafts_of(&out) {
         let text = fx.read(&format!("claims/{}.yml", draft.claim));
         assert_eq!(
