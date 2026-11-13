@@ -940,7 +940,8 @@ def write_claims(targets, texts):
     except OSError as error:
         remove_written(written)
         raise Unverifiable(f"cannot write {error.filename or 'the claims'}: {error}") from error
-    except Problem:
+    except BaseException:
+        # Anything that ends the write — a refusal, an interrupt — takes the claims it wrote with it.
         remove_written(written)
         raise
     return written
@@ -1223,7 +1224,7 @@ def area_report_lines(placed, wanted, added, registry_declared, drafted):
 
     `areas:` counts distinct paths and the drafts filed; `no area:` (only when some draft has none)
     counts them per reason in `NO_AREA_REASONS` order; `registry:` counts the lines to add and the
-    paths already declared; each line to add follows as `  + <path> <label>`."""
+    paths already declared; each line to add follows as `  <path> <label>`, ready to paste into `.req/areas`."""
     lines = []
     filed = sum(1 for kind, _value in placed if kind == "area")
     lines.append(f"areas: {len(wanted)} paths; filed {filed} of {drafted} drafted")
@@ -1235,7 +1236,7 @@ def area_report_lines(placed, wanted, added, registry_declared, drafted):
         shown = ", ".join(f"{name} {reasons[name]}" for name in NO_AREA_REASONS if name in reasons)
         lines.append(f"no area: {sum(reasons.values())} ({shown})")
     lines.append(f"registry: {len(added)} lines to add, {registry_declared} already declared")
-    lines.extend(f"  + {path} {label}" for path, label in added)
+    lines.extend(f"  {path} {label}" for path, label in added)
     return lines
 
 
@@ -1595,7 +1596,7 @@ def self_check():
             "report: the areas lines count paths, drafts filed, the reasons and the registry",
             area_report_lines([("area", "a"), ("none", "no docname"), ("area", "a")], [("a", "A")], [("a", "A")], 0, 3),
             ["areas: 1 paths; filed 2 of 3 drafted", "no area: 1 (no docname 1)",
-             "registry: 1 lines to add, 0 already declared", "  + a A"],
+             "registry: 1 lines to add, 0 already declared", "  a A"],
         ),
         (
             "report: with every draft filed there is no `no area` line",

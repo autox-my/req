@@ -68,8 +68,8 @@ Exit codes, the same three-state discipline as req (ADR 0028 section 9):
      (not XML, a DOCTYPE or entity declaration, not a ReqIF 20110401 REQ-IF, a .reqifz, a missing
      or repeated object IDENTIFIER, a reference that does not resolve, an attribute name matching
      two definitions, a corpus the loader rejects, a `req` judging another claim schema, `--areas`
-     against a `req` that does not report `claim_schema req.claim/3`, a hierarchy node that names
-     no object the file holds, an `.req/areas` that is malformed)
+     against a `req` that does not report `claim_schema req.claim/3`, an ancestor reference the file
+     does not declare, an `.req/areas` that is malformed)
 
 Nothing derived is ever written, and no pin is guessed. The script opens no archive, fetches
 nothing and writes nowhere outside the corpus.
@@ -124,7 +124,7 @@ AREAS_PATH = ".req/areas"
 KEY_RUN_RE = re.compile(r"[^a-z0-9]+")
 ASCII_LOWER = {code: code + 32 for code in range(ord("A"), ord("Z") + 1)}
 # The reasons a drafted object is filed under no area, in report order.
-NO_AREA_REASONS = ("no ancestor", "several places")
+NO_AREA_REASONS = ("no ancestor", "several places", "unnamed ancestor")
 
 CLAIMS_DIR = "claims"
 REGISTRY_PATH = "aliases/subjects.yml"
@@ -200,8 +200,11 @@ types); `relations` stays `[]`.
              An object with no ancestor (directly under a specification, or under no hierarchy
              node) gets no area; so does one the hierarchy reaches more than once (two
              specifications, or two places in one): a claim has exactly one place, and the reader
-             does not pick one. Both stay `req.claim/2`. An IDENTIFIER that leaves no key, or two
-             IDENTIFIERs that make one path, is exit 1 naming them: they are never merged.
+             does not pick one; and so does one under a hierarchy node that names no object (the
+             reader does not guess). All stay `req.claim/2`. An IDENTIFIER that leaves no key, or
+             two IDENTIFIERs that make one path, is exit 1 naming them (the second over every
+             ancestor chain of every drafted object, filed or not): they are never merged. An
+             ancestor reference the file does not declare is exit 3.
              A draft with an area is `req.claim/3` with `area: <path>` after `claim_id`; the
              statement is exactly what it is without `--areas`.
              The area registry `.req/areas` (`<path> <label>`, one line per area, the line order is
@@ -211,7 +214,7 @@ types); `relations` stays `[]`.
              whatever its label. If the claims then fail to write, the registry's earlier bytes
              come back.
              The report gains `areas: <P> paths; filed <F> of <D> drafted`, `no area: <K> (no
-             ancestor <n>, several places <m>)` when K > 0, and `registry: <A> lines to add, <E>
+             ancestor <n>, several places <m>, unnamed ancestor <u>)` when K > 0, and `registry: <A> lines to add, <E>
              already declared`; the `hierarchy` line stops saying the structure is not carried.
              `--areas` needs a `req` that reports `claim_schema req.claim/3`; any other is exit 3.
   --area-depth N  with --areas: keep only the outermost N segments of each path (N >= 1).
@@ -976,6 +979,39 @@ def hierarchy_places(model):
     return found
 
 
+def chain_keys(ident, chain, depth, known, strict):
+    """`(state, keys, kept)` for one ancestor chain of the object `ident`, cut to `depth`.
+
+    `keys` are the keys of the ancestors up to the first one that cannot make a key; `kept` is the
+    cut chain. `state` is `ok` when every kept ancestor made one, `unnamed` when a kept hierarchy
+    node names no object, and `stopped` when `strict` is off and one is unresolved or leaves no key.
+    With `strict` (the object's one place, the chain a path is made of) an ancestor the file does
+    not declare is Unverifiable and an IDENTIFIER that leaves no key is a Problem."""
+    kept = chain if depth is None else chain[:depth]
+    keys = []
+    for ref in kept:
+        if ref is None:
+            return "unnamed", keys, kept
+        if ref not in known:
+            if not strict:
+                return "stopped", keys, kept
+            raise Unverifiable(
+                f"object {one_line(ident)} sits under {one_line(ref)}, which is not a "
+                "SPEC-OBJECT the file declares, so its area cannot be made from stable keys"
+            )
+        key = area_key(ref)
+        if not key:
+            if not strict:
+                return "stopped", keys, kept
+            raise Problem(
+                f"the object IDENTIFIER {one_line(ref)!r} (an ancestor of {one_line(ident)}) leaves "
+                "no key: a key needs a letter or a digit from [A-Za-z0-9] — pass --area-depth to "
+                "stop above it"
+            )
+        keys.append(key)
+    return "ok", keys, kept
+
+
 def plan_areas(model, drafted, depth):
     """`(placed, wanted, used)` for the drafted objects, in the order given.
 
@@ -985,53 +1021,46 @@ def plan_areas(model, drafted, depth):
     of.
 
     An object the hierarchy reaches more than once has no area (the reader picks no place); one with
-    no ancestor has none. A key is made from each ancestor's IDENTIFIER (`area_key`), cut to the
-    outermost `depth`. A chain that names no object the file holds is Unverifiable; an IDENTIFIER
-    that leaves no key, and two different IDENTIFIERs that make one path (at any depth), are a
-    Problem naming both: a place is never merged."""
+    no ancestor has none; one under a hierarchy node that names no object has none (`unnamed
+    ancestor`: the reader does not guess). A key is made from each ancestor's IDENTIFIER
+    (`area_key`), cut to the outermost `depth`. An ancestor the file does not declare, on an
+    object's one place, is Unverifiable (an unresolved reference); an IDENTIFIER that leaves no key
+    there is a Problem. Two different IDENTIFIERs that make one path, at any depth, are a Problem
+    naming both, **over every chain of every drafted object**, each place of a several-places
+    object included and filed or not: a place is never merged."""
     places = hierarchy_places(model)
     known = {obj.ident for obj in model.objects}
     owners, placed, filed, used = {}, [], [], set()
+
+    def register(keys, kept, ident):
+        for index in range(len(keys)):
+            prefix = "/".join(keys[: index + 1])
+            first = owners.setdefault(prefix, (kept[index], ident))
+            if first[0] != kept[index]:
+                raise Problem(
+                    f"two different object IDENTIFIERs make the area path {prefix!r}: "
+                    f"{one_line(first[0])!r} (above {one_line(first[1])}) and "
+                    f"{one_line(kept[index])!r} (above {one_line(ident)}) — they are never "
+                    "merged: rename one of them"
+                )
+
     for obj in drafted:
         found = places.get(obj.ident, [])
         if len(found) > 1:
+            for _order, chain in found:
+                _state, keys, kept = chain_keys(obj.ident, chain, depth, known, strict=False)
+                register(keys, kept, obj.ident)
             placed.append(("none", "several places"))
             continue
         if not found or not found[0][1]:
             placed.append(("none", "no ancestor"))
             continue
         order, chain = found[0]
-        kept = chain if depth is None else chain[:depth]
-        keys = []
-        for ref in kept:
-            if ref is None:
-                raise Unverifiable(
-                    f"object {one_line(obj.ident)} sits under a hierarchy node that names no object "
-                    "(it has no SPEC-OBJECT-REF), so its area cannot be made from stable keys"
-                )
-            if ref not in known:
-                raise Unverifiable(
-                    f"object {one_line(obj.ident)} sits under {one_line(ref)}, which is not a "
-                    "SPEC-OBJECT the file declares, so its area cannot be made from stable keys"
-                )
-            key = area_key(ref)
-            if not key:
-                raise Problem(
-                    f"the object IDENTIFIER {one_line(ref)!r} (an ancestor of "
-                    f"{one_line(obj.ident)}) leaves no key: a key needs a letter or a digit from "
-                    "[A-Za-z0-9] — pass --area-depth to stop above it"
-                )
-            keys.append(key)
-        for index in range(len(keys)):
-            prefix = "/".join(keys[: index + 1])
-            first = owners.setdefault(prefix, (kept[index], obj.ident))
-            if first[0] != kept[index]:
-                raise Problem(
-                    f"two different object IDENTIFIERs make the area path {prefix!r}: "
-                    f"{one_line(first[0])!r} (above {one_line(first[1])}) and "
-                    f"{one_line(kept[index])!r} (above {one_line(obj.ident)}) — they are never "
-                    "merged: rename one of them"
-                )
+        state, keys, kept = chain_keys(obj.ident, chain, depth, known, strict=True)
+        register(keys, kept, obj.ident)
+        if state == "unnamed":
+            placed.append(("none", "unnamed ancestor"))
+            continue
         used.update(kept)
         path = "/".join(keys)
         placed.append(("area", path))
@@ -1092,7 +1121,7 @@ def area_report_lines(placed, wanted, added, registry_declared, drafted):
 
     `areas:` counts distinct paths and the drafts filed; `no area:` (only when some draft has none)
     counts them per reason in `NO_AREA_REASONS` order; `registry:` counts the lines to add and the
-    paths already declared; each line to add follows as `  + <path> <label>`."""
+    paths already declared; each line to add follows as `  <path> <label>`, ready to paste into `.req/areas`."""
     lines = []
     filed = sum(1 for kind, _value in placed if kind == "area")
     lines.append(f"areas: {len(wanted)} paths; filed {filed} of {drafted} drafted")
@@ -1104,7 +1133,7 @@ def area_report_lines(placed, wanted, added, registry_declared, drafted):
         shown = ", ".join(f"{name} {reasons[name]}" for name in NO_AREA_REASONS if name in reasons)
         lines.append(f"no area: {sum(reasons.values())} ({shown})")
     lines.append(f"registry: {len(added)} lines to add, {registry_declared} already declared")
-    lines.extend(f"  + {path} {label}" for path, label in added)
+    lines.extend(f"  {path} {label}" for path, label in added)
     return lines
 
 
@@ -1372,7 +1401,8 @@ def write_claims(targets, texts):
     except OSError as error:
         remove_written(written)
         raise Unverifiable(f"cannot write {error.filename or 'the claims'}: {error}") from error
-    except Problem:
+    except BaseException:
+        # Anything that ends the write — a refusal, an interrupt — takes the claims it wrote with it.
         remove_written(written)
         raise
     return written
@@ -1814,7 +1844,12 @@ def report(args, corpus, label, model, drafts, humans, skips, targets, written, 
     print(f"not carried: {shown_counts} (drafted objects carrying each attribute; only the text attribute is carried)")
     under, names = hierarchy_of(model, objects)
     where_names = ", ".join(one_line(name) for name in names) if names else "no specification"
-    carried = "the ancestors are carried as the area (--areas)" if filing else "the structure is not carried"
+    filed = sum(1 for kind, _value in filing[0] if kind == "area") if filing else 0
+    carried = (
+        f"the ancestors of {filed} drafted objects are carried as the area (--areas)"
+        if filed
+        else "the structure is not carried"
+    )
     print(
         f"hierarchy: {under} of {len(objects)} drafted objects sit under a parent; "
         f"specification: {where_names} — {carried}"
@@ -2133,9 +2168,23 @@ def self_check():
             True,
         ),
         (
-            "area: a node that names no object is unverifiable",
-            _refuses(lambda: plan_areas(_model(["R"], [("R", (None,))]), [_object("R", "Requirement", [])], None)),
+            "area: a node that names no object files nothing, and is named",
+            plan_areas(_model(["R"], [("R", (None,))]), [_object("R", "Requirement", [])], None)[0],
+            [("none", "unnamed ancestor")],
+        ),
+        (
+            "area: a collision above an object filed nowhere is still a problem",
+            _problem(lambda: plan_areas(
+                _model(["Sec.A", "sec_a", "R"], [("R", ("Sec.A",)), ("R", ("sec_a",))]),
+                [_object("R", "Requirement", [])], None)),
             True,
+        ),
+        (
+            "area: the depth cut applies to that check too",
+            plan_areas(
+                _model(["T", "Sec.A", "sec_a", "R"], [("R", ("T", "Sec.A")), ("R", ("T", "sec_a"))]),
+                [_object("R", "Requirement", [])], 1)[0],
+            [("none", "several places")],
         ),
         (
             "area: the paths come in the hierarchy's order, not the file's",
@@ -2199,10 +2248,12 @@ def self_check():
         (
             "report: the areas lines count paths, drafts filed, the reasons and the registry",
             area_report_lines(
-                [("area", "a"), ("none", "several places"), ("none", "no ancestor"), ("none", "no ancestor")],
-                [("a", "A")], [("a", "A")], 0, 4),
-            ["areas: 1 paths; filed 1 of 4 drafted", "no area: 3 (no ancestor 2, several places 1)",
-             "registry: 1 lines to add, 0 already declared", "  + a A"],
+                [("area", "a"), ("none", "several places"), ("none", "no ancestor"), ("none", "no ancestor"),
+                 ("none", "unnamed ancestor")],
+                [("a", "A")], [("a", "A")], 0, 5),
+            ["areas: 1 paths; filed 1 of 5 drafted",
+             "no area: 4 (no ancestor 2, several places 1, unnamed ancestor 1)",
+             "registry: 1 lines to add, 0 already declared", "  a A"],
         ),
         (
             "draft: an area makes it req.claim/3 with `area:` after claim_id",

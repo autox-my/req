@@ -251,7 +251,10 @@ covered**: a Markdown heading is text, not a stable identifier, and its mapping 
   drafted, so a drafted parent is filed under its own ancestors and its children's paths end in its key. An object with
   no ancestor, or one the hierarchy reaches more than once (two specifications, or two places in one), gets no area:
   a claim has exactly one place (decision 2), and the reader does not pick one. A hierarchy node that names no object
-  the file holds is exit 3. `--area-depth N` keeps the outermost N segments; `--area-label-attr NAME` names the
+  (a `SPEC-HIERARCHY` with no `SPEC-OBJECT-REF`) above a draft gets it no area either, counted as `unnamed ancestor`:
+  the reader does not guess. An ancestor reference the file does not declare is an unresolved reference, exit 3
+  (ADR 0028). The collision rule runs over every ancestor chain of every drafted object, each place of a
+  several-places object included, so a collision is exit 1 whether or not the draft it sits above is filed. `--area-depth N` keeps the outermost N segments; `--area-label-attr NAME` names the
   attribute holding a heading's text.
 - **Sphinx-Needs: the area is the document.** The need's `docname` split on `/`, each part a key; a need with no
   `docname` gets no area. Section titles are not used: they are not stable and several share one document.

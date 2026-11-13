@@ -36,6 +36,9 @@ Where this spec and an ADR disagree, the ADR wins; stop and report.
    - A drafted object with no ancestor (directly under a specification, or under no hierarchy node) gets no area.
    - A drafted object the hierarchy reaches more than once (two specifications, or two places in one) gets no area.
      The reader does not pick one: a claim has exactly one place.
+   - A drafted object under a hierarchy node that names no object (no `SPEC-OBJECT-REF`) gets no area either, and an
+     ancestor reference the file does not declare is exit 3 (amended in I-1-fix; the collision rule of choice 2 runs over
+     every ancestor chain of every drafted object, filed or not).
    - `--area-depth N` (N ≥ 1) keeps only the outermost N segments. Default: all of them.
    - **Label.** `--area-label-attr NAME` names the attribute that holds a heading's text. The label of a path is that
      attribute's value on the path's last ancestor, as one line, when it has one plain value; otherwise the `--id-attr`
@@ -69,7 +72,7 @@ Where this spec and an ADR disagree, the ADR wins; stop and report.
 7. **The report.** With `--areas` the report gains lines; the reconcile line is unchanged and must still add up.
    - `areas: <P> paths; filed <F> of <D> drafted`
    - `no area: <K>` with the count per reason, only when K > 0. The reasons are `no ancestor`, `several places`
-     (ReqIF) and `no docname` (Sphinx-Needs).
+     and `unnamed ancestor` (ReqIF), and `no docname` (Sphinx-Needs) (`unnamed ancestor` added in I-1-fix).
    - `registry: <A> lines to add, <E> already declared`
    - ReqIF's `hierarchy` line no longer says the structure is not carried.
    - The header comment of a draft is unchanged.
