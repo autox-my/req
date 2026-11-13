@@ -385,9 +385,10 @@ drafted object's `area` is the keys of its ancestors, outermost first, joined by
 of characters outside `[a-z0-9]` with `-`, strip `-` from both ends: `_Sec.A 12` is `sec-a-12`). A heading's text
 or a section number is never a key, the specification is not a segment, and a drafted parent is a segment of its
 children's paths. An object with no ancestor, one the hierarchy reaches more than once, or one under a hierarchy
-node that names no object, is drafted with no area (the report counts each by reason); an `IDENTIFIER` that leaves
-no key, or two that make one path (checked over every ancestor chain, filed or not), is exit **1** naming them, and
-an ancestor the file does not declare is exit **3**. A draft with an area is `req.claim/3` and needs a `req` reporting `claim_schema req.claim/3`
+node that names no object, is drafted with no area (the report counts each by reason). Every ancestor chain of
+every drafted object is walked, each place of a several-places object included and filed or not, with the same
+strictness: an `IDENTIFIER` that leaves no key, or two that make one path, is exit **1** naming them, an ancestor
+the file does not declare is exit **3**, and only a node that names no object ends a chain without error. A draft with an area is `req.claim/3` and needs a `req` reporting `claim_schema req.claim/3`
 (exit **3** otherwise). `--area-depth N` keeps the outermost N segments, and `--area-label-attr NAME` names the
 attribute holding a heading's text, the label of its path (else the `--id-attr` value, else the last segment).
 The reader proposes the `.req/areas` lines; `--write` appends the ones the file does not declare, leaves a

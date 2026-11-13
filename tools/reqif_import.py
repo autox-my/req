@@ -62,14 +62,15 @@ Exit codes, the same three-state discipline as req (ADR 0028 section 9):
   0  drafted (dry run, or written with --write), or --list
   1  a definite problem — nothing selected or extracted, a --type the file does not have, a text
      attribute no selected type defines, an object already drafted from this origin, or (--areas)
-     an IDENTIFIER that leaves no key or two that make one path; nothing was written
+     an IDENTIFIER that leaves no key or two that make one path, found on any ancestor chain of
+     any drafted object, filed or not; nothing was written
   2  usage — a missing or malformed argument, a bad date
   3  UNVERIFIABLE — the file, the corpus, the subject registry or `req` cannot be read honestly
      (not XML, a DOCTYPE or entity declaration, not a ReqIF 20110401 REQ-IF, a .reqifz, a missing
      or repeated object IDENTIFIER, a reference that does not resolve, an attribute name matching
      two definitions, a corpus the loader rejects, a `req` judging another claim schema, `--areas`
      against a `req` that does not report `claim_schema req.claim/3`, an ancestor reference the file
-     does not declare, an `.req/areas` that is malformed)
+     does not declare on any chain of a drafted object, an `.req/areas` that is malformed)
 
 Nothing derived is ever written, and no pin is guessed. The script opens no archive, fetches
 nothing and writes nowhere outside the corpus.
@@ -202,9 +203,11 @@ types); `relations` stays `[]`.
              specifications, or two places in one): a claim has exactly one place, and the reader
              does not pick one; and so does one under a hierarchy node that names no object (the
              reader does not guess). All stay `req.claim/2`. An IDENTIFIER that leaves no key, or
-             two IDENTIFIERs that make one path, is exit 1 naming them (the second over every
-             ancestor chain of every drafted object, filed or not): they are never merged. An
-             ancestor reference the file does not declare is exit 3.
+             two IDENTIFIERs that make one path, is exit 1 naming them: they are never merged. Every
+             ancestor chain of every drafted object is walked with the same strictness (each place
+             of a several-places object included, filed or not, the same --area-depth cut): an
+             ancestor reference the file does not declare is exit 3. Only a hierarchy node that
+             names no object ends a chain without error.
              A draft with an area is `req.claim/3` with `area: <path>` after `claim_id`; the
              statement is exactly what it is without `--areas`.
              The area registry `.req/areas` (`<path> <label>`, one line per area, the line order is
@@ -215,7 +218,8 @@ types); `relations` stays `[]`.
              come back.
              The report gains `areas: <P> paths; filed <F> of <D> drafted`, `no area: <K> (no
              ancestor <n>, several places <m>, unnamed ancestor <u>)` when K > 0, and `registry: <A> lines to add, <E>
-             already declared`; the `hierarchy` line stops saying the structure is not carried.
+             already declared`; the `hierarchy` line says the ancestors of N drafted objects are carried as the
+             area when N > 0 drafts were filed, else that the structure is not carried.
              `--areas` needs a `req` that reports `claim_schema req.claim/3`; any other is exit 3.
   --area-depth N  with --areas: keep only the outermost N segments of each path (N >= 1).
   --area-label-attr NAME  with --areas: the attribute holding a heading's text. The label of a path
@@ -979,30 +983,27 @@ def hierarchy_places(model):
     return found
 
 
-def chain_keys(ident, chain, depth, known, strict):
+def chain_keys(ident, chain, depth, known):
     """`(state, keys, kept)` for one ancestor chain of the object `ident`, cut to `depth`.
 
-    `keys` are the keys of the ancestors up to the first one that cannot make a key; `kept` is the
-    cut chain. `state` is `ok` when every kept ancestor made one, `unnamed` when a kept hierarchy
-    node names no object, and `stopped` when `strict` is off and one is unresolved or leaves no key.
-    With `strict` (the object's one place, the chain a path is made of) an ancestor the file does
-    not declare is Unverifiable and an IDENTIFIER that leaves no key is a Problem."""
+    `keys` are the keys of the ancestors up to the end of the chain; `kept` is the cut chain.
+    `state` is `ok` when every kept ancestor made a key, and `unnamed` when a kept hierarchy node
+    names no object: the walk ends there without error, since no path exists past it. Every other
+    ancestor is judged: one the file does not declare is Unverifiable (an unresolved reference),
+    an IDENTIFIER that leaves no key is a Problem. The same strictness for every chain, whether or
+    not the object is filed; nothing is skipped quietly."""
     kept = chain if depth is None else chain[:depth]
     keys = []
     for ref in kept:
         if ref is None:
             return "unnamed", keys, kept
         if ref not in known:
-            if not strict:
-                return "stopped", keys, kept
             raise Unverifiable(
                 f"object {one_line(ident)} sits under {one_line(ref)}, which is not a "
                 "SPEC-OBJECT the file declares, so its area cannot be made from stable keys"
             )
         key = area_key(ref)
         if not key:
-            if not strict:
-                return "stopped", keys, kept
             raise Problem(
                 f"the object IDENTIFIER {one_line(ref)!r} (an ancestor of {one_line(ident)}) leaves "
                 "no key: a key needs a letter or a digit from [A-Za-z0-9] — pass --area-depth to "
@@ -1024,10 +1025,12 @@ def plan_areas(model, drafted, depth):
     no ancestor has none; one under a hierarchy node that names no object has none (`unnamed
     ancestor`: the reader does not guess). A key is made from each ancestor's IDENTIFIER
     (`area_key`), cut to the outermost `depth`. An ancestor the file does not declare, on an
-    object's one place, is Unverifiable (an unresolved reference); an IDENTIFIER that leaves no key
-    there is a Problem. Two different IDENTIFIERs that make one path, at any depth, are a Problem
-    naming both, **over every chain of every drafted object**, each place of a several-places
-    object included and filed or not: a place is never merged."""
+    object's place or places, is Unverifiable (an unresolved reference); an IDENTIFIER that leaves no
+    key is a Problem; two different IDENTIFIERs that make one path, at any depth, are a Problem
+    naming both: **over every chain of every drafted object**, each place of a several-places
+    object included, filed or not, with the same strictness and the same `depth` cut (a skipped
+    check is not a pass). Only a hierarchy node that names no object ends a chain without error.
+    A place is never merged."""
     places = hierarchy_places(model)
     known = {obj.ident for obj in model.objects}
     owners, placed, filed, used = {}, [], [], set()
@@ -1048,7 +1051,7 @@ def plan_areas(model, drafted, depth):
         found = places.get(obj.ident, [])
         if len(found) > 1:
             for _order, chain in found:
-                _state, keys, kept = chain_keys(obj.ident, chain, depth, known, strict=False)
+                _state, keys, kept = chain_keys(obj.ident, chain, depth, known)
                 register(keys, kept, obj.ident)
             placed.append(("none", "several places"))
             continue
@@ -1056,7 +1059,7 @@ def plan_areas(model, drafted, depth):
             placed.append(("none", "no ancestor"))
             continue
         order, chain = found[0]
-        state, keys, kept = chain_keys(obj.ident, chain, depth, known, strict=True)
+        state, keys, kept = chain_keys(obj.ident, chain, depth, known)
         register(keys, kept, obj.ident)
         if state == "unnamed":
             placed.append(("none", "unnamed ancestor"))
@@ -1846,7 +1849,8 @@ def report(args, corpus, label, model, drafts, humans, skips, targets, written, 
     where_names = ", ".join(one_line(name) for name in names) if names else "no specification"
     filed = sum(1 for kind, _value in filing[0] if kind == "area") if filing else 0
     carried = (
-        f"the ancestors of {filed} drafted objects are carried as the area (--areas)"
+        f"the ancestors of {filed} drafted {'object' if filed == 1 else 'objects'} are carried "
+        "as the area (--areas)"
         if filed
         else "the structure is not carried"
     )
@@ -2178,6 +2182,23 @@ def self_check():
                 _model(["Sec.A", "sec_a", "R"], [("R", ("Sec.A",)), ("R", ("sec_a",))]),
                 [_object("R", "Requirement", [])], None)),
             True,
+        ),
+        (
+            "area: an undeclared ancestor on a several-places chain is unverifiable, not skipped",
+            _refuses(lambda: plan_areas(
+                _model(["H", "R"], [("R", ("H",)), ("R", ("GHOST",))]), [_object("R", "Requirement", [])], None)),
+            True,
+        ),
+        (
+            "area: a keyless identifier on a several-places chain is a problem, not skipped",
+            _problem(lambda: plan_areas(
+                _model(["H", "__", "R"], [("R", ("H",)), ("R", ("__",))]), [_object("R", "Requirement", [])], None)),
+            True,
+        ),
+        (
+            "area: an unnamed node ends a chain, and a name past it is never read",
+            plan_areas(_model(["R"], [("R", (None, "GHOST")), ("R", ())]), [_object("R", "Requirement", [])], None)[0],
+            [("none", "several places")],
         ),
         (
             "area: the depth cut applies to that check too",

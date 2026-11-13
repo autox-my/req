@@ -37,8 +37,10 @@ Where this spec and an ADR disagree, the ADR wins; stop and report.
    - A drafted object the hierarchy reaches more than once (two specifications, or two places in one) gets no area.
      The reader does not pick one: a claim has exactly one place.
    - A drafted object under a hierarchy node that names no object (no `SPEC-OBJECT-REF`) gets no area either, and an
-     ancestor reference the file does not declare is exit 3 (amended in I-1-fix; the collision rule of choice 2 runs over
-     every ancestor chain of every drafted object, filed or not).
+     ancestor reference the file does not declare is exit 3 (amended in I-1-fix). Every ancestor chain of every drafted
+     object is walked, each place of a several-places object included and filed or not, with the same strictness and the
+     same depth cut: an undeclared ancestor is exit 3, an identifier that leaves no key and a collision are exit 1
+     (choice 2), and only a node that names no object ends a chain without error (amended in I-1-fix-2).
    - `--area-depth N` (N ≥ 1) keeps only the outermost N segments. Default: all of them.
    - **Label.** `--area-label-attr NAME` names the attribute that holds a heading's text. The label of a path is that
      attribute's value on the path's last ancestor, as one line, when it has one plain value; otherwise the `--id-attr`
@@ -74,7 +76,8 @@ Where this spec and an ADR disagree, the ADR wins; stop and report.
    - `no area: <K>` with the count per reason, only when K > 0. The reasons are `no ancestor`, `several places`
      and `unnamed ancestor` (ReqIF), and `no docname` (Sphinx-Needs) (`unnamed ancestor` added in I-1-fix).
    - `registry: <A> lines to add, <E> already declared`
-   - ReqIF's `hierarchy` line no longer says the structure is not carried.
+   - ReqIF's `hierarchy` line ends `the ancestors of N drafted objects are carried as the area (--areas)` when N > 0
+     drafts were filed (`1 drafted object` for N = 1), else `the structure is not carried` (amended in I-1-fix-2).
    - The header comment of a draft is unchanged.
 
 ## Tests first (envelope `red`)
