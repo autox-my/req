@@ -145,3 +145,5 @@ PDF is a rendering of data that ReqIF holds with its structure), and a `req impo
   read here is small, and `xml.etree` is standard library.
 - **`IDENTIFIER` as `claim_id`**, and **`ReqIF.ForeignID` as the join key**: the first is a foreign generated
   string, the second is absent from RMF and an integer in one tool and a string in another.
+
+*2026-11-13 (task I-1):* `--areas` files each draft under an area made from the specification hierarchy; see ADR 0051, note *task I-1*.

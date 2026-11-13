@@ -16,3 +16,10 @@ The excerpts hold the upstream projects' own requirement text, verbatim, as **te
 attribution above; they are not quoted in any doc (AGENTS.md: external reference material is read-only and
 never quoted verbatim into our docs). The two exports use different need `type` names for the same idea
 (`feat_req` against `sysreq`), which is the reason the reader has no default `--type`.
+
+## `areas.needs.json` (task I-1)
+
+Not an excerpt of a real export: a **synthetic** `needs.json` written by hand for the `--areas` tests
+(`tests/needs_import.rs`). Six `req` needs and one `doc`
+need that is never selected. Four of the six carry a `docname` (three distinct ones), the other two carry none
+(one has the key absent, one has it `null`). It is an export of no tool, and nothing is claimed from it about a real project.

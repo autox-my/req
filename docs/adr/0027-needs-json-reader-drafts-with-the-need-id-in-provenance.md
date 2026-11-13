@@ -94,3 +94,5 @@ project, ReqIF/CSV/Excel readers, and a `req import` command are not decided her
 - **Using the need id as the `claim_id`.** The `claim_id` allocation is req's; foreign ids carry their own
   regexes and collide across projects (`REQ_1`, `REQ-0001`). The id is kept where it is useful: provenance.
 - **Carrying `status` as ratification.** `valid` in Sphinx-Needs is not a signed Decision (ADR 0005).
+
+*2026-11-13 (task I-1):* `--areas` files each draft under an area made from the need's `docname`; see ADR 0051, note *task I-1*.

@@ -1972,3 +1972,628 @@ fn the_corpus_root_is_named_or_the_working_directory_never_an_ancestor() {
         beaten.stdout
     );
 }
+
+// --- (q) --areas: the document as the claim's area (ADR 0051 decision 2, task I-1) ----------------------------------------------
+//
+// Oracles are ADR 0051, `docs/specs/I-1-importer-areas.md` and a hand-written export,
+// `tests/fixtures/needs/areas.needs.json` (six `req` needs, four of them carrying one of three distinct docnames, and one `doc` need that
+// is not selected). No expected value is read back from a run of the script.
+
+const AREAS_EXPORT: &str = "areas.needs.json";
+const AREA_TYPES: [&str; 1] = ["req"];
+
+/// The registry the sample leaves, the label being the docname as the export writes it.
+const AREAS_REGISTRY: &str = "requirements/diag-startup requirements/Diag_Startup\n\
+                              requirements/interfaces/can-bus requirements/interfaces/CAN_Bus\n\
+                              index index\n";
+
+fn areas_fixture(name: &str) -> Fixture {
+    Fixture::with_export(name, &fixture_text(AREAS_EXPORT))
+}
+
+fn areas_run(fx: &Fixture, more: &[&str]) -> Outcome {
+    let mut args = base(&AREA_TYPES);
+    args.push("--areas".to_string());
+    args.extend(strings(more));
+    import(fx.path(), &args)
+}
+
+/// `lines` of the report that start with `prefix`.
+fn report_lines<'a>(out: &'a Outcome, prefix: &str) -> Vec<&'a str> {
+    out.stdout
+        .lines()
+        .filter(|line| line.starts_with(prefix))
+        .collect()
+}
+
+fn report_line<'a>(out: &'a Outcome, prefix: &str) -> &'a str {
+    let found = report_lines(out, prefix);
+    assert_eq!(
+        found.len(),
+        1,
+        "exactly one `{prefix}` line:\n{}",
+        out.stdout
+    );
+    found[0]
+}
+
+/// The claim a run drafted from the need `need_id`, by the report's own draft line.
+/// The registry lines a report proposes: the indented lines right after its `registry:` line,
+/// untrimmed, so a test can say what marks them.
+fn proposal_lines(out: &Outcome) -> Vec<&str> {
+    out.stdout
+        .lines()
+        .skip_while(|line| !line.starts_with("registry:"))
+        .skip(1)
+        .take_while(|line| line.starts_with("  "))
+        .collect()
+}
+
+fn claim_for(fx: &Fixture, out: &Outcome, need_id: &str) -> String {
+    for line in out.stdout.lines() {
+        if let Some(rest) = line.strip_prefix("draft ") {
+            let parts: Vec<&str> = rest.split("  ").collect();
+            if parts.get(1) == Some(&need_id) {
+                return fx.read(&format!("claims/{}.yml", parts[0]));
+            }
+        }
+    }
+    panic!("{need_id} is drafted:\n{}", out.stdout);
+}
+
+fn area_line(claim: &str) -> Option<&str> {
+    field(claim, "area: ")
+}
+
+fn schema_line(claim: &str) -> &str {
+    field(claim, "schema: ").expect("a schema line")
+}
+
+fn fake_req_reporting(fx: &Fixture, reported: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = fx.path().join("fake-bin");
+    fs::create_dir_all(&bin).expect("fake bin dir");
+    let fake = bin.join("req");
+    fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  printf 'req 0.1.0\\n  rules_v            9\\n  claim_schema       {reported}\\n'\nelse\n  exec \"{}\" \"$@\"\nfi\n",
+            req_bin().display()
+        ),
+    )
+    .expect("fake req");
+    fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).expect("chmod");
+    bin
+}
+
+/// The sample export with every need's `docname` replaced by the given ones (in file order, for the
+/// `req` needs), written as `needs.json` in a fresh fixture.
+fn with_docnames(name: &str, docnames: &[Option<&str>]) -> Fixture {
+    let mut export = fixture_json(AREAS_EXPORT);
+    let needs = needs_mut(&mut export);
+    let mut index = 0;
+    for (_id, need) in needs.iter_mut() {
+        if need["type"] == "req" {
+            let object = need.as_object_mut().expect("a need is an object");
+            match docnames.get(index).copied().flatten() {
+                Some(docname) => {
+                    object.insert("docname".to_string(), json!(docname));
+                }
+                None => {
+                    object.remove("docname");
+                }
+            }
+            index += 1;
+        }
+    }
+    Fixture::with_export(name, &serde_json::to_string_pretty(&export).expect("json"))
+}
+
+#[test]
+fn areas_are_off_by_default_a_run_without_the_flag_changes_no_byte() {
+    let fx = areas_fixture("req-needs-areas-off");
+    let out = import(fx.path(), &plus(base(&AREA_TYPES), &["--write"]));
+    out.assert_code(0, "no --areas");
+    let n1 = claim_for(&fx, &out, "N_1");
+    let claim_id = out
+        .stdout
+        .lines()
+        .find_map(|l| l.strip_prefix("draft ").filter(|r| r.contains("  N_1  ")))
+        .and_then(|r| r.split("  ").next())
+        .expect("N_1's draft line");
+    let expected = format!(
+        "# A draft claim, drafted from the Sphinx-Needs export needs.json (requirements/Diag_Startup:1). The need's id is kept\n\
+         # in rationale.source. Nothing derived is stored: `req canon` shows the parse this statement\n\
+         # derives. A draft is a proposal (ADR 0004): edit the statement, add the applicability and\n\
+         # relations it needs, and pin a load-bearing bound under `pins:` if it has one.\n\
+         schema: req.claim/2\n\
+         claim_id: {claim_id}\n\
+         statement: \"The tool shall start in two seconds.\"\n\
+         applicability: []\n\
+         rationale:\n\
+         \x20 source: \"{ORIGIN}#N_1\"\n\
+         \x20 date: {DATE}\n\
+         \x20 rejected_alternatives: []\n\
+         \x20 assumptions: []\n\
+         relations: []\n"
+    );
+    assert_eq!(n1, expected);
+    for (name, text) in fx.claims() {
+        assert!(
+            area_line(&text).is_none(),
+            "{name} carries an area:\n{text}"
+        );
+    }
+    for prefix in ["areas:", "no area:", "registry:"] {
+        assert!(
+            report_lines(&out, prefix).is_empty(),
+            "no `{prefix}` line without --areas:\n{}",
+            out.stdout
+        );
+    }
+    assert!(
+        !fx.path().join(".req").exists(),
+        "no registry without --areas"
+    );
+    assert!(
+        !report_line(&out, "not carried").contains("docname"),
+        "{}",
+        out.stdout
+    );
+}
+
+#[test]
+fn a_need_is_filed_under_its_docname_split_on_slashes_each_part_a_key() {
+    let fx = areas_fixture("req-needs-areas-docname");
+    let out = areas_run(&fx, &["--write"]);
+    out.assert_code(0, "areas, the sample");
+    let n1 = claim_for(&fx, &out, "N_1");
+    assert_eq!(schema_line(&n1), "schema: req.claim/3", "{n1}");
+    assert_eq!(
+        area_line(&n1),
+        Some("area: requirements/diag-startup"),
+        "{n1}"
+    );
+    let lines: Vec<&str> = n1.lines().collect();
+    let at = lines
+        .iter()
+        .position(|l| l.starts_with("claim_id: "))
+        .expect("a claim_id line");
+    assert_eq!(lines[at + 1], "area: requirements/diag-startup", "{n1}");
+    assert!(lines[at + 2].starts_with("statement: "), "{n1}");
+
+    for (need, area) in [
+        ("N_2", "area: requirements/diag-startup"),
+        ("N_3", "area: requirements/interfaces/can-bus"),
+        ("N_4", "area: index"),
+    ] {
+        let claim = claim_for(&fx, &out, need);
+        assert_eq!(area_line(&claim), Some(area), "{need}:\n{claim}");
+    }
+    // The statement is what it is without `--areas`: no heading or document text is added.
+    assert!(
+        n1.contains("statement: \"The tool shall start in two seconds.\"\n"),
+        "{n1}"
+    );
+}
+
+#[test]
+fn a_need_with_no_docname_is_filed_nowhere_and_counted() {
+    let fx = areas_fixture("req-needs-areas-no-docname");
+    let out = areas_run(&fx, &["--write"]);
+    out.assert_code(0, "areas, needs with no docname");
+    for need in ["N_5", "N_6"] {
+        let claim = claim_for(&fx, &out, need);
+        assert_eq!(
+            schema_line(&claim),
+            "schema: req.claim/2",
+            "{need}:\n{claim}"
+        );
+        assert!(area_line(&claim).is_none(), "{need}:\n{claim}");
+    }
+    assert_eq!(report_line(&out, "no area:"), "no area: 2 (no docname 2)");
+    assert_eq!(
+        report_line(&out, "areas:"),
+        "areas: 3 paths; filed 4 of 6 drafted"
+    );
+    assert_eq!(
+        report_line(&out, "needs "),
+        "needs 7 = drafted 6 + skipped 0 + not selected 1 (by type: doc 1)"
+    );
+    assert!(
+        !report_line(&out, "not carried").contains("docname"),
+        "docname is used, not 'not carried':\n{}",
+        out.stdout
+    );
+}
+
+#[test]
+fn depth_keeps_only_the_outermost_parts_and_the_label_is_cut_to_it() {
+    let fx = areas_fixture("req-needs-areas-depth");
+    let out = areas_run(&fx, &["--area-depth", "1", "--write"]);
+    out.assert_code(0, "--area-depth 1");
+    for (need, area) in [
+        ("N_1", "area: requirements"),
+        ("N_3", "area: requirements"),
+        ("N_4", "area: index"),
+    ] {
+        let claim = claim_for(&fx, &out, need);
+        assert_eq!(area_line(&claim), Some(area), "{need}:\n{claim}");
+    }
+    assert_eq!(
+        report_line(&out, "areas:"),
+        "areas: 2 paths; filed 4 of 6 drafted"
+    );
+    assert_eq!(
+        fx.read(".req/areas"),
+        "requirements requirements\nindex index\n"
+    );
+}
+
+#[test]
+fn the_key_rule_lowercases_collapses_runs_and_strips_the_ends() {
+    let fx = with_docnames(
+        "req-needs-areas-key",
+        &[
+            Some("_Requirements/Diag_Startup 2.x/"),
+            None,
+            None,
+            None,
+            None,
+            None,
+        ],
+    );
+    let out = areas_run(&fx, &["--write"]);
+    // The trailing `/` leaves an empty part: that is a part that leaves nothing.
+    out.assert_code(1, "an empty part");
+    assert!(
+        out.stderr.contains("_Requirements/Diag_Startup 2.x/"),
+        "{}",
+        out.stderr
+    );
+
+    let fx = with_docnames(
+        "req-needs-areas-key-ok",
+        &[
+            Some("_Requirements/Diag_Startup 2.x"),
+            None,
+            None,
+            None,
+            None,
+            None,
+        ],
+    );
+    let out = areas_run(&fx, &["--write"]);
+    out.assert_code(0, "key rule");
+    let claim = claim_for(&fx, &out, "N_1");
+    assert_eq!(
+        area_line(&claim),
+        Some("area: requirements/diag-startup-2-x"),
+        "{claim}"
+    );
+}
+
+#[test]
+fn two_docnames_that_make_one_path_are_a_problem_naming_both_and_nothing_is_written() {
+    for (name, docnames, both) in [
+        (
+            "whole",
+            [
+                Some("Diag_Startup"),
+                Some("diag-startup"),
+                None,
+                None,
+                None,
+                None,
+            ],
+            ("Diag_Startup", "diag-startup"),
+        ),
+        (
+            "prefix",
+            [
+                Some("Requirements/x"),
+                Some("requirements/y"),
+                None,
+                None,
+                None,
+                None,
+            ],
+            ("Requirements", "requirements"),
+        ),
+    ] {
+        let fx = with_docnames(&format!("req-needs-areas-collision-{name}"), &docnames);
+        let before = fx.claims();
+        let out = areas_run(&fx, &["--write"]);
+        out.assert_code(1, &format!("a key collision ({name})"));
+        assert!(
+            out.stderr.contains(both.0) && out.stderr.contains(both.1),
+            "{name}: names both: {}",
+            out.stderr
+        );
+        assert_eq!(fx.claims(), before, "{name}: nothing is drafted");
+        assert!(
+            !fx.path().join(".req/areas").exists(),
+            "{name}: no registry"
+        );
+    }
+}
+
+#[test]
+fn a_part_that_leaves_no_key_is_a_problem_naming_the_docname() {
+    let fx = with_docnames(
+        "req-needs-areas-empty-key",
+        &[Some("a/__/b"), None, None, None, None, None],
+    );
+    let before = fx.claims();
+    let out = areas_run(&fx, &["--write"]);
+    out.assert_code(1, "a part with no key");
+    assert!(out.stderr.contains("a/__/b"), "{}", out.stderr);
+    assert_eq!(fx.claims(), before);
+}
+
+#[test]
+fn a_write_creates_the_registry_in_source_order_and_a_dry_run_reports_the_same_lines() {
+    let fx = areas_fixture("req-needs-areas-registry-create");
+    let dry = areas_run(&fx, &[]);
+    dry.assert_code(0, "dry run");
+    assert_eq!(
+        report_line(&dry, "registry:"),
+        "registry: 3 lines to add, 0 already declared"
+    );
+    assert!(!fx.path().join(".req/areas").exists());
+    assert_eq!(fx.claims().len(), 1, "only the claim `req init` made");
+
+    let out = areas_run(&fx, &["--write"]);
+    out.assert_code(0, "write");
+    assert_eq!(fx.read(".req/areas"), AREAS_REGISTRY);
+    assert_eq!(proposal_lines(&out), proposal_lines(&dry));
+    assert_eq!(proposal_lines(&out).len(), 3);
+    assert!(
+        proposal_lines(&out).contains(&"  index index"),
+        "{}",
+        out.stdout
+    );
+    // Each proposed line is `<path> <label>` and pastes into `.req/areas` as it is.
+    let pasted: String = proposal_lines(&dry)
+        .iter()
+        .map(|line| format!("{}\n", line.trim()))
+        .collect();
+    assert_eq!(pasted, AREAS_REGISTRY);
+}
+
+/// An interrupt during the claims write removes what was written, as any other end of it does.
+#[test]
+fn an_interrupt_during_the_claims_write_removes_what_was_written() {
+    let fx = Fixture::new("req-needs-areas-interrupt");
+    let out = Command::new(python3())
+        .arg("-I")
+        .arg("-c")
+        .arg(INTERRUPT_SCRIPT)
+        .arg(script())
+        .arg(fx.path())
+        .output()
+        .expect("runs python3");
+    outcome(&out).assert_code(
+        0,
+        "the interrupt: 3 = no interrupt, 4 = a claim was left behind",
+    );
+}
+
+const INTERRUPT_SCRIPT: &str = r#"
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location("tool", sys.argv[1])
+tool = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tool)
+directory = pathlib.Path(sys.argv[2])
+
+class Interrupt:
+    def __fspath__(self):
+        raise KeyboardInterrupt
+
+first = directory / "REQ-0100.yml"
+try:
+    tool.write_claims([first, Interrupt()], ["a\n", "b\n"])
+except KeyboardInterrupt:
+    pass
+else:
+    sys.exit(3)
+sys.exit(4 if first.exists() else 0)
+"#;
+
+#[test]
+fn a_declared_path_is_left_alone_whatever_its_label_and_the_rest_is_appended() {
+    let fx = areas_fixture("req-needs-areas-registry-existing");
+    fx.write(".req/areas", "# my areas\nindex Home page");
+    let out = areas_run(&fx, &["--write"]);
+    out.assert_code(0, "an existing registry");
+    assert_eq!(
+        fx.read(".req/areas"),
+        "# my areas\nindex Home page\nrequirements/diag-startup requirements/Diag_Startup\nrequirements/interfaces/can-bus requirements/interfaces/CAN_Bus\n"
+    );
+    assert_eq!(
+        report_line(&out, "registry:"),
+        "registry: 2 lines to add, 1 already declared"
+    );
+}
+
+#[test]
+fn a_registry_that_is_malformed_before_the_run_is_unverifiable_and_names_the_line() {
+    let fx = areas_fixture("req-needs-areas-registry-bad");
+    fx.write(".req/areas", "index Fine\nNot A Path x\n");
+    let before = fx.claims();
+    let out = areas_run(&fx, &["--write"]);
+    out.assert_code(3, "a malformed registry");
+    assert!(out.stderr.starts_with("[UNVERIFIABLE]"), "{}", out.stderr);
+    assert!(out.stderr.contains(".req/areas:2"), "{}", out.stderr);
+    assert_eq!(fx.claims(), before);
+    assert_eq!(fx.read(".req/areas"), "index Fine\nNot A Path x\n");
+}
+
+#[cfg(unix)]
+struct Unlock(PathBuf);
+
+#[cfg(unix)]
+impl Drop for Unlock {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failure_after_the_registry_was_written_puts_it_back() {
+    use std::os::unix::fs::PermissionsExt;
+
+    for existing in [Some("# mine\nindex Home page\n"), None] {
+        let fx = areas_fixture("req-needs-areas-restore");
+        if let Some(text) = existing {
+            fx.write(".req/areas", text);
+        }
+        let claims = fx.path().join("claims");
+        fs::set_permissions(&claims, fs::Permissions::from_mode(0o555)).expect("chmod");
+        let _unlock = Unlock(claims.clone());
+        assert!(
+            fs::write(claims.join(".probe"), "x").is_err(),
+            "this test needs a user the permission bits bind (not root): claims/ is still writable"
+        );
+        let out = areas_run(&fx, &["--write"]);
+        out.assert_code(3, "claims/ cannot be written");
+        assert!(out.stderr.starts_with("[UNVERIFIABLE]"), "{}", out.stderr);
+        assert!(
+            out.stderr.contains("cannot write"),
+            "the failure is the claims write, after the registry's: {}",
+            out.stderr
+        );
+        match existing {
+            Some(text) => assert_eq!(fx.read(".req/areas"), text, "its earlier bytes are back"),
+            None => assert!(
+                !fx.path().join(".req/areas").exists(),
+                "the file the run created is removed"
+            ),
+        }
+    }
+}
+
+#[test]
+fn the_corpus_the_run_leaves_loads_and_check_finds_no_undeclared_area() {
+    let fx = areas_fixture("req-needs-areas-loads");
+    areas_run(&fx, &["--write"]).assert_code(0, "write");
+    req(fx.path(), &["canon"]).assert_code(0, "req canon on the corpus the run leaves");
+
+    let check = req(fx.path(), &["check", "--format", "json"]);
+    let doc: Value = serde_json::from_str(&check.stdout).unwrap_or_else(|e| {
+        panic!(
+            "req check --format json ({e}):\n{}\n{}",
+            check.stdout, check.stderr
+        )
+    });
+    let step = doc["steps"]
+        .as_array()
+        .expect("steps")
+        .iter()
+        .find(|s| s["kind"] == "completeness")
+        .expect("a completeness step");
+    let undeclared = step["completeness"]["undeclared_area"]
+        .as_array()
+        .unwrap_or_else(|| panic!("undeclared_area is a list when `.req/areas` exists:\n{step}"));
+    assert!(undeclared.is_empty(), "{undeclared:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn areas_need_a_req_that_reports_claim_schema_3() {
+    let fx = areas_fixture("req-needs-areas-old-req");
+    let bin = fake_req_reporting(&fx, "req.claim/2");
+    let before = fx.claims();
+    let out = import_in(
+        fx.path(),
+        &plus(base(&AREA_TYPES), &["--areas", "--write"]),
+        &Env {
+            path_first: Some(&bin),
+            ..Env::default()
+        },
+    );
+    out.assert_code(3, "--areas against a req reporting req.claim/2");
+    assert!(
+        out.stderr.starts_with("[UNVERIFIABLE]")
+            && out.stderr.contains("req.claim/2")
+            && out.stderr.contains("req.claim/3"),
+        "{}",
+        out.stderr
+    );
+    assert_eq!(fx.claims(), before);
+    assert!(!fx.path().join(".req/areas").exists());
+
+    let out = import_in(
+        fx.path(),
+        &plus(base(&AREA_TYPES), &["--write"]),
+        &Env {
+            path_first: Some(&bin),
+            ..Env::default()
+        },
+    );
+    out.assert_code(0, "no --areas against a req reporting req.claim/2");
+
+    let fx = areas_fixture("req-needs-areas-new-req");
+    let bin = fake_req_reporting(&fx, "req.claim/3");
+    let out = import_in(
+        fx.path(),
+        &plus(base(&AREA_TYPES), &["--areas", "--write"]),
+        &Env {
+            path_first: Some(&bin),
+            ..Env::default()
+        },
+    );
+    out.assert_code(0, "--areas against a req reporting req.claim/3");
+}
+
+#[test]
+fn a_malformed_area_option_is_a_usage_error() {
+    let fx = areas_fixture("req-needs-areas-usage");
+    let before = fx.claims();
+    for extra in [
+        vec!["--areas", "--area-depth", "0"],
+        vec!["--areas", "--area-depth", "-1"],
+        vec!["--areas", "--area-depth", "two"],
+        vec!["--area-depth", "1"],
+    ] {
+        let out = import(fx.path(), &plus(base(&AREA_TYPES), &extra));
+        out.assert_code(2, &format!("{extra:?}"));
+    }
+    assert_eq!(fx.claims(), before);
+
+    // The control: the same options, well formed, are a run.
+    let out = import(
+        fx.path(),
+        &plus(base(&AREA_TYPES), &["--areas", "--area-depth", "1"]),
+    );
+    out.assert_code(0, "well-formed area options");
+}
+
+#[test]
+fn the_self_check_holds_the_key_rule() {
+    let bare = Fixture::new("req-needs-areas-selfcheck");
+    let out = Command::new(python3())
+        .arg(script())
+        .arg("--self-check")
+        .current_dir(bare.path())
+        .env("PATH", "")
+        .env_remove("REQ_ROOT")
+        .output()
+        .expect("runs tools/needs_import.py --self-check");
+    let out = outcome(&out);
+    out.assert_code(0, "--self-check");
+    let rows: Vec<&str> = out
+        .stdout
+        .lines()
+        .filter(|line| line.trim_start().starts_with("ok") && line.contains(" key: "))
+        .collect();
+    assert!(
+        rows.len() >= 6,
+        "the self-check holds the key rule's cases ({} rows):\n{}",
+        rows.len(),
+        out.stdout
+    );
+    assert!(out.stdout.contains("0 failure(s)"), "{}", out.stdout);
+}

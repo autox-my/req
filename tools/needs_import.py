@@ -31,6 +31,18 @@ What it decides, and what it refuses to guess:
   links      typed links name need ids, and a claim's `relations` name claim ids that do not
              exist until req allocates them. They are not carried; the report counts the drafted
              needs that had them and names the fields.
+  area       opt-in, `--areas` (ADR 0051 decision 2): a need's place is its `docname`. The name is
+             split on `/`, each part is made a key (lowercase it; replace each run of characters
+             outside [a-z0-9] with one `-`; strip `-` from both ends), and the keys joined by `/`
+             are the claim's `area`. Never a section title or number: both move when the source is
+             edited. A part that leaves no key, or two names that make one path, is exit 1 naming
+             them (never merged). A need with no `docname` gets no area. `--area-depth N` keeps the
+             outermost N parts. The draft is then `req.claim/3` with `area:` after `claim_id`;
+             without an area it stays `req.claim/2`. The statement is the same either way (area
+             supplies no meaning). The reader also proposes lines for `.req/areas` (`<path>
+             <label>`, the label the docname as written, cut to the kept depth); `--write` appends
+             those the registry does not declare, and a path it already declares is left alone.
+             Without `--areas` every byte of the output stays as it was.
 
 The output accounts for every need in the file and ends with one line that must add up:
 
@@ -39,12 +51,14 @@ The output accounts for every need in the file and ends with one line that must 
 Exit codes, the same three-state discipline as req (ADR 0027 section 7):
 
   0  drafted (dry run, or written with --write)
-  1  a definite problem — nothing drafted, a named type the file does not have, or a need
-     already drafted from this origin; nothing was written
+  1  a definite problem — nothing drafted, a named type the file does not have, a need
+     already drafted from this origin, or (--areas) a docname part that leaves no key or two
+     names that make one path; nothing was written
   2  usage — a missing or malformed argument, a bad date
   3  UNVERIFIABLE — the export, the corpus, the subject registry or `req` cannot be read
      honestly (not JSON, no `versions`, several versions and no `current_version`, a corpus the
-     loader rejects, a `req` judging another claim schema)
+     loader rejects, a `req` judging another claim schema, `--areas` against a `req` that does
+     not report `claim_schema req.claim/3`, an `.req/areas` that is malformed)
 
 Nothing derived is ever written, and no pin is guessed.
 """
@@ -89,13 +103,23 @@ DRAFT_SCHEMA = "req.claim/2"
 ACCEPTED_SCHEMAS = (DRAFT_SCHEMA, "req.claim/3")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+# The one schema a draft with an `area` declares (ADR 0051 decision 6): `area` is `req.claim/3` only.
+AREA_SCHEMA = "req.claim/3"
+AREAS_PATH = ".req/areas"
+# A key is made from an identifier by these rules, one rule in both readers (docs/specs/I-1).
+KEY_RUN_RE = re.compile(r"[^a-z0-9]+")
+ASCII_LOWER = {code: code + 32 for code in range(ord("A"), ord("Z") + 1)}
+# The reasons a drafted need is filed under no area, in report order.
+NO_AREA_REASONS = ("no docname",)
+
 CLAIMS_DIR = "claims"
 REGISTRY_PATH = "aliases/subjects.yml"
 REQ_BINARY = "req"
 
 # The draft claim, byte for byte: a fixed template, not a serialized mapping (python3's standard
 # library has no YAML writer, and a serializer's diff is unreadable). It is a `req.claim/2`
-# claim: the authored fields only, nothing derived and no pin (ADR 0022). The header comment
+# claim (`req.claim/3`, with an `area:` line, only under --areas): the authored fields only, nothing
+# derived and no pin (ADR 0022). The header comment
 # names the export and the place in the source the need came from; it carries no source field.
 CLAIM_TEMPLATE = """\
 # A draft claim, drafted from the Sphinx-Needs export {export} ({location}). The need's id is kept
@@ -104,7 +128,7 @@ CLAIM_TEMPLATE = """\
 # relations it needs, and pin a load-bearing bound under `pins:` if it has one.
 schema: {schema}
 claim_id: {claim_id}
-statement: {statement}
+{area_line}statement: {statement}
 applicability: []
 rationale:
   source: {quoted_source}
@@ -144,6 +168,29 @@ inference, and the report says "inferred": a non-empty list of strings that is `
 `_back`, or has a `<name>_back` partner field somewhere in the file. Every other field is listed
 under "fields", so nothing is hidden; `relations` stays `[]`.
 
+--areas     opt-in: file each draft under an area made from the need's `docname` (ADR 0051).
+             The docname is split on `/`; each part becomes a key: lowercase it, replace each run
+             of characters outside [a-z0-9] with one `-`, strip `-` from both ends. The keys
+             joined by `/` are the `area`, so `requirements/Diag_Startup` is
+             `requirements/diag-startup`. A section title or number is never a key (both move
+             when the source is edited).
+             A need with no `docname` gets no area and stays `req.claim/2`. A docname part that
+             leaves no key, or two names that make one path (`Diag_Startup` and `diag-startup`),
+             is exit 1 naming them: they are never merged.
+             A draft with an area is `req.claim/3` with `area: <path>` after `claim_id`; the
+             statement is exactly what it is without `--areas`.
+             The area registry `.req/areas` (`<path> <label>`, one line per area, the line order
+             is the reading order) is proposed, not imposed: a dry run prints the lines it would
+             add, `--write` appends those for paths the file does not declare (in the order the
+             export first shows them; the file is created when there is none). A path it already
+             declares is left alone, whatever its label. The label is the docname as the export
+             writes it, cut to the kept depth. If the claims then fail to write, the registry's
+             earlier bytes come back.
+             The report gains `areas: <P> paths; filed <F> of <D> drafted`, `no area: <K> (no
+             docname <n>)` when K > 0, and `registry: <A> lines to add, <E> already declared`.
+             `--areas` needs a `req` that reports `claim_schema req.claim/3`; any other is exit 3.
+  --area-depth N  with --areas: keep only the outermost N parts of each docname (N >= 1).
+
 --date is the rationale date (the retrieval date of the export) and is required. It is never
 borrowed from the clock or from a commit.
 
@@ -157,8 +204,9 @@ dry run is the default; --write writes. The report ends with one line that adds 
 needs mapping that was read.
 
 exit: 0 drafted (dry run, or written) · 1 a definite problem, nothing written (nothing
-drafted, a --type the file does not have, or a need already drafted from this origin) ·
-2 usage · 3 the export, the corpus, the subject registry or `req` cannot be read.
+drafted, a --type the file does not have, a need already drafted from this origin, or with
+--areas a docname part that leaves no key or two names that make one path) · 2 usage · 3 the
+export, the corpus, the subject registry, the area registry or `req` cannot be read.
 
 This script is a starting point to COPY and adjust for your project — it is not a req
 subcommand.
@@ -509,17 +557,114 @@ def unquote_scalar(value):
     return text.split(" #", 1)[0].rstrip()
 
 
-def render_claim(export, location, statement, source, date, claim_id, schema):
-    """One draft claim file's exact bytes."""
+def render_claim(export, location, statement, source, date, claim_id, schema, area=None):
+    """One draft claim file's exact bytes. An `area` makes the draft `AREA_SCHEMA` with an `area:`
+    line after `claim_id`; with none, `schema` is written and the bytes are what they always were."""
     return CLAIM_TEMPLATE.format(
         export=one_line(export),
         location=one_line(location),
-        schema=schema,
+        schema=AREA_SCHEMA if area is not None else schema,
         claim_id=claim_id,
+        area_line=f"area: {area}\n" if area is not None else "",
         statement=yaml_quote(statement),
         quoted_source=yaml_quote(source),
         date=date,
     )
+
+
+def area_key(text):
+    """The key a source identifier makes: lowercase it (ASCII only, so no locale or Unicode case
+    mapping decides), replace each run of characters outside `[a-z0-9]` with one `-`, strip `-`
+    from both ends. Empty when nothing is left (the caller names the identifier)."""
+    return KEY_RUN_RE.sub("-", str(text).translate(ASCII_LOWER)).strip("-")
+
+
+def docname_parts(need):
+    """A need's docname split on `/`, or None when it has none (absent, null, not text, blank)."""
+    docname = need.get("docname")
+    if not isinstance(docname, str) or not docname.strip():
+        return None
+    return docname.split("/")
+
+
+def need_area(need_id, need, depth):
+    """`("area", path, parts)` for a need with a docname, `("none", reason)` for one without.
+
+    `parts` are the docname's parts as written, cut to `depth` (None keeps all of them); `path` is
+    their keys joined by `/`. A part that leaves no key is a Problem naming the docname."""
+    parts = docname_parts(need)
+    if parts is None:
+        return "none", "no docname"
+    kept = parts if depth is None else parts[:depth]
+    keys = []
+    for part in kept:
+        key = area_key(part)
+        if not key:
+            raise Problem(
+                f"need {one_line(need_id)}: the docname {one_line(need['docname'])!r} has a part "
+                f"({one_line(part)!r}) that leaves no key (a key needs a letter or a digit from "
+                "[A-Za-z0-9]) — rename the document, or pass --area-depth to stop above it"
+            )
+        keys.append(key)
+    return "area", "/".join(keys), kept
+
+
+def plan_areas(entries, depth):
+    """`(placed, wanted)` for `[(need id, need)]`, in file order.
+
+    `placed[i]` is `("area", path)` or `("none", reason)`. `wanted` is `[(path, label)]` in the
+    order the export first shows each path; the label is the docname as written, cut to the kept
+    depth, as one line. Two different spellings that make one path — at any depth, so
+    `Requirements/a` and `requirements/b` too — are a Problem naming both: a place is never merged.
+    """
+    owners, placed, wanted, seen = {}, [], [], set()
+    for need_id, need in entries:
+        found = need_area(need_id, need, depth)
+        if found[0] == "none":
+            placed.append(found)
+            continue
+        _kind, path, parts = found
+        keys = path.split("/")
+        for index, key in enumerate(keys):
+            prefix = "/".join(keys[: index + 1])
+            first = owners.setdefault(prefix, (parts[index], need_id, need["docname"]))
+            if first[0] != parts[index]:
+                raise Problem(
+                    f"two different names make the area path {prefix!r}: "
+                    f"{one_line(first[0])!r} (need {one_line(first[1])}, docname "
+                    f"{one_line(first[2])!r}) and {one_line(parts[index])!r} (need "
+                    f"{one_line(need_id)}, docname {one_line(need['docname'])!r}) — they are never "
+                    "merged: rename one of the documents"
+                )
+        placed.append(("area", path))
+        if path not in seen:
+            seen.add(path)
+            wanted.append((path, one_line("/".join(parts))))
+    return placed, wanted
+
+
+def declared_paths(text):
+    """The paths an `.req/areas` text declares: the first word of each line that is not blank and
+    does not start with `#`. (The file is validated by `req` itself; this only reads the keys.)"""
+    paths = set()
+    for raw in text.split("\n"):
+        line = raw.rstrip("\r").strip()
+        if line and not line.startswith("#"):
+            paths.add(re.split(r"[ \t]", line, maxsplit=1)[0])
+    return paths
+
+
+def registry_suffix(existing, wanted):
+    """`(suffix, added, declared)` for the registry: the bytes to append to `existing` (None when
+    the file does not exist), the `[(path, label)]` lines that adds, and how many wanted paths the
+    file already declares. A declared path is left alone whatever its label."""
+    have = declared_paths(existing or "")
+    added = [(path, label) for path, label in wanted if path not in have]
+    declared = len(wanted) - len(added)
+    if not added:
+        return "", added, declared
+    separator = "\n" if existing and not existing.endswith("\n") else ""
+    return separator + "".join(f"{path} {label}\n" for path, label in added), added, declared
 
 
 def location_of(need):
@@ -636,13 +781,16 @@ def req_binary():
     return binary
 
 
-def loader_check(binary, root, targets, texts):
+def loader_check(binary, root, targets, texts, registry=None):
     """Run the corpus plus the drafts through the real loader (`req canon`) before anything is
     written, in a scratch copy of the corpus, and raise Unverifiable if it does not load.
 
     The loader is the only judge of a claim file: a template that drifted from the format would
     be written and reported as drafted all the same. The same run is what turns an older-schema
     corpus away (its message names tools/migrate_claims.py).
+
+    `registry` is the text `.req/areas` would hold after the run (None: there would be none). The
+    scratch copy gets it, and `req trace --format json`, the command that validates it, judges it.
     """
     with tempfile.TemporaryDirectory(prefix="req-needs-") as scratch:
         copy = pathlib.Path(scratch)
@@ -650,12 +798,26 @@ def loader_check(binary, root, targets, texts):
             if (root / name).is_dir():
                 shutil.copytree(root / name, copy / name)
         (copy / CLAIMS_DIR).mkdir(exist_ok=True)
+        # `copytree` copies the directory's mode: a read-only `claims/` must not stop the drafts
+        # from being placed in the copy, since it is the loader that is being asked.
+        os.chmod(copy / CLAIMS_DIR, 0o755)
         for (_claim_id, target), text in zip(targets, texts):
             (copy / CLAIMS_DIR / target.name).write_text(text, encoding="utf-8")
+        if registry is not None:
+            (copy / AREAS_PATH).parent.mkdir(exist_ok=True)
+            (copy / AREAS_PATH).write_text(registry, encoding="utf-8")
         try:
             completed = subprocess.run(
                 [binary, "--root", str(copy), "canon"],
                 capture_output=True, text=True, check=False,
+            )
+            traced = (
+                subprocess.run(
+                    [binary, "--root", str(copy), "trace", "--format", "json"],
+                    capture_output=True, text=True, check=False,
+                )
+                if registry is not None and completed.returncode == 0
+                else None
             )
         except OSError as error:
             raise Unverifiable(f"cannot run `{binary} canon`: {error}") from error
@@ -665,15 +827,51 @@ def loader_check(binary, root, targets, texts):
             f"the corpus plus these drafts does not load (`req canon` exited "
             f"{completed.returncode}), so nothing was written. The loader says why:\n{detail}"
         )
+    # Exit 2 is the usage class: `req trace --format json` refuses a malformed registry that way,
+    # naming each bad line. Its other exits are verdicts about the corpus, not about the registry.
+    if traced is not None and traced.returncode == 2:
+        raise Unverifiable(
+            f"the area registry this run would leave ({AREAS_PATH}) is refused by `req`, so nothing "
+            f"was written. `req` says why:\n{traced.stderr.strip() or 'no output'}"
+        )
 
 
-def read_axes():
+def check_registry(binary, root):
+    """The text of `<root>/.req/areas` (None when there is none), after `req` has judged it.
+
+    A registry that is malformed before the run is not this tool's to repair: it is Unverifiable,
+    with what `req` names (every bad `.req/areas:<line>`). `req trace --format json` is the
+    command that reads it, and exit 2 is how it refuses one."""
+    path = root / AREAS_PATH
+    if not path.exists() and not path.is_symlink():
+        return None
+    try:
+        text = path.read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise Unverifiable(f"cannot read the area registry ({path}): {error}") from error
+    try:
+        completed = subprocess.run(
+            [binary, "--root", str(root), "trace", "--format", "json"],
+            capture_output=True, text=True, check=False,
+        )
+    except OSError as error:
+        raise Unverifiable(f"cannot run `{binary} trace`: {error}") from error
+    if completed.returncode == 2:
+        raise Unverifiable(
+            f"the area registry ({path}) is malformed, and this tool does not repair one. `req` "
+            f"says:\n{completed.stderr.strip() or 'no output'}"
+        )
+    return text
+
+
+def read_axes(areas=False):
     """`(rules_v, DRAFT_SCHEMA)`, after asking the `req` on PATH what it reports.
 
-    The schema a draft declares is `DRAFT_SCHEMA`, always — never the one the binary reports. The
-    reported `claim_schema` only decides whether this tool may draft against that build at all
-    (`ACCEPTED_SCHEMAS`); `rules_v` is the rules version the drafts' parse is derived under
-    (reported)."""
+    The schema a draft declares is `DRAFT_SCHEMA`, always — never the one the binary reports (a
+    draft with an area declares `AREA_SCHEMA`, see `render_claim`). The reported `claim_schema` only
+    decides whether this tool may draft against that build at all (`ACCEPTED_SCHEMAS`); with
+    `areas` it must be `AREA_SCHEMA`, since a `req.claim/2` build would refuse `area`.
+    `rules_v` is the rules version the drafts' parse is derived under (reported)."""
     binary = req_binary()
     try:
         completed = subprocess.run(
@@ -698,6 +896,12 @@ def read_axes():
             f"claims and accepts a req that reports {' or '.join(ACCEPTED_SCHEMAS)}: a draft under "
             "another schema would not load — use a matching req build or the matching copy of "
             "this tool"
+        )
+    if areas and axes[1] != AREA_SCHEMA:
+        raise Unverifiable(
+            f"`{binary}` reports claim_schema {axes[1]}, but --areas drafts {AREA_SCHEMA} claims (an "
+            f"`area` needs {AREA_SCHEMA}) and accepts only a req that reports {AREA_SCHEMA}: a draft "
+            "with an area would not load — use a matching req build, or run without --areas"
         )
     # The binary was judged acceptable; the draft declares the schema this tool is written for.
     return axes[0], DRAFT_SCHEMA
@@ -736,7 +940,8 @@ def write_claims(targets, texts):
     except OSError as error:
         remove_written(written)
         raise Unverifiable(f"cannot write {error.filename or 'the claims'}: {error}") from error
-    except Problem:
+    except BaseException:
+        # Anything that ends the write — a refusal, an interrupt — takes the claims it wrote with it.
         remove_written(written)
         raise
     return written
@@ -756,6 +961,52 @@ def remove_written(written):
             + "\n  ".join(leftovers),
             file=sys.stderr,
         )
+
+
+class RegistryWrite:
+    """The change a run made to `.req/areas`, and how to take it back."""
+
+    def __init__(self, path, before, made_dir):
+        self.path = path
+        self.before = before  # the file's earlier bytes, or None when the run created it
+        self.made_dir = made_dir
+
+    def rollback(self):
+        """Put the earlier bytes back, or remove the file the run created. Reported, never swallowed."""
+        try:
+            if self.before is None:
+                self.path.unlink()
+                if self.made_dir:
+                    self.path.parent.rmdir()
+            else:
+                self.path.write_bytes(self.before)
+        except OSError as error:
+            print(
+                f"[UNVERIFIABLE] could not restore {self.path} after a failed run — restore it by "
+                f"hand: {error}",
+                file=sys.stderr,
+            )
+
+
+def write_registry(path, existing, suffix):
+    """Append `suffix` to `path` (creating it, and `.req/`, when `existing` is None); the
+    `RegistryWrite` that undoes it. `existing` is the text read before, so the bytes to restore
+    are exactly those."""
+    made_dir = not path.parent.exists()
+    before = None if existing is None else path.read_bytes()
+    try:
+        path.parent.mkdir(exist_ok=True)
+        handle = open(path, "xb" if before is None else "ab")
+    except OSError as error:
+        raise Unverifiable(f"cannot write {path}: {error}") from error
+    undo = RegistryWrite(path, before, made_dir)
+    try:
+        with handle:
+            handle.write(suffix.encode("utf-8"))
+    except OSError as error:
+        undo.rollback()
+        raise Unverifiable(f"cannot write {path}: {error}") from error
+    return undo
 
 
 # --- the driver -------------------------------------------------------------
@@ -859,7 +1110,15 @@ def run(args):
             "again — or pass the --origin the export was retrieved from this time"
         )
 
-    rules_v, schema = read_axes()
+    rules_v, schema = read_axes(args.areas)
+
+    # --areas: where each draft is filed, and the registry lines that proposes. Planned before any
+    # claim is rendered, so a name that cannot be a key stops the run with nothing written.
+    placed, wanted, existing, suffix, added, registry_declared = None, [], None, "", [], 0
+    if args.areas:
+        placed, wanted = plan_areas([(need_id, need) for need_id, need, _s in drafts], args.area_depth)
+        existing = check_registry(req_binary(), corpus.root)
+        suffix, added, registry_declared = registry_suffix(existing, wanted)
 
     number = next_claim_number(corpus.used)
     targets, texts = [], []
@@ -875,12 +1134,14 @@ def run(args):
                 date=args.date,
                 claim_id=claim_id,
                 schema=schema,
+                area=placed[offset][1] if placed is not None and placed[offset][0] == "area" else None,
             )
         )
 
-    loader_check(req_binary(), corpus.root, targets, texts)
+    final_registry = None if not args.areas or (existing is None and not added) else (existing or "") + suffix
+    loader_check(req_binary(), corpus.root, targets, texts, final_registry)
 
-    written = []
+    written, registry_write = [], None
     if args.write:
         for _claim_id, target in targets:
             if target.exists() or target.is_symlink():
@@ -888,19 +1149,30 @@ def run(args):
                     f"refusing to write {target}: it already exists — a claim file is never "
                     "overwritten"
                 )
-        written = write_claims([target for _claim_id, target in targets], texts)
+        # The registry first, then the claims: if anything fails once the registry changed, its
+        # earlier bytes come back, so a run is all of it or none of it.
+        try:
+            if added:
+                registry_write = write_registry(corpus.root / AREAS_PATH, existing, suffix)
+            written = write_claims([target for _claim_id, target in targets], texts)
+        except BaseException:
+            if registry_write is not None:
+                registry_write.rollback()
+            raise
 
     all_keys = {key for need in needs.values() for key in need}
     declared = declared_link_fields(export, version)
     fields, link_names, with_links = not_carried(
         [need for _id, need, _s in drafts], all_keys, declared
     )
+    filing = (placed, wanted, added, registry_declared) if args.areas else None
     report(args, corpus, label, version, drafts, skips, targets, written, rules_v,
-           (fields, link_names, with_links, declared is not None), recon)
+           (fields, link_names, with_links, declared is not None), recon, filing, registry_write)
     return 0
 
 
-def report(args, corpus, label, version, drafts, skips, targets, written, rules_v, carried, recon):
+def report(args, corpus, label, version, drafts, skips, targets, written, rules_v, carried, recon,
+           filing=None, registry_write=None):
     """Print what was drafted, what was skipped and why, what was not carried, and what was
     written — ending with the line that adds up."""
     fields, link_names, with_links, from_schema = carried
@@ -924,6 +1196,10 @@ def report(args, corpus, label, version, drafts, skips, targets, written, rules_
         f"not carried: {shown}; typed links on {with_links} of {len(drafts)} drafted needs"
         f"{carried_links} — `relations` stays []"
     )
+    if filing is not None:
+        placed, wanted, added, registry_declared = filing
+        for line in area_report_lines(placed, wanted, added, registry_declared, len(drafts)):
+            print(line)
     print(
         "note: the source need ids are ignored for the claim_id (req allocates it) and kept as "
         "provenance in rationale.source"
@@ -936,9 +1212,32 @@ def report(args, corpus, label, version, drafts, skips, targets, written, rules_
     if written:
         names = ", ".join(relative(corpus.root, target) for target in written)
         print(f"wrote: {len(written)} claim(s) — {names}")
+        if registry_write is not None:
+            print(f"wrote: {len(filing[2])} line(s) appended to {AREAS_PATH}")
     else:
         print("dry run: nothing written — pass --write to write them")
     print(recon)
+
+
+def area_report_lines(placed, wanted, added, registry_declared, drafted):
+    """The report's `--areas` lines: where the drafts were filed, why some were not, and the registry.
+
+    `areas:` counts distinct paths and the drafts filed; `no area:` (only when some draft has none)
+    counts them per reason in `NO_AREA_REASONS` order; `registry:` counts the lines to add and the
+    paths already declared; each line to add follows as `  <path> <label>`, ready to paste into `.req/areas`."""
+    lines = []
+    filed = sum(1 for kind, _value in placed if kind == "area")
+    lines.append(f"areas: {len(wanted)} paths; filed {filed} of {drafted} drafted")
+    reasons = {}
+    for kind, value in placed:
+        if kind == "none":
+            reasons[value] = reasons.get(value, 0) + 1
+    if reasons:
+        shown = ", ".join(f"{name} {reasons[name]}" for name in NO_AREA_REASONS if name in reasons)
+        lines.append(f"no area: {sum(reasons.values())} ({shown})")
+    lines.append(f"registry: {len(added)} lines to add, {registry_declared} already declared")
+    lines.extend(f"  {path} {label}" for path, label in added)
+    return lines
 
 
 def field(text, prefix):
@@ -1211,6 +1510,115 @@ def self_check():
             _refuses(lambda: classify("N", {"type": "req", "content": ["x"]}, types, ())),
             True,
         ),
+        ("key: lowercases", area_key("Diag"), "diag"),
+        ("key: a run of other characters is one hyphen", area_key("a__ .b"), "a-b"),
+        ("key: the ends are stripped", area_key("_Sec.A 12_"), "sec-a-12"),
+        ("key: digits stay", area_key("X2"), "x2"),
+        ("key: nothing left is empty", area_key("___"), ""),
+        ("key: a non-ASCII letter is not a key character", area_key("\u00dcn\u00ef"), "n"),
+        ("key: only ASCII is lowercased (the Kelvin sign is no k)", area_key("\u212a"), ""),
+        (
+            "area: a docname is split on `/`, each part a key",
+            need_area("N", {"docname": "requirements/Diag_Startup"}, None),
+            ("area", "requirements/diag-startup", ["requirements", "Diag_Startup"]),
+        ),
+        (
+            "area: the depth keeps the outermost parts",
+            need_area("N", {"docname": "a/B/c"}, 2),
+            ("area", "a/b", ["a", "B"]),
+        ),
+        ("area: no docname is no area", need_area("N", {}, None), ("none", "no docname")),
+        ("area: a null docname is no area", need_area("N", {"docname": None}, None), ("none", "no docname")),
+        ("area: a blank docname is no area", need_area("N", {"docname": "  "}, None), ("none", "no docname")),
+        (
+            "area: a part that leaves no key is a problem",
+            _problem(lambda: need_area("N", {"docname": "a/__/b"}, None)),
+            True,
+        ),
+        (
+            "area: a part above the depth is never judged",
+            need_area("N", {"docname": "a/__/b"}, 1)[1],
+            "a",
+        ),
+        (
+            "area: two spellings of one path are a problem, never merged",
+            _problem(lambda: plan_areas(
+                [("A", {"docname": "Diag_Startup"}), ("B", {"docname": "diag-startup"})], None)),
+            True,
+        ),
+        (
+            "area: two spellings of one prefix are a problem too",
+            _problem(lambda: plan_areas(
+                [("A", {"docname": "Req/a"}), ("B", {"docname": "req/b"})], None)),
+            True,
+        ),
+        (
+            "area: one spelling twice is one path, labelled as written",
+            plan_areas([("A", {"docname": "R/Dia g"}), ("B", {"docname": "R/Dia g"})], None),
+            ([("area", "r/dia-g"), ("area", "r/dia-g")], [("r/dia-g", "R/Dia g")]),
+        ),
+        (
+            "area: the paths come in the order the export first shows them",
+            plan_areas([("A", {"docname": "z"}), ("B", {"docname": "a"}), ("C", {})], None)[1],
+            [("z", "z"), ("a", "a")],
+        ),
+        (
+            "area: the label is the docname cut to the kept depth",
+            plan_areas([("A", {"docname": "Req/Dia g/x"})], 2)[1],
+            [("req/dia-g", "Req/Dia g")],
+        ),
+        (
+            "registry: the declared paths are the first words of the lines that are not comments",
+            sorted(declared_paths("# c\n\na One\r\nb/c\tTwo # x\n")),
+            ["a", "b/c"],
+        ),
+        (
+            "registry: a declared path is left alone, whatever its label",
+            registry_suffix("a Mine\n", [("a", "Theirs"), ("b", "B")]),
+            ("b B\n", [("b", "B")], 1),
+        ),
+        (
+            "registry: a file with no final newline gets one before the appended lines",
+            registry_suffix("a Mine", [("b", "B")])[0],
+            "\nb B\n",
+        ),
+        (
+            "registry: no file, or an empty one, is appended to as it is",
+            [registry_suffix(None, [("b", "B")])[0], registry_suffix("", [("b", "B")])[0]],
+            ["b B\n", "b B\n"],
+        ),
+        (
+            "registry: everything declared adds nothing",
+            registry_suffix("a A\n", [("a", "X")]),
+            ("", [], 1),
+        ),
+        (
+            "report: the areas lines count paths, drafts filed, the reasons and the registry",
+            area_report_lines([("area", "a"), ("none", "no docname"), ("area", "a")], [("a", "A")], [("a", "A")], 0, 3),
+            ["areas: 1 paths; filed 2 of 3 drafted", "no area: 1 (no docname 1)",
+             "registry: 1 lines to add, 0 already declared", "  a A"],
+        ),
+        (
+            "report: with every draft filed there is no `no area` line",
+            area_report_lines([("area", "a")], [("a", "A")], [], 1, 1),
+            ["areas: 1 paths; filed 1 of 1 drafted", "registry: 0 lines to add, 1 already declared"],
+        ),
+        (
+            "draft: an area makes it req.claim/3 with `area:` after claim_id",
+            [line for line in render_claim(
+                export="needs.json", location="d:1", statement="x", source="o#N", date="2026-11-05",
+                claim_id="REQ-0016", schema="req.claim/2", area="a/b",
+            ).splitlines() if line.startswith(("schema:", "claim_id:", "area:", "statement:"))],
+            ["schema: req.claim/3", "claim_id: REQ-0016", "area: a/b", 'statement: "x"'],
+        ),
+        (
+            "draft: with no area the draft is the req.claim/2 it always was",
+            [line for line in render_claim(
+                export="needs.json", location="d:1", statement="x", source="o#N", date="2026-11-05",
+                claim_id="REQ-0016", schema="req.claim/2",
+            ).splitlines() if line.startswith(("schema:", "area:"))],
+            ["schema: req.claim/2"],
+        ),
     ]
 
     failures = 0
@@ -1231,6 +1639,15 @@ def _refuses(call):
     return False
 
 
+def _problem(call):
+    """Whether `call()` raises a definite problem (exit 1)."""
+    try:
+        call()
+    except Problem:
+        return True
+    return False
+
+
 # --- arguments --------------------------------------------------------------
 
 
@@ -1247,6 +1664,13 @@ def named_arg(text):
     if not text.strip():
         raise argparse.ArgumentTypeError("the value is empty")
     return text
+
+
+def depth_arg(text):
+    """A positive integer in ASCII digits: a depth below 1 keeps nothing, so it is a usage error."""
+    if not re.fullmatch(r"[0-9]+", text) or int(text) < 1:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a whole number of at least 1")
+    return int(text)
 
 
 def parse_args(argv):
@@ -1279,6 +1703,14 @@ def parse_args(argv):
     parser.add_argument(
         "--date", required=True, type=value_arg, metavar="YYYY-MM-DD",
         help="the rationale date (the export's retrieval date); never invented",
+    )
+    parser.add_argument(
+        "--areas", action="store_true",
+        help="file each draft under an area made from its docname, and propose `.req/areas` lines",
+    )
+    parser.add_argument(
+        "--area-depth", type=depth_arg, metavar="<N>",
+        help="with --areas: keep only the outermost N parts of each docname (N >= 1)",
     )
     parser.add_argument(
         "--version-key", type=named_arg, metavar="<version>",
@@ -1317,6 +1749,9 @@ def main(argv):
             f"usage: --date must be a calendar date in YYYY-MM-DD form, not {args.date!r}",
             file=sys.stderr,
         )
+        return 2
+    if args.area_depth is not None and not args.areas:
+        print("usage: --area-depth belongs to --areas", file=sys.stderr)
         return 2
     try:
         return run(args)
