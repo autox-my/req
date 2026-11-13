@@ -16,6 +16,10 @@
 //! * declared with no record → **unratified** (UNVERIFIABLE); a declared claim the corpus does not
 //!   hold → UNVERIFIABLE; a record with no declaration left → **orphaned**, listed, not a finding.
 //!
+//! A `req-satisfies:` with **no** claim id after it is a **mention** (ADR 0052 decision 6), not a
+//! declaration: help text and comments that document the marker are counted and listed, never a link
+//! and never UNVERIFIABLE. A token that is present but malformed is still named (UNKNOWN CLAIM).
+//!
 //! The comparison's own selectors are the claim's *current* ones for both sides: a statement edit is
 //! what is judged, and the record holds no applicability to compare.
 //!
@@ -177,7 +181,8 @@ impl LinkError {
     }
 }
 
-/// Validate `.req/design`: one repo-relative directory or file per line. Grammar as the other
+/// Validate `.req/design`: one repo-relative directory or file per line (`.` or `./` is the repository root, held as the
+/// empty root). Grammar as the other
 /// `.req/` lists — `#` starts a comment, a blank line is skipped, a trailing CR is stripped. An
 /// absolute path, a `..` component or a line of several words is malformed, and every bad line is
 /// named `<file>:<line>` in one run.
@@ -191,9 +196,12 @@ pub fn parse_roots(text: &str) -> Result<Vec<String>, Vec<String>> {
         if line.is_empty() {
             continue;
         }
+        // A leading `./` is not part of the path, so it is taken off first: `.//tmp/x` is then `/tmp/x`, absolute,
+        // and refused like it, never joined onto the corpus root (where it would replace it).
+        let relative = line.trim_start_matches("./");
         let reason = if line.split_whitespace().count() > 1 {
             Some("a line is exactly one repo-relative path")
-        } else if line.starts_with('/') || line.starts_with('\\') {
+        } else if relative.starts_with('/') || relative.starts_with('\\') {
             Some("an absolute path is not repo-relative")
         } else if line.split(['/', '\\']).any(|part| part == "..") {
             Some("a `..` component leaves the repository")
@@ -204,14 +212,14 @@ pub fn parse_roots(text: &str) -> Result<Vec<String>, Vec<String>> {
             errors.push(format!("{DESIGN}:{number}: `{line}`: {reason}"));
             continue;
         }
-        let normalized = line.trim_start_matches("./").trim_end_matches('/');
-        if normalized.is_empty() {
-            errors.push(format!(
-                "{DESIGN}:{number}: `{line}` names no file or directory under the repository"
-            ));
-            continue;
-        }
-        roots.push(normalized.to_string());
+        // Normalised by segments: an empty or `.` segment says nothing, so `src`, `src/.`, `./src/./` and `src//`
+        // are one root and an element id never carries a dot segment (ADR 0040). Nothing left is the repository
+        // root itself (`.`, `./`), held as the empty root.
+        let normalized: Vec<&str> = relative
+            .split('/')
+            .filter(|part| !part.is_empty() && *part != ".")
+            .collect();
+        roots.push(normalized.join("/"));
     }
     if errors.is_empty() {
         Ok(roots)
@@ -239,13 +247,22 @@ pub fn read_roots(root: &Path) -> Result<Option<Vec<String>>, LinkError> {
     parse_roots(&text).map(Some).map_err(LinkError::Malformed)
 }
 
-/// One `req-satisfies:` occurrence: the element (repo-relative, `/`-separated), the token written
-/// after the marker — a claim id when it is well-formed, else carried as written so it is named —
-/// and its line.
+/// One `req-satisfies:` occurrence with a token after it: the element (repo-relative,
+/// `/`-separated), the token written after the marker — a claim id when it is well-formed, else
+/// carried as written so it is named — and its line. A marker with no token is a [`Mention`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Declaration {
     pub element: String,
     pub claim_id: String,
+    pub line: usize,
+}
+
+/// One `req-satisfies:` with no claim id after it (ADR 0052 decision 6): a **mention**, such as help
+/// text or a comment that documents the marker. It is counted and shown, never a link and never
+/// UNVERIFIABLE; a token that is present but malformed is not a mention, it is still named.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Mention {
+    pub element: String,
     pub line: usize,
 }
 
@@ -254,6 +271,8 @@ pub struct Declaration {
 pub struct Scan {
     /// Every distinct `(element, claim)` declared, sorted.
     pub declarations: Vec<Declaration>,
+    /// Every distinct `(element, line)` holding the marker with no claim id, sorted.
+    pub mentions: Vec<Mention>,
     /// Roots and files that could not be read, each with the reason: UNVERIFIABLE, never skipped.
     pub unreadable: Vec<String>,
 }
@@ -371,10 +390,16 @@ pub fn scan(root: &Path) -> Result<Scan, LinkError> {
     unreadable.dedup();
     let mut seen: BTreeSet<(String, String)> = BTreeSet::new();
     let mut declarations = Vec::new();
+    let mut mentions: BTreeSet<Mention> = BTreeSet::new();
     for (element, text) in &files {
         for (index, line) in text.lines().enumerate() {
             for claim_id in tokens(line) {
-                if seen.insert((element.clone(), claim_id.clone())) {
+                if claim_id.is_empty() {
+                    mentions.insert(Mention {
+                        element: element.clone(),
+                        line: index + 1,
+                    });
+                } else if seen.insert((element.clone(), claim_id.clone())) {
                     declarations.push(Declaration {
                         element: element.clone(),
                         claim_id,
@@ -387,6 +412,7 @@ pub fn scan(root: &Path) -> Result<Scan, LinkError> {
     declarations.sort_by(|a, b| (&a.element, &a.claim_id).cmp(&(&b.element, &b.claim_id)));
     Ok(Scan {
         declarations,
+        mentions: mentions.into_iter().collect(),
         unreadable,
     })
 }
@@ -530,6 +556,8 @@ impl Link {
 pub struct Evaluation {
     /// Declared links, then orphaned records, each sorted by `(element, claim_id)`.
     pub links: Vec<Link>,
+    /// Every `req-satisfies:` with no claim id: shown, never a link, and no part of the verdict.
+    pub mentions: Vec<Mention>,
     /// Design roots and files that could not be read.
     pub unreadable: Vec<String>,
 }
@@ -552,6 +580,7 @@ pub fn evaluate(root: &Path) -> Result<Evaluation, LinkError> {
     if scanned.declarations.is_empty() && records.is_empty() {
         return Ok(Evaluation {
             links: Vec::new(),
+            mentions: scanned.mentions,
             unreadable: scanned.unreadable,
         });
     }
@@ -604,6 +633,7 @@ pub fn evaluate(root: &Path) -> Result<Evaluation, LinkError> {
     links.extend(orphans);
     Ok(Evaluation {
         links,
+        mentions: scanned.mentions,
         unreadable: scanned.unreadable,
     })
 }
@@ -681,6 +711,12 @@ fn print_text(evaluation: &Evaluation, has_design: bool) {
     } else {
         println!("# req satisfy: {declared} link(s) declared");
     }
+    if !evaluation.mentions.is_empty() {
+        println!(
+            "# req satisfy: {} mention(s) of `{MARKER}` with no claim id (not links)",
+            evaluation.mentions.len()
+        );
+    }
     for link in &evaluation.links {
         let (word, detail) = match link.outcome {
             Outcome::Judged(Judgement::Holds) => ("HOLDS", String::new()),
@@ -725,6 +761,12 @@ fn print_text(evaluation: &Evaluation, has_design: bool) {
         };
         println!("[{word}] {} -> {}{detail}", link.element, link.claim_id);
     }
+    for mention in &evaluation.mentions {
+        println!(
+            "[MENTION] {}:{}: {MARKER} with no claim id — not a link",
+            mention.element, mention.line
+        );
+    }
     for reason in &evaluation.unreadable {
         println!("[UNVERIFIABLE] {reason}");
     }
@@ -750,12 +792,19 @@ struct LinkDocument<'a> {
 }
 
 #[derive(Serialize)]
+struct MentionDocument<'a> {
+    element: &'a str,
+    line: usize,
+}
+
+#[derive(Serialize)]
 struct SatisfyDocument<'a> {
     schema: &'static str,
     generator: &'static str,
     rules_v: u32,
     verdict: &'static str,
     links: Vec<LinkDocument<'a>>,
+    mentions: Vec<MentionDocument<'a>>,
     unreadable: &'a [String],
 }
 
@@ -774,6 +823,14 @@ fn print_json(evaluation: &Evaluation) {
                 outcome: link.outcome.as_json(),
                 direction: link.outcome.direction().map(|d| d.as_str()),
                 line: link.line,
+            })
+            .collect(),
+        mentions: evaluation
+            .mentions
+            .iter()
+            .map(|mention| MentionDocument {
+                element: &mention.element,
+                line: mention.line,
             })
             .collect(),
         unreadable: &evaluation.unreadable,

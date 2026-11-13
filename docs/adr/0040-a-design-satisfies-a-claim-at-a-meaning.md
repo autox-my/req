@@ -124,6 +124,8 @@ Not an edit of the decisions above; where they now live.
   lists; directories are read recursively, symlinks and `.git` are not followed, a file that is not UTF-8 or a root that does
   not exist is UNVERIFIABLE and named). A declaration is any line holding `req-satisfies:` followed by a claim id; the
   element id is the repo-relative, `/`-separated path.
+  A bare `req-satisfies:` with no claim id after it is now a **mention**, counted and listed and never a link (ADR 0052
+  decision 6, 2026-11-14); a token that is present but is no claim is still UNKNOWN CLAIM.
 - **The file format.** `.req/satisfied` is `schema: req.satisfied/1` and `links:`, a list of `{element, claim_id,
   statement}` sorted by `(element, claim_id)`; `statement` is the claim's statement verbatim. No address, no rules version, no
   date. An unknown key, another schema or a repeated link is a load error (UNVERIFIABLE; `--record` refuses to overwrite it).

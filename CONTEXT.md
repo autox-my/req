@@ -229,6 +229,12 @@ at the moment a human ratified it. It holds while the meaning is unchanged or we
 measured never to hide a strengthening, and is suspect otherwise (ADR 0040).
 _Avoid_: trace link (a relation is claim to claim), coverage
 
+**Mention**:
+A `req-satisfies:` with no claim id after it, such as help text or a comment that documents the marker. `req satisfy`
+counts and lists it; it is never a link and never UNVERIFIABLE. A token that is present but is no claim is not a mention
+(ADR 0052).
+_Avoid_: unknown claim (that is a declared id the corpus does not hold)
+
 **False carry**:
 A satisfaction link left holding across a change that was in fact a strengthening — the
 satisfaction analogue of a false merge, held to zero on the direction gold set (ADR 0040).

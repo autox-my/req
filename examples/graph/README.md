@@ -123,3 +123,43 @@ These are instructions, and they are the point of the page.
    you name.
 4. **Report what ran.** State the exit code of `finalize` and which of its gates passed. A page whose browser gate could
    not run (no browser on the machine) has not had it; say so instead of calling it checked.
+
+## Architecture overlay
+
+The trace graph above draws claims. An **architecture diagram** (an archify `architecture` file an architect or agent
+drew from the repository, each component citing the files in `sources`) can show the claims its components satisfy
+([ADR 0052](../../docs/adr/0052-an-architecture-diagram-shows-the-claims-its-components-satisfy.md)). The link stays
+where [ADR 0040](../../docs/adr/0040-a-design-satisfies-a-claim-at-a-meaning-and-a-change-of-meaning-is-judged-by-its-direction.md)
+puts it: a `req-satisfies:` line in a file under a `.req/design` root, recorded by a human with `req satisfy --record`. A
+component satisfies the union of the claims the files it cites declare; the diagram stores nothing and is never edited.
+
+```sh
+req satisfy --format json > satisfy.json
+req trace --format json > trace.json
+python3 -I tools/graph/arch_overlay.py [--root .] diagram.json satisfy.json trace.json overlay
+ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
+  validate architecture overlay/overlay.json --repo-root . --json
+ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
+  finalize architecture overlay/overlay.json overlay/overlay.html --repo-root . --quality standard --json
+```
+
+- **Three inputs**, none opened for writing: the diagram, `req satisfy --format json` (`req.satisfy/1`) and `req trace
+  --format json` (`req.trace/1`, for the claims and their statements). `--root` is the corpus root the cited paths and
+  `.req/design` are read under (default: the current directory). It writes into `<out-dir>` only, and refuses an existing
+  non-empty one.
+- **`overlay.json`** is a new archify file: every component and connection, in the author's order with the author's
+  geometry and labels. Each component's `tag` keeps the author's text and adds `<STATUS> · <claim ids>` (the ids are cut to
+  fit the box with `+N`; the card lists them all). Status is the worst outcome of the links of the cited files, worst
+  first: `UNKNOWN CLAIM`, `ORPHANED`, `SUSPECT`, `UNRATIFIED`, `HOLDS (weakened)`, `HOLDS`. Two more states are not outcomes:
+  `STALE` (a cited path does not exist under `--root`; worst of all) and `NO CLAIM` (no link; not a finding). Three cards
+  are appended: components by status, claims no component reaches, and cited paths outside every `.req/design` root (the
+  satisfy document holds no link for those). The subtitle names the diagram's pinned revision, the `rules_v` and archify
+  `7e45f36`, so the page never claims to be current.
+- **`matrix.md`** is a Markdown table: a row per applying claim, a column per component (diagram order, by label), each
+  cell the link's outcome, then the claims no component reaches.
+- **`--repo-root`** is archify's: a diagram that cites `sources` is verified against the committed bytes at its pinned
+  revision, in a checkout whose `origin` matches the diagram's `meta.repository.url`. Without it archify refuses the page.
+- **Exit:** `0` written; `3` written, but a component is `STALE`, a link names an unknown claim, or an author's tag leaves
+  no room for the status (archify would refuse it; the box is `size[0]`, else 120 px) (the reason is printed); `2` refused (a wrong schema, malformed JSON, an unreadable input, a non-empty out-dir), nothing written.
+- Two runs over the same inputs give the same bytes. Like the trace pages, the overlay is not committed and is as current
+  as the run that made it. A model never edits it: the status comes from `req satisfy` alone.
