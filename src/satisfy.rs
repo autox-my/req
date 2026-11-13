@@ -181,7 +181,8 @@ impl LinkError {
     }
 }
 
-/// Validate `.req/design`: one repo-relative directory or file per line. Grammar as the other
+/// Validate `.req/design`: one repo-relative directory or file per line (`.` or `./` is the repository root, held as the
+/// empty root). Grammar as the other
 /// `.req/` lists — `#` starts a comment, a blank line is skipped, a trailing CR is stripped. An
 /// absolute path, a `..` component or a line of several words is malformed, and every bad line is
 /// named `<file>:<line>` in one run.
@@ -209,12 +210,9 @@ pub fn parse_roots(text: &str) -> Result<Vec<String>, Vec<String>> {
             continue;
         }
         let normalized = line.trim_start_matches("./").trim_end_matches('/');
-        if normalized.is_empty() {
-            errors.push(format!(
-                "{DESIGN}:{number}: `{line}` names no file or directory under the repository"
-            ));
-            continue;
-        }
+        // `.` and `./` are the repository root itself: the empty root, so an element id under it is the
+        // repo-relative path (`src/x.rs`), never `./src/x.rs` (ADR 0040).
+        let normalized = if normalized == "." { "" } else { normalized };
         roots.push(normalized.to_string());
     }
     if errors.is_empty() {

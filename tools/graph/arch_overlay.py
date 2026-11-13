@@ -33,7 +33,6 @@ provenance, recorded here and in `docs/adr/0052-an-architecture-diagram-shows-th
 
 import json
 import sys
-import unicodedata
 from pathlib import Path
 
 # The archify commit this converter was written against (ADR 0046 decision 7, ADR 0052 decision 8).
@@ -76,9 +75,36 @@ def refuse(message):
     raise Refusal(message)
 
 
+# The code points archify counts as two columns, read from its `textUnits` rule (renderers/shared/utils.mjs at 7e45f36)
+# and re-stated here as inclusive ranges: emoji-presentation symbols, Hangul Jamo, the CJK blocks and their neighbours,
+# the full-width forms, and the Mahjong-to-symbols and CJK planes. A code point outside them is one column. It is not
+# the Unicode East Asian Width table: archify's list leaves out, for example, U+1D360 (one column) and includes U+1F000.
+WIDE = (
+    (0x1100, 0x115F), (0x231A, 0x231B), (0x2329, 0x232A), (0x23E9, 0x23EC), (0x23F0, 0x23F0), (0x23F3, 0x23F3),
+    (0x25FD, 0x25FE), (0x2614, 0x2615), (0x2630, 0x2637), (0x2648, 0x2653), (0x267F, 0x267F), (0x268A, 0x268F),
+    (0x2693, 0x2693), (0x26A1, 0x26A1), (0x26AA, 0x26AB), (0x26BD, 0x26BE), (0x26C4, 0x26C5), (0x26CE, 0x26CE),
+    (0x26D4, 0x26D4), (0x26EA, 0x26EA), (0x26F2, 0x26F3), (0x26F5, 0x26F5), (0x26FA, 0x26FA), (0x26FD, 0x26FD),
+    (0x2705, 0x2705), (0x270A, 0x270B), (0x2728, 0x2728), (0x274C, 0x274C), (0x274E, 0x274E), (0x2753, 0x2755),
+    (0x2757, 0x2757), (0x2795, 0x2797), (0x27B0, 0x27B0), (0x27BF, 0x27BF), (0x2B1B, 0x2B1C), (0x2B50, 0x2B50),
+    (0x2B55, 0x2B55), (0x2E80, 0xA4CF), (0xA960, 0xA97C), (0xAC00, 0xD7A3), (0xF900, 0xFAFF), (0xFE10, 0xFE19),
+    (0xFE30, 0xFE6F), (0xFF01, 0xFF60), (0xFFE0, 0xFFE6), (0x16FE0, 0x18DFF), (0x1AFF0, 0x1AFFF), (0x1B000, 0x1B2FF),
+    (0x1F000, 0x1FAFF), (0x20000, 0x3FFFD),
+)
+VARIATION_FIRST, VARIATION_LAST, EMOJI_PRESENTATION = 0xFE00, 0xFE0F, 0xFE0F
+
+
 def units(text):
-    """Columns `text` takes: one per character, two for a wide one (a bound that errs high, never low)."""
-    return sum(2 if unicodedata.east_asian_width(char) in ("W", "F") else 1 for char in text)
+    """Columns archify counts `text` as: a variation selector adds none; a character followed by U+FE0F takes two; a
+    character in WIDE takes two; any other takes one. Surrogates are not special: a code point is one character."""
+    codes = [ord(char) for char in text]
+    total = 0
+    for index, code in enumerate(codes):
+        if VARIATION_FIRST <= code <= VARIATION_LAST:
+            continue
+        following = codes[index + 1] if index + 1 < len(codes) else -1
+        wide = following == EMOJI_PRESENTATION or any(low <= code <= high for low, high in WIDE)
+        total += 2 if wide else 1
+    return total
 
 
 def no_constant(name):
@@ -180,16 +206,19 @@ def design_roots(root):
     roots = []
     for raw in text.split("\n"):
         line = raw.rstrip("\r").split("#", 1)[0].strip()
+        if not line:
+            continue
         while line.startswith("./"):
             line = line[2:]
         line = line.rstrip("/")
-        if line:
-            roots.append(line)
+        # `.` and `./` are the repository root itself: the empty root.
+        roots.append("" if line == "." else line)
     return roots
 
 
 def inside(path, roots):
-    return any(path == base or path.startswith(base + "/") for base in roots)
+    """Whether `path` is under a design root; the empty root is the whole repository."""
+    return any(not base or path == base or path.startswith(base + "/") for base in roots)
 
 
 def exists(root, path):

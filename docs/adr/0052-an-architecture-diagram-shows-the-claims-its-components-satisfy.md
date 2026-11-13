@@ -150,6 +150,11 @@ Not an edit of the decisions above; where decisions 1–6 now live (decision 7 s
   root. `meta.subtitle` (kept, and added to) names the diagram's pinned `meta.repository.revision` (or says there is none),
   the satisfy document's `rules_v` and archify `7e45f36`. archify's file keys are `schema_version` and `diagram_type`; the
   converter refuses anything but `architecture` at `schema_version` 1.
+- **A `.` root** in `.req/design` (or `./`) is the repository itself: `req satisfy` holds it as the empty root, so an element id
+  is `src/x.rs` and never `./src/x.rs` (ADR 0040), and the converter treats it as covering every cited path.
+- **Tag columns** follow archify's `textUnits` rule, not the Unicode East Asian Width table: a variation selector adds none, a
+  character followed by U+FE0F takes two, a character in archify's list of wide ranges takes two, any other takes one. The
+  converter was checked against archify over every code point, alone and with U+FE0E and U+FE0F.
 - **Status** is the worst outcome, in decision 2's order, with two states that are not outcomes: `STALE` (a cited path is
   absent under `--root`, or is not a repository-relative path; ranks worst of all, decision 4) and `NO CLAIM` (no link: a
   component without `sources`, or whose files declare nothing). The matrix's rows are the claims of `req.trace/1` whose

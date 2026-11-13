@@ -598,7 +598,7 @@ usage: req satisfy [--format text|json]
 
 Do the design elements still satisfy the claims they were recorded against (ADR 0040)? A design
 element is any file under a root listed in `.req/design` (optional; one repo-relative directory or
-file per line, `#` comments and blank lines skipped, an absolute path or `..` is exit 2 naming
+file per line, `.` is the whole repository, `#` comments and blank lines skipped, an absolute path or `..` is exit 2 naming
 `<file>:<line>`; directories are read recursively, symlinks and `.git` are not followed). It
 declares a link with a line `req-satisfies: <claim-id>` — in a comment or front matter; req reads the
 token, not the file format. The element's id is its repo-relative path. A `req-satisfies:` with

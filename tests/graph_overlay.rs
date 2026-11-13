@@ -786,8 +786,35 @@ fn no_size(id: &str, label: &str, source: &str, tag: Option<&str>) -> Value {
     c
 }
 
+/// The columns archify counts a string as (`textUnits` in renderers/shared at 7e45f36): a variation selector adds none, a
+/// character followed by U+FE0F takes two, a wide character takes two and anything else one. This is the **subset** of
+/// archify's wide ranges these tests use (Hangul Jamo, CJK and its neighbours, full-width forms, the Mahjong-to-symbols
+/// block U+1F000..U+1FAFF and the CJK planes); an oracle written here from that rule, never read from the converter.
 fn tag_units(tag: &str) -> usize {
-    tag.chars().count()
+    let chars: Vec<char> = tag.chars().collect();
+    let wide = |c: char| {
+        matches!(
+            u32::from(c),
+            0x1100..=0x115F
+                | 0x2E80..=0xA4CF
+                | 0xAC00..=0xD7A3
+                | 0xFF01..=0xFF60
+                | 0x1F000..=0x1FAFF
+                | 0x20000..=0x3FFFD
+        )
+    };
+    let mut total = 0;
+    for (index, c) in chars.iter().enumerate() {
+        if ('\u{FE00}'..='\u{FE0F}').contains(c) {
+            continue;
+        }
+        total += if chars.get(index + 1) == Some(&'\u{FE0F}') || wide(*c) {
+            2
+        } else {
+            1
+        };
+    }
+    total
 }
 
 #[test]
@@ -910,6 +937,101 @@ fn an_authored_tag_the_status_cannot_fit_beside_is_kept_named_and_exit_3() {
     assert!(!out.stderr.contains("'fits'"), "{}", out.stderr);
     assert_eq!(tag_of(&overlay, "fits"), "pump team | NO CLAIM");
     assert!(s.path("out/matrix.md").is_file());
+}
+
+#[test]
+fn a_tag_is_measured_in_archify_columns_at_the_31_column_boundary() {
+    // Each tag is authored on a 120 px component with no claim, so the overlay writes `<tag> | NO CLAIM` (11 columns
+    // past the author's). 31 columns fits; 32 is what archify's `component-tag-overflow` refuses, and the converter
+    // must agree with archify about which is which, whatever the characters are.
+    let x = |n: usize| "x".repeat(n);
+    let cases: Vec<(&str, String, bool)> = vec![
+        ("ten CJK fit (20 + 11)", "中".repeat(10), true),
+        ("eleven CJK overflow (22 + 11)", "中".repeat(11), false),
+        // U+1F000 is wide in archify (2) though unicodedata says neutral: 19 + 2 + 11 = 32.
+        (
+            "a Mahjong tile is two columns",
+            format!("{}\u{1F000}", x(19)),
+            false,
+        ),
+        (
+            "a Mahjong tile fits at 18",
+            format!("{}\u{1F000}", x(18)),
+            true,
+        ),
+        // U+1D360 is neutral in archify (1) though unicodedata says wide: 19 + 1 + 11 = 31.
+        (
+            "a counting rod is one column",
+            format!("{}\u{1D360}", x(19)),
+            true,
+        ),
+        // A variation selector adds nothing: U+4E2D (2) with U+FE0E is 2, so 18 + 2 + 11 = 31.
+        (
+            "a variation selector adds no column",
+            format!("{}\u{4E2D}\u{FE0E}", x(18)),
+            true,
+        ),
+        // U+FE0F asks for emoji presentation: the character takes two. 19 + 2 + 11 = 32.
+        (
+            "emoji presentation takes two",
+            format!("{}\u{2764}\u{FE0F}", x(19)),
+            false,
+        ),
+    ];
+    for (index, (name, tag, fits)) in cases.iter().enumerate() {
+        let s = Scratch::new(&format!("columns-{index}"));
+        repo(&s);
+        let inputs = Inputs {
+            diagram: diagram(vec![no_size("pump", "Pump", "src/c.rs", Some(tag))]),
+            satisfy: satisfy(vec![]),
+            trace: trace(&claims()),
+        };
+        let out = run(&s, &inputs);
+        let written = tag_of(&overlay(&s), "pump").to_string();
+        assert_eq!(
+            written,
+            format!("{tag} | NO CLAIM"),
+            "{name}: the author's text is kept"
+        );
+        assert_eq!(
+            tag_units(&written) <= 31,
+            *fits,
+            "{name}: {} columns, so the oracle says it {}",
+            tag_units(&written),
+            if *fits { "fits" } else { "overflows" }
+        );
+        let expected = if *fits { 0 } else { 3 };
+        assert_eq!(out.code, expected, "{name}: {}", out.all());
+    }
+}
+
+#[test]
+fn a_dot_design_root_is_the_whole_repository_so_nothing_under_it_is_outside() {
+    // `.req/design` may list `.` (or `./`): the repository root, whose element ids are `src/a.rs`, never `./src/a.rs`.
+    for root_line in [".", "./", "./."] {
+        let s = Scratch::new("dot-root");
+        repo(&s);
+        s.design(&format!("# the whole repository\n{root_line}\n"));
+        let inputs = Inputs {
+            diagram: diagram(vec![component(
+                "pump",
+                "Pump",
+                &["src/a.rs", "docs/other.md"],
+                0,
+            )]),
+            satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
+            trace: trace(&claims()),
+        };
+        let out = run(&s, &inputs);
+        assert_eq!(out.code, 0, "{root_line:?}: {}", out.all());
+        let overlay = overlay(&s);
+        assert_eq!(
+            card(&overlay, OUTSIDE_CARD),
+            vec!["none"],
+            "{root_line:?}: every cited path is under the root"
+        );
+        assert!(tag_of(&overlay, "pump").starts_with("HOLDS"));
+    }
 }
 
 // ---- the matrix -------------------------------------------------------------------------------

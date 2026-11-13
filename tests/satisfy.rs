@@ -1110,3 +1110,51 @@ fn the_help_page_states_the_mention_rule() {
     assert!(out.stdout.contains("mention"), "{}", out.stdout);
     assert!(out.stdout.contains("no claim id"), "{}", out.stdout);
 }
+
+// ---- a `.` root is the repository itself (O-1-fix-2) -------------------------------------------
+
+#[test]
+fn a_dot_design_root_names_elements_by_their_repo_relative_path_never_with_a_dot_slash() {
+    // ADR 0040: the element id is the repo-relative, `/`-separated path. A root of `.` (or `./`) is the repository
+    // root, so `src/pump.md` is `src/pump.md`, the same id `--record` and `.req/satisfied` use.
+    for root_line in [".", "./"] {
+        let s = Scratch::new("dot-root");
+        s.claim("REQ-0001", BASE, None);
+        s.write(".req/design", &format!("{root_line}\n"));
+        s.write("src/pump.md", "<!-- req-satisfies: REQ-0001 -->\n");
+        let out = s.req(&["satisfy", "--format", "json"]);
+        let doc: serde_json::Value = serde_json::from_str(&out.stdout).expect("a JSON document");
+        let links = doc["links"].as_array().expect("links");
+        assert_eq!(links.len(), 1, "{root_line:?}: {}", out.all());
+        assert_eq!(
+            links[0]["element"],
+            "src/pump.md",
+            "{root_line:?}: {}",
+            out.all()
+        );
+        assert!(
+            !out.stdout.contains("\"./"),
+            "{root_line:?}: {}",
+            out.stdout
+        );
+        let record = s.req(&["satisfy", "--record", "src/pump.md", "REQ-0001"]);
+        assert_eq!(record.code, 0, "{root_line:?}: {}", record.all());
+        assert!(
+            s.read(".req/satisfied").contains("element: src/pump.md"),
+            "{}",
+            s.read(".req/satisfied")
+        );
+        let out = s.req(&["satisfy"]);
+        assert_eq!(
+            out.code,
+            0,
+            "{root_line:?} recorded, so it holds: {}",
+            out.all()
+        );
+        assert!(
+            out.stdout.contains("[HOLDS] src/pump.md -> REQ-0001"),
+            "{}",
+            out.stdout
+        );
+    }
+}
