@@ -2,7 +2,8 @@
 
 Extends ADR 0046 (the trace document is the graph contract, and archify renders it) and amends its *Falsification* item 3.
 No command, flag or projection is added. No `RULES_V` bump, no claim-schema or Baseline change, no address moves.
-`req.trace/1` gains no field.
+`req.trace/1` gains no field. *(Amended 2026-11-13, unit A-2: `req.trace/1` later gained `areas`, additively; see ADR
+0051's note.)*
 
 **Status: proposed.** The owner ratifies it by merging the pull request that carries it, together with the code (task
 V-2). Asked for by the owner on 2026-11-13, after seeing the first rendered page. Date proposed: 2026-11-13.
@@ -68,8 +69,8 @@ a Tier-1 input a second job. A category an author chooses is a separate proposal
      the layout (ADR 0046 implementation note).
    - A claim with no edge at all, in or out, is **standalone**. Standalone claims form one group of their own.
    - A family is named by its root's id. Families are ordered by root id, and the standalone group comes last.
-   - If a corpus later declares an author-chosen grouping (ADR 0051, if ratified), that replaces the family as the key.
-     The page rules here do not change.
+   - An author-chosen grouping now exists (ADR 0051, unit A-2): when any claim carries an `area`, the areas replace the
+     family as the key. The page rules here do not change.
 3. **One page or several, by size.**
    - If the document holds at most `PAGE_LIMIT` claims, there is one page. Each family gets a `boundaries` frame, and
      when there are five families or fewer, each also gets a focus view.
@@ -167,7 +168,8 @@ decisions left open.
   and `not in the corpus`). A stub sits in its own `region` frame labelled `page <name>`: that frame is the panel's context,
   and archify offers no per-node context field.
 - **Index page.** Nodes sit in V-1's grid, six wide, in group order. A group's node is named by its first page; its tag
-  counts claims and, past one page, pages. The subtitle counts the claims of the groups the page holds and the relations
+  counts claims and, past one page, pages *(2026-11-13, unit A-2: when the groups are areas the tag carries the group's name,
+  cut to fit, and the count is in the index's card; ADR 0051's note)*. The subtitle counts the claims of the groups the page holds and the relations
   it draws (for an unsplit index, every claim and the relations that run between groups). **The index is capped like any
   page**: more than `PAGE_LIMIT` groups are cut into consecutive parts, `index`, `index-part-2` and so on, each saying
   `part i of n`; a connection is drawn on every part that holds either group, and a group on another part is a stub inside

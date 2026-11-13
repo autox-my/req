@@ -9,9 +9,11 @@ leaves a page, a stub node named for the claim at its far end. Placement is comp
 model, in integers only; there is no clock and no randomness, keys are sorted, and one document gives one directory,
 byte for byte.
 
-A page shows a declared slice (ADR 0050). Claims are grouped into families; a document of at most PAGE_LIMIT claims is
-one page, `all.json`, and a larger one is an index page plus one page per group (a group past the limit is cut into
-parts by layer). The directory holds `index.json` only when there are several pages, and one `<page>.json` per page.
+A page shows a declared slice (ADR 0050). Claims are grouped into families, or, when any claim carries an `area`, into
+the areas (ADR 0051 decision 5; the labels come from the document's `areas`, the registry, and nothing else); a document
+of at most PAGE_LIMIT claims is one page, `all.json`, and a larger one is an index page plus one page per group (a group
+past the limit is cut into parts by layer). The directory holds `index.json` only when there are several pages, and one
+`<page>.json` per page.
 It refuses an existing non-empty directory, a schema other than `req.trace/1` and malformed JSON (exit 2, naming what is
 wrong), and writes nothing on a refusal. It uses only the standard library and never touches the network or the corpus.
 
@@ -22,6 +24,7 @@ provenance, recorded here and in `docs/adr/0046-the-trace-document-is-the-graph-
 import json
 import re
 import sys
+import unicodedata
 from math import isqrt
 from os import environ
 from pathlib import Path
@@ -33,6 +36,12 @@ SCHEMA = "req.trace/1"
 LAYERING = ("derives-from", "refines")
 # archify's own id grammar (`common.schema.json#/$defs/id`): an id outside it is refused, never rewritten.
 ARCHIFY_ID = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
+# An area path (ADR 0051 decision 2): segments joined by `/`, each `[a-z0-9][a-z0-9-]*`. The converter checks it again
+# because a path becomes a page file name, and a document it was not written for must not choose that name.
+AREA_PATH = re.compile(r"[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*")
+NO_AREA = "no area"
+# The kinds of group that get a frame on the single page.
+FRAMED = ("family", "area")
 
 # A page holds at most this many claims (ADR 0050 decision 3). A test sets REQ_GRAPH_PAGE_LIMIT to a smaller number;
 # the variable is read only when it is set.
@@ -63,6 +72,13 @@ PER_ROW = 6
 WRAP = 7
 MAX_WIDTH = 1710
 BAND_CAP = (WRAP - 1) * PITCH_X
+# What archify draws unclipped, as columns of text ("units": one for a letter, two for a wide character), read from its box
+# rules at 7e45f36 and stated in ADR 0051's note, never copied. A component label must fit its 130 px box (20 units); a tag
+# fits it at the 6 px floor (33 units); a frame is widened to its title, and a title of FRAME_TITLE_UNITS widens a one-box
+# frame by no more than the margin holds (ADR 0050's note, 13 px each side). A focus view's label is at most 48 characters
+# (archify's schema).
+LABEL_UNITS, TAG_UNITS, FRAME_TITLE_UNITS, VIEW_LABEL_CHARS = 20, 33, 30, 48
+ELLIPSIS = "\u2026"
 # Parallel routes through one channel or gutter fan out over LANES offsets, LANE_STEP apart.
 LANES, LANE_STEP = 5, 9
 
@@ -164,6 +180,25 @@ def check_document(document):
         for key in ("from", "relation", "to"):
             if not isinstance(edge.get(key), str):
                 refuse(f"an edge has no string `{key}`: {edge!r}")
+    for node in document["nodes"]:
+        area = node.get("area")
+        if area is not None and not (isinstance(area, str) and AREA_PATH.fullmatch(area)):
+            refuse(f"a node has an `area` that is not an area path (ADR 0051): {node!r}")
+    areas = document.get("areas", [])
+    if not isinstance(areas, list):
+        refuse("`areas` is not an array")
+    declared = set()
+    for entry in areas:
+        if not isinstance(entry, dict):
+            refuse("an entry of `areas` is not an object")
+        path, label = entry.get("path"), entry.get("label")
+        if not (isinstance(path, str) and AREA_PATH.fullmatch(path)):
+            refuse(f"an entry of `areas` has no area path: {entry!r}")
+        if not isinstance(label, str) or not label.strip():
+            refuse(f"an entry of `areas` has no label: {entry!r}")
+        if path in declared:
+            refuse(f"`areas` declares {path!r} twice")
+        declared.add(path)
     findings = document["findings"]
     if not isinstance(findings, dict):
         refuse("`findings` is not an object")
@@ -180,6 +215,63 @@ def page_limit():
     if not re.fullmatch(r"[0-9]+", text) or int(text) < 1:
         refuse(f"{LIMIT_ENV}={text!r} is not a positive integer")
     return int(text)
+
+
+# The code points archify draws two columns wide, as ranges, read from its width table at 7e45f36 and widened where a
+# symbol block mixes wide and narrow characters, so the converter counts at least what archify counts. (East Asian Width
+# alone is not enough: archify counts every code point of 2E80-A4CF as wide, among them nine Ambiguous ones such as U+3248.)
+WIDE_RANGES = (
+    (0x1100, 0x115F),
+    (0x2300, 0x2BFF),
+    (0x2E80, 0xA4CF),
+    (0xA960, 0xA97C),
+    (0xAC00, 0xD7A3),
+    (0xF900, 0xFAFF),
+    (0xFE10, 0xFE19),
+    (0xFE30, 0xFE6F),
+    (0xFF01, 0xFF60),
+    (0xFFE0, 0xFFE6),
+    (0x16FE0, 0x1B2FF),
+    (0x1F000, 0x10FFFF),
+)
+
+
+def units(text):
+    """Columns `text` takes: one per character, two for a wide one (archify's table, or East Asian Wide or Fullwidth).
+
+    A bound that errs high, never low: a label this passes is one archify's own count passes (archify refuses what is wider
+    than its box), and the converter only ever cuts early. A variation selector counts one.
+    """
+    total = 0
+    for char in text:
+        code = ord(char)
+        wide = unicodedata.east_asian_width(char) in ("W", "F") or any(lo <= code <= hi for lo, hi in WIDE_RANGES)
+        total += 2 if wide else 1
+    return total
+
+
+def fit(text, limit):
+    """`text` itself when it takes at most `limit` units, else its start and an ellipsis, in at most `limit`."""
+    if units(text) <= limit:
+        return text
+    kept = ""
+    for char in text:
+        if units(kept + char + ELLIPSIS) > limit:
+            break
+        kept += char
+    return kept.rstrip() + ELLIPSIS
+
+
+def fit_characters(text, limit):
+    """`text` cut to at most `limit` characters (as UTF-16 code units too), with an ellipsis, for a field with a length cap."""
+    if len(text.encode("utf-16-le")) // 2 <= limit:
+        return text
+    kept = ""
+    for char in text:
+        if len((kept + char + ELLIPSIS).encode("utf-16-le")) // 2 > limit:
+            break
+        kept += char
+    return kept.rstrip() + ELLIPSIS
 
 
 def state_of(node):
@@ -467,7 +559,9 @@ def travel_route(slots, row_of, centre, lanes, corridor):
             gap = lane(lanes, corridor(min(ra, rb) + 1, max(ra, rb) - 1, ca, cb), "x")
             points = [[ca, out_y], [gap, out_y], [gap, in_y], [cb, in_y]]
         if k and points[0] == points[1]:
-            points = points[:1]
+            # The hop starts where the previous one ended: drop the repeated point, and only that one. (A corridor hop
+            # whose gap is its source's own x repeats its first point and still has its two inward points to run.)
+            points = points[:1] + points[2:]
         if k < len(slots) - 2:  # b is the reserved waypoint of a layer the edge crosses: the route passes through it
             points.append([cb, MARGIN_Y + rb * PITCH_Y + NODE_H // 2])
         via.extend(points)
@@ -623,6 +717,11 @@ def outside_component(identifier, tag, x, y):
     }
 
 
+def frame_title(ctx, text):
+    """A frame's title. Over areas, cut to what a frame holds without widening past its margin (a title is free text then)."""
+    return fit(text, FRAME_TITLE_UNITS) if ctx["by_area"] else text
+
+
 def finding_reasons(node, outgoing_dangling):
     """The reasons a claim is a finding, in req's words (ADR 0050 decision 7); empty for an ordinary claim."""
     reasons = []
@@ -641,7 +740,8 @@ def finding_reasons(node, outgoing_dangling):
 def compose(ctx, name, group_phrase, title_group, blocks, drawn, where):
     """One group page, or the single page of a small document.
 
-    `blocks` is a list of `{"claims": [...], "kind": "family"|"standalone", "label": root or None}`, left to right.
+    `blocks` is a list of groups, left to right: `{"claims": [...], "kind": "family"|"standalone"|"area", "label": ...}`. A
+    family or an area gets a frame on the single page (an area's title is its `title`, cut to fit); a standalone group does not.
     `drawn` is the list of `(index, edge)` the page draws: every edge with an end on it. An end that is not a claim of
     the page becomes a stub (a claim held on another page, naming it through `where`) or a dangling target.
     """
@@ -711,19 +811,20 @@ def compose(ctx, name, group_phrase, title_group, blocks, drawn, where):
         px, py = position(end)
         if end in known:
             tag = TAG_STUB
-            boundaries.append({"kind": "region", "label": f"page {where[end]}", "wraps": [end]})
+            boundaries.append({"kind": "region", "label": frame_title(ctx, f"page {where[end]}"), "wraps": [end]})
         else:
             tag = TAG_DANGLING
         components.append((placed[end][0], placed[end][1], end, outside_component(end, tag, px, py)))
     components.sort(key=lambda c: (c[1], c[0], c[2]))
     components = [c[3] for c in components]
 
-    # Family frames, only where the page holds several families.
+    # Group frames (a family's, or an area's), only on the single page.
     family_frames = []
     if name == "all":
         for block in blocks:
-            if block["kind"] == "family":
-                family_frames.append({"kind": "region", "label": block["label"], "wraps": sorted(block["claims"])})
+            if block["kind"] in FRAMED:
+                title = block.get("title", block["label"])
+                family_frames.append({"kind": "region", "label": title, "wraps": sorted(block["claims"])})
     boundaries = family_frames + boundaries
 
     # Connections, every one routed explicitly.
@@ -792,11 +893,11 @@ def compose(ctx, name, group_phrase, title_group, blocks, drawn, where):
         meta["views"] = [
             {
                 "id": f"view-{k + 1}",
-                "label": block["name"],
+                "label": fit_characters(block["name"], VIEW_LABEL_CHARS),
                 "focus": sorted(block["claims"]),
                 "note": f"{len(block['claims'])} claims",
             }
-            for k, block in enumerate(b for b in blocks if b["kind"] == "family")
+            for k, block in enumerate(b for b in blocks if b["kind"] in FRAMED)
         ]
     page = {
         "schema_version": 1,
@@ -845,6 +946,14 @@ def page_meta(ctx, name, title_group, group_phrase, claim_count, relation_count,
     }
 
 
+def node_id_of(page):
+    """An index node's id: the page's name, `.` (an area path's `/`) as `_`, because archify's id grammar has no `.`.
+
+    A key has no `_`, so two paths never share an id. A family page name has no `.`, so it is its own id.
+    """
+    return page.replace(".", "_")
+
+
 def index_pages(ctx, groups, page_names, limit):
     """The index: one node per group and one connection per ordered pair of groups and relation (ADR 0050 decision 3).
 
@@ -876,19 +985,24 @@ def index_pages(ctx, groups, page_names, limit):
         for g in shown:
             row, column = cells[g]
             group = groups[g]
+            node_id = node_id_of(page_names[g][0])
             if g in inside:
                 count = len(page_names[g])
                 tag = f"{len(group['claims'])} claims" + (f" \u00b7 {count} pages" if count > 1 else "")
+                if group["kind"] == "area":
+                    # The name is free text: the box holds its start, the cards hold all of it.
+                    tag = fit(group["name"], TAG_UNITS)
                 kind = STATE_TYPE["applies"]
             else:
                 tag, kind = TAG_STUB, STATE_TYPE["missing"]
-                boundaries.append({"kind": "region", "label": f"page {part_of[g]}", "wraps": [page_names[g][0]]})
+                boundaries.append({"kind": "region", "label": f"page {part_of[g]}", "wraps": [node_id]})
             components.append(
                 {
-                    "id": page_names[g][0],
+                    "id": node_id,
                     "type": kind,
-                    # A node box holds about 19 characters: the root id fits, "family <id>" does not.
-                    "label": group["label"] or "standalone",
+                    # A node box holds about 19 characters: the root id fits, "family <id>" does not. An area is labelled
+                    # by its path's last segment, cut to the box.
+                    "label": fit(group["label"], LABEL_UNITS) if group["kind"] == "area" else group["label"] or "standalone",
                     "tag": tag,
                     "pos": [MARGIN_X + column * PITCH_X, MARGIN_Y + row * PITCH_Y],
                     "size": [NODE_W, NODE_H],
@@ -899,8 +1013,8 @@ def index_pages(ctx, groups, page_names, limit):
         for a, b, relation in drawn:
             connection = {
                 "id": f"edge-{len(connections) + 1:04d}",
-                "from": page_names[a][0],
-                "to": page_names[b][0],
+                "from": node_id_of(page_names[a][0]),
+                "to": node_id_of(page_names[b][0]),
                 "label": f"{relation} \u00d7{counts[(a, b, relation)]}",
             }
             connection.update(grid_route(cells[a], cells[b], lanes))
@@ -946,6 +1060,67 @@ def index_pages(ctx, groups, page_names, limit):
     return pages
 
 
+def family_groups(ids, edges):
+    """The groups when no claim carries an area: the families, then the standalone claims (ADR 0050 decision 2)."""
+    family, standalone = families_of(ids, edges)
+    groups = []
+    for root in sorted({family[i] for i in ids if i not in standalone}):
+        members = sorted(i for i in ids if i not in standalone and family[i] == root)
+        groups.append({"kind": "family", "label": root, "name": f"family {root}", "page": f"family-{root}", "claims": members})
+    if standalone:
+        groups.append(
+            {"kind": "standalone", "label": None, "name": "standalone claims", "page": "standalone", "claims": sorted(standalone)}
+        )
+    return groups
+
+
+def area_groups(document, node_list, edges):
+    """The groups when any claim carries an area, and each claim's layer inside its own group (ADR 0051 decision 5).
+
+    A group is the claims whose `area` equals one path exactly, so `diagnostics` and `diagnostics/startup` are two groups
+    and a claim is in exactly one. Order: the areas the registry declares, in its line order; then undeclared areas, by
+    path; then the claims with no area, last. A group is named by its registry label, or by its path when undeclared.
+
+    Layers are the group's own: the layering runs over the `derives-from` and `refines` edges whose two ends are both in
+    the group, so an edge to another group lays nothing out. A claim with no such edge sits below the layers, in the grid
+    the bottom layer makes (all of them in the one layer when the group has no layered claim).
+    """
+    members = {}
+    for node in node_list:
+        members.setdefault(node.get("area"), []).append(node["claim_id"])
+    label_of = {entry["path"]: entry["label"] for entry in document.get("areas", [])}
+    declared = [entry["path"] for entry in document.get("areas", []) if entry["path"] in members]
+    undeclared = sorted(path for path in members if path is not None and path not in label_of)
+    groups = []
+    for path in declared + undeclared + ([None] if None in members else []):
+        name = NO_AREA if path is None else label_of.get(path, path)
+        groups.append(
+            {
+                "kind": "area",
+                # The index node's label: the path's last segment (a key, so ASCII), and the page name's source.
+                "label": NO_AREA if path is None else path.rsplit("/", 1)[-1],
+                "name": name,
+                "title": fit(name, FRAME_TITLE_UNITS),
+                "page": "no-area" if path is None else "area-" + path.replace("/", "."),
+                "claims": sorted(members[path]),
+            }
+        )
+    layer = {}
+    for group in groups:
+        inside = set(group["claims"])
+        local, _ = layering(group["claims"], edges)
+        tied = {
+            end
+            for edge in edges
+            if edge["relation"] in LAYERING and edge["from"] != edge["to"] and edge["from"] in inside and edge["to"] in inside
+            for end in (edge["from"], edge["to"])
+        }
+        bottom = max((local[i] for i in tied), default=-1) + 1
+        for i in group["claims"]:
+            layer[i] = local[i] if i in tied else bottom
+    return groups, layer
+
+
 def convert(document):
     """The archify pages for a checked document, by page name. Pure: same document, same value."""
     node_list = sorted(document["nodes"], key=lambda n: n["claim_id"])
@@ -964,8 +1139,12 @@ def convert(document):
             refuse(f"the edge {edge['from']} -{edge['relation']}-> {edge['to']} has no end in the corpus; no page could hold it")
     limit = page_limit()
 
-    layer, _ = layering(ids, edges)
-    family, standalone = families_of(ids, edges)
+    by_area = any(node.get("area") is not None for node in node_list)
+    if by_area:
+        groups, layer = area_groups(document, node_list, edges)
+    else:
+        layer, _ = layering(ids, edges)
+        groups = family_groups(ids, edges)
     selection = " ".join(f"{k}={v}" for k, v in sorted(document["selection"].items())) or "no context"
     ctx = {
         "nodes": nodes,
@@ -974,18 +1153,10 @@ def convert(document):
         "layer": layer,
         "selection": selection,
         "rules_v": document.get("rules_v", "?"),
+        "by_area": by_area,
         "dangling": document["findings"]["dangling"],
         "undecided": document["findings"]["undecided_edges"],
     }
-
-    groups = []
-    for root in sorted({family[i] for i in ids if i not in standalone}):
-        members = sorted(i for i in ids if i not in standalone and family[i] == root)
-        groups.append({"kind": "family", "label": root, "name": f"family {root}", "page": f"family-{root}", "claims": members})
-    if standalone:
-        groups.append(
-            {"kind": "standalone", "label": None, "name": "standalone claims", "page": "standalone", "claims": sorted(standalone)}
-        )
 
     pages = {}
     if len(ids) <= limit:
@@ -999,6 +1170,10 @@ def convert(document):
         [group["page"] if k == 0 else f"{group['page']}-part-{k + 1}" for k in range(len(parts))]
         for group, parts in zip(groups, parts_of)
     ]
+    files = [name for names in page_names for name in names]
+    for name in sorted(set(files)):
+        if files.count(name) > 1:
+            refuse(f"two pages would share the file {name}.json: rename an area or a claim so the page names differ")
     where = {}
     for names, parts in zip(page_names, parts_of):
         for name, part in zip(names, parts):

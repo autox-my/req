@@ -83,6 +83,28 @@ impl Scratch {
         fs::write(self.0.join(format!("claims/{id}.yml")), text).expect("writes a claim");
     }
 
+    /// A `req.claim/3` claim filed under `area` (ADR 0051), with no relation.
+    fn claim_in(&self, id: &str, area: &str) {
+        let text = format!(
+            "schema: req.claim/3\n\
+             claim_id: {id}\n\
+             statement: \"{PLAIN}\"\n\
+             applicability: []\n\
+             relations: []\n\
+             evidence: process\n\
+             area: {area}\n\
+             rationale:\n  source: docs/requirements.md\n  date: 2026-11-13\n  \
+             rejected_alternatives: []\n  assumptions: []\n"
+        );
+        fs::write(self.0.join(format!("claims/{id}.yml")), text).expect("writes a claim");
+    }
+
+    /// `.req/areas`, exactly as written.
+    fn areas(&self, text: &str) {
+        fs::create_dir_all(self.0.join(".req")).expect("makes .req");
+        fs::write(self.0.join(".req/areas"), text).expect("writes .req/areas");
+    }
+
     fn req(&self, args: &[&str]) -> Out {
         let out = Command::new(req_bin())
             .args(args)
@@ -325,5 +347,170 @@ fn trace_help_names_nodes_and_the_graph_page() {
     assert!(
         text.contains("examples/graph/README.md"),
         "the help points at the graph page:\n{text}"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// `areas`: the registry travels in the document (ADR 0051 decision 2, unit A-2)
+// ---------------------------------------------------------------------------------------------------------------
+
+/// The registry, hand-written: a label is free text, so one is non-ASCII, one holds a `#`, and the line order is not
+/// the path's sort order (`interfaces` is declared before `diagnostics`).
+const REGISTRY: &str = "\
+# reading order
+interfaces Interfaces
+diagnostics Démarrage du système
+diagnostics/startup Start-up and C# support
+";
+
+#[test]
+fn areas_lists_the_registry_in_line_order_with_each_label() {
+    let s = Scratch::new("areas-order");
+    three(&s);
+    s.areas(REGISTRY);
+    let document = s.document(&[]);
+    assert_eq!(
+        document["areas"],
+        serde_json::json!([
+            {"path": "interfaces", "label": "Interfaces"},
+            {"path": "diagnostics", "label": "Démarrage du système"},
+            {"path": "diagnostics/startup", "label": "Start-up and C# support"},
+        ]),
+        "the registry's lines, in the registry's order, never sorted: {document}"
+    );
+}
+
+#[test]
+fn areas_is_an_empty_array_without_a_registry() {
+    let s = Scratch::new("areas-none");
+    three(&s);
+    let document = s.document(&[]);
+    assert_eq!(
+        document["areas"],
+        serde_json::json!([]),
+        "no `.req/areas` is `[]`, not an absent key: {document}"
+    );
+}
+
+#[test]
+fn areas_carries_declared_areas_that_no_claim_names() {
+    // The document is the registry; which areas have claims is the consumer's to judge from `nodes`.
+    let s = Scratch::new("areas-unused");
+    s.claim_in("REQ-0001", "interfaces");
+    s.areas(REGISTRY);
+    let document = s.document(&[]);
+    assert_eq!(
+        document["areas"].as_array().map(Vec::len),
+        Some(3),
+        "{document}"
+    );
+}
+
+#[test]
+fn areas_sits_between_nodes_and_edges_and_an_entry_keeps_path_then_label() {
+    let s = Scratch::new("areas-place");
+    three(&s);
+    s.areas(REGISTRY);
+    let out = s.trace(&[]);
+    let at = |from: usize, key: &str| {
+        from + out.stdout[from..]
+            .find(&format!("\"{key}\""))
+            .unwrap_or_else(|| panic!("`{key}` is in the document after {from}:\n{}", out.stdout))
+    };
+    // The last node's last field, then `areas`, then its entries' fields in order, then `edges`.
+    let nodes = at(0, "nodes");
+    let last_area_field = out.stdout.rfind("\"area\"").expect("a node carries `area`");
+    let areas = at(nodes, "areas");
+    let edges = at(areas, "edges");
+    assert!(
+        last_area_field < areas && areas < edges,
+        "`areas` is after the nodes and before `edges`:\n{}",
+        out.stdout
+    );
+    let path = at(areas, "path");
+    let label = at(path, "label");
+    assert!(
+        areas < path && path < label && label < edges,
+        "an entry is path, then label"
+    );
+}
+
+#[test]
+fn a_malformed_registry_is_exit_2_naming_every_bad_line_and_prints_nothing() {
+    let s = Scratch::new("areas-malformed");
+    three(&s);
+    s.areas("diagnostics Fine\nBad_Path A label\ninterfaces\ndiagnostics Again\n");
+    let out = s.trace(&[]);
+    assert_eq!(
+        out.code, 2,
+        "a malformed registry is a usage error:\n{}",
+        out.stderr
+    );
+    assert_eq!(out.stdout, "", "nothing is printed to stdout");
+    for line in [".req/areas:2:", ".req/areas:3:", ".req/areas:4:"] {
+        assert!(
+            out.stderr.contains(line),
+            "stderr names `{line}` as `req check` does:\n{}",
+            out.stderr
+        );
+    }
+    assert!(
+        !out.stderr.contains(".req/areas:1:"),
+        "a good line is not named:\n{}",
+        out.stderr
+    );
+}
+
+#[test]
+fn an_unreadable_registry_is_exit_2_with_nothing_on_stdout() {
+    let s = Scratch::new("areas-unreadable");
+    three(&s);
+    // A directory where the file belongs: it exists and cannot be used as a list.
+    fs::create_dir_all(s.path().join(".req/areas")).expect("makes a directory named areas");
+    let out = s.trace(&[]);
+    assert_eq!(out.code, 2, "{}{}", out.stdout, out.stderr);
+    assert_eq!(out.stdout, "");
+    assert!(out.stderr.contains(".req/areas"), "{}", out.stderr);
+}
+
+#[test]
+fn text_trace_does_not_read_the_registry() {
+    let s = Scratch::new("areas-text");
+    s.claim("REQ-0001", LONG, &[], &[]);
+    s.claim("REQ-0002", SHORT, &[], &[("refines", "REQ-0001")]);
+    s.claim("REQ-0003", PLAIN, &[], &[]);
+    let before = s.req(&["trace"]);
+    s.areas(REGISTRY);
+    let with_registry = s.req(&["trace"]);
+    assert_eq!(
+        (before.code, &before.stdout),
+        (with_registry.code, &with_registry.stdout),
+        "text `trace` is the same with a registry"
+    );
+    // Not even a malformed one: text `trace` does not parse it, and `docs/trace.md` passes `--check` unchanged.
+    s.areas("Bad_Path\n");
+    let malformed = s.req(&["trace"]);
+    assert_eq!(
+        (malformed.code, &malformed.stdout),
+        (before.code, &before.stdout),
+        "text `trace` never reads `.req/areas`:\n{}",
+        malformed.stderr
+    );
+}
+
+#[test]
+fn trace_help_names_areas() {
+    let out = Command::new(req_bin())
+        .args(["trace", "--help"])
+        .output()
+        .expect("runs req trace --help");
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(
+        text.contains("`areas`"),
+        "the help names the `areas` field:\n{text}"
+    );
+    assert!(
+        text.contains(".req/areas"),
+        "and where it comes from:\n{text}"
     );
 }

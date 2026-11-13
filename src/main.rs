@@ -418,7 +418,10 @@ it must name the selection the header records or it is a second question (3).
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 matrix as a `req.trace/1` document on stdout: schema, generator, `rules_v`, the selection, the
 nodes (every claim, with its statement, modality, address, applicability, the successors that
-withdrew it and the `area` it is filed under, `null` when none — ADR 0051), the edges, the derived incoming edges and the findings. It is stdout only —
+withdrew it and the `area` it is filed under, `null` when none — ADR 0051), `areas` (the lines of
+`.req/areas` as `path` and `label`, in the registry's order, `[]` with no registry: a renderer
+names an area by its label, and a malformed registry is exit 2 naming `<file>:<line>` with
+nothing printed; text `trace` does not read it), the edges, the derived incoming edges and the findings. It is stdout only —
 `--out`/`--check` are text projections, and pairing either with `--format json` is a usage error
 (exit 2). `examples/graph/README.md` turns that document into a graph page.
 

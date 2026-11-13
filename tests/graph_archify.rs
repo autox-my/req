@@ -758,6 +758,15 @@ fn assert_every_edge_is_explicitly_placed(graph: &Value) {
                 "{id}: the label {label:?} at {rect:?} overlaps {node} {at:?}"
             );
         }
+        // Every routed segment is orthogonal: archify refuses a diagonal one (`artifact/orthogonal-arrows`).
+        for pair in via.windows(2) {
+            assert!(
+                pair[0].0 == pair[1].0 || pair[0].1 == pair[1].1,
+                "{id}: the route runs diagonally from {:?} to {:?}: {c}",
+                pair[0],
+                pair[1]
+            );
+        }
         // Every routed segment runs in free space.
         for pair in via.windows(2) {
             let seg = (
@@ -1791,8 +1800,7 @@ fn archify_frame(page: &Value, frame: &Value) -> Rect {
         inside.iter().map(|r| r.2).max().expect("x1"),
         inside.iter().map(|r| r.3).max().expect("y1"),
     );
-    let units = i64::try_from(frame["label"].as_str().expect("a label").chars().count())
-        .expect("a short label");
+    let units = units(frame["label"].as_str().expect("a label"));
     let title = ((units * 36 * MAX_WIDTH + 9299) / 9300 + 10).max(30) + 8;
     let width = right - left + 2 * FRAME_PAD;
     let extra = (title - width).max(0);
@@ -2214,4 +2222,1101 @@ fn a_long_frame_title_does_not_push_its_frame_off_the_canvas() {
         assert_no_two_nodes_overlap(page);
         assert_every_edge_is_explicitly_placed(page);
     }
+}
+
+// ---------------------------------------------------------------------------
+// A-2 (ADR 0051 decision 5): the graph groups by area when any claim carries one
+// ---------------------------------------------------------------------------
+
+/// A claim filed under `area` (`None` is a claim with no area: the node's `area` is `null`, as `req.trace/1` writes it).
+fn filed(id: &str, area: Option<&str>) -> Value {
+    let mut node = claim(id);
+    node["area"] = area.map_or(Value::Null, |a| json!(a));
+    node
+}
+
+/// A document with the registry's lines, `(path, label)`, in the order given: that order is the reading order.
+fn with_areas(mut document: Value, registry: &[(&str, &str)]) -> Value {
+    document["areas"] = Value::Array(
+        registry
+            .iter()
+            .map(|(path, label)| json!({"path": path, "label": label}))
+            .collect(),
+    );
+    document
+}
+
+/// The registry of `by_area()`, in an order that is **not** the path's sort order (`diagnostics` sorts first).
+const REGISTRY: [(&str, &str); 3] = [
+    ("interfaces", "Interfaces"),
+    ("power", "Power management"),
+    ("diagnostics", "Diagnostics & logging"),
+];
+
+const INTERFACES: [&str; 3] = ["REQ-0001", "REQ-0002", "REQ-0003"];
+const POWER: [&str; 2] = ["REQ-0010", "REQ-0011"];
+const DIAGNOSTICS: [&str; 3] = ["REQ-0020", "REQ-0021", "REQ-0022"];
+const NO_AREA: [&str; 2] = ["REQ-0030", "REQ-0031"];
+
+/// The page that holds a claim of `by_area()` when the limit splits it, written out by hand.
+fn area_page(id: &str) -> &'static str {
+    if INTERFACES.contains(&id) {
+        "area-interfaces"
+    } else if POWER.contains(&id) {
+        "area-power"
+    } else if DIAGNOSTICS.contains(&id) {
+        "area-diagnostics"
+    } else {
+        "no-area"
+    }
+}
+
+/// Ten claims, hand-written: three areas the registry declares, in the order interfaces, power, diagnostics, and two
+/// claims with no area.
+///
+/// * interfaces: 0001 (root), 0002 refines it, 0003 derives from it;
+/// * power: 0010 (root), 0011 derives from it;
+/// * diagnostics: 0020 (root), 0021 refines it, 0022 has no edge at all and is undecided in this selection;
+/// * no area: 0030 has no edge, 0031's only edge leaves its group;
+/// * three edges cross groups: 0011 constrains 0002, 0021 derives from 0003 (a `derives-from` that does not lie inside
+///   its group, so it does not lay anything out) and 0031 derives from 0001.
+fn by_area() -> Value {
+    let mut nodes = vec![
+        filed("REQ-0001", Some("interfaces")),
+        filed("REQ-0002", Some("interfaces")),
+        filed("REQ-0003", Some("interfaces")),
+        filed("REQ-0010", Some("power")),
+        filed("REQ-0011", Some("power")),
+        filed("REQ-0020", Some("diagnostics")),
+        filed("REQ-0021", Some("diagnostics")),
+        filed("REQ-0022", Some("diagnostics")),
+        filed("REQ-0030", None),
+        filed("REQ-0031", None),
+    ];
+    nodes[7]["applies"] = json!("unknown");
+    with_areas(
+        document(
+            json!({"deployment": "cloud"}),
+            nodes,
+            vec![
+                edge("REQ-0002", "refines", "REQ-0001"),
+                edge("REQ-0003", "derives-from", "REQ-0001"),
+                edge("REQ-0011", "derives-from", "REQ-0010"),
+                edge("REQ-0021", "refines", "REQ-0020"),
+                edge("REQ-0011", "constrains", "REQ-0002"),
+                edge("REQ-0021", "derives-from", "REQ-0003"),
+                edge("REQ-0031", "derives-from", "REQ-0001"),
+            ],
+        ),
+        &REGISTRY,
+    )
+}
+
+fn frame_labels(page: &Value) -> Vec<String> {
+    boundaries(page)
+        .iter()
+        .map(|b| b["label"].as_str().expect("a label").to_string())
+        .collect()
+}
+
+fn strings(items: &[&str]) -> Vec<String> {
+    items.iter().map(|s| (*s).to_string()).collect()
+}
+
+/// A frame as the box of its members padded by archify's 30 px, enough to say two frames do not overlap.
+fn padded(page: &Value, frame: &Value) -> Rect {
+    let members = wraps(frame);
+    let inside: Vec<Rect> = boxes(page)
+        .into_iter()
+        .filter(|(id, _)| members.contains(id))
+        .map(|(_, r)| r)
+        .collect();
+    (
+        inside.iter().map(|r| r.0).min().expect("x0") - FRAME_PAD,
+        inside.iter().map(|r| r.1).min().expect("y0") - FRAME_PAD,
+        inside.iter().map(|r| r.2).max().expect("x1") + FRAME_PAD,
+        inside.iter().map(|r| r.3).max().expect("y1") + FRAME_PAD,
+    )
+}
+
+/// ADR 0051 decision 5: with any area on any claim, the groups are the areas. One page, a `region` frame per area named by
+/// its **label**, in the registry's line order, then `no area`; no family frame; a focus view per group.
+#[test]
+fn one_page_by_area_has_a_frame_per_area_named_by_its_label_in_registry_order_then_no_area() {
+    let scratch = Scratch::new("area-one-page");
+    let page = converted(&scratch, &by_area());
+
+    assert_eq!(
+        frame_labels(&page),
+        strings(&[
+            "Interfaces",
+            "Power management",
+            "Diagnostics & logging",
+            "no area"
+        ]),
+        "labels, in the registry's order (not the path order), and `no area` last: {page}"
+    );
+    let by_label: BTreeMap<String, BTreeSet<String>> = boundaries(&page)
+        .iter()
+        .map(|b| (b["label"].as_str().expect("label").to_string(), wraps(b)))
+        .collect();
+    assert_eq!(by_label["Interfaces"], names(&INTERFACES));
+    assert_eq!(by_label["Power management"], names(&POWER));
+    assert_eq!(by_label["Diagnostics & logging"], names(&DIAGNOSTICS));
+    assert_eq!(by_label["no area"], names(&NO_AREA));
+    assert!(
+        boundaries(&page).iter().all(|b| b["kind"] == "region"),
+        "every frame is a region"
+    );
+
+    // No family is computed or shown while areas are the key.
+    for root in ["REQ-0001", "REQ-0010", "REQ-0020"] {
+        assert!(
+            !frame_labels(&page).contains(&root.to_string()),
+            "{root} names no frame"
+        );
+    }
+    assert!(!subtitle(&page).contains("famil"), "{}", subtitle(&page));
+
+    // The focus views follow the groups, in group order.
+    let views = page["meta"]["views"].as_array().expect("views");
+    let focuses: Vec<BTreeSet<String>> = views
+        .iter()
+        .map(|v| {
+            v["focus"]
+                .as_array()
+                .expect("focus")
+                .iter()
+                .map(|f| f.as_str().expect("id").to_string())
+                .collect()
+        })
+        .collect();
+    assert_eq!(
+        focuses,
+        vec![
+            names(&INTERFACES),
+            names(&POWER),
+            names(&DIAGNOSTICS),
+            names(&NO_AREA)
+        ],
+        "a focus view per group, at most five groups"
+    );
+    assert_eq!(views[0]["label"], "Interfaces");
+    assert_eq!(views[3]["label"], "no area");
+
+    // The findings card first, then one card per group in group order.
+    let titles: Vec<&str> = page["cards"]
+        .as_array()
+        .expect("cards")
+        .iter()
+        .map(|c| c["title"].as_str().expect("a title"))
+        .collect();
+    assert_eq!(
+        titles,
+        vec![
+            "Findings (1)",
+            "Interfaces (3 claims)",
+            "Power management (2 claims)",
+            "Diagnostics & logging (3 claims)",
+            "no area (2 claims)"
+        ]
+    );
+    assert!(
+        subtitle(&page).contains("all claims") && subtitle(&page).contains("10 of 10 claims"),
+        "{}",
+        subtitle(&page)
+    );
+}
+
+/// ADR 0051 decision 5 and 0050 decision 5: a group is laid out over the edges that lie inside it; a claim with none sits
+/// in the group's own grid, inside its frame, and frames of different groups never overlap.
+#[test]
+fn inside_an_area_the_layered_method_runs_over_its_own_edges_and_a_loose_claim_sits_in_the_groups_grid()
+ {
+    let scratch = Scratch::new("area-inside");
+    let page = converted(&scratch, &by_area());
+    let at = |id: &str| {
+        let (_, (x, y, _, _)) = boxes(&page)
+            .into_iter()
+            .find(|(i, _)| i == id)
+            .unwrap_or_else(|| panic!("{id} is drawn"));
+        (x, y)
+    };
+    // interfaces: 0001 is a layer above 0002 and 0003 (both below it).
+    assert!(at("REQ-0001").1 < at("REQ-0002").1 && at("REQ-0001").1 < at("REQ-0003").1);
+    // power: 0011 is below 0010.
+    assert!(at("REQ-0010").1 < at("REQ-0011").1);
+    // diagnostics: 0021 is below 0020 over their own edge, and 0022, with no edge in its group, is in the grid under both.
+    assert!(at("REQ-0020").1 < at("REQ-0021").1, "0021 refines 0020");
+    assert!(
+        at("REQ-0022").1 > at("REQ-0020").1 && at("REQ-0022").1 > at("REQ-0021").1,
+        "a claim with no edge inside its group sits in the group's grid, below the layers"
+    );
+    // 0021's `derives-from` to 0003 crosses groups: it does not put 0021 a layer below a claim of another group.
+    assert!(
+        at("REQ-0021").1 <= at("REQ-0020").1 + PITCH_Y,
+        "a cross-group edge lays nothing out"
+    );
+    // The frames of two groups never overlap.
+    let frames = boundaries(&page);
+    for (i, a) in frames.iter().enumerate() {
+        for b in &frames[i + 1..] {
+            assert!(
+                !overlaps(padded(&page, a), padded(&page, b)),
+                "{a} overlaps {b}"
+            );
+        }
+    }
+    assert_no_two_nodes_overlap(&page);
+    assert_every_edge_is_explicitly_placed(&page);
+    assert_frames_inside_the_canvas(&page);
+    // A cross-group edge on one page is a drawn edge between the two claims, not a stub.
+    connection(&page, "REQ-0011", "constrains", "REQ-0002");
+    assert!(components(&page).iter().all(|c| c["type"] != "cloud"));
+}
+
+/// Mutation anchor: a claim at `diagnostics` and one at `diagnostics/startup` are two groups, and each claim is in
+/// exactly one (ADR 0051 *Falsification* 2).
+#[test]
+fn a_parent_area_and_its_child_are_two_groups_and_each_claim_is_in_exactly_one() {
+    let document = with_areas(
+        document(
+            json!({}),
+            vec![
+                filed("REQ-0001", Some("diagnostics")),
+                filed("REQ-0002", Some("diagnostics/startup")),
+                filed("REQ-0003", Some("diagnostics/startup")),
+                filed("REQ-0004", Some("diagnostics")),
+            ],
+            vec![
+                edge("REQ-0002", "refines", "REQ-0001"),
+                edge("REQ-0003", "refines", "REQ-0002"),
+            ],
+        ),
+        &[
+            ("diagnostics", "Diagnostics"),
+            ("diagnostics/startup", "Start-up"),
+        ],
+    );
+    let scratch = Scratch::new("area-parent-child");
+    let page = converted(&scratch, &document);
+    let frames = boundaries(&page);
+    assert_eq!(frame_labels(&page), strings(&["Diagnostics", "Start-up"]));
+    assert_eq!(wraps(frames[0]), names(&["REQ-0001", "REQ-0004"]));
+    assert_eq!(wraps(frames[1]), names(&["REQ-0002", "REQ-0003"]));
+    for id in ["REQ-0001", "REQ-0002", "REQ-0003", "REQ-0004"] {
+        let holding = frames.iter().filter(|f| wraps(f).contains(id)).count();
+        assert_eq!(holding, 1, "{id} is in exactly one group");
+    }
+
+    // Split: two group pages, the child's file named with `.` for `/`, and every claim on exactly one of them.
+    let scratch = Scratch::new("area-parent-child-split");
+    let pages = converted_pages(&scratch, &document, Some("3"));
+    assert_eq!(
+        pages.keys().map(String::as_str).collect::<Vec<_>>(),
+        vec!["area-diagnostics", "area-diagnostics.startup", "index"]
+    );
+    assert_eq!(
+        claims_on(&pages["area-diagnostics"]),
+        names(&["REQ-0001", "REQ-0004"])
+    );
+    assert_eq!(
+        claims_on(&pages["area-diagnostics.startup"]),
+        names(&["REQ-0002", "REQ-0003"])
+    );
+    // archify's id grammar has no `.`: no id on any page may carry the page file's.
+    let grammar = |id: &str| {
+        let mut chars = id.chars();
+        chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    };
+    for (name, page) in &pages {
+        for c in components(page) {
+            let id = c["id"].as_str().expect("an id");
+            assert!(
+                grammar(id),
+                "{name}: `{id}` is outside archify's id grammar"
+            );
+        }
+    }
+    let labels: BTreeSet<&str> = components(&pages["index"])
+        .iter()
+        .map(|c| c["label"].as_str().expect("label"))
+        .collect();
+    assert_eq!(
+        labels,
+        BTreeSet::from(["diagnostics", "startup"]),
+        "an index node is labelled with the path's last segment"
+    );
+}
+
+/// An undeclared area is named by its path and ordered after the declared areas, in path order, before `no area`; the
+/// registry does not have to hold it (ADR 0051 decision 3).
+#[test]
+fn an_undeclared_area_is_named_by_its_path_and_ordered_after_the_declared_ones() {
+    let document = with_areas(
+        document(
+            json!({}),
+            vec![
+                filed("REQ-0001", Some("interfaces")),
+                filed("REQ-0002", Some("zeta")),
+                filed("REQ-0003", Some("alpha/beta")),
+                filed("REQ-0004", None),
+                filed("REQ-0005", Some("interfaces")),
+            ],
+            vec![],
+        ),
+        &[("interfaces", "Interfaces")],
+    );
+    let scratch = Scratch::new("area-undeclared");
+    let page = converted(&scratch, &document);
+    assert_eq!(
+        frame_labels(&page),
+        strings(&["Interfaces", "alpha/beta", "zeta", "no area"]),
+        "declared first, then undeclared by path (`alpha/beta` sorts before `zeta`, and before `interfaces`)"
+    );
+
+    let scratch = Scratch::new("area-undeclared-split");
+    let pages = converted_pages(&scratch, &document, Some("4"));
+    assert_eq!(
+        pages.keys().map(String::as_str).collect::<Vec<_>>(),
+        vec![
+            "area-alpha.beta",
+            "area-interfaces",
+            "area-zeta",
+            "index",
+            "no-area"
+        ]
+    );
+    // The index lists the group pages in group order, naming each page file and group.
+    let items: Vec<String> = pages["index"]["cards"][0]["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|i| i.as_str().expect("item").to_string())
+        .collect();
+    let files: Vec<&str> = items
+        .iter()
+        .map(|i| i.split(':').next().expect("a file"))
+        .collect();
+    assert_eq!(
+        files,
+        vec![
+            "area-interfaces.json",
+            "area-alpha.beta.json",
+            "area-zeta.json",
+            "no-area.json"
+        ]
+    );
+}
+
+/// ADR 0050 decision 3 applies to areas: past the limit, one page per group plus an index; every claim on exactly one
+/// group page, and a cross-area edge ends in a stub naming the target's page.
+#[test]
+fn split_by_area_gives_a_page_per_area_an_index_every_claim_once_and_stubs_naming_the_other_page() {
+    let scratch = Scratch::new("area-split");
+    let document = by_area();
+    let pages = converted_pages(&scratch, &document, Some("4"));
+    assert_eq!(
+        pages.keys().map(String::as_str).collect::<Vec<_>>(),
+        vec![
+            "area-diagnostics",
+            "area-interfaces",
+            "area-power",
+            "index",
+            "no-area"
+        ]
+    );
+    let mut seen: BTreeMap<String, usize> = BTreeMap::new();
+    for (name, page) in group_pages(&pages) {
+        let on_page = claims_on(page);
+        assert!(on_page.len() <= 4, "{name} holds {} claims", on_page.len());
+        for id in on_page {
+            assert_eq!(area_page(&id), name, "{id} is on its area's page");
+            *seen.entry(id).or_default() += 1;
+        }
+    }
+    let expected: BTreeMap<String, usize> = document["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .map(|n| (n["claim_id"].as_str().expect("id").to_string(), 1))
+        .collect();
+    assert_eq!(seen, expected, "every claim on exactly one group page");
+    assert_edges_are_drawn_or_stubbed(&document, &pages, &area_page);
+
+    // The spec's own example, by hand: 0011 (power) constrains 0002 (interfaces).
+    let power = &pages["area-power"];
+    connection(power, "REQ-0011", "constrains", "REQ-0002");
+    let stub = component(power, "REQ-0002");
+    assert_eq!(stub["type"], "cloud");
+    let frame = boundaries(power)
+        .into_iter()
+        .find(|b| wraps(b).contains("REQ-0002"))
+        .expect("the stub's frame");
+    assert!(
+        frame["label"]
+            .as_str()
+            .expect("label")
+            .contains("area-interfaces"),
+        "{frame}"
+    );
+
+    // A group page speaks the group's name: the title, the subtitle and the card.
+    assert_eq!(
+        power["meta"]["title"],
+        "Requirement graph: Power management"
+    );
+    assert!(
+        subtitle(power).contains("Power management"),
+        "{}",
+        subtitle(power)
+    );
+    assert!(
+        subtitle(power).contains("2 of 10 claims"),
+        "{}",
+        subtitle(power)
+    );
+    assert_eq!(power["cards"][0]["title"], "Power management (2 claims)");
+    assert_eq!(
+        pages["area-diagnostics"]["cards"][0]["title"], "Findings (1)",
+        "the findings card comes first"
+    );
+    assert_eq!(
+        pages["area-diagnostics"]["cards"][1]["title"],
+        "Diagnostics & logging (3 claims)"
+    );
+
+    // The index: a node per group, in group order, each labelled by its path's last segment, and a connection per
+    // ordered pair of groups and relation.
+    let index = &pages["index"];
+    let labels: Vec<&str> = components(index)
+        .iter()
+        .map(|c| c["label"].as_str().expect("label"))
+        .collect();
+    assert_eq!(
+        labels,
+        vec!["interfaces", "power", "diagnostics", "no area"]
+    );
+    let drawn: BTreeSet<(String, String, String)> = connections_of(index)
+        .iter()
+        .map(|c| {
+            (
+                c["from"].as_str().expect("from").to_string(),
+                c["to"].as_str().expect("to").to_string(),
+                c["label"].as_str().expect("label").to_string(),
+            )
+        })
+        .collect();
+    let wanted: BTreeSet<(String, String, String)> = [
+        ("area-power", "area-interfaces", "constrains \u{d7}1"),
+        (
+            "area-diagnostics",
+            "area-interfaces",
+            "derives-from \u{d7}1",
+        ),
+        ("no-area", "area-interfaces", "derives-from \u{d7}1"),
+    ]
+    .iter()
+    .map(|(a, b, c)| ((*a).to_string(), (*b).to_string(), (*c).to_string()))
+    .collect();
+    assert_eq!(drawn, wanted, "one connection per group pair and relation");
+    assert_eq!(connections_of(index).len(), 3);
+}
+
+/// An area past the limit is cut into parts by layer, as a family is, and no page exceeds the limit; the parts keep V-2's
+/// `-part-<i>` suffix.
+#[test]
+fn an_oversized_area_is_cut_into_parts_by_layer_and_no_page_exceeds_the_limit() {
+    let mut document = oversized_family();
+    for n in document["nodes"].as_array_mut().expect("nodes") {
+        n["area"] = json!("core");
+    }
+    let document = with_areas(document, &[("core", "Core")]);
+    let scratch = Scratch::new("area-parts");
+    let pages = converted_pages(&scratch, &document, Some("5"));
+    assert_eq!(
+        pages.keys().map(String::as_str).collect::<Vec<_>>(),
+        vec!["area-core", "area-core-part-2", "area-core-part-3", "index"]
+    );
+    assert_eq!(claims_on(&pages["area-core"]), names(&PART_1));
+    assert_eq!(claims_on(&pages["area-core-part-2"]), names(&PART_2));
+    assert_eq!(claims_on(&pages["area-core-part-3"]), names(&PART_3));
+    for (i, name) in ["area-core", "area-core-part-2", "area-core-part-3"]
+        .iter()
+        .enumerate()
+    {
+        let page = &pages[*name];
+        assert!(claims_on(page).len() <= 5, "{name}");
+        assert!(
+            subtitle(page).contains(&format!("part {} of 3", i + 1)),
+            "{name}: {}",
+            subtitle(page)
+        );
+        assert!(
+            subtitle(page).contains("Core"),
+            "{name}: {}",
+            subtitle(page)
+        );
+    }
+    let part = |id: &str| -> &'static str {
+        if PART_1.contains(&id) {
+            "area-core"
+        } else if PART_2.contains(&id) {
+            "area-core-part-2"
+        } else {
+            "area-core-part-3"
+        }
+    };
+    assert_edges_are_drawn_or_stubbed(&document, &pages, &part);
+}
+
+/// With no area on any claim, every byte is today's family output, whether the nodes say `area: null` and the document
+/// holds `areas: []`, or the document holds a registry no claim uses.
+#[test]
+fn with_no_area_anywhere_the_output_is_byte_identical_to_the_family_grouping() {
+    let scratch = Scratch::new("area-none");
+    let plain = families();
+    let mut nulled = families();
+    for n in nulled["nodes"].as_array_mut().expect("nodes") {
+        n["area"] = Value::Null;
+    }
+    let empty = with_areas(nulled.clone(), &[]);
+    let unused = with_areas(nulled, &[("interfaces", "Interfaces")]);
+    for (limit, tag) in [(None, "one"), (Some("5"), "split")] {
+        let reference = scratch.path(&format!("plain-{tag}"));
+        let input = write_fixture(&scratch, &format!("plain-{tag}.json"), &plain);
+        assert_eq!(run_with(&input, &reference, limit).code, 0);
+        let expected = directory_bytes(&reference);
+        assert!(!expected.is_empty());
+        for (name, document) in [("empty", &empty), ("unused", &unused)] {
+            let input = write_fixture(&scratch, &format!("{name}-{tag}.json"), document);
+            let out = scratch.path(&format!("{name}-{tag}"));
+            assert_eq!(run_with(&input, &out, limit).code, 0);
+            assert_eq!(
+                directory_bytes(&out),
+                expected,
+                "{name}/{tag}: no claim carries an area, so the groups are families and nothing moves"
+            );
+        }
+    }
+}
+
+/// Mutation anchor: **any** claim carrying an area is enough: claims with none do not send the page back to families.
+#[test]
+fn one_claim_with_an_area_among_many_without_is_enough_to_group_by_area() {
+    let mut document = families();
+    document["nodes"][0]["area"] = json!("interfaces");
+    let document = with_areas(document, &[("interfaces", "Interfaces")]);
+    let scratch = Scratch::new("area-one");
+    let page = converted(&scratch, &document);
+    assert_eq!(frame_labels(&page), strings(&["Interfaces", "no area"]));
+}
+
+/// The widest label a node box holds, from archify's rule at 7e45f36 (read in a scratch clone, written out here): a label
+/// is `units * 6.6` px against the box width plus 8, so 20 units in a 130 px box; a tag or sublabel is `units * 3.6` px
+/// against the width minus 8, so 33. A unit is one column, two for a wide (East Asian or emoji) character.
+const LABEL_UNITS: i64 = 20;
+const TAG_UNITS: i64 = 33;
+/// The converter's own bound on a frame title, in the same units: a title that wide does not widen a one-box frame past the
+/// 13 px the margin holds (ADR 0050's note), so no frame leaves the canvas.
+const FRAME_TITLE_UNITS: i64 = 30;
+
+/// The characters archify 7e45f36 counts as two units, as ranges: its width table (`FULLWIDTH_RE` in
+/// `renderers/shared/utils.mjs`), read in the scratch clone and written out here as data, not copied as code.
+const ARCHIFY_WIDE: &[(u32, u32)] = &[
+    (0x1100, 0x115F),
+    (0x231A, 0x231B),
+    (0x2329, 0x232A),
+    (0x23E9, 0x23EC),
+    (0x23F0, 0x23F0),
+    (0x23F3, 0x23F3),
+    (0x25FD, 0x25FE),
+    (0x2614, 0x2615),
+    (0x2630, 0x2637),
+    (0x2648, 0x2653),
+    (0x267F, 0x267F),
+    (0x268A, 0x268F),
+    (0x2693, 0x2693),
+    (0x26A1, 0x26A1),
+    (0x26AA, 0x26AB),
+    (0x26BD, 0x26BE),
+    (0x26C4, 0x26C5),
+    (0x26CE, 0x26CE),
+    (0x26D4, 0x26D4),
+    (0x26EA, 0x26EA),
+    (0x26F2, 0x26F3),
+    (0x26F5, 0x26F5),
+    (0x26FA, 0x26FA),
+    (0x26FD, 0x26FD),
+    (0x2705, 0x2705),
+    (0x270A, 0x270B),
+    (0x2728, 0x2728),
+    (0x274C, 0x274C),
+    (0x274E, 0x274E),
+    (0x2753, 0x2755),
+    (0x2757, 0x2757),
+    (0x2795, 0x2797),
+    (0x27B0, 0x27B0),
+    (0x27BF, 0x27BF),
+    (0x2B1B, 0x2B1C),
+    (0x2B50, 0x2B50),
+    (0x2B55, 0x2B55),
+    (0x2E80, 0xA4CF),
+    (0xA960, 0xA97C),
+    (0xAC00, 0xD7A3),
+    (0xF900, 0xFAFF),
+    (0xFE10, 0xFE19),
+    (0xFE30, 0xFE6F),
+    (0xFF01, 0xFF60),
+    (0xFFE0, 0xFFE6),
+    (0x16FE0, 0x18DFF),
+    (0x1AFF0, 0x1AFFF),
+    (0x1B000, 0x1B2FF),
+    (0x1F000, 0x1FAFF),
+    (0x20000, 0x3FFFD),
+];
+
+/// The units archify draws `text` at: two for a character in its width table, one otherwise.
+fn units(text: &str) -> i64 {
+    text.chars()
+        .map(|c| {
+            let code = u32::from(c);
+            if ARCHIFY_WIDE
+                .iter()
+                .any(|(lo, hi)| (*lo..=*hi).contains(&code))
+            {
+                2
+            } else {
+                1
+            }
+        })
+        .sum()
+}
+
+const LONG_LATIN: &str = "Démarrage du système et journal des défauts";
+const LONG_CJK: &str = "診断・起動・障害記録の管理に関する要件一式（拡張版）";
+const LONG_ASCII: &str = "Operations, maintenance and field-service procedures for fielded units in cold-weather deployments";
+
+/// Four areas whose labels are longer than any node box or frame title holds, in two scripts and in one long ASCII
+/// sentence, and a cross-area edge.
+fn long_labels() -> Value {
+    with_areas(
+        document(
+            json!({}),
+            vec![
+                filed("REQ-0001", Some("diagnostics")),
+                filed("REQ-0002", Some("diagnostics")),
+                filed("REQ-0003", Some("interfaces/can-bus")),
+                filed("REQ-0004", Some("power")),
+                filed("REQ-0005", Some("ops")),
+            ],
+            vec![
+                edge("REQ-0002", "refines", "REQ-0001"),
+                edge("REQ-0003", "constrains", "REQ-0001"),
+                edge("REQ-0005", "informs", "REQ-0004"),
+            ],
+        ),
+        &[
+            ("diagnostics", LONG_LATIN),
+            ("interfaces/can-bus", LONG_CJK),
+            ("power", "Power"),
+            ("ops", LONG_ASCII),
+        ],
+    )
+}
+
+/// archify refuses a label wider than its box (`component-label-overflow`) and widens a frame to its title. A registry
+/// label is free text in any language, so a node or frame title never carries one it cannot fit; the full name is in the
+/// page's title, subtitle, cards and (up to 48 characters) focus views. Mutation anchor: the full label on an index node.
+#[test]
+fn a_long_non_ascii_label_renders_through_the_index_and_a_group_page_without_overflow() {
+    let document = long_labels();
+
+    // One page: frame titles are bounded, the full names are in the cards, and no frame leaves the canvas.
+    let scratch = Scratch::new("area-long-one");
+    let page = converted(&scratch, &document);
+    for frame in boundaries(&page) {
+        let label = frame["label"].as_str().expect("label");
+        assert!(
+            units(label) <= FRAME_TITLE_UNITS,
+            "the frame title `{label}` is {} units wide",
+            units(label)
+        );
+    }
+    let titles: Vec<&str> = page["cards"]
+        .as_array()
+        .expect("cards")
+        .iter()
+        .map(|c| c["title"].as_str().expect("title"))
+        .collect();
+    for full in [LONG_LATIN, LONG_CJK, LONG_ASCII] {
+        assert!(
+            titles.iter().any(|t| t.starts_with(full)),
+            "the card keeps the whole name `{full}`: {titles:?}"
+        );
+    }
+    let views = page["meta"]["views"].as_array().expect("views");
+    assert_eq!(views.len(), 4);
+    for v in views {
+        assert!(
+            v["label"].as_str().expect("label").chars().count() <= 48,
+            "archify's schema caps a view label at 48: {v}"
+        );
+    }
+    assert_eq!(
+        views[0]["label"], LONG_LATIN,
+        "a name that fits stays whole"
+    );
+    assert_frames_inside_the_canvas(&page);
+    assert_no_two_nodes_overlap(&page);
+
+    // Split: the index and the group pages.
+    let scratch = Scratch::new("area-long-split");
+    let pages = converted_pages(&scratch, &document, Some("4"));
+    for (name, page) in &pages {
+        for c in components(page) {
+            let label = c["label"].as_str().expect("label");
+            assert!(
+                units(label) <= LABEL_UNITS,
+                "{name}: `{label}` is {} units, past what a 130 px box holds",
+                units(label)
+            );
+            if let Some(tag) = c["tag"].as_str() {
+                assert!(
+                    units(tag) <= TAG_UNITS,
+                    "{name}: the tag `{tag}` is {} units",
+                    units(tag)
+                );
+            }
+        }
+        for frame in boundaries(page) {
+            let label = frame["label"].as_str().expect("label");
+            assert!(units(label) <= FRAME_TITLE_UNITS, "{name}: `{label}`");
+        }
+        assert_frames_inside_the_canvas(page);
+    }
+    let index = &pages["index"];
+    let by_id: BTreeMap<&str, &Value> = components(index)
+        .iter()
+        .map(|c| (c["id"].as_str().expect("id"), c))
+        .collect();
+    assert_eq!(by_id.len(), 4, "a node per group");
+    // The node is labelled by the path's last segment, and the name rides in its tag, cut where the tag ends.
+    let diagnostics = by_id["area-diagnostics"];
+    assert_eq!(diagnostics["label"], "diagnostics");
+    let tag = diagnostics["tag"].as_str().expect("tag");
+    let stem = tag
+        .strip_suffix('\u{2026}')
+        .expect("a cut name ends in an ellipsis");
+    assert!(
+        LONG_LATIN.starts_with(stem),
+        "`{tag}` is the start of the name"
+    );
+    let can_bus = by_id["area-interfaces_can-bus"];
+    assert_eq!(can_bus["label"], "can-bus");
+    assert!(
+        can_bus["tag"].as_str().expect("tag").starts_with("診断"),
+        "{can_bus}"
+    );
+    // The whole name is on the index, in its card.
+    let card = serde_json::to_string(&index["cards"]).expect("cards");
+    for full in [LONG_LATIN, LONG_CJK, LONG_ASCII] {
+        assert!(card.contains(full), "the index card holds `{full}`");
+    }
+    // And on the group page: its title, its subtitle and its card.
+    let group = &pages["area-diagnostics"];
+    assert_eq!(
+        group["meta"]["title"],
+        format!("Requirement graph: {LONG_LATIN}")
+    );
+    assert!(subtitle(group).contains(LONG_LATIN), "{}", subtitle(group));
+    assert_eq!(
+        group["cards"][0]["title"],
+        format!("{LONG_LATIN} (2 claims)")
+    );
+}
+
+/// Falsification 4 (ADR 0050): one document, one directory, byte for byte, for every shape the areas add.
+#[test]
+fn two_runs_over_an_area_document_give_identical_directories() {
+    let scratch = Scratch::new("area-determinism");
+    let mut core = oversized_family();
+    for n in core["nodes"].as_array_mut().expect("nodes") {
+        n["area"] = json!("core");
+    }
+    for (name, document, limit) in [
+        ("single", by_area(), None),
+        ("split", by_area(), Some("4")),
+        ("parts", with_areas(core, &[("core", "Core")]), Some("5")),
+        ("long", long_labels(), Some("4")),
+    ] {
+        let input = write_fixture(&scratch, &format!("{name}.json"), &document);
+        let first = scratch.path(&format!("{name}-first"));
+        let second = scratch.path(&format!("{name}-second"));
+        assert_eq!(run_with(&input, &first, limit).code, 0);
+        assert_eq!(run_with(&input, &second, limit).code, 0);
+        let (a, b) = (directory_bytes(&first), directory_bytes(&second));
+        assert!(!a.is_empty());
+        assert_eq!(a, b, "{name}: no clock and no randomness");
+    }
+}
+
+/// `areas` and `area` are read from the document, and a value of the wrong shape is a refusal that writes nothing.
+#[test]
+fn an_areas_or_area_of_the_wrong_shape_is_refused_with_nothing_written() {
+    let base = by_area();
+    let mut bad: Vec<(&str, Value)> = Vec::new();
+    let mut not_an_array = base.clone();
+    not_an_array["areas"] = json!("interfaces");
+    bad.push(("areas-string", not_an_array));
+    let mut no_label = base.clone();
+    no_label["areas"] = json!([{"path": "interfaces"}]);
+    bad.push(("entry-no-label", no_label));
+    let mut no_path = base.clone();
+    no_path["areas"] = json!([{"label": "Interfaces"}]);
+    bad.push(("entry-no-path", no_path));
+    let mut twice = base.clone();
+    twice["areas"] = json!([
+        {"path": "interfaces", "label": "A"},
+        {"path": "interfaces", "label": "B"}
+    ]);
+    bad.push(("path-twice", twice));
+    let mut number = base.clone();
+    number["nodes"][0]["area"] = json!(7);
+    bad.push(("area-number", number));
+    let mut shouting = base;
+    shouting["nodes"][0]["area"] = json!("Not/A/Path");
+    bad.push(("area-not-a-path", shouting));
+    for (name, document) in bad {
+        let scratch = Scratch::new(&format!("area-bad-{name}"));
+        let input = write_fixture(&scratch, "trace.json", &document);
+        let out = scratch.path("graph");
+        let ran = run(&input, &out);
+        assert_eq!(ran.code, 2, "{name}: {}", ran.stderr);
+        assert!(ran.stderr.starts_with("refused:"), "{name}: {}", ran.stderr);
+        assert!(!out.exists(), "{name}: nothing is written on a refusal");
+    }
+}
+
+// --- the whole path: a corpus with areas, through `req trace --format json`, through the converter ------------------
+
+fn req_bin() -> PathBuf {
+    std::env::var_os("CARGO_BIN_EXE_req")
+        .map(PathBuf::from)
+        .expect("integration tests run with CARGO_BIN_EXE_req set")
+}
+
+/// A corpus made by the real bootstrap, three `req.claim/3` claims filed under three areas, and a registry whose labels
+/// are the reader-facing names. Returns its `req trace --format json` document.
+fn corpus_document(scratch: &Scratch) -> String {
+    let dir = scratch.path("corpus");
+    fs::create_dir_all(&dir).expect("makes the corpus dir");
+    let init = Command::new(req_bin())
+        .arg("init")
+        .current_dir(&dir)
+        .output()
+        .expect("runs req init");
+    assert_eq!(init.status.code(), Some(0), "req init must succeed");
+    fs::remove_file(dir.join("claims/REQ-0001.yml")).expect("removes the starter claim");
+    for (id, area, relations) in [
+        ("REQ-0001", "interfaces", ""),
+        (
+            "REQ-0002",
+            "diagnostics/startup",
+            "relations:\n  - type: refines\n    to: REQ-0001\n",
+        ),
+        ("REQ-0003", "power", ""),
+    ] {
+        let relations = if relations.is_empty() {
+            "relations: []\n"
+        } else {
+            relations
+        };
+        let text = format!(
+            "schema: req.claim/3\nclaim_id: {id}\n\
+             statement: \"The {id} service shall respond to a health check within 200 ms.\"\n\
+             applicability: []\n{relations}evidence: process\narea: {area}\n\
+             rationale:\n  source: docs/requirements.md\n  date: 2026-11-13\n  \
+             rejected_alternatives: []\n  assumptions: []\n"
+        );
+        fs::write(dir.join(format!("claims/{id}.yml")), text).expect("writes a claim");
+    }
+    fs::create_dir_all(dir.join(".req")).expect("makes .req");
+    fs::write(
+        dir.join(".req/areas"),
+        "power Power management\ninterfaces Interfaces\ndiagnostics/startup Démarrage du système\n",
+    )
+    .expect("writes the registry");
+    let out = Command::new(req_bin())
+        .args(["trace", "--format", "json"])
+        .current_dir(&dir)
+        .env_remove("REQ_ROOT")
+        .output()
+        .expect("runs req trace");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).expect("utf-8")
+}
+
+/// Mutation anchor: the document carries the registry, and the converter reads nothing else, so a frame is named by its
+/// label. A document with no `areas` would name the frames by their paths.
+#[test]
+fn a_frame_is_named_by_the_label_req_trace_carries_from_the_registry() {
+    let scratch = Scratch::new("area-end-to-end");
+    let text = corpus_document(&scratch);
+    let document: Value = serde_json::from_str(&text).expect("the trace document");
+    let page = converted(&scratch, &document);
+    assert_eq!(
+        frame_labels(&page),
+        strings(&["Power management", "Interfaces", "Démarrage du système"]),
+        "the labels of `.req/areas`, in its line order: {page}"
+    );
+}
+
+/// A route that runs down a corridor from a slot whose own column is the corridor (the gap nearest a hop's two ends is the
+/// source's own x) repeats its first point. Dropping the repeat once must keep the corridor's two inward points: dropping
+/// them left a diagonal segment, which archify refuses (`artifact/orthogonal-arrows`). Found on a 44-claim area of the
+/// 500-claim synthetic corpus and cut down by hand to eight claims and twelve relations, two areas and one claim with none.
+#[test]
+fn a_route_that_repeats_its_first_point_still_runs_in_right_angles() {
+    let mut nodes = Vec::new();
+    for (id, area) in [
+        ("REQ-0001", Some("a")),
+        ("REQ-0002", Some("b")),
+        ("REQ-0003", Some("a")),
+        ("REQ-0004", Some("b")),
+        ("REQ-0007", None),
+        ("REQ-0008", Some("a")),
+        ("REQ-0009", Some("a")),
+        ("REQ-0010", Some("b")),
+    ] {
+        nodes.push(filed(id, area));
+    }
+    let document = document(
+        json!({}),
+        nodes,
+        vec![
+            edge("REQ-0010", "derives-from", "REQ-0008"),
+            edge("REQ-0010", "constrains", "REQ-0003"),
+            edge("REQ-0010", "derives-from", "REQ-0008"),
+            edge("REQ-0002", "derives-from", "REQ-0003"),
+            edge("REQ-0002", "constrains", "REQ-0001"),
+            edge("REQ-0008", "derives-from", "REQ-0009"),
+            edge("REQ-0007", "refines", "REQ-0001"),
+            edge("REQ-0004", "derives-from", "REQ-0001"),
+            edge("REQ-0007", "refines", "REQ-0008"),
+            edge("REQ-0002", "derives-from", "REQ-0009"),
+            edge("REQ-0008", "derives-from", "REQ-0007"),
+            edge("REQ-0009", "constrains", "REQ-0004"),
+        ],
+    );
+    let scratch = Scratch::new("area-orthogonal");
+    let pages = converted_pages(&scratch, &document, Some("4"));
+    for page in pages.values() {
+        assert_every_edge_is_explicitly_placed(page);
+    }
+}
+
+/// A label of characters archify counts as two but East Asian Width calls Ambiguous (U+3248, a circled number): a converter
+/// that counts only the Wide and Fullwidth classes counts it as one, keeps it whole, and archify refuses the tag
+/// (`component-tag-overflow`) or widens the frame off the canvas. Found in A-2-review-1.
+#[test]
+fn a_label_of_characters_archify_counts_wide_but_unicode_calls_ambiguous_is_cut_to_fit() {
+    let tag_label = "\u{3248}".repeat(21);
+    let title_label = "\u{3248}".repeat(30);
+    let document = with_areas(
+        document(
+            json!({}),
+            vec![
+                filed("REQ-0001", Some("a")),
+                filed("REQ-0002", Some("a")),
+                filed("REQ-0003", Some("b")),
+                filed("REQ-0004", Some("b")),
+            ],
+            vec![edge("REQ-0002", "refines", "REQ-0001")],
+        ),
+        &[("a", tag_label.as_str()), ("b", title_label.as_str())],
+    );
+
+    // One page: no frame title passes 30 units as archify counts them, and no frame leaves the canvas.
+    let scratch = Scratch::new("area-ambiguous-one");
+    let page = converted(&scratch, &document);
+    for frame in boundaries(&page) {
+        let label = frame["label"].as_str().expect("label");
+        assert!(
+            units(label) <= FRAME_TITLE_UNITS,
+            "the frame title `{label}` is {} units as archify counts them",
+            units(label)
+        );
+    }
+    assert_frames_inside_the_canvas(&page);
+
+    // Split: the index tag holds at most 33 units, the label 20, and every page's frames fit.
+    let scratch = Scratch::new("area-ambiguous-split");
+    let pages = converted_pages(&scratch, &document, Some("2"));
+    for (name, page) in &pages {
+        for c in components(page) {
+            let label = c["label"].as_str().expect("label");
+            assert!(units(label) <= LABEL_UNITS, "{name}: `{label}`");
+            if let Some(tag) = c["tag"].as_str() {
+                assert!(
+                    units(tag) <= TAG_UNITS,
+                    "{name}: the tag `{tag}` is {} units as archify counts them",
+                    units(tag)
+                );
+            }
+        }
+        for frame in boundaries(page) {
+            let label = frame["label"].as_str().expect("label");
+            assert!(units(label) <= FRAME_TITLE_UNITS, "{name}: `{label}`");
+        }
+        assert_frames_inside_the_canvas(page);
+    }
+}
+
+/// The converter never counts a character as narrower than archify does: over every code point in archify's width table,
+/// `units()` in the script is at least two. (The script is loaded by path in a throwaway interpreter: it is a program, not
+/// a module, and the check reads its own function, not a copy.)
+#[test]
+fn the_converters_unit_count_is_at_least_archifys_over_every_wide_code_point() {
+    let scratch = Scratch::new("area-units");
+    let driver = scratch.path("driver.py");
+    fs::write(
+        &driver,
+        "import importlib.util, json, sys\n\
+         spec = importlib.util.spec_from_file_location('converter', sys.argv[1])\n\
+         module = importlib.util.module_from_spec(spec)\n\
+         spec.loader.exec_module(module)\n\
+         low = []\n\
+         for lo, hi in json.loads(sys.argv[2]):\n\
+        \x20   for code in range(lo, hi + 1):\n\
+        \x20       if module.units(chr(code)) < 2:\n\
+        \x20           low.append(code)\n\
+         print(len(low), [hex(c) for c in low[:8]])\n",
+    )
+    .expect("writes the driver");
+    let ranges = serde_json::to_string(&ARCHIFY_WIDE).expect("ranges");
+    let out = Command::new(python3())
+        .arg("-I")
+        .arg(&driver)
+        .arg(script())
+        .arg(ranges)
+        .output()
+        .expect("runs the driver");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "0 []",
+        "code points the converter counts as one that archify counts as two"
+    );
 }
