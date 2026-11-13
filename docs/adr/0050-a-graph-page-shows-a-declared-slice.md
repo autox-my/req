@@ -68,8 +68,8 @@ a Tier-1 input a second job. A category an author chooses is a separate proposal
      the layout (ADR 0046 implementation note).
    - A claim with no edge at all, in or out, is **standalone**. Standalone claims form one group of their own.
    - A family is named by its root's id. Families are ordered by root id, and the standalone group comes last.
-   - If a corpus later declares an author-chosen grouping (ADR 0051, if ratified), that replaces the family as the key.
-     The page rules here do not change.
+   - An author-chosen grouping now exists (ADR 0051, unit A-2): when any claim carries an `area`, the areas replace the
+     family as the key. The page rules here do not change.
 3. **One page or several, by size.**
    - If the document holds at most `PAGE_LIMIT` claims, there is one page. Each family gets a `boundaries` frame, and
      when there are five families or fewer, each also gets a focus view.

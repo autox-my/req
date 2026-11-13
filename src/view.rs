@@ -32,6 +32,8 @@
 //! committed for a repository are different things.
 
 use crate::canon::RULES_V;
+use crate::check::{Listing, read_list};
+use crate::completeness::{AREAS, AreaEntry, parse_areas};
 use crate::digest::sha256_hex;
 use crate::format::{self, Format, SCHEMA_RENDER, SCHEMA_TRACE};
 use crate::model::Evidence;
@@ -375,8 +377,16 @@ struct NodeDocument<'a> {
     area: Option<&'a str>,
 }
 
-/// `trace`'s document: the nodes (every claim), the outgoing edges, the derived incoming edges
-/// (REQ-0020 stores each relation once), and the findings.
+/// One line of `.req/areas` as `trace`'s document names it (ADR 0051 decision 2, unit A-2): the area's path and the
+/// reader-facing label a renderer shows in place of the key. `path` then `label` is the field order.
+#[derive(Serialize)]
+struct AreaDocument<'a> {
+    path: &'a str,
+    label: &'a str,
+}
+
+/// `trace`'s document: the nodes (every claim), the registry's areas in its line order, the outgoing edges, the derived
+/// incoming edges (REQ-0020 stores each relation once), and the findings.
 #[derive(Serialize)]
 struct TraceDocument<'a> {
     schema: &'static str,
@@ -384,6 +394,7 @@ struct TraceDocument<'a> {
     rules_v: u32,
     selection: &'a Context,
     nodes: Vec<NodeDocument<'a>>,
+    areas: Vec<AreaDocument<'a>>,
     edges: Vec<EdgeDocument<'a>>,
     derived_incoming: Vec<EdgeDocument<'a>>,
     findings: &'a TraceFindings,
@@ -428,8 +439,14 @@ pub fn render_document(rows: &[Row], context: &Context) -> String {
 
 /// The `trace` document, and the findings the plain verdict folds into its exit code. The
 /// findings come from [`trace`] — the same call the text path makes — so the document cannot
-/// classify an edge differently from the report beside it.
-pub fn trace_document(rows: &[Row], context: &Context) -> (String, TraceFindings) {
+/// classify an edge differently from the report beside it. `areas` is the validated `.req/areas`, in
+/// its line order (`&[]` with no registry): the document carries it so a renderer that reads the
+/// document and nothing else can name an area by its label (ADR 0051 decision 2).
+pub fn trace_document(
+    rows: &[Row],
+    context: &Context,
+    areas: &[AreaEntry],
+) -> (String, TraceFindings) {
     let (_, findings) = trace(rows, context);
     let sorted = sorted_rows(rows);
 
@@ -480,6 +497,13 @@ pub fn trace_document(rows: &[Row], context: &Context) -> (String, TraceFindings
         rules_v: RULES_V,
         selection: context,
         nodes,
+        areas: areas
+            .iter()
+            .map(|entry| AreaDocument {
+                path: &entry.path,
+                label: &entry.label,
+            })
+            .collect(),
         edges,
         derived_incoming,
         findings: &findings,
@@ -813,14 +837,30 @@ fn project(generator: &str, rows: &[Row], context: &Context) -> (String, bool) {
 
 /// The JSON rendering of a plain view. The open/settled answer is derived from the same findings
 /// the document carries, so the exit code is the verdict's and never the rendering's.
-fn json_document(generator: &str, rows: &[Row], context: &Context) -> (String, bool) {
+fn json_document(
+    generator: &str,
+    rows: &[Row],
+    context: &Context,
+    areas: &[AreaEntry],
+) -> (String, bool) {
     if generator == GENERATOR_TRACE {
-        let (document, findings) = trace_document(rows, context);
+        let (document, findings) = trace_document(rows, context, areas);
         let open = !findings.dangling.is_empty() || !findings.undecided_edges.is_empty();
         (format!("{document}\n"), open)
     } else {
         let open = rows.iter().any(|row| row.applies == Applies::Unknown);
         (format!("{}\n", render_document(rows, context)), open)
+    }
+}
+
+/// `.req/areas`, validated, in its line order: `Ok(vec![])` when the file does not exist. A malformed registry is
+/// every bad `<file>:<line>` (one parser, [`parse_areas`], as `req check` reads it); one that exists and cannot be
+/// used as a list is the reason, as `req check` names it.
+fn read_areas(root: &Path) -> Result<Vec<AreaEntry>, Vec<String>> {
+    match read_list(root, AREAS) {
+        Listing::Absent => Ok(Vec::new()),
+        Listing::Unreadable(reason) => Err(vec![reason]),
+        Listing::Text(text) => parse_areas(&text),
     }
 }
 
@@ -846,6 +886,24 @@ fn run_view(args: &[String], root: &Path, generator: &str) -> i32 {
     };
     match &invocation.mode {
         Mode::Plain => {
+            // `trace --format json` carries the registry (ADR 0051): a malformed or unreadable one is a usage
+            // error, decided before anything is printed. Text `trace` and `render` never read it.
+            let areas = if generator == GENERATOR_TRACE && invocation.format == Format::Json {
+                match read_areas(root) {
+                    Ok(areas) => areas,
+                    Err(errors) => {
+                        for error in &errors {
+                            eprintln!("{error}");
+                        }
+                        eprintln!(
+                            "nothing was printed: a malformed `{AREAS}` is refused, never read around"
+                        );
+                        return 2;
+                    }
+                }
+            } else {
+                Vec::new()
+            };
             let rows = match load_rows(&invocation.context, root) {
                 Ok(rows) => rows,
                 Err(error) => {
@@ -857,7 +915,7 @@ fn run_view(args: &[String], root: &Path, generator: &str) -> i32 {
             // document and the exit code cannot disagree about whether the view is settled.
             let (output, open) = match invocation.format {
                 Format::Text => project(generator, &rows, &invocation.context),
-                Format::Json => json_document(generator, &rows, &invocation.context),
+                Format::Json => json_document(generator, &rows, &invocation.context, &areas),
             };
             print!("{output}");
             if open { 3 } else { 0 }

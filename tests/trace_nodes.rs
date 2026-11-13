@@ -399,7 +399,11 @@ fn areas_carries_declared_areas_that_no_claim_names() {
     s.claim_in("REQ-0001", "interfaces");
     s.areas(REGISTRY);
     let document = s.document(&[]);
-    assert_eq!(document["areas"].as_array().map(Vec::len), Some(3), "{document}");
+    assert_eq!(
+        document["areas"].as_array().map(Vec::len),
+        Some(3),
+        "{document}"
+    );
 }
 
 #[test]
@@ -425,7 +429,10 @@ fn areas_sits_between_nodes_and_edges_and_an_entry_keeps_path_then_label() {
     );
     let path = at(areas, "path");
     let label = at(path, "label");
-    assert!(areas < path && path < label && label < edges, "an entry is path, then label");
+    assert!(
+        areas < path && path < label && label < edges,
+        "an entry is path, then label"
+    );
 }
 
 #[test]
@@ -434,7 +441,11 @@ fn a_malformed_registry_is_exit_2_naming_every_bad_line_and_prints_nothing() {
     three(&s);
     s.areas("diagnostics Fine\nBad_Path A label\ninterfaces\ndiagnostics Again\n");
     let out = s.trace(&[]);
-    assert_eq!(out.code, 2, "a malformed registry is a usage error:\n{}", out.stderr);
+    assert_eq!(
+        out.code, 2,
+        "a malformed registry is a usage error:\n{}",
+        out.stderr
+    );
     assert_eq!(out.stdout, "", "nothing is printed to stdout");
     for line in [".req/areas:2:", ".req/areas:3:", ".req/areas:4:"] {
         assert!(
@@ -494,6 +505,12 @@ fn trace_help_names_areas() {
         .output()
         .expect("runs req trace --help");
     let text = String::from_utf8_lossy(&out.stdout).into_owned();
-    assert!(text.contains("`areas`"), "the help names the `areas` field:\n{text}");
-    assert!(text.contains(".req/areas"), "and where it comes from:\n{text}");
+    assert!(
+        text.contains("`areas`"),
+        "the help names the `areas` field:\n{text}"
+    );
+    assert!(
+        text.contains(".req/areas"),
+        "and where it comes from:\n{text}"
+    );
 }

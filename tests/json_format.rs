@@ -605,7 +605,11 @@ fn trace_json_serializes_edges_derived_incoming_and_findings() {
             "selection",
         ],
     );
-    assert_eq!(document["areas"], serde_json::json!([]), "no registry, no areas");
+    assert_eq!(
+        document["areas"],
+        serde_json::json!([]),
+        "no registry, no areas"
+    );
     assert_eq!(document["schema"], "req.trace/1");
     assert_eq!(document["generator"], "trace");
     assert_eq!(document["rules_v"], req::canon::RULES_V);

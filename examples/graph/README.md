@@ -48,6 +48,8 @@ done
   it), so pages from an earlier run never mix with this one: delete the directory or pick a new one.
 - `req trace --format json` exits 3 while an edge is dangling or undecided; the document is complete either way, and
   the pages draw those edges distinctly. Judge the verdict with `req trace`, not with the page.
+- `req trace --format json` reads `.req/areas` when it exists (and only for `--format json`): a malformed registry is exit
+  2 naming every bad `<file>:<line>`, with nothing on stdout, as `req check` names it.
 - The converter reads `req.trace/1` and refuses any other schema, naming it (exit 2), and writes nothing on a refusal. If
   `req` moves the schema to `/2`, the converter says so rather than guessing.
 - `finalize` exits non-zero on any failed gate. A non-zero exit is not a page; read its receipt, one per page.
@@ -59,12 +61,25 @@ done
 
 ## What a page shows
 
-The graph is cut into **groups**, computed from the document alone (ADR 0050). A **root** is a claim that derives from
-and refines nothing the document holds; a claim's **family** is the lowest-id root it reaches over `derives-from` and
-`refines`; a claim with no edge at all is **standalone**. A family is named by its root's id.
+The graph is cut into **groups**, computed from the document alone (ADR 0050, ADR 0051). There are two ways to cut it, and
+the document says which: **by area when any claim carries an `area`, and by family otherwise.**
 
-- **Up to 150 claims: one page**, `all.json`. Each family gets a labelled frame and, when there are five or fewer, a
-  focus view; standalone claims sit outside the frames.
+- **Families** (no claim has an area). A **root** is a claim that derives from and refines nothing the document holds; a
+  claim's **family** is the lowest-id root it reaches over `derives-from` and `refines`; a claim with no edge at all is
+  **standalone**. A family is named by its root's id.
+- **Areas** (any claim has one, ADR 0051). A group is the claims whose `area` is one path exactly, so `diagnostics` and
+  `diagnostics/startup` are two groups and a claim is in exactly one. Groups run in the order of `.req/areas`, then any area
+  the registry does not declare (by path), then **`no area`**, last. A group is named by its **label** in `.req/areas`, or
+  by its path when undeclared; `req trace --format json` carries the registry as `areas`, so the converter needs nothing
+  but the document. Families are not computed. Inside a group the layers follow only the `derives-from`/`refines` edges
+  whose two ends are both in it, and a claim with no such edge sits in a grid under them, inside the group's frame; an
+  edge to another group is drawn like any edge that leaves a group (below). On a split run a page is `area-<path>.json`,
+  with `/` written as `.` (`area-diagnostics.startup.json`), and `no-area.json`. A label is free text, so a node or a frame
+  title never carries more than archify can draw: the index labels a node with the path's last segment and the name rides
+  in its tag, a frame title is cut with an ellipsis, and the whole name is in the page's title, subtitle and cards.
+
+- **Up to 150 claims: one page**, `all.json`. Each family (or area) gets a labelled frame and, when there are five or
+  fewer, a focus view; standalone claims sit outside the frames.
 - **More than 150 claims: an index plus one page per group.** `index.json` has one node per group and one connection per
   pair of groups and relation, labelled `<relation> ×<count>`; its cards list each group page's file name (archify has
   no link from one page to another, so open the file by name). A group larger than 150 claims is cut into parts by layer,

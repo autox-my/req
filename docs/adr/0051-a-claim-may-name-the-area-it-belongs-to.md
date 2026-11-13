@@ -4,8 +4,8 @@ Extends ADR 0022 (`req.claim/2`: claims are authored, fingerprints are derived).
 No `RULES_V` bump and no address moves: the key is outside identity. The claim file format moves to `req.claim/3`
 (decision 6, the owner's ruling of 2026-11-13).
 
-**Status: proposed.** The owner ratifies it by merging; the first implementation (decisions 1–4 and 6) is
-recorded in the note at the end. Asked for by the owner on
+**Status: proposed.** The owner ratifies it by merging; the first implementation (decisions 1–4 and 6) and the
+second (decision 5, the graph) are recorded in the notes at the end. Asked for by the owner on
 2026-11-13. Date proposed: 2026-11-13.
 
 ## Context
@@ -157,3 +157,67 @@ Decisions 1–4 and 6 are implemented (`docs/specs/A-1-area-key.md`); decision 5
 - **Migration message.** The `/1` migration candidate's message now names the schema `tools/migrate_claims.py`
   writes (`req.claim/2`) and says this build loads it as it is, since the tool stops at `/2`.
 
+## Implementation note — 2026-11-13 (task A-2)
+
+Decision 5 (the graph groups by area) is implemented (`docs/specs/A-2-graph-by-area.md`). The decision left open how a
+renderer that reads only the trace document (ADR 0046) learns a label, and how a free-text label fits a drawing.
+
+- **The labels travel in the document.** `req.trace/1` gains a top-level `areas`, an array of `{path, label}` in the
+  registry's line order, `[]` with no `.req/areas`, between `nodes` and `edges`. It is additive under `/1` (ADR 0046
+  decision 7). `req trace --format json` parses the registry with `completeness::parse_areas`, the one parser; a malformed
+  or unreadable one is exit 2 naming every bad `<file>:<line>`, with nothing on stdout. Text `req trace` never reads it, so
+  `docs/trace.md` passes `--check` unchanged.
+- **The key.** If **any** node carries an `area`, the groups are areas and families are not computed; otherwise every byte
+  of ADR 0050's output is unchanged (a test compares the two). A group is the claims whose `area` is one path exactly. The
+  order is the registry's lines, then undeclared areas by path, then `no area`. A declared area no claim names has no group
+  (there is nothing to frame). The name is the registry label, or the path when undeclared.
+- **Inside a group.** Layers come from the `derives-from`/`refines` edges whose two ends are both in the group, so an edge
+  to another group lays nothing out. A claim with no such edge sits in the group's own grid: the layer under the last one
+  (the only layer when no claim is layered), wrapped at `WRAP` like any layer, inside the frame. Every other rule of ADR
+  0050 applies as it stands, parts included.
+- **Page files.** `area-<path with each / as .>`, `.` not being a key character, so two paths never share a file;
+  `no-area`; parts keep `-part-<i>`. A page name has a `.` and archify's id grammar (`^[a-zA-Z][a-zA-Z0-9_-]*$`) does not,
+  so an index node's id is the page name with `.` as `_` (a key has no `_`, so ids stay distinct). The converter refuses a
+  document whose page names collide (an area `core-part-2` beside an oversized `core`), and a node `area` or registry path
+  outside the key grammar, because a path becomes a file name.
+- **Fit.** archify refuses a component label wider than its box (`component-label-overflow`) and widens a frame to its
+  title. Read in a scratch clone of archify `7e45f36` (`renderers/architecture/render-architecture.mjs`,
+  `renderers/shared/text-fit.mjs`, `renderers/shared/utils.mjs`), written here in words and not copied:
+  - a label's width is its *units* times 6.6 px and must not pass the box's width plus 8, so a 130 px box holds **20 units**;
+  - a tag or sublabel is judged at the 6 px floor, 3.6 px a unit against the width minus 8, so the box holds **33 units**;
+  - a unit is a column of text: two for a wide character (East Asian ranges, emoji), one otherwise, nothing for a variation
+    selector but the emoji one, which reserves two. The converter counts every character of the symbol and emoji blocks as
+    wide as well, so it errs high and only ever cuts early;
+  - a frame is widened to its title (units times the font times 0.6, plus 10), and the font is at least 6 px times the
+    canvas width over 930, so about 11 px on a page at `MAX_WIDTH`. A title of 30 units widens a one-box frame by 13 px a
+    side, which ADR 0050's margin holds (the guard in `tests/graph_archify.rs` models it);
+  - a focus view's label is at most 48 characters (archify's schema).
+
+  The converter therefore never puts a label it cannot fit into a node, a frame or a view: an index node is labelled with
+  the path's last segment, cut to 20 units, and its **tag** holds the name cut to 33 units; a frame title (a group's, and a
+  stub's `page <name>`) is cut to 30 units; a view label to 48 characters; each cut ends in `…`. The whole name is on the
+  index's card for the group page, in the group page's title, subtitle and card, and in the single page's card. A stub's page
+  name is cut only when a key path is long enough for `page area-…` to pass 30 units, and the index's card then still names
+  the file whole. The index node no longer counts claims in its tag (an area's tag is its name); the count is in the card.
+- **A converter fix the new groups exposed.** A hop that crosses bands runs down a corridor, and when the corridor is the
+  source's own column the route repeats its first point; the repeat was dropped together with the hop's two inward points,
+  which left a diagonal segment and archify refused the page (`artifact/orthogonal-arrows`, one 44-claim area of the 500-claim
+  corpus). Only the repeated point is dropped now. It is a fix to ADR 0050's router; this repository's graph is byte for byte
+  what it was, and `tests/graph_archify.rs` now rejects a diagonal route on every page it builds.
+
+**Verification outside the gate.** archify `7e45f36`, `ARCHIFY_UPDATE_CHECK_DISABLED=1`, `--quality standard`, `finalize` per
+page, one Apple-silicon laptop; the HTML kept in a scratch directory, not committed and not visually reviewed. Every page
+below exited 0 with `validate`, `deliver`, `check` and `browser-check` all `pass`.
+
+| document | grouped by | pages | largest page | widest viewBox |
+| --- | --- | --- | --- | --- |
+| this repository's graph (`.req/variants` line 1, 40 claims, no area) | family | 1 | 40 claims | 1650 × 2542 |
+| synthetic, 500 claims, 12 areas at depths one and two, 34 claims with none, long labels in three scripts | area | 14 (an index, `no-area`, twelve areas) | 81 claims | 1665 |
+| synthetic, 1000 claims, likewise | area | 15 (as above, and `area-ops-part-2`) | 135 claims | 1683 |
+
+On this repository's graph `routesOverSuggestedBends` is **23** and over-stretch **10**, the figures ADR 0050 records, as
+the output is unchanged. The synthetic corpora are ADR 0050's generator (a heap of `derives-from`, a `refines` cross-link
+on every seventh claim, every tenth claim standing alone) with `req.claim/3` and an `area` added by a scratch script: a root
+takes one of the twelve paths, a claim inherits its parent's area seven times in ten and takes another path otherwise, every
+25th has none; the registry labels include `Démarrage du système et journal des défauts`, a 17-character Japanese name and a
+98-character English one. Neither the generator nor the corpora are committed.
