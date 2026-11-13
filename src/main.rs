@@ -601,7 +601,9 @@ element is any file under a root listed in `.req/design` (optional; one repo-rel
 file per line, `#` comments and blank lines skipped, an absolute path or `..` is exit 2 naming
 `<file>:<line>`; directories are read recursively, symlinks and `.git` are not followed). It
 declares a link with a line `req-satisfies: <claim-id>` — in a comment or front matter; req reads the
-token, not the file format. The element's id is its repo-relative path.
+token, not the file format. The element's id is its repo-relative path. A `req-satisfies:` with
+no claim id after it is a mention, not a link: counted and listed (`[MENTION] <element>:<line>`),
+never UNVERIFIABLE, no part of any verdict; a token that is present but is no claim stays UNKNOWN CLAIM.
 
 `req satisfy` lists every declared link with its outcome. A link is judged by the *direction* of the
 claim's change since it was recorded, both statements re-derived under the current rules:
@@ -621,7 +623,8 @@ and needs no git history. req never records a link on its own. It refuses a link
 a claim the corpus does not hold (exit 2), and an unreadable record (exit 3).
 
 `--format json` prints a `req.satisfy/1` document: the links, each with its element, claim, outcome
-(`holds`, `holds_weakened`, `suspect`, `unratified`, `unknown_claim`, `orphaned`), direction and line.
+(`holds`, `holds_weakened`, `suspect`, `unratified`, `unknown_claim`, `orphaned`), direction and line,
+then `mentions` (each `{element, line}`, `[]` when there are none).
 The release gate's `design_satisfied` policy and `.req/completeness`'s `need design` build on this.
 
 exit: 0 every declared link holds (or there are none, said so), 3 UNVERIFIABLE (a suspect, unratified

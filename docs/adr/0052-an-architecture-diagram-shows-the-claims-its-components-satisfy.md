@@ -3,9 +3,10 @@
 Extends ADR 0040 (a design satisfies a claim at a meaning) and ADR 0046 (req writes archify's input; archify only renders
 it). Nothing is superseded. No rules change, no claim-schema change, no Baseline envelope change.
 
-**Status: proposed.** The owner ratifies it by merging. Asked for by the owner on 2026-11-14 ("we should also use archify to
-generate architecture diagram and most importantly to display the relation to the requirement"); the route in decision 1
-was chosen by the owner on 2026-11-14 over a requirement field in an archify fork. Date proposed: 2026-11-14.
+**Status: accepted** (ratified by the owner's merge of PR #76, 2026-11-14). Asked for by the owner on 2026-11-14 ("we should
+also use archify to generate architecture diagram and most importantly to display the relation to the requirement"); the
+route in decision 1 was chosen by the owner on 2026-11-14 over a requirement field in an archify fork. Date proposed:
+2026-11-14.
 
 ## Context
 
@@ -120,3 +121,35 @@ This decision is wrong if any of these is observed:
 4. renaming a component id, with its `sources` unchanged, changes the claims the component shows;
 5. a cited file that no longer exists is drawn without being flagged;
 6. a bare marker is reported as a link, or a malformed claim id is reported as a mention.
+
+## Implementation note — 2026-11-14 (O-1: the mention rule and the converter)
+
+Not an edit of the decisions above; where decisions 1–6 now live (decision 7 step 1).
+
+- **Decision 6 is `src/satisfy.rs`.** `scan` returns `mentions` beside `declarations`: a `req-satisfies:` whose token (the
+  existing run of ASCII alphanumerics, `-` and `_`) is empty, as `(element, line)`, sorted and de-duplicated. `req satisfy`
+  lists each as `[MENTION] <element>:<line>: req-satisfies: with no claim id — not a link`, its header counts them, and
+  `req.satisfy/1` gains a top-level `mentions` between `links` and `unreadable` (additive under `/1`). A mention changes no
+  verdict and no exit code, and `gate`, `completeness` and `audit` read declarations only. A non-empty token that is no claim
+  stays UNKNOWN CLAIM.
+- **The converter is `tools/graph/arch_overlay.py`** (standard library, offline), run as `python3 -I
+  tools/graph/arch_overlay.py [--root <dir>] <diagram.json> <satisfy.json> <trace.json> <out-dir>`; it writes
+  `overlay.json` and `matrix.md`. A component's links are the `req.satisfy/1` links whose `element` equals one of its
+  `sources[].path` exactly (line ranges ignored; the id is never read). Exit `0` written; `3` written, with a component
+  `STALE` or a link `unknown_claim` (reasons on stderr); `2` refused (a wrong schema or diagram type, malformed JSON, an
+  unreadable input, an existing non-empty out-dir), nothing written.
+- **The archify field is `tag`.** Read at `7e45f36`: a component's `tag` is one unwrapped line at the foot of its box, in the
+  accent colour, shrunk to a 6 px floor inside `(width - 8) / 3.6` columns, and rejected (`component-tag-overflow`) only past
+  that; the `label` is the author's name, and the `sublabel` is the author's description of the component, so both stay
+  untouched. The overlay's `tag` keeps any text the author wrote and adds ` | <STATUS> · <claim ids>`; when the ids do not
+  fit the box they are cut to the first few and `+N` (then `N claims`), and the **status card lists every id**. `cards` carry
+  the rest: components by status (worst first), claims no component reaches, and cited paths outside every `.req/design`
+  root. `meta.subtitle` (kept, and added to) names the diagram's pinned `meta.repository.revision` (or says there is none),
+  the satisfy document's `rules_v` and archify `7e45f36`. archify's file keys are `schema_version` and `diagram_type`; the
+  converter refuses anything but `architecture` at `schema_version` 1.
+- **Status** is the worst outcome, in decision 2's order, with two states that are not outcomes: `STALE` (a cited path is
+  absent under `--root`, or is not a repository-relative path; ranks worst of all, decision 4) and `NO CLAIM` (no link: a
+  component without `sources`, or whose files declare nothing). The matrix's rows are the claims of `req.trace/1` whose
+  `applies` is not `does_not_apply`; a cell is the worst outcome of that component's links to that claim.
+- **Falsification 1–6** are tests: `tests/graph_overlay.rs` (1–5, with the mutations that delete the worst-of rule, key a link
+  on the id, skip the existence check and replace the author's tag) and `tests/satisfy.rs` (6).

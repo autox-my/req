@@ -925,3 +925,188 @@ fn an_unknown_word_after_need_is_exit_2_naming_the_line() {
     assert_eq!(out.code, 2, "{}", out.all());
     assert!(out.all().contains(".req/completeness:1"), "{}", out.all());
 }
+
+// ---- a marker with no claim id is a mention (ADR 0052 decision 6, O-1) ------------------------
+
+/// Three files under one root: a bare marker, a marker documented in backticks with a placeholder,
+/// and one real declaration. Two are mentions (the token after the marker is empty), one is a link.
+fn with_mentions(name: &str) -> Scratch {
+    let s = Scratch::new(name);
+    s.claim("REQ-0001", BASE, None);
+    s.write(".req/design", "design\n");
+    s.write("design/a-bare.md", "# notes\nreq-satisfies:\n");
+    s.write(
+        "design/b-doc.md",
+        "# the marker is `req-satisfies: <claim-id>` in a comment\n",
+    );
+    s.write("design/c-real.md", "<!-- req-satisfies: REQ-0001 -->\n");
+    s
+}
+
+#[test]
+fn a_marker_with_no_claim_id_is_a_mention_not_a_link() {
+    // Falsification 6 (ADR 0052): a bare marker is never reported as a link.
+    let s = with_mentions("mentions-text");
+    let out = s.req(&["satisfy"]);
+    // The one real link is unratified, which is the verdict; the mentions add nothing to it.
+    assert_eq!(out.code, 3, "{}", out.all());
+    assert!(
+        out.stdout.contains("# req satisfy: 1 link(s) declared"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("2 mention(s)"), "{}", out.stdout);
+    let links: Vec<&str> = out
+        .stdout
+        .lines()
+        .filter(|line| line.contains("->"))
+        .collect();
+    assert_eq!(links.len(), 1, "exactly one link: {}", out.stdout);
+    assert!(links[0].contains("design/c-real.md"), "{}", links[0]);
+    assert!(!out.stdout.contains("UNKNOWN CLAIM"), "{}", out.stdout);
+    let mentions: Vec<&str> = out
+        .stdout
+        .lines()
+        .filter(|line| line.starts_with("[MENTION]"))
+        .collect();
+    assert_eq!(
+        mentions,
+        vec![
+            "[MENTION] design/a-bare.md:2: req-satisfies: with no claim id — not a link",
+            "[MENTION] design/b-doc.md:1: req-satisfies: with no claim id — not a link",
+        ],
+        "{}",
+        out.stdout
+    );
+    // The mention lines come after every link line.
+    let last_link = out
+        .stdout
+        .rfind("design/c-real.md ->")
+        .expect("a link line");
+    let first_mention = out.stdout.find("[MENTION]").expect("a mention line");
+    assert!(last_link < first_mention, "{}", out.stdout);
+}
+
+#[test]
+fn the_json_listing_carries_mentions_between_links_and_unreadable() {
+    let s = with_mentions("mentions-json");
+    let out = s.req(&["satisfy", "--format", "json"]);
+    assert_eq!(out.code, 3, "{}", out.all());
+    let doc: serde_json::Value = serde_json::from_str(&out.stdout).expect("a JSON document");
+    assert_eq!(doc["links"].as_array().expect("links").len(), 1);
+    assert_eq!(
+        doc["mentions"],
+        serde_json::json!([
+            {"element": "design/a-bare.md", "line": 2},
+            {"element": "design/b-doc.md", "line": 1},
+        ])
+    );
+    let (links, mentions, unreadable) = (
+        out.stdout.find("\"links\"").expect("links key"),
+        out.stdout.find("\"mentions\"").expect("mentions key"),
+        out.stdout.find("\"unreadable\"").expect("unreadable key"),
+    );
+    assert!(links < mentions && mentions < unreadable, "{}", out.stdout);
+}
+
+#[test]
+fn mentions_is_an_empty_array_when_there_are_none() {
+    let s = Scratch::recorded("mentions-none");
+    let out = s.req(&["satisfy", "--format", "json"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let doc: serde_json::Value = serde_json::from_str(&out.stdout).expect("a JSON document");
+    assert_eq!(doc["mentions"], serde_json::json!([]));
+    assert!(!out.stdout.contains("[MENTION]"));
+}
+
+#[test]
+fn a_malformed_non_empty_token_is_still_unknown_claim_never_a_mention() {
+    // Falsification 6 (ADR 0052): a malformed claim id is not reported as a mention.
+    let s = Scratch::new("mentions-malformed");
+    s.claim("REQ-0001", BASE, None);
+    s.element(ELEMENT, &["REQ-12x"]);
+    let out = s.req(&["satisfy"]);
+    assert_eq!(out.code, 3, "{}", out.all());
+    let line = out.line_for(ELEMENT, "REQ-12x");
+    assert!(line.contains("UNKNOWN CLAIM"), "{line}");
+    assert!(!out.stdout.contains("[MENTION]"), "{}", out.stdout);
+    let json = s.req(&["satisfy", "--format", "json"]);
+    let doc: serde_json::Value = serde_json::from_str(&json.stdout).expect("a JSON document");
+    assert_eq!(doc["mentions"], serde_json::json!([]));
+    assert_eq!(doc["links"][0]["outcome"], "unknown_claim");
+}
+
+#[test]
+fn mentions_change_neither_the_verdict_nor_the_exit_code() {
+    // A recorded, holding link plus mentions: PASS, exit 0, with the mentions still shown.
+    let s = Scratch::recorded("mentions-verdict");
+    s.write(
+        "design/notes.md",
+        "documents `req-satisfies:` and\nreq-satisfies:\n",
+    );
+    let out = s.req(&["satisfy"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(out.stdout.contains("verdict: PASS"), "{}", out.stdout);
+    assert!(out.stdout.contains("2 mention(s)"), "{}", out.stdout);
+    let json = s.req(&["satisfy", "--format", "json"]);
+    assert_eq!(json.code, 0, "{}", json.all());
+    let doc: serde_json::Value = serde_json::from_str(&json.stdout).expect("a JSON document");
+    assert_eq!(doc["verdict"], "pass");
+    assert_eq!(doc["mentions"].as_array().expect("mentions").len(), 2);
+}
+
+#[test]
+fn only_mentions_declare_nothing_and_exit_0() {
+    // A corpus whose only markers are mentions has no link to judge: exit 0, and the mentions are named.
+    let s = Scratch::new("mentions-only");
+    s.claim("REQ-0001", BASE, None);
+    s.write(".req/design", "design\n");
+    s.write("design/doc.md", "req-satisfies:\n");
+    let out = s.req(&["satisfy"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(
+        out.stdout.contains("no satisfaction link"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("[MENTION] design/doc.md:1"),
+        "{}",
+        out.stdout
+    );
+}
+
+#[test]
+fn the_gate_and_the_audit_never_see_a_mention() {
+    // `design_satisfied` counts links only: one recorded holding link, two mentions → checked 1, pass.
+    let s = Scratch::recorded("mentions-gate");
+    s.write(
+        "design/notes.md",
+        "req-satisfies:\n`req-satisfies: <claim-id>`\n",
+    );
+    let out = s.req(&["gate", "--format", "json"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let doc: serde_json::Value = serde_json::from_str(&out.stdout).expect("a JSON document");
+    let policy = doc["policies"]
+        .as_array()
+        .expect("policies")
+        .iter()
+        .find(|p| p["policy"] == "design_satisfied")
+        .expect("design_satisfied");
+    assert_eq!(policy["outcome"], "pass");
+    assert_eq!(policy["checked"], 1);
+    // The record has one link; no mention became a declaration the completeness step could count.
+    s.write(".req/completeness", "need design\n");
+    let out = s.req(&["check"]);
+    assert_ne!(out.code, 2, "{}", out.all());
+    assert!(!out.all().contains("with no claim id"), "{}", out.all());
+}
+
+#[test]
+fn the_help_page_states_the_mention_rule() {
+    let s = Scratch::new("mentions-help");
+    let out = s.req(&["satisfy", "--help"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(out.stdout.contains("mention"), "{}", out.stdout);
+    assert!(out.stdout.contains("no claim id"), "{}", out.stdout);
+}
