@@ -233,6 +233,11 @@ _Avoid_: trace link (a relation is claim to claim), coverage
 A satisfaction link left holding across a change that was in fact a strengthening — the
 satisfaction analogue of a false merge, held to zero on the direction gold set (ADR 0040).
 
+**Overlay**:
+A copy of an architecture diagram on which each component shows the satisfaction links of the files it cites, with
+their outcomes. req writes it; the diagram it copies is never edited, and it stores no link (ADR 0052).
+_Avoid_: annotated diagram (nothing is authored on it), trace graph (that one is claim to claim)
+
 ### Authority
 
 **Authoring**:
