@@ -43,8 +43,9 @@ Read each definition before you write it.
 4. **Layout** (ADR 0050 decision 5), replacing V-1's grid:
    - median ordering;
    - one waypoint per crossed layer for a long edge, with the route passing through the waypoint coordinates;
-   - no wrap of a connected layer;
-   - family blocks left to right;
+   - a layer wider than `WRAP` boxes continues on further bands below, in the same median order (owner decision of
+     2026-11-13, which superseded this spec's first wording, "no wrap of a connected layer"; ADR 0050 decision 5);
+   - family blocks left to right, a block that would pass `MAX_WIDTH` starting a new row of blocks;
    - standalone claims in a grid at most six wide.
 
    The V-1 rule stays: every edge is routed explicitly, with its label on routed segment 1, and no route crosses an
