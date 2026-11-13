@@ -6,6 +6,7 @@ contract, gains one additive field, and nothing req computes changes.
 
 **Status: proposed.** The owner ratifies it by merging the pull request that carries it, together with the code (task
 V-1).
+Extended by ADR 0050; *Falsification* item 3 amended there.
 - First drafted in PR #66 (2026-11-12), raised from a comparative review of an adopter-surface tool whose one capability
   req lacks is a readable graph. That draft planned a hand-built viewer.
 - Revised 2026-11-13 on the owner's decision to render with archify, and moved out of PR #66 into its own unit.

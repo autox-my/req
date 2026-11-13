@@ -213,6 +213,16 @@ covers, or one with no relation. Reported by name; it never certifies the requir
 because req holds nothing to be complete against (ADR 0039).
 _Avoid_: completeness (as a verdict), coverage gap
 
+**Family**:
+A root claim (one with no outgoing derives-from or refines) and every claim whose lowest-id root it is; the
+grouping a graph page uses when the corpus declares no other (ADR 0050).
+_Avoid_: cluster, component (a family is computed from relations, not chosen)
+
+**Slice**:
+The part of a selection one graph page shows, stated on that page with its counts, so a page never passes for the
+whole graph (ADR 0050).
+_Avoid_: view (a slice is a page of the graph, not a compiled view), filter
+
 **Satisfaction link**:
 A design element's authored statement that it meets a claim, recorded with the claim's statement
 at the moment a human ratified it. It holds while the meaning is unchanged or weakened in a class
