@@ -210,9 +210,11 @@ def design_roots(root):
             continue
         while line.startswith("./"):
             line = line[2:]
-        line = line.rstrip("/")
-        # `.` and `./` are the repository root itself: the empty root.
-        roots.append("" if line == "." else line)
+        # `req satisfy` refuses an absolute path or a `..` segment (exit 2); such a line covers nothing here.
+        if line.startswith(("/", "\\")) or ".." in line.replace("\\", "/").split("/"):
+            continue
+        # By segments, as `req satisfy` does: empty and `.` segments say nothing; none left is the whole repository.
+        roots.append("/".join(part for part in line.split("/") if part and part != "."))
     return roots
 
 

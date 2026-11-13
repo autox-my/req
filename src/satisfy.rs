@@ -196,9 +196,12 @@ pub fn parse_roots(text: &str) -> Result<Vec<String>, Vec<String>> {
         if line.is_empty() {
             continue;
         }
+        // A leading `./` is not part of the path, so it is taken off first: `.//tmp/x` is then `/tmp/x`, absolute,
+        // and refused like it, never joined onto the corpus root (where it would replace it).
+        let relative = line.trim_start_matches("./");
         let reason = if line.split_whitespace().count() > 1 {
             Some("a line is exactly one repo-relative path")
-        } else if line.starts_with('/') || line.starts_with('\\') {
+        } else if relative.starts_with('/') || relative.starts_with('\\') {
             Some("an absolute path is not repo-relative")
         } else if line.split(['/', '\\']).any(|part| part == "..") {
             Some("a `..` component leaves the repository")
@@ -209,11 +212,14 @@ pub fn parse_roots(text: &str) -> Result<Vec<String>, Vec<String>> {
             errors.push(format!("{DESIGN}:{number}: `{line}`: {reason}"));
             continue;
         }
-        let normalized = line.trim_start_matches("./").trim_end_matches('/');
-        // `.` and `./` are the repository root itself: the empty root, so an element id under it is the
-        // repo-relative path (`src/x.rs`), never `./src/x.rs` (ADR 0040).
-        let normalized = if normalized == "." { "" } else { normalized };
-        roots.push(normalized.to_string());
+        // Normalised by segments: an empty or `.` segment says nothing, so `src`, `src/.`, `./src/./` and `src//`
+        // are one root and an element id never carries a dot segment (ADR 0040). Nothing left is the repository
+        // root itself (`.`, `./`), held as the empty root.
+        let normalized: Vec<&str> = relative
+            .split('/')
+            .filter(|part| !part.is_empty() && *part != ".")
+            .collect();
+        roots.push(normalized.join("/"));
     }
     if errors.is_empty() {
         Ok(roots)

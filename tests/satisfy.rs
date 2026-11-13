@@ -1158,3 +1158,55 @@ fn a_dot_design_root_names_elements_by_their_repo_relative_path_never_with_a_dot
         );
     }
 }
+
+#[test]
+fn a_dot_slash_prefix_never_hides_an_absolute_path() {
+    // `.//tmp/x` is `/tmp/x` once the `./` is stripped, and joining it would leave the corpus root: exit 2 naming
+    // the line, as `/tmp/x` itself is.
+    for body in [".//tmp/x\n", "./\\tmp\\x\n", "././/tmp\n", "/tmp/x\n"] {
+        let s = Scratch::new("dot-slash-absolute");
+        s.claim("REQ-0001", BASE, None);
+        s.write(".req/design", &format!("# roots\n{body}"));
+        let out = s.req(&["satisfy"]);
+        assert_eq!(out.code, 2, "{body:?}: {}", out.all());
+        assert!(
+            out.all().contains(".req/design:2"),
+            "{body:?}: {}",
+            out.all()
+        );
+        assert!(out.all().contains("absolute"), "{body:?}: {}", out.all());
+    }
+}
+
+#[test]
+fn a_root_is_normalised_by_segments_so_a_dot_segment_never_reaches_an_element_id() {
+    // `src`, `src/.`, `./src/./` and `src//` are one root: the element id is `src/pump.md` for every spelling, so a
+    // record made under one spelling is not orphaned by another.
+    for root_line in ["src", "src/.", "./src/./", "src//", "./src/././"] {
+        let s = Scratch::new("segments");
+        s.claim("REQ-0001", BASE, None);
+        s.write(".req/design", &format!("{root_line}\n"));
+        s.write("src/pump.md", "<!-- req-satisfies: REQ-0001 -->\n");
+        let out = s.req(&["satisfy", "--format", "json"]);
+        let doc: serde_json::Value = serde_json::from_str(&out.stdout).expect("a JSON document");
+        let links = doc["links"].as_array().expect("links");
+        assert_eq!(links.len(), 1, "{root_line:?}: {}", out.all());
+        assert_eq!(
+            links[0]["element"],
+            "src/pump.md",
+            "{root_line:?}: {}",
+            out.all()
+        );
+        let record = s.req(&["satisfy", "--record", "src/pump.md", "REQ-0001"]);
+        assert_eq!(record.code, 0, "{root_line:?}: {}", record.all());
+        // Re-spell the root: the record is still found, so the link holds and nothing is orphaned.
+        s.write(".req/design", "src\n");
+        let out = s.req(&["satisfy"]);
+        assert_eq!(out.code, 0, "{root_line:?}: {}", out.all());
+        assert!(
+            !out.stdout.contains("ORPHANED"),
+            "{root_line:?}: {}",
+            out.stdout
+        );
+    }
+}

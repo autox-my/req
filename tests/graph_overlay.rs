@@ -1034,6 +1034,49 @@ fn a_dot_design_root_is_the_whole_repository_so_nothing_under_it_is_outside() {
     }
 }
 
+#[test]
+fn a_design_root_with_dot_segments_covers_the_files_under_it_and_a_dot_slash_absolute_covers_nothing()
+ {
+    // `src/.` and `./src/./` are the root `src`: `src/a.rs` is inside, `docs/other.md` is not. `.//tmp` is absolute (req
+    // refuses it); here it must never be read as the repository-relative `tmp`, so `tmp/x.rs` stays outside.
+    for root_line in ["src/.", "./src/./", "src//"] {
+        let s = Scratch::new("segment-root");
+        repo(&s);
+        s.design(&format!("{root_line}\n"));
+        let inputs = Inputs {
+            diagram: diagram(vec![component(
+                "pump",
+                "Pump",
+                &["src/a.rs", "docs/other.md"],
+                0,
+            )]),
+            satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
+            trace: trace(&claims()),
+        };
+        let out = run(&s, &inputs);
+        assert_eq!(out.code, 0, "{root_line:?}: {}", out.all());
+        assert_eq!(
+            card(&overlay(&s), OUTSIDE_CARD),
+            vec!["docs/other.md (cited by Pump)"],
+            "{root_line:?}"
+        );
+    }
+    let s = Scratch::new("absolute-root");
+    repo(&s);
+    s.file("tmp/x.rs");
+    s.design(".//tmp\n");
+    let inputs = Inputs {
+        diagram: diagram(vec![component("pump", "Pump", &["tmp/x.rs"], 0)]),
+        satisfy: satisfy(vec![]),
+        trace: trace(&claims()),
+    };
+    assert_eq!(run(&s, &inputs).code, 0);
+    assert_eq!(
+        card(&overlay(&s), OUTSIDE_CARD),
+        vec!["tmp/x.rs (cited by Pump)"]
+    );
+}
+
 // ---- the matrix -------------------------------------------------------------------------------
 
 #[test]
