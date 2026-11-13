@@ -9,7 +9,7 @@
 //! The grammar is deliberately tiny — `<key> == <value>` and `<key> >= <number>` — and
 //! anything else is `Unknown` with its text kept: an unparsed selector is never guessed,
 //! and never silently satisfied either.
-//! req-satisfies: REQ-0003 — parse_predicate, evaluate: applicability predicates select one claim set
+//! req-satisfies: REQ-0003 — applies, run: one claim set, selected by applicability predicates
 //! req-satisfies: REQ-0016 — evaluate: an undecided key is Unknown, never No
 
 use rust_decimal::Decimal;
