@@ -35,6 +35,10 @@
 //! apply — so a variant that does not exclude it stays UNVERIFIABLE until the predicate is
 //! rewritten. An excluded claim is not the variant's problem, which is the one way a corpus
 //! carrying such a predicate can go green without touching the grammar.
+//! req-satisfies: REQ-0024 — exit_code: an undecided claim makes the gate UNVERIFIABLE, exit 3
+//! req-satisfies: REQ-0025 — tests_linked: a machine-evidenced claim with no linked test is UNVERIFIABLE
+//! req-satisfies: REQ-0026 — tests_linked: a skipped linked test is not a pass
+//! req-satisfies: REQ-0027 — pins_hold: a pin that disagrees with the derived parse fails the gate
 
 use crate::canon::PinVerdict;
 use crate::canon::RULES_V;

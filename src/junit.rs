@@ -50,6 +50,7 @@
 //! The parser is total on `&str`: every slice is taken with `get`, and no input panics.
 //! The `tests` / `failures` / `skipped` counters on the elements are not trusted — the
 //! `<testcase>` elements are the report.
+//! req-satisfies: REQ-0026 — a skipped testcase stays Skipped, never read as Passed
 
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;

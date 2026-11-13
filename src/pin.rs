@@ -14,6 +14,7 @@
 //! `git checkout <sha>`), the way it already installs everything else; this command only refuses to
 //! let a corpus that is not the pin be taken for it. Git is a local process with every `GIT_*`
 //! redirection removed (`diff`'s boundary, reused).
+//! req-satisfies: REQ-0038 — verify: a corpus that is not the pinned commit is a FAIL
 
 use std::path::Path;
 

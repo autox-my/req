@@ -164,3 +164,19 @@ Not an edit of the decisions above; where decisions 1–6 now live (decision 7 s
   `applies` is not `does_not_apply`; a cell is the worst outcome of that component's links to that claim.
 - **Falsification 1–6** are tests: `tests/graph_overlay.rs` (1–5, with the mutations that delete the worst-of rule, key a link
   on the id, skip the existence check and replace the author's tag) and `tests/satisfy.rs` (6).
+
+## Implementation note — 2026-11-14 (O-2: req's own files declare the claims they satisfy)
+
+Not an edit of the decisions above; decision 7 step 2, the proposal half (`docs/specs/O-2-own-design-links.md`).
+
+- **28 of req's 40 claims are linked**, 30 `req-satisfies:` lines in the header comments of 14 files under `src/`
+  (`baseline`, `bench`, `canon`, `check`, `decision`, `diff`, `gate`, `junit`, `main`, `model`, `pin`, `propose`,
+  `select`, `view`). Only comment lines were added; no behaviour changed.
+- **12 claims have no link**, because no code file carries the obligation out: two are processes (REQ-0013, REQ-0014),
+  five are met by the absence of a capability (REQ-0005, REQ-0006, REQ-0012, REQ-0015, REQ-0021: nothing merges,
+  constrains, synchronises or reaches the network), and five are a quality, a corpus shape, a script under `examples/` or a
+  property spread over every command (REQ-0007, REQ-0022, REQ-0023, REQ-0039, REQ-0041).
+- **This repository still declares no `.req/design` and holds no `.req/satisfied`.** The owner creates the first and
+  records the second after merging (ADR 0040 decision 2); until then the gate is unchanged. The commands are in the pull
+  request that carries this note.
+

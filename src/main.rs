@@ -49,6 +49,7 @@
 //! The Tier-1 canonicalizer (src/canon.rs) is deterministic and offline: no model I/O,
 //! no network, no `HashMap` iteration order dependence, no float math anywhere near
 //! the address computation.
+//! req-satisfies: REQ-0040 — an unrecognized subcommand is a usage error, exit 2
 use req::{
     audit, baseline, bench, canon, check, compare, decision, diff, gate, impact, init, next_id,
     pin, propose, root, satisfy, select, selftest, view,

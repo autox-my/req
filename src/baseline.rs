@@ -28,6 +28,9 @@
 //! pass); an unknown key or a missing signature is UNVERIFIABLE. A v3 manifest whose recorded
 //! authority no longer re-derives from `decisions/` is FAIL — the same class as a hand-edited
 //! digest.
+//! req-satisfies: REQ-0028 — drift: a claim whose address moved after signing fails verify
+//! req-satisfies: REQ-0029 — judge_signature: a bad signature fails, no verifier is UNVERIFIABLE
+//! req-satisfies: REQ-0030 — rules_mismatch: another rules version is UNVERIFIABLE, not drift
 
 use crate::decision;
 use crate::select::{Applies, Context};
