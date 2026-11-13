@@ -39,9 +39,12 @@ What it decides, and what it refuses to guess:
              claim's `area`. Never a heading's text or a section number: both move when the source
              is edited. The specification itself is not a segment; an ancestor is one whether or
              not it was selected or drafted (a drafted parent's children name it). An object with
-             no ancestor, or one the hierarchy reaches more than once, gets no area: a claim has
-             exactly one place and the reader picks none. An IDENTIFIER that leaves no key, or two
-             that make one path, is exit 1 naming them (never merged). `--area-depth N` keeps the
+             no ancestor, one the hierarchy reaches more than once, or one under a hierarchy node
+             that names no object (`unnamed ancestor`) gets no area: a claim has exactly one place
+             and the reader picks none. Every ancestor chain of every drafted object is judged,
+             filed or not; only a node with no SPEC-OBJECT-REF ends a chain without error. An
+             IDENTIFIER that leaves no key, or two that make one path, is exit 1 naming them (never
+             merged); an ancestor the file does not declare is exit 3. `--area-depth N` keeps the
              outermost N segments. The draft is then `req.claim/3` with `area:` after `claim_id`;
              without an area it stays `req.claim/2`. The statement is the same either way (area
              supplies no meaning). The reader also proposes lines for `.req/areas` (`<path>
@@ -218,8 +221,9 @@ types); `relations` stays `[]`.
              come back.
              The report gains `areas: <P> paths; filed <F> of <D> drafted`, `no area: <K> (no
              ancestor <n>, several places <m>, unnamed ancestor <u>)` when K > 0, and `registry: <A> lines to add, <E>
-             already declared`; the `hierarchy` line says the ancestors of N drafted objects are carried as the
-             area when N > 0 drafts were filed, else that the structure is not carried.
+             already declared`; the `hierarchy` line says the ancestors of N drafted objects (1 drafted
+             object for N = 1) are carried as the area when N > 0 drafts were filed, else that the
+             structure is not carried.
              `--areas` needs a `req` that reports `claim_schema req.claim/3`; any other is exit 3.
   --area-depth N  with --areas: keep only the outermost N segments of each path (N >= 1).
   --area-label-attr NAME  with --areas: the attribute holding a heading's text. The label of a path
@@ -986,7 +990,8 @@ def hierarchy_places(model):
 def chain_keys(ident, chain, depth, known):
     """`(state, keys, kept)` for one ancestor chain of the object `ident`, cut to `depth`.
 
-    `keys` are the keys of the ancestors up to the end of the chain; `kept` is the cut chain.
+    `keys` are the keys of the kept ancestors, up to an unnamed node when there is one; `kept`
+    is the cut chain.
     `state` is `ok` when every kept ancestor made a key, and `unnamed` when a kept hierarchy node
     names no object: the walk ends there without error, since no path exists past it. Every other
     ancestor is judged: one the file does not declare is Unverifiable (an unresolved reference),
