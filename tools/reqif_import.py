@@ -32,8 +32,26 @@ What it decides, and what it refuses to guess:
              provenance: `rationale.source` is `<origin>#<IDENTIFIER>`. `--id-attr NAME` names the
              project's own human id; it is shown in the report and the header comment only.
   date       `--date`, required. The header's CREATION-TIME is shown and never used.
-  not carried  every attribute other than the text attribute, the hierarchy and the relations are
-             counted in the report and not written (`relations` stays `[]`).
+  area       opt-in, `--areas` (ADR 0051 decision 2): a drafted object's place is the chain of its
+             ancestors in the specification hierarchy, outermost first. Each ancestor's key is made
+             from its object IDENTIFIER (lowercase it; replace each run of characters outside
+             [a-z0-9] with one `-`; strip `-` from both ends) and the keys joined by `/` are the
+             claim's `area`. Never a heading's text or a section number: both move when the source
+             is edited. The specification itself is not a segment; an ancestor is one whether or
+             not it was selected or drafted (a drafted parent's children name it). An object with
+             no ancestor, or one the hierarchy reaches more than once, gets no area: a claim has
+             exactly one place and the reader picks none. An IDENTIFIER that leaves no key, or two
+             that make one path, is exit 1 naming them (never merged). `--area-depth N` keeps the
+             outermost N segments. The draft is then `req.claim/3` with `area:` after `claim_id`;
+             without an area it stays `req.claim/2`. The statement is the same either way (area
+             supplies no meaning). The reader also proposes lines for `.req/areas` (`<path>
+             <label>`): the label is `--area-label-attr`'s value on the path's last ancestor, else
+             the `--id-attr` value, else the last segment. `--write` appends the lines the registry
+             does not declare, and a path it already declares is left alone. Without `--areas`
+             every byte of the output stays as it was.
+  not carried  every attribute other than the text attribute and the relations are counted in the
+             report and not written (`relations` stays `[]`); the hierarchy is not carried either,
+             unless `--areas` carries it as the area.
 
 The output accounts for every SPEC-OBJECT in the file and ends with one line that must add up:
 
@@ -43,13 +61,15 @@ Exit codes, the same three-state discipline as req (ADR 0028 section 9):
 
   0  drafted (dry run, or written with --write), or --list
   1  a definite problem — nothing selected or extracted, a --type the file does not have, a text
-     attribute no selected type defines, or an object already drafted from this origin; nothing
-     was written
+     attribute no selected type defines, an object already drafted from this origin, or (--areas)
+     an IDENTIFIER that leaves no key or two that make one path; nothing was written
   2  usage — a missing or malformed argument, a bad date
   3  UNVERIFIABLE — the file, the corpus, the subject registry or `req` cannot be read honestly
      (not XML, a DOCTYPE or entity declaration, not a ReqIF 20110401 REQ-IF, a .reqifz, a missing
      or repeated object IDENTIFIER, a reference that does not resolve, an attribute name matching
-     two definitions, a corpus the loader rejects, a `req` judging another claim schema)
+     two definitions, a corpus the loader rejects, a `req` judging another claim schema, `--areas`
+     against a `req` that does not report `claim_schema req.claim/3`, a hierarchy node that names
+     no object the file holds, an `.req/areas` that is malformed)
 
 Nothing derived is ever written, and no pin is guessed. The script opens no archive, fetches
 nothing and writes nowhere outside the corpus.
@@ -97,13 +117,23 @@ DRAFT_SCHEMA = "req.claim/2"
 ACCEPTED_SCHEMAS = (DRAFT_SCHEMA, "req.claim/3")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+# The one schema a draft with an `area` declares (ADR 0051 decision 6): `area` is `req.claim/3` only.
+AREA_SCHEMA = "req.claim/3"
+AREAS_PATH = ".req/areas"
+# A key is made from an identifier by these rules, one rule in both readers (docs/specs/I-1).
+KEY_RUN_RE = re.compile(r"[^a-z0-9]+")
+ASCII_LOWER = {code: code + 32 for code in range(ord("A"), ord("Z") + 1)}
+# The reasons a drafted object is filed under no area, in report order.
+NO_AREA_REASONS = ("no ancestor", "several places")
+
 CLAIMS_DIR = "claims"
 REGISTRY_PATH = "aliases/subjects.yml"
 REQ_BINARY = "req"
 
 # The draft claim, byte for byte: a fixed template, not a serialized mapping (python3's standard
 # library has no YAML writer, and a serializer's diff is unreadable). It is a `req.claim/2`
-# claim: the authored fields only, nothing derived and no pin (ADR 0022). The header comment
+# claim (`req.claim/3`, with an `area:` line, only under --areas): the authored fields only, nothing
+# derived and no pin (ADR 0022). The header comment
 # names the file, the object's IDENTIFIER and the human id; it carries no source field.
 CLAIM_TEMPLATE = """\
 # A draft claim, drafted from the ReqIF file {export} (object {identifier}; {human}). The object's
@@ -112,7 +142,7 @@ CLAIM_TEMPLATE = """\
 # applicability and relations it needs, and pin a load-bearing bound under `pins:` if it has one.
 schema: {schema}
 claim_id: {claim_id}
-statement: {statement}
+{area_line}statement: {statement}
 applicability: []
 rationale:
   source: {quoted_source}
@@ -155,8 +185,41 @@ file under another --origin is a different provenance and is allowed. Whether an
 survives a second export of the same module is NOT verified here.
 
 not carried, and said so in the report: every attribute other than the text attribute (with the
-count of drafted objects carrying it), the specification hierarchy, and the relations (the report
-counts the file's SPEC-RELATIONs and names their types); `relations` stays `[]`.
+count of drafted objects carrying it), the specification hierarchy (unless --areas carries it as
+the area, below), and the relations (the report counts the file's SPEC-RELATIONs and names their
+types); `relations` stays `[]`.
+
+--areas    opt-in: file each draft under an area made from its ancestors in the specification
+             hierarchy (ADR 0051). The area is the keys of the ancestors, outermost first, joined
+             by `/`. A key is made from the ancestor's object IDENTIFIER: lowercase it, replace each
+             run of characters outside [a-z0-9] with one `-`, strip `-` from both ends, so
+             `_Sec.A 12` is `sec-a-12`. A heading's text or a section number is never a key (both
+             move when the source is edited). The specification is not a segment. An ancestor is a
+             segment whether or not it was selected or drafted, so a drafted parent is filed under
+             its own ancestors and its children's paths end in its key.
+             An object with no ancestor (directly under a specification, or under no hierarchy
+             node) gets no area; so does one the hierarchy reaches more than once (two
+             specifications, or two places in one): a claim has exactly one place, and the reader
+             does not pick one. Both stay `req.claim/2`. An IDENTIFIER that leaves no key, or two
+             IDENTIFIERs that make one path, is exit 1 naming them: they are never merged.
+             A draft with an area is `req.claim/3` with `area: <path>` after `claim_id`; the
+             statement is exactly what it is without `--areas`.
+             The area registry `.req/areas` (`<path> <label>`, one line per area, the line order is
+             the reading order) is proposed, not imposed: a dry run prints the lines it would add,
+             `--write` appends those for paths the file does not declare (in the hierarchy's order;
+             the file is created when there is none). A path it already declares is left alone,
+             whatever its label. If the claims then fail to write, the registry's earlier bytes
+             come back.
+             The report gains `areas: <P> paths; filed <F> of <D> drafted`, `no area: <K> (no
+             ancestor <n>, several places <m>)` when K > 0, and `registry: <A> lines to add, <E>
+             already declared`; the `hierarchy` line stops saying the structure is not carried.
+             `--areas` needs a `req` that reports `claim_schema req.claim/3`; any other is exit 3.
+  --area-depth N  with --areas: keep only the outermost N segments of each path (N >= 1).
+  --area-label-attr NAME  with --areas: the attribute holding a heading's text. The label of a path
+             is NAME's value on the path's last ancestor when it has one plain paragraph (as one
+             line); else the --id-attr value when given and present; else the path's last segment.
+             NAME must match one definition on the ancestors' types (exit 3 if two, exit 1 if no
+             type defines it).
 
 --date is the rationale date (the retrieval date of the file) and is required. It is never
 borrowed from the clock, a commit, or the header's CREATION-TIME.
@@ -174,8 +237,9 @@ N is the number of SPEC-OBJECT elements that were read, under a hierarchy node o
 
 exit: 0 drafted (dry run, written, or --list) · 1 a definite problem, nothing written (nothing
 selected or extracted, a --type the file does not have, a text attribute no selected type
-defines, or an object already drafted from this origin) · 2 usage · 3 the file, the corpus, the
-subject registry or `req` cannot be read.
+defines, an object already drafted from this origin, or with --areas an IDENTIFIER that leaves no
+key or two that make one path) · 2 usage · 3 the file, the corpus, the subject registry, the area
+registry or `req` cannot be read.
 
 This script is a starting point to COPY and adjust for your project — it is not a req
 subcommand. The yield on a real specification is unmeasured: it was built on three small public
@@ -321,9 +385,12 @@ class SpecObject:
 
 
 class Specification:
-    def __init__(self, name, nodes):
+    def __init__(self, name, nodes, places=()):
         self.name = name  # LONG-NAME, or None
         self.nodes = nodes  # [(object ref, depth)] over the whole hierarchy
+        # [(object ref, ancestor refs outermost first)], in the hierarchy's document order; an
+        # ancestor node that names no object is `None` in the chain (read for --areas only).
+        self.places = list(places)
 
 
 class Relation:
@@ -586,14 +653,16 @@ def unquote_scalar(value):
     return text.split(" #", 1)[0].rstrip()
 
 
-def render_claim(export, identifier, human, statement, source, date, claim_id, schema):
-    """One draft claim file's exact bytes."""
+def render_claim(export, identifier, human, statement, source, date, claim_id, schema, area=None):
+    """One draft claim file's exact bytes. An `area` makes the draft `AREA_SCHEMA` with an `area:`
+    line after `claim_id`; with none, `schema` is written and the bytes are what they always were."""
     return CLAIM_TEMPLATE.format(
         export=one_line(export),
         identifier=one_line(identifier),
         human=one_line(human),
-        schema=schema,
+        schema=AREA_SCHEMA if area is not None else schema,
         claim_id=claim_id,
+        area_line=f"area: {area}\n" if area is not None else "",
         statement=yaml_quote(statement),
         quoted_source=yaml_quote(source),
         date=date,
@@ -692,6 +761,22 @@ def read_hierarchy(children, depth, out):
         if reference is not None:
             out.append((text_of(reference), depth))
         read_hierarchy(hierarchy.find(q("CHILDREN")), depth + 1, out)
+
+
+def read_places(children, chain, out):
+    """Every `(object ref, ancestors)` under a `CHILDREN` element, in document order.
+
+    `ancestors` are the refs of the nodes above it, outermost first, the specification not among
+    them. A node with no object reference is `None` in its descendants' chains: it is a level the
+    file draws and names nothing."""
+    if children is None:
+        return
+    for hierarchy in children.findall(q("SPEC-HIERARCHY")):
+        reference = hierarchy.find(q("OBJECT") + "/" + q("SPEC-OBJECT-REF"))
+        ref = text_of(reference) if reference is not None else None
+        if ref is not None:
+            out.append((ref, tuple(chain)))
+        read_places(hierarchy.find(q("CHILDREN")), [*chain, ref], out)
 
 
 def read_value(obj_ident, element, definitions, enum_names):
@@ -813,9 +898,10 @@ def load_reqif(root):
     for element in members(content, "SPECIFICATIONS"):
         if reqif_name(element) != "SPECIFICATION":
             continue
-        nodes = []
+        nodes, places = [], []
         read_hierarchy(element.find(q("CHILDREN")), 0, nodes)
-        specs.append(Specification(element.get("LONG-NAME") or None, nodes))
+        read_places(element.find(q("CHILDREN")), [], places)
+        specs.append(Specification(element.get("LONG-NAME") or None, nodes, places))
 
     relations = []
     for element in members(content, "SPEC-RELATIONS"):
@@ -870,6 +956,156 @@ def check_unambiguous(model, name, flag, only=None):
                 f"{flag} {name!r} matches two attribute definitions on the object type "
                 f"{one_line(object_type.display())}, so which one is meant cannot be judged"
             )
+
+
+def area_key(text):
+    """The key a source identifier makes: lowercase it (ASCII only, so no locale or Unicode case
+    mapping decides), replace each run of characters outside `[a-z0-9]` with one `-`, strip `-`
+    from both ends. Empty when nothing is left (the caller names the identifier)."""
+    return KEY_RUN_RE.sub("-", str(text).translate(ASCII_LOWER)).strip("-")
+
+
+def hierarchy_places(model):
+    """`{object ref: [(order, ancestors)]}` over every specification: the places the hierarchy
+    gives each object, `order` counting them in document order across the specifications."""
+    found, order = {}, 0
+    for spec in model.specs:
+        for ref, chain in spec.places:
+            found.setdefault(ref, []).append((order, chain))
+            order += 1
+    return found
+
+
+def plan_areas(model, drafted, depth):
+    """`(placed, wanted, used)` for the drafted objects, in the order given.
+
+    `placed[i]` is `("area", path)` or `("none", reason)`, the reason being one of
+    `NO_AREA_REASONS`. `wanted` is `[(path, ident of the path's last ancestor)]` in the hierarchy's
+    document order, each path once. `used` is the set of ancestor identifiers those paths are made
+    of.
+
+    An object the hierarchy reaches more than once has no area (the reader picks no place); one with
+    no ancestor has none. A key is made from each ancestor's IDENTIFIER (`area_key`), cut to the
+    outermost `depth`. A chain that names no object the file holds is Unverifiable; an IDENTIFIER
+    that leaves no key, and two different IDENTIFIERs that make one path (at any depth), are a
+    Problem naming both: a place is never merged."""
+    places = hierarchy_places(model)
+    known = {obj.ident for obj in model.objects}
+    owners, placed, filed, used = {}, [], [], set()
+    for obj in drafted:
+        found = places.get(obj.ident, [])
+        if len(found) > 1:
+            placed.append(("none", "several places"))
+            continue
+        if not found or not found[0][1]:
+            placed.append(("none", "no ancestor"))
+            continue
+        order, chain = found[0]
+        kept = chain if depth is None else chain[:depth]
+        keys = []
+        for ref in kept:
+            if ref is None:
+                raise Unverifiable(
+                    f"object {one_line(obj.ident)} sits under a hierarchy node that names no object "
+                    "(it has no SPEC-OBJECT-REF), so its area cannot be made from stable keys"
+                )
+            if ref not in known:
+                raise Unverifiable(
+                    f"object {one_line(obj.ident)} sits under {one_line(ref)}, which is not a "
+                    "SPEC-OBJECT the file declares, so its area cannot be made from stable keys"
+                )
+            key = area_key(ref)
+            if not key:
+                raise Problem(
+                    f"the object IDENTIFIER {one_line(ref)!r} (an ancestor of "
+                    f"{one_line(obj.ident)}) leaves no key: a key needs a letter or a digit from "
+                    "[A-Za-z0-9] — pass --area-depth to stop above it"
+                )
+            keys.append(key)
+        for index in range(len(keys)):
+            prefix = "/".join(keys[: index + 1])
+            first = owners.setdefault(prefix, (kept[index], obj.ident))
+            if first[0] != kept[index]:
+                raise Problem(
+                    f"two different object IDENTIFIERs make the area path {prefix!r}: "
+                    f"{one_line(first[0])!r} (above {one_line(first[1])}) and "
+                    f"{one_line(kept[index])!r} (above {one_line(obj.ident)}) — they are never "
+                    "merged: rename one of them"
+                )
+        used.update(kept)
+        path = "/".join(keys)
+        placed.append(("area", path))
+        filed.append((order, path, kept[-1]))
+    wanted, seen = [], set()
+    for _order, path, ident in sorted(filed):
+        if path not in seen:
+            seen.add(path)
+            wanted.append((path, ident))
+    return placed, wanted, used
+
+
+def area_label(model, ident, label_attr, id_attr, segment):
+    """The label of a path whose last ancestor is the object `ident`, as one non-empty line.
+
+    `label_attr`'s value on it when it has exactly one and that is one plain paragraph; else the
+    `id_attr` value when given and present; else `segment`, the path's last key."""
+    obj = next(candidate for candidate in model.objects if candidate.ident == ident)
+    if label_attr is not None:
+        found = values_named(obj, label_attr)
+        if len(found) == 1:
+            kind, payload = value_statement(found[0])
+            if kind == "draft" and one_line(payload):
+                return one_line(payload)
+    if id_attr is not None:
+        found = values_named(obj, id_attr)
+        if len(found) == 1 and has_value(found[0]) and one_line(human_text(found[0])):
+            return one_line(human_text(found[0]))
+    return segment
+
+
+def declared_paths(text):
+    """The paths an `.req/areas` text declares: the first word of each line that is not blank and
+    does not start with `#`. (The file is validated by `req` itself; this only reads the keys.)"""
+    paths = set()
+    for raw in text.split("\n"):
+        line = raw.rstrip("\r").strip()
+        if line and not line.startswith("#"):
+            paths.add(re.split(r"[ \t]", line, maxsplit=1)[0])
+    return paths
+
+
+def registry_suffix(existing, wanted):
+    """`(suffix, added, declared)` for the registry: the bytes to append to `existing` (None when
+    the file does not exist), the `[(path, label)]` lines that adds, and how many wanted paths the
+    file already declares. A declared path is left alone whatever its label."""
+    have = declared_paths(existing or "")
+    added = [(path, label) for path, label in wanted if path not in have]
+    declared = len(wanted) - len(added)
+    if not added:
+        return "", added, declared
+    separator = "\n" if existing and not existing.endswith("\n") else ""
+    return separator + "".join(f"{path} {label}\n" for path, label in added), added, declared
+
+
+def area_report_lines(placed, wanted, added, registry_declared, drafted):
+    """The report's `--areas` lines: where the drafts were filed, why some were not, and the registry.
+
+    `areas:` counts distinct paths and the drafts filed; `no area:` (only when some draft has none)
+    counts them per reason in `NO_AREA_REASONS` order; `registry:` counts the lines to add and the
+    paths already declared; each line to add follows as `  + <path> <label>`."""
+    lines = []
+    filed = sum(1 for kind, _value in placed if kind == "area")
+    lines.append(f"areas: {len(wanted)} paths; filed {filed} of {drafted} drafted")
+    reasons = {}
+    for kind, value in placed:
+        if kind == "none":
+            reasons[value] = reasons.get(value, 0) + 1
+    if reasons:
+        shown = ", ".join(f"{name} {reasons[name]}" for name in NO_AREA_REASONS if name in reasons)
+        lines.append(f"no area: {sum(reasons.values())} ({shown})")
+    lines.append(f"registry: {len(added)} lines to add, {registry_declared} already declared")
+    lines.extend(f"  + {path} {label}" for path, label in added)
+    return lines
 
 
 # --- the filesystem half ----------------------------------------------------
@@ -977,13 +1213,16 @@ def req_binary():
     return binary
 
 
-def loader_check(binary, root, targets, texts):
+def loader_check(binary, root, targets, texts, registry=None):
     """Run the corpus plus the drafts through the real loader (`req canon`) before anything is
     written, in a scratch copy of the corpus, and raise Unverifiable if it does not load.
 
     The loader is the only judge of a claim file: a template that drifted from the format would
     be written and reported as drafted all the same. The same run is what turns an older-schema
     corpus away (its message names tools/migrate_claims.py).
+
+    `registry` is the text `.req/areas` would hold after the run (None: there would be none). The
+    scratch copy gets it, and `req trace --format json`, the command that validates it, judges it.
     """
     with tempfile.TemporaryDirectory(prefix="req-reqif-") as scratch:
         copy = pathlib.Path(scratch)
@@ -991,12 +1230,26 @@ def loader_check(binary, root, targets, texts):
             if (root / name).is_dir():
                 shutil.copytree(root / name, copy / name)
         (copy / CLAIMS_DIR).mkdir(exist_ok=True)
+        # `copytree` copies the directory's mode: a read-only `claims/` must not stop the drafts
+        # from being placed in the copy, since it is the loader that is being asked.
+        os.chmod(copy / CLAIMS_DIR, 0o755)
         for (_claim_id, target), text in zip(targets, texts):
             (copy / CLAIMS_DIR / target.name).write_text(text, encoding="utf-8")
+        if registry is not None:
+            (copy / AREAS_PATH).parent.mkdir(exist_ok=True)
+            (copy / AREAS_PATH).write_text(registry, encoding="utf-8")
         try:
             completed = subprocess.run(
                 [binary, "--root", str(copy), "canon"],
                 capture_output=True, text=True, check=False,
+            )
+            traced = (
+                subprocess.run(
+                    [binary, "--root", str(copy), "trace", "--format", "json"],
+                    capture_output=True, text=True, check=False,
+                )
+                if registry is not None and completed.returncode == 0
+                else None
             )
         except OSError as error:
             raise Unverifiable(f"cannot run `{binary} canon`: {error}") from error
@@ -1006,15 +1259,51 @@ def loader_check(binary, root, targets, texts):
             f"the corpus plus these drafts does not load (`req canon` exited "
             f"{completed.returncode}), so nothing was written. The loader says why:\n{detail}"
         )
+    # Exit 2 is the usage class: `req trace --format json` refuses a malformed registry that way,
+    # naming each bad line. Its other exits are verdicts about the corpus, not about the registry.
+    if traced is not None and traced.returncode == 2:
+        raise Unverifiable(
+            f"the area registry this run would leave ({AREAS_PATH}) is refused by `req`, so nothing "
+            f"was written. `req` says why:\n{traced.stderr.strip() or 'no output'}"
+        )
 
 
-def read_axes():
+def check_registry(binary, root):
+    """The text of `<root>/.req/areas` (None when there is none), after `req` has judged it.
+
+    A registry that is malformed before the run is not this tool's to repair: it is Unverifiable,
+    with what `req` names (every bad `.req/areas:<line>`). `req trace --format json` is the
+    command that reads it, and exit 2 is how it refuses one."""
+    path = root / AREAS_PATH
+    if not path.exists() and not path.is_symlink():
+        return None
+    try:
+        text = path.read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise Unverifiable(f"cannot read the area registry ({path}): {error}") from error
+    try:
+        completed = subprocess.run(
+            [binary, "--root", str(root), "trace", "--format", "json"],
+            capture_output=True, text=True, check=False,
+        )
+    except OSError as error:
+        raise Unverifiable(f"cannot run `{binary} trace`: {error}") from error
+    if completed.returncode == 2:
+        raise Unverifiable(
+            f"the area registry ({path}) is malformed, and this tool does not repair one. `req` "
+            f"says:\n{completed.stderr.strip() or 'no output'}"
+        )
+    return text
+
+
+def read_axes(areas=False):
     """`(rules_v, DRAFT_SCHEMA)`, after asking the `req` on PATH what it reports.
 
-    The schema a draft declares is `DRAFT_SCHEMA`, always — never the one the binary reports. The
-    reported `claim_schema` only decides whether this tool may draft against that build at all
-    (`ACCEPTED_SCHEMAS`); `rules_v` is the rules version the drafts' parse is derived under
-    (reported)."""
+    The schema a draft declares is `DRAFT_SCHEMA`, always — never the one the binary reports (a
+    draft with an area declares `AREA_SCHEMA`, see `render_claim`). The reported `claim_schema` only
+    decides whether this tool may draft against that build at all (`ACCEPTED_SCHEMAS`); with
+    `areas` it must be `AREA_SCHEMA`, since a `req.claim/2` build would refuse `area`.
+    `rules_v` is the rules version the drafts' parse is derived under (reported)."""
     binary = req_binary()
     try:
         completed = subprocess.run(
@@ -1039,6 +1328,12 @@ def read_axes():
             f"claims and accepts a req that reports {' or '.join(ACCEPTED_SCHEMAS)}: a draft under "
             "another schema would not load — use a matching req build or the matching copy of "
             "this tool"
+        )
+    if areas and axes[1] != AREA_SCHEMA:
+        raise Unverifiable(
+            f"`{binary}` reports claim_schema {axes[1]}, but --areas drafts {AREA_SCHEMA} claims (an "
+            f"`area` needs {AREA_SCHEMA}) and accepts only a req that reports {AREA_SCHEMA}: a draft "
+            "with an area would not load — use a matching req build, or run without --areas"
         )
     # The binary was judged acceptable; the draft declares the schema this tool is written for.
     return axes[0], DRAFT_SCHEMA
@@ -1097,6 +1392,52 @@ def remove_written(written):
             + "\n  ".join(leftovers),
             file=sys.stderr,
         )
+
+
+class RegistryWrite:
+    """The change a run made to `.req/areas`, and how to take it back."""
+
+    def __init__(self, path, before, made_dir):
+        self.path = path
+        self.before = before  # the file's earlier bytes, or None when the run created it
+        self.made_dir = made_dir
+
+    def rollback(self):
+        """Put the earlier bytes back, or remove the file the run created. Reported, never swallowed."""
+        try:
+            if self.before is None:
+                self.path.unlink()
+                if self.made_dir:
+                    self.path.parent.rmdir()
+            else:
+                self.path.write_bytes(self.before)
+        except OSError as error:
+            print(
+                f"[UNVERIFIABLE] could not restore {self.path} after a failed run — restore it by "
+                f"hand: {error}",
+                file=sys.stderr,
+            )
+
+
+def write_registry(path, existing, suffix):
+    """Append `suffix` to `path` (creating it, and `.req/`, when `existing` is None); the
+    `RegistryWrite` that undoes it. `existing` is the text read before, so the bytes to restore
+    are exactly those."""
+    made_dir = not path.parent.exists()
+    before = None if existing is None else path.read_bytes()
+    try:
+        path.parent.mkdir(exist_ok=True)
+        handle = open(path, "xb" if before is None else "ab")
+    except OSError as error:
+        raise Unverifiable(f"cannot write {path}: {error}") from error
+    undo = RegistryWrite(path, before, made_dir)
+    try:
+        with handle:
+            handle.write(suffix.encode("utf-8"))
+    except OSError as error:
+        undo.rollback()
+        raise Unverifiable(f"cannot write {path}: {error}") from error
+    return undo
 
 
 # --- the driver -------------------------------------------------------------
@@ -1332,6 +1673,15 @@ def run(args):
             f"({', '.join(sorted({one_line(o.type.display()) for o in chosen}))}) in {label}\n"
             "  name the attribute that holds your own id, or leave --id-attr out: see --list"
         )
+    if args.area_label_attr is not None and not any(
+        definition.name == args.area_label_attr
+        for object_type in model.types
+        for definition in object_type.defs
+    ):
+        raise Problem(
+            f"--area-label-attr {args.area_label_attr!r} is defined on no object type in {label}\n"
+            "  name the attribute that holds a heading's text, or leave --area-label-attr out: see --list"
+        )
     check_unambiguous(model, args.text_attr, "--text-attr", chosen_types)
     if args.id_attr is not None:
         check_unambiguous(model, args.id_attr, "--id-attr", chosen_types)
@@ -1366,7 +1716,24 @@ def run(args):
         )
 
     humans = [human_id(obj, args.id_attr) for obj, _statement in drafts]
-    rules_v, schema = read_axes()
+
+    # --areas: where each draft is filed, and the registry lines that proposes. Planned before any
+    # claim is rendered, so an IDENTIFIER that cannot be a key stops the run with nothing written.
+    placed, wanted, registry_declared = None, [], 0
+    if args.areas:
+        placed, located, used = plan_areas(model, [obj for obj, _s in drafts], args.area_depth)
+        if args.area_label_attr is not None:
+            ancestor_types = {obj.type.ident for obj in model.objects if obj.ident in used}
+            check_unambiguous(model, args.area_label_attr, "--area-label-attr", ancestor_types)
+        wanted = [
+            (path, area_label(model, ident, args.area_label_attr, args.id_attr, path.rsplit("/", 1)[-1]))
+            for path, ident in located
+        ]
+    rules_v, schema = read_axes(args.areas)
+    existing, suffix, added = None, "", []
+    if args.areas:
+        existing = check_registry(req_binary(), corpus.root)
+        suffix, added, registry_declared = registry_suffix(existing, wanted)
 
     number = next_claim_number(corpus.used)
     targets, texts = [], []
@@ -1383,12 +1750,14 @@ def run(args):
                 date=args.date,
                 claim_id=claim_id,
                 schema=schema,
+                area=placed[offset][1] if placed is not None and placed[offset][0] == "area" else None,
             )
         )
 
-    loader_check(req_binary(), corpus.root, targets, texts)
+    final_registry = None if not args.areas or (existing is None and not added) else (existing or "") + suffix
+    loader_check(req_binary(), corpus.root, targets, texts, final_registry)
 
-    written = []
+    written, registry_write = [], None
     if args.write:
         for _claim_id, target in targets:
             if target.exists() or target.is_symlink():
@@ -1396,13 +1765,25 @@ def run(args):
                     f"refusing to write {target}: it already exists — a claim file is never "
                     "overwritten"
                 )
-        written = write_claims([target for _claim_id, target in targets], texts)
+        # The registry first, then the claims: if anything fails once the registry changed, its
+        # earlier bytes come back, so a run is all of it or none of it.
+        try:
+            if added:
+                registry_write = write_registry(corpus.root / AREAS_PATH, existing, suffix)
+            written = write_claims([target for _claim_id, target in targets], texts)
+        except BaseException:
+            if registry_write is not None:
+                registry_write.rollback()
+            raise
 
-    report(args, corpus, label, model, drafts, humans, skips, targets, written, rules_v, recon)
+    filing = (placed, wanted, added, registry_declared) if args.areas else None
+    report(args, corpus, label, model, drafts, humans, skips, targets, written, rules_v, recon,
+           filing, registry_write)
     return 0
 
 
-def report(args, corpus, label, model, drafts, humans, skips, targets, written, rules_v, recon):
+def report(args, corpus, label, model, drafts, humans, skips, targets, written, rules_v, recon,
+           filing=None, registry_write=None):
     """Print what was drafted, what was skipped and why, what was not carried, and what was
     written — ending with the line that adds up."""
     print(f"file: {label}")
@@ -1433,10 +1814,15 @@ def report(args, corpus, label, model, drafts, humans, skips, targets, written, 
     print(f"not carried: {shown_counts} (drafted objects carrying each attribute; only the text attribute is carried)")
     under, names = hierarchy_of(model, objects)
     where_names = ", ".join(one_line(name) for name in names) if names else "no specification"
+    carried = "the ancestors are carried as the area (--areas)" if filing else "the structure is not carried"
     print(
         f"hierarchy: {under} of {len(objects)} drafted objects sit under a parent; "
-        f"specification: {where_names} — the structure is not carried"
+        f"specification: {where_names} — {carried}"
     )
+    if filing is not None:
+        placed, wanted, added, registry_declared = filing
+        for line in area_report_lines(placed, wanted, added, registry_declared, len(objects)):
+            print(line)
     in_file, touched, kinds = relations_of(model, objects)
     print(
         f"relations: {in_file} in the file; {touched} of {len(objects)} drafted objects are the "
@@ -1455,6 +1841,8 @@ def report(args, corpus, label, model, drafts, humans, skips, targets, written, 
     if written:
         names = ", ".join(relative(corpus.root, target) for target in written)
         print(f"wrote: {len(written)} claim(s) — {names}")
+        if registry_write is not None:
+            print(f"wrote: {len(filing[2])} line(s) appended to {AREAS_PATH}")
     else:
         print("dry run: nothing written — pass --write to write them")
     print(recon)
@@ -1493,6 +1881,21 @@ def _value(kind, definition_name="Text", text="", holder=None, enums=()):
 
 def _object(ident, type_name, values):
     return SpecObject(ident, ObjectType("T-" + type_name, type_name, []), values)
+
+
+def _problem(call):
+    """Whether `call()` raises a definite problem (exit 1)."""
+    try:
+        call()
+    except Problem:
+        return True
+    return False
+
+
+def _model(idents, places):
+    """A model of objects named `idents` and one specification whose places are `places`."""
+    objects = [_object(ident, "Requirement", []) for ident in idents]
+    return Reqif({}, [], objects, [Specification("S", [], places)], [], {}, {})
 
 
 def self_check():
@@ -1666,6 +2069,157 @@ def self_check():
             is_block(ET.fromstring(f'<q:div xmlns:q="{XHTML_NS}"/>')),
             True,
         ),
+        ("key: lowercases", area_key("Diag"), "diag"),
+        ("key: a run of other characters is one hyphen", area_key("a__ .b"), "a-b"),
+        ("key: the ends are stripped", area_key("_Sec.A 12_"), "sec-a-12"),
+        ("key: digits stay", area_key("X2"), "x2"),
+        ("key: nothing left is empty", area_key("___"), ""),
+        ("key: a non-ASCII letter is not a key character", area_key("\u00dcn\u00ef"), "n"),
+        ("key: only ASCII is lowercased (the Kelvin sign is no k)", area_key("\u212a"), ""),
+        (
+            "area: the ancestors' keys, outermost first, make the path",
+            plan_areas(_model(["A", "B", "R"], [("A", ()), ("B", ("A",)), ("R", ("A", "B"))]),
+                       [_object("R", "Requirement", [])], None)[0],
+            [("area", "a/b")],
+        ),
+        (
+            "area: a drafted parent is a segment of its child's path",
+            plan_areas(_model(["A", "P", "C"], [("A", ()), ("P", ("A",)), ("C", ("A", "P"))]),
+                       [_object("P", "Requirement", []), _object("C", "Requirement", [])], None)[0],
+            [("area", "a"), ("area", "a/p")],
+        ),
+        (
+            "area: the depth keeps the outermost segments",
+            plan_areas(_model(["A", "B", "R"], [("R", ("A", "B"))]), [_object("R", "Requirement", [])], 1)[0],
+            [("area", "a")],
+        ),
+        (
+            "area: an object directly under a specification has no ancestor",
+            plan_areas(_model(["R"], [("R", ())]), [_object("R", "Requirement", [])], None)[0],
+            [("none", "no ancestor")],
+        ),
+        (
+            "area: an object under no hierarchy node has no ancestor",
+            plan_areas(_model(["R"], []), [_object("R", "Requirement", [])], None)[0],
+            [("none", "no ancestor")],
+        ),
+        (
+            "area: an object reached twice has no area, the reader picks no place",
+            plan_areas(_model(["A", "B", "R"], [("R", ("A",)), ("R", ("B",))]),
+                       [_object("R", "Requirement", [])], None)[0],
+            [("none", "several places")],
+        ),
+        (
+            "area: two IDENTIFIERs that make one path are a problem, never merged",
+            _problem(lambda: plan_areas(
+                _model(["Sec.A", "sec_a", "R", "S"], [("R", ("Sec.A",)), ("S", ("sec_a",))]),
+                [_object("R", "Requirement", []), _object("S", "Requirement", [])], None)),
+            True,
+        ),
+        (
+            "area: an IDENTIFIER that leaves no key is a problem",
+            _problem(lambda: plan_areas(_model(["__", "R"], [("R", ("__",))]),
+                                        [_object("R", "Requirement", [])], None)),
+            True,
+        ),
+        (
+            "area: an ancestor above the depth is never judged",
+            plan_areas(_model(["A", "__", "R"], [("R", ("A", "__"))]), [_object("R", "Requirement", [])], 1)[0],
+            [("area", "a")],
+        ),
+        (
+            "area: an ancestor the file does not hold is unverifiable",
+            _refuses(lambda: plan_areas(_model(["R"], [("R", ("GHOST",))]), [_object("R", "Requirement", [])], None)),
+            True,
+        ),
+        (
+            "area: a node that names no object is unverifiable",
+            _refuses(lambda: plan_areas(_model(["R"], [("R", (None,))]), [_object("R", "Requirement", [])], None)),
+            True,
+        ),
+        (
+            "area: the paths come in the hierarchy's order, not the file's",
+            plan_areas(_model(["A", "B", "R", "S"], [("S", ("B",)), ("R", ("A",))]),
+                       [_object("R", "Requirement", []), _object("S", "Requirement", [])], None)[1],
+            [("b", "B"), ("a", "A")],
+        ),
+        (
+            "label: the label attribute's plain value, as one line",
+            area_label(
+                Reqif({}, [], [_object("A", "Heading", [_value("STRING", "Name", text=" Start \n up ")])],
+                      [], [], {}, {}), "A", "Name", None, "a"),
+            "Start up",
+        ),
+        (
+            "label: a value that is not one plain paragraph falls back to the id attribute",
+            area_label(
+                Reqif({}, [], [_object("A", "Heading", [_value("STRING", "Name", text="One.\n\nTwo."),
+                                                         _value("STRING", "ID", text="D-1")])],
+                      [], [], {}, {}), "A", "Name", "ID", "a"),
+            "D-1",
+        ),
+        (
+            "label: two values for the label attribute are not one value",
+            area_label(
+                Reqif({}, [], [_object("A", "Heading", [_value("STRING", "Name", text="x"),
+                                                         _value("STRING", "Name", text="y")])],
+                      [], [], {}, {}), "A", "Name", None, "a"),
+            "a",
+        ),
+        (
+            "label: with neither attribute the label is the last segment",
+            area_label(Reqif({}, [], [_object("A", "Heading", [])], [], [], {}, {}), "A", None, None, "seg"),
+            "seg",
+        ),
+        (
+            "registry: the declared paths are the first words of the lines that are not comments",
+            sorted(declared_paths("# c\n\na One\r\nb/c\tTwo # x\n")),
+            ["a", "b/c"],
+        ),
+        (
+            "registry: a declared path is left alone, whatever its label",
+            registry_suffix("a Mine\n", [("a", "Theirs"), ("b", "B")]),
+            ("b B\n", [("b", "B")], 1),
+        ),
+        (
+            "registry: a file with no final newline gets one before the appended lines",
+            registry_suffix("a Mine", [("b", "B")])[0],
+            "\nb B\n",
+        ),
+        (
+            "registry: no file, or an empty one, is appended to as it is",
+            [registry_suffix(None, [("b", "B")])[0], registry_suffix("", [("b", "B")])[0]],
+            ["b B\n", "b B\n"],
+        ),
+        (
+            "registry: everything declared adds nothing",
+            registry_suffix("a A\n", [("a", "X")]),
+            ("", [], 1),
+        ),
+        (
+            "report: the areas lines count paths, drafts filed, the reasons and the registry",
+            area_report_lines(
+                [("area", "a"), ("none", "several places"), ("none", "no ancestor"), ("none", "no ancestor")],
+                [("a", "A")], [("a", "A")], 0, 4),
+            ["areas: 1 paths; filed 1 of 4 drafted", "no area: 3 (no ancestor 2, several places 1)",
+             "registry: 1 lines to add, 0 already declared", "  + a A"],
+        ),
+        (
+            "draft: an area makes it req.claim/3 with `area:` after claim_id",
+            [line for line in render_claim(
+                export="module.reqif", identifier="O", human="-", statement="x", source="o#O",
+                date="2026-11-08", claim_id="REQ-0016", schema="req.claim/2", area="a/b",
+            ).splitlines() if line.startswith(("schema:", "claim_id:", "area:", "statement:"))],
+            ["schema: req.claim/3", "claim_id: REQ-0016", "area: a/b", 'statement: "x"'],
+        ),
+        (
+            "draft: with no area the draft is the req.claim/2 it always was",
+            [line for line in render_claim(
+                export="module.reqif", identifier="O", human="-", statement="x", source="o#O",
+                date="2026-11-08", claim_id="REQ-0016", schema="req.claim/2",
+            ).splitlines() if line.startswith(("schema:", "area:"))],
+            ["schema: req.claim/2"],
+        ),
     ]
 
     failures = 0
@@ -1693,6 +2247,13 @@ def named_arg(text):
     if not text.strip():
         raise argparse.ArgumentTypeError("the value is empty")
     return text
+
+
+def depth_arg(text):
+    """A positive integer in ASCII digits: a depth below 1 keeps nothing, so it is a usage error."""
+    if not re.fullmatch(r"[0-9]+", text) or int(text) < 1:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a whole number of at least 1")
+    return int(text)
 
 
 def where_arg(text):
@@ -1753,6 +2314,19 @@ def parse_args(argv):
         "--root", type=value_arg, metavar="<dir>",
         help="the corpus root (default: $REQ_ROOT, else the working directory)",
     )
+    parser.add_argument(
+        "--areas", action="store_true",
+        help="file each draft under an area made from its ancestors in the hierarchy, and propose "
+             "`.req/areas` lines",
+    )
+    parser.add_argument(
+        "--area-depth", type=depth_arg, metavar="<N>",
+        help="with --areas: keep only the outermost N segments of each path (N >= 1)",
+    )
+    parser.add_argument(
+        "--area-label-attr", type=named_arg, metavar="<NAME>",
+        help="with --areas: the attribute holding a heading's text, the label of its path",
+    )
     parser.add_argument("--write", action="store_true", help="write the drafts (the default is a dry run)")
     parser.add_argument(
         "--self-check", action="store_true",
@@ -1770,6 +2344,9 @@ def check_usage(args):
         "--text-attr": args.text_attr,
         "--id-attr": args.id_attr,
         "--date": args.date,
+        "--areas": True if args.areas else None,
+        "--area-depth": args.area_depth,
+        "--area-label-attr": args.area_label_attr,
     }
     if args.list:
         given = [flag for flag, value in drafting.items() if value is not None]
@@ -1781,6 +2358,9 @@ def check_usage(args):
     for flag in ("--origin", "--text-attr", "--date"):
         if drafting[flag] is None:
             raise Usage(f"{flag} is required (unless --list)")
+    for flag in ("--area-depth", "--area-label-attr"):
+        if drafting[flag] is not None and not args.areas:
+            raise Usage(f"{flag} belongs to --areas")
     if not args.type and not args.where:
         raise Usage(
             "at least one of --type and --where is required: there is no default selection (run "

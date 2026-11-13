@@ -154,7 +154,7 @@ Decisions 1–4 and 6 are implemented (`docs/specs/A-1-area-key.md`); decision 5
   claim's line.
 - **Importers.** `tools/adopt.py`, `tools/needs_import.py` and `tools/reqif_import.py` keep drafting
   `req.claim/2` (their drafts carry no area) and accept a `req` that reports `/2` or `/3`. Mapping a source's
-  hierarchy onto `area` is still a later unit.
+  hierarchy onto `area` is the next unit (note of 2026-11-13, *Importers file their drafts under an area*).
 - **Migration message.** The `/1` migration candidate's message now names the schema `tools/migrate_claims.py`
   writes (`req.claim/2`) and says this build loads it as it is, since the tool stops at `/2`.
 
@@ -233,3 +233,43 @@ declares eight areas in reading order. Nothing else in a claim file changed, no 
 re-signed (decision 4). `tests/area.rs` now asserts that every claim here names one declared area. That a `/2` file
 loads as it is under a `/3` build is still proven, by the scratch corpora in the same file. The graph of this
 repository now groups by area (decision 5).
+
+## Implementation note — 2026-11-13 (task I-1, importers file their drafts under an area)
+
+Decision 2 ("an importer derives keys from the source's stable identifiers") is implemented for two readers,
+`tools/reqif_import.py` and `tools/needs_import.py` (`docs/specs/I-1-importer-areas.md`). This replaces "Mapping a
+source's hierarchy onto `area` is still a later unit" in the A-1 note for these two. **`tools/adopt.py` is not
+covered**: a Markdown heading is text, not a stable identifier, and its mapping stays a later unit.
+
+- **Opt-in.** `--areas`; without it every byte of the output (drafts, report, exit code) is what it was.
+- **One key rule in both readers.** Lowercase the identifier (ASCII only), replace each run of characters outside
+  `[a-z0-9]` with one `-`, strip `-` from both ends. An identifier that leaves nothing, and two different identifiers
+  that make one path (compared at every depth, so `Requirements/a` beside `requirements/b` too), are exit 1 naming
+  them: a place is never merged. A heading's text and a section number are never a key (*Context*).
+- **ReqIF: the area is the chain of ancestors.** The keys of the drafted object's ancestors in the specification
+  hierarchy, outermost first; the specification is not a segment; an ancestor counts whether or not it was selected or
+  drafted, so a drafted parent is filed under its own ancestors and its children's paths end in its key. An object with
+  no ancestor, or one the hierarchy reaches more than once (two specifications, or two places in one), gets no area:
+  a claim has exactly one place (decision 2), and the reader does not pick one. A hierarchy node that names no object
+  the file holds is exit 3. `--area-depth N` keeps the outermost N segments; `--area-label-attr NAME` names the
+  attribute holding a heading's text.
+- **Sphinx-Needs: the area is the document.** The need's `docname` split on `/`, each part a key; a need with no
+  `docname` gets no area. Section titles are not used: they are not stable and several share one document.
+- **The draft.** With an area it is `req.claim/3` with `area:` after `claim_id`; without one it stays `req.claim/2`.
+  `--areas` needs a `req` that reports `claim_schema req.claim/3` (exit 3 otherwise). Area supplies no meaning
+  (decision 4): the statement is what it is without the flag, no heading text is added to it. So the second job named
+  in *Consequences*, folding a heading's context into the statement, is **not** done here: an importer that carries the
+  place alone makes claims that read correctly in the graph and wrongly anywhere else, and that is still the
+  adopter's to edit.
+- **The registry is proposed, never imposed.** The readers print the `.req/areas` lines they would add
+  (`<path> <label>`) and, with `--write`, append those for paths the file does not declare, in the order the source
+  first shows them (the hierarchy's reading order for ReqIF, the export's order for Sphinx-Needs); a declared path is
+  left alone whatever its label. Only the paths drafts are filed under get a line: a parent need not be declared
+  (decision 3). The label is the attribute value on the path's last ancestor, else the `--id-attr` value, else the
+  last segment (ReqIF), and the docname as written, cut to the kept depth (Sphinx-Needs). The registry is written
+  before the claims and put back (or removed, when the run created it) if the claims then fail to write. The loader
+  check covers the registry the run would leave: `req trace --format json` judges it, and its exit 2 is how a
+  malformed `.req/areas` is refused, before the run and in the scratch copy after it.
+- **Falsification 5 is not tested by this.** The two mappings express every need and every object they read as one
+  path of stable keys or as none, on hand-written fixtures only; no real adopter's specification was read,
+  and this note does not claim decision 2 survived one.

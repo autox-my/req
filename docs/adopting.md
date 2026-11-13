@@ -295,7 +295,16 @@ drafted needs and counts the drafted needs that had typed links, naming the fiel
 ones the export declares (`needs_schema`, a field whose `field_type` is `links` or `backlinks`), and the line
 says "declared by needs_schema"; an export without one (an older Sphinx-Needs) is read by inference (a list of
 ids that is `links`, ends in `_back`, or has a `<name>_back` partner field in the file) and the line says
-"inferred". Every other field is listed too, so nothing is hidden.
+"inferred". Every other field is listed too, so nothing is hidden. `--areas` carries one thing more, the place: a
+need's `docname`, split on `/`, each part made a key (lowercase it, replace each run of characters outside `[a-z0-9]` with `-`, strip `-` from both ends), joined by `/`, becomes the
+draft's `area` (ADR 0051). The draft is then `req.claim/3`, with `area:` after `claim_id`, and needs a `req` that
+reports `claim_schema req.claim/3` (exit **3** otherwise); a need with no `docname` stays `req.claim/2` with none.
+A section title or number is never a key, and the statement is exactly what it is without the flag. A part that
+leaves no key, or two names that make one path, is exit **1** naming them and writes nothing. `--area-depth N`
+keeps the outermost N parts. The reader proposes the matching `.req/areas` lines (`<path> <label>`, the label the
+docname as written, cut to that depth): a dry run prints them, `--write` appends those the file does not declare
+and leaves a declared path alone whatever its label, and the report adds the `areas:`, `no area:` and `registry:`
+lines. The registry is yours to edit afterwards.
 
 **The report adds up.** It ends with one line accounting for every need in the file, counted from the
 `needs` mapping itself (an export's own `needs_amount` is never trusted):
@@ -371,7 +380,17 @@ line counts the drafted objects carrying each, so a status or object type you di
 the specification hierarchy (a `hierarchy` line counts the drafted objects that sit under a parent), and the
 relations (a `relations` line counts the file's relations, the drafted objects they touch and their types;
 `relations` stays `[]` because a relation names a claim id that does not exist yet and its kind is a
-judgement). The object `IDENTIFIER`s are not claim ids.
+judgement). The object `IDENTIFIER`s are not claim ids. `--areas` carries the hierarchy as the place (ADR 0051): a
+drafted object's `area` is the keys of its ancestors, outermost first, joined by `/`, each key made from the ancestor's `IDENTIFIER` (lowercase it, replace each run
+of characters outside `[a-z0-9]` with `-`, strip `-` from both ends: `_Sec.A 12` is `sec-a-12`). A heading's text
+or a section number is never a key, the specification is not a segment, and a drafted parent is a segment of its
+children's paths. An object with no ancestor, or one the hierarchy reaches more than once, is drafted with no
+area (the report counts each by reason); an `IDENTIFIER` that leaves no key, or two that make one path, is exit
+**1** naming them. A draft with an area is `req.claim/3` and needs a `req` reporting `claim_schema req.claim/3`
+(exit **3** otherwise). `--area-depth N` keeps the outermost N segments, and `--area-label-attr NAME` names the
+attribute holding a heading's text, the label of its path (else the `--id-attr` value, else the last segment).
+The reader proposes the `.req/areas` lines; `--write` appends the ones the file does not declare, leaves a
+declared path alone, and puts the file back if the claims then fail to write.
 
 **The report adds up.** It ends with one line accounting for every object in the file, counted from the file
 itself:
