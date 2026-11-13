@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0020
+area: identity
 statement: >-
   The req tool shall serialize each relation on the outgoing side of its origin
   claim.

@@ -1,0 +1,9 @@
+# req's own claims, filed for the reader (ADR 0051). The line order is the reading order.
+authoring Authoring and the claim unit
+identity Identity and canonical form
+decisions Decisions and ratification
+variants Variants and applicability
+verification Gate outcomes
+baselines Baselines and pinning
+evidence Benchmark evidence
+operation Offline operation and install

@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0023
+area: decisions
 statement: >-
   The decision boundary shall be deliberately high-friction, demanding role,
   meaning, and evidence there.

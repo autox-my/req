@@ -134,7 +134,8 @@ Decisions 1–4 and 6 are implemented (`docs/specs/A-1-area-key.md`); decision 5
 - **Format.** `CLAIM_SCHEMA_V` is 3. The older formats a build loads as they are are data, `READS_AS_IS` in
   `src/canon.rs`, holding `/2`; the loader judges one `ClaimSchema::ReadAsIs` (no message, no rewrite). `/1` is
   still a migration candidate and `/4` a newer format. A `/2` file carrying `area` is a parse error naming the
-  key and `req.claim/3`. This repository's own claims stay `/2`, which is the live proof of decision 6.
+  key and `req.claim/3`. This repository's own claims stayed `/2` as the live proof of decision 6 until the
+  owner filed them (note of 2026-11-13, *Own claims filed*).
 - **Where the finding lives (decision 3 left it to the implementation).** `req check`'s completeness step
   (ADR 0039) reports `undeclared_area`, naming the claim and the area. It is reported and does not fail, and
   becomes FAIL under `strict areas` in `.req/completeness`. With no `.req/areas` there is no finding; a malformed
@@ -224,3 +225,11 @@ on every seventh claim, every tenth claim standing alone) with `req.claim/3` and
 takes one of the twelve paths, a claim inherits its parent's area seven times in ten and takes another path otherwise, every
 25th has none; the registry labels include `Démarrage du système et journal des défauts`, a 17-character Japanese name and a
 98-character English one. Neither the generator nor the corpora are committed.
+
+## Implementation note — 2026-11-13 (own claims filed)
+
+The owner ratified areas for req's own 40 claims. Each claim is now `req.claim/3` with one `area`, and `.req/areas`
+declares eight areas in reading order. Nothing else in a claim file changed, no address moved and no Baseline was
+re-signed (decision 4). `tests/area.rs` now asserts that every claim here names one declared area. That a `/2` file
+loads as it is under a `/3` build is still proven, by the scratch corpora in the same file. The graph of this
+repository now groups by area (decision 5).

@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0014
+area: decisions
 statement: >-
   The req tool shall produce exactly one commit per ratified logical Decision.
 applicability: []

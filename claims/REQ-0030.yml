@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0030
+area: baselines
 statement: >-
   The req tool shall report a Baseline written under another rules version as
   UNVERIFIABLE.

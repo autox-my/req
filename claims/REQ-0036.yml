@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0036
+area: verification
 statement: >-
   The req tool shall report a hand-edited projection as stale.
 applicability: []

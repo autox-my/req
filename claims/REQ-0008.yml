@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0008
+area: evidence
 statement: >-
   The benchmark harness shall report a false merge rate of exactly zero on the
   parity and adversarial mutation corpora.

@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0015
+area: authoring
 statement: >-
   The req tool shall not operate a continuous two-way synchronization bridge
   between a web database and the requirement files.

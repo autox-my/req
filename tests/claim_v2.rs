@@ -253,8 +253,12 @@ fn the_dogfood_addresses_are_the_pre_migration_list_and_none_is_stored() {
     for (id, _) in PRE_MIGRATION_ADDRESSES {
         let text = std::fs::read_to_string(checkout().join(format!("claims/{id}.yml")))
             .expect("every recorded claim still exists");
-        if !text.lines().any(|l| l == "schema: req.claim/2") {
-            stored_anywhere.push(format!("{id}: not a req.claim/2 file"));
+        // /3 since the owner filed the claims under areas (ADR 0051): /3 is /2 plus `area`, nothing derived.
+        if !text
+            .lines()
+            .any(|l| l == "schema: req.claim/2" || l == "schema: req.claim/3")
+        {
+            stored_anywhere.push(format!("{id}: not a req.claim/2 or /3 file"));
         }
         for line in text.lines() {
             if line.starts_with("address:") || line.starts_with("canonical:") {
@@ -264,7 +268,7 @@ fn the_dogfood_addresses_are_the_pre_migration_list_and_none_is_stored() {
     }
     assert!(
         stored_anywhere.is_empty(),
-        "a req.claim/2 corpus stores no fingerprint: {stored_anywhere:?}"
+        "a req.claim/2 or /3 corpus stores no fingerprint: {stored_anywhere:?}"
     );
 
     let out = req(&checkout(), &["render", "--format", "json"]);

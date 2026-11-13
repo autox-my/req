@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0040
+area: operation
 statement: >-
   The req tool shall exit with status 2 for a command it does not know.
 applicability: []

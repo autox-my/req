@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0024
+area: verification
 statement: >-
   The req tool shall report a gate invocation that leaves a claim undecided as
   UNVERIFIABLE.
