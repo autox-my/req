@@ -631,7 +631,7 @@ def req_binary():
     if binary is None:
         raise Unverifiable(
             "`req` is not on PATH — install it at a pinned rev (docs/adopting.md), because a "
-            "draft's claim schema comes from the binary that will judge it"
+            "that binary judges the drafts and must read the schema they declare"
         )
     return binary
 
@@ -668,8 +668,12 @@ def loader_check(binary, root, targets, texts):
 
 
 def read_axes():
-    """`(rules_v, claim_schema)` from the `req` on PATH — the schema a draft declares, and the
-    rules version its parse is derived under (reported)."""
+    """`(rules_v, DRAFT_SCHEMA)`, after asking the `req` on PATH what it reports.
+
+    The schema a draft declares is `DRAFT_SCHEMA`, always — never the one the binary reports. The
+    reported `claim_schema` only decides whether this tool may draft against that build at all
+    (`ACCEPTED_SCHEMAS`); `rules_v` is the rules version the drafts' parse is derived under
+    (reported)."""
     binary = req_binary()
     try:
         completed = subprocess.run(

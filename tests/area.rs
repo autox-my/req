@@ -302,6 +302,31 @@ fn a_v2_file_carrying_area_is_a_parse_error_naming_the_key_and_the_format() {
     );
 }
 
+#[test]
+fn a_v2_file_carrying_the_key_is_refused_whatever_its_value() {
+    // ADR 0051 decision 6 judges the KEY: an older /2 build rejects `area` as an unknown key whatever
+    // follows it, so a /3 build must not load such a file silently as "no area". `area:`, `area: null`
+    // and `area: ~` are all YAML null.
+    for spelling in ["", "null", "~"] {
+        let text = claim_text("REQ-0001", "req.claim/2", Some(spelling), "");
+        let error = parse_claim(&text)
+            .expect_err(&format!("`area: {spelling}` in a /2 file carries the key"));
+        assert!(
+            error.contains("`area`"),
+            "{spelling:?}: names the key: {error}"
+        );
+        assert!(
+            error.contains("req.claim/3"),
+            "{spelling:?}: names the format it needs: {error}"
+        );
+
+        let s = Scratch::new("v2-null-area");
+        s.claim("REQ-0001", "req.claim/2", Some(spelling), "");
+        let out = s.req(&["canon"]);
+        assert_eq!(out.code, 3, "{spelling:?}: {}", out.all());
+    }
+}
+
 // --- the key (decisions 1, 2 and 4) ---------------------------------------------------------------
 
 #[test]
@@ -326,6 +351,17 @@ fn a_v3_claim_may_name_an_area_as_a_path_of_stable_keys() {
 
 #[test]
 fn a_malformed_area_is_a_load_error_naming_the_claim_and_the_key() {
+    // The message text is pinned: the claim, the key, the value, the grammar and the remedy, each
+    // separated by one space (a line continuation once left 14-space runs inside the literal).
+    let error = parse_claim(&claim_text("REQ-0007", "req.claim/3", Some("Diag"), ""))
+        .expect_err("`Diag` is not an area path");
+    assert_eq!(
+        error,
+        "REQ-0007 has a malformed `area`: \"Diag\" is not an area path: segments joined by `/`, \
+         each `[a-z0-9][a-z0-9-]*`, with no empty segment and no leading or trailing `/` (for \
+         example `diagnostics/startup`). A segment is a stable key, not a heading or a section \
+         number; its reader-facing name is the label in `.req/areas`"
+    );
     for bad in [
         "Diag", "a//b", "/a", "a/", "\"a b\"", "-a", "\"\"", "a/-b", "\"a/B\"", "\"é\"", "a_b",
     ] {

@@ -1926,7 +1926,10 @@ pub fn parse_claim(text: &str) -> Result<crate::model::ClaimFile, String> {
     {
         return Err(reason);
     }
-    if let Ok(keys) = yaml_serde::from_str::<BTreeMap<String, serde::de::IgnoredAny>>(text) {
+    // The file's keys, whatever their values: a key is carried or it is not, and a null value does not
+    // un-carry it (removed v1 keys and `area` are both judged on presence).
+    let keys = yaml_serde::from_str::<BTreeMap<String, serde::de::IgnoredAny>>(text).ok();
+    if let Some(keys) = &keys {
         let removed: Vec<String> = crate::model::REMOVED_V1_KEYS
             .iter()
             .filter(|key| keys.contains_key(**key))
@@ -1956,25 +1959,29 @@ pub fn parse_claim(text: &str) -> Result<crate::model::ClaimFile, String> {
     // identity: an empty or duplicated id is refused here, where the file can be named,
     // rather than becoming a confusing gate finding later (ADR 0019).
     crate::model::validate_tests(&claim.tests, claim.evidence)?;
+    let declared_v = claim
+        .schema
+        .strip_prefix(CLAIM_SCHEMA_PREFIX)
+        .and_then(|numeral| numeral.parse::<u32>().ok())
+        .unwrap_or(0);
+    // A `/2` file carrying the KEY `area` is refused as an unknown key is: by name, and with the one
+    // remedy — judged on the key, not its value, because an older `/2` build rejects `area:`,
+    // `area: null` and `area: ~` alike, and loading one silently as "no area" would make the same
+    // file mean two things. Accepting it inside `/2` would let an older build call a valid file
+    // broken (a parse error) where it should say the format is newer (ADR 0051, rejected alternative).
+    if declared_v < crate::model::AREA_SINCE_FORMAT
+        && keys.as_ref().is_some_and(|keys| keys.contains_key("area"))
+    {
+        return Err(format!(
+            "carries `area`, which needs the `req.claim/{v}` declaration: this file declares \
+             {declared} (ADR 0051). Declare `schema: req.claim/{v}` to file {id} by area, or \
+             remove the key",
+            v = crate::model::AREA_SINCE_FORMAT,
+            declared = claim.schema,
+            id = claim.claim_id
+        ));
+    }
     if let Some(area) = &claim.area {
-        let declared_v = claim
-            .schema
-            .strip_prefix(CLAIM_SCHEMA_PREFIX)
-            .and_then(|numeral| numeral.parse::<u32>().ok())
-            .unwrap_or(0);
-        // A `/2` file carrying `area` is refused as an unknown key is: by name, and with the one
-        // remedy. Accepting it inside `/2` would let an older build call a valid file broken (a
-        // parse error) where it should say the format is newer (ADR 0051, rejected alternative).
-        if declared_v < crate::model::AREA_SINCE_FORMAT {
-            return Err(format!(
-                "carries `area`, which needs the `req.claim/{v}` declaration: this file declares \
-                 {declared} (ADR 0051). Declare `schema: req.claim/{v}` to file {id} by area, or \
-                 remove the key",
-                v = crate::model::AREA_SINCE_FORMAT,
-                declared = claim.schema,
-                id = claim.claim_id
-            ));
-        }
         crate::model::validate_area(area)
             .map_err(|e| format!("{} has a malformed `area`: {e}", claim.claim_id))?;
     }

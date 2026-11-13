@@ -42,9 +42,10 @@ Exit codes, the same three-state discipline as req:
      read, so nothing can be drafted honestly
 
 Nothing derived is ever written, and no pin is guessed. This tool drafts `req.claim/2` claims
-only (`DRAFT_SCHEMA`): it asks `req --version` which schema the binary judges and refuses
-(UNVERIFIABLE, exit 3) any other, so a format bump fails loud instead of leaving this template
-behind; the report names the build's `rules_v` it ran against.
+only (`DRAFT_SCHEMA`), whatever the build writes: it asks `req --version` which schema the binary
+reports and refuses (UNVERIFIABLE, exit 3) any it cannot draft against (`ACCEPTED_SCHEMAS`:
+`req.claim/2`, and `req.claim/3`, which loads a `/2` draft as it is), so a format bump fails loud
+instead of leaving this template behind; the report names the build's `rules_v` it ran against.
 """
 import argparse
 import datetime
@@ -371,7 +372,7 @@ def parse_version(text):
     """`(rules_v, claim_schema)` from `req --version`, or None.
 
     Pure so the self-check can table-drive the shapes without a binary. `rules_v` is reported,
-    never hardcoded; the claim schema is compared with `DRAFT_SCHEMA` by `read_axes`, which is the
+    never hardcoded; the claim schema is checked against `ACCEPTED_SCHEMAS` by `read_axes`, which is the
     one place that refuses a binary this template cannot be loaded by.
     """
     rules = VERSION_RULES_RE.search(text)
@@ -571,7 +572,7 @@ def req_binary():
     if binary is None:
         raise Unverifiable(
             "`req` is not on PATH — install it at a pinned rev (docs/adopting.md), because a "
-            "draft's claim schema comes from the binary that will judge it"
+            "that binary judges the drafts and must read the schema they declare"
         )
     return binary
 
@@ -610,8 +611,12 @@ def loader_check(binary, root, targets, texts):
 
 
 def read_axes():
-    """`(rules_v, claim_schema)` from the `req` on PATH — the schema a draft declares, and the
-    rules version its parse is derived under (reported)."""
+    """`(rules_v, DRAFT_SCHEMA)`, after asking the `req` on PATH what it reports.
+
+    The schema a draft declares is `DRAFT_SCHEMA`, always — never the one the binary reports. The
+    reported `claim_schema` only decides whether this tool may draft against that build at all
+    (`ACCEPTED_SCHEMAS`); `rules_v` is the rules version the drafts' parse is derived under
+    (reported)."""
     binary = req_binary()
     try:
         completed = subprocess.run(
@@ -1146,7 +1151,7 @@ def self_check():
             ["applicability: []", "relations: []"],
         ),
         (
-            "draft: the schema is the one the binary reports",
+            "draft: the schema is the one the draft is handed (DRAFT_SCHEMA)",
             field(draft, "schema: "),
             "schema: req.claim/2",
         ),

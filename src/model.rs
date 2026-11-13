@@ -370,7 +370,10 @@ pub fn validate_area(area: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "{area:?} is not an area path: segments joined by `/`, each `[a-z0-9][a-z0-9-]*`, with              no empty segment and no leading or trailing `/` (for example `diagnostics/startup`). A              segment is a stable key, not a heading or a section number; its reader-facing name is              the label in `.req/areas`"
+            "{area:?} is not an area path: segments joined by `/`, each `[a-z0-9][a-z0-9-]*`, with \
+             no empty segment and no leading or trailing `/` (for example `diagnostics/startup`). A \
+             segment is a stable key, not a heading or a section number; its reader-facing name is \
+             the label in `.req/areas`"
         ))
     }
 }
