@@ -136,11 +136,14 @@ Not an edit of the decisions above; where decisions 1–6 now live (decision 7 s
   tools/graph/arch_overlay.py [--root <dir>] <diagram.json> <satisfy.json> <trace.json> <out-dir>`; it writes
   `overlay.json` and `matrix.md`. A component's links are the `req.satisfy/1` links whose `element` equals one of its
   `sources[].path` exactly (line ranges ignored; the id is never read). Exit `0` written; `3` written, with a component
-  `STALE` or a link `unknown_claim` (reasons on stderr); `2` refused (a wrong schema or diagram type, malformed JSON, an
-  unreadable input, an existing non-empty out-dir), nothing written.
+  `STALE`, a link `unknown_claim` or an author's tag the status cannot fit beside (reasons on stderr); `2` refused (a wrong
+  schema or diagram type, malformed JSON, an unreadable input, an existing non-empty out-dir), nothing written.
 - **The archify field is `tag`.** Read at `7e45f36`: a component's `tag` is one unwrapped line at the foot of its box, in the
   accent colour, shrunk to a 6 px floor inside `(width - 8) / 3.6` columns, and rejected (`component-tag-overflow`) only past
-  that; the `label` is the author's name, and the `sublabel` is the author's description of the component, so both stay
+  that. The width is the component's `size[0]`, else archify's `layout.defaultW`, 120 px (31 columns); the grid's `cellW` is
+  the step between boxes and never a box's width. An author's tag is kept even when the status cannot fit beside it: the
+  overlay is still written, the component and the reason go to stderr, and the exit is 3 (archify `validate` would refuse
+  it); the `label` is the author's name, and the `sublabel` is the author's description of the component, so both stay
   untouched. The overlay's `tag` keeps any text the author wrote and adds ` | <STATUS> · <claim ids>`; when the ids do not
   fit the box they are cut to the first few and `+N` (then `N claims`), and the **status card lists every id**. `cards` carry
   the rest: components by status (worst first), claims no component reaches, and cited paths outside every `.req/design`

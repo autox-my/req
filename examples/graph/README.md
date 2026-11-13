@@ -159,7 +159,7 @@ ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
   cell the link's outcome, then the claims no component reaches.
 - **`--repo-root`** is archify's: a diagram that cites `sources` is verified against the committed bytes at its pinned
   revision, in a checkout whose `origin` matches the diagram's `meta.repository.url`. Without it archify refuses the page.
-- **Exit:** `0` written; `3` written, but a component is `STALE` or a link names an unknown claim (the reason is
-  printed); `2` refused (a wrong schema, malformed JSON, an unreadable input, a non-empty out-dir), nothing written.
+- **Exit:** `0` written; `3` written, but a component is `STALE`, a link names an unknown claim, or an author's tag leaves
+  no room for the status (archify would refuse it; the box is `size[0]`, else 120 px) (the reason is printed); `2` refused (a wrong schema, malformed JSON, an unreadable input, a non-empty out-dir), nothing written.
 - Two runs over the same inputs give the same bytes. Like the trace pages, the overlay is not committed and is as current
   as the run that made it. A model never edits it: the status comes from `req satisfy` alone.

@@ -21,10 +21,11 @@ author's; the status and the claim ids are added to the component's `tag`, after
 are appended; the `meta.subtitle` says which revision, which `rules_v` and which archify the page is made from) and
 `<out-dir>/matrix.md` (a claims x components table, then the claims no component reaches).
 
-Exit: 0 written; 3 written, but a component is stale or a link names an unknown claim (the reason is printed); 2
-refused (a wrong schema, malformed JSON, an unreadable input or an out-dir that exists and is not empty), with
-nothing written. Deterministic: the same inputs give the same bytes (no clock, no randomness, no network). Python
-standard library only; it never opens an input for writing and writes only inside `<out-dir>`.
+Exit: 0 written; 3 written, but a component is stale, a link names an unknown claim, or an author's tag leaves no room
+for the status (archify would refuse the overlay: component-tag-overflow); the reason is printed; 2 refused (a wrong
+schema, malformed JSON, an unreadable input or an out-dir that exists and is not empty), with nothing written.
+Deterministic: the same inputs give the same bytes (no clock, no randomness, no network). Python standard library only;
+it never opens an input for writing and writes only inside `<out-dir>`.
 
 Written against archify `tt-a1i/archify` at commit 7e45f36 (Apache-2.0, `architecture` type); the pin is tooling
 provenance, recorded here and in `docs/adr/0052-an-architecture-diagram-shows-the-claims-its-components-satisfy.md`.
@@ -59,8 +60,9 @@ RANK = {"stale": -1, **{outcome: index for index, outcome in enumerate(OUTCOMES)
 STATUS_CARD = "Components by status"
 UNREACHED_CARD = "Claims no component reaches"
 OUTSIDE_CARD = "Cited paths outside every design root"
-# archify's component box when a diagram gives no size and no grid cell: its default grid cell (renderers/architecture/grid.mjs).
-DEFAULT_WIDTH = 130
+# archify's component box when a component gives no `size`: `layout.defaultW` (renderers/architecture/render-architecture.mjs
+# at 7e45f36). The grid's `cellW` is the step between boxes, never a box's width.
+DEFAULT_WIDTH = 120
 # archify draws a tag as one unwrapped line, shrunk to a 6 px floor at 0.6 px per column per px of font, inside the box
 # less 8 px of padding (renderers/shared/text-fit.mjs at 7e45f36): (width - 8) / 3.6 columns. Integer arithmetic.
 SEP = " | "
@@ -210,12 +212,21 @@ def cell_label(text):
     return clean(text).replace("|", "\\|")
 
 
+def tag_budget(width):
+    return int(((width - 8) * 10) // 36)
+
+
 def fit_tag(existing, word, claims, width):
-    """The author's tag (kept), then the status word and as many claim ids as fit the box; the card holds them all."""
-    budget = ((width - 8) * 10) // 36
+    """The author's tag (kept), then the status word and as many claim ids as fit the box; the card holds them all.
+
+    Returns the text and whether it fits the box. Even the author's tag plus the word may not: it is written all the same
+    (the author's text is kept), and the caller says the page would not pass archify's `component-tag-overflow`.
+    """
+    budget = tag_budget(width)
     prefix = existing + SEP if existing else ""
     if not claims:
-        return prefix + word
+        text = prefix + word
+        return text, units(text) <= budget
     for shown in range(len(claims), -1, -1):
         if shown == len(claims):
             ids = ", ".join(claims)
@@ -225,16 +236,16 @@ def fit_tag(existing, word, claims, width):
             ids = f"{len(claims)} claims"
         text = f"{prefix}{word} · {ids}"
         if units(text) <= budget:
-            return text
-    return f"{prefix}{word}"
+            return text, True
+    text = f"{prefix}{word}"
+    return text, units(text) <= budget
 
 
-def box_width(component, layout):
+def box_width(component):
+    """archify's box: `size[0]`, else `layout.defaultW`."""
     size = component.get("size")
     if isinstance(size, list) and size and isinstance(size[0], (int, float)) and not isinstance(size[0], bool):
         return size[0]
-    if isinstance(layout, dict) and isinstance(layout.get("cellW"), (int, float)) and not isinstance(layout["cellW"], bool):
-        return layout["cellW"]
     return DEFAULT_WIDTH
 
 
@@ -305,12 +316,17 @@ def overlay(diagram, satisfy, trace, root):
                 outside.setdefault(path, []).append(state["component"]["label"])
     outside_items = [f"{path} (cited by {', '.join(labels)})" for path, labels in outside.items()]
 
-    layout = diagram.get("layout")
     result = json.loads(json.dumps(diagram))  # a deep copy, in the author's key order
+    overflow = []
     for component, state in zip(result["components"], states):
-        component["tag"] = fit_tag(
-            component.get("tag", ""), WORD[state["status"]], state["claims"], box_width(component, layout)
-        )
+        width = box_width(component)
+        component["tag"], fits = fit_tag(component.get("tag", ""), WORD[state["status"]], state["claims"], width)
+        if not fits:
+            overflow.append(
+                f"tag overflow: component {component['id']!r} ({component['label']}): {component['tag']!r} needs "
+                f"{units(component['tag'])} columns and a {width} px box draws {tag_budget(width)}; the author's tag is kept, "
+                "so archify validate would refuse the overlay (component-tag-overflow): widen `size` or shorten the tag"
+            )
 
     cards = result.setdefault("cards", [])
     cards.append({"dot": "violet", "title": STATUS_CARD, "items": status_items or ["none"]})
@@ -354,7 +370,7 @@ def overlay(diagram, satisfy, trace, root):
     for link in links:
         if link["outcome"] == "unknown_claim":
             reasons.append(f"unknown claim: {link['element']} -> {link['claim_id']} names a claim the corpus does not hold")
-    return result, matrix, reasons
+    return result, matrix, reasons + overflow
 
 
 def render(value):

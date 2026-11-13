@@ -775,6 +775,143 @@ fn a_long_claim_list_is_cut_to_fit_the_tag_and_the_status_card_holds_every_id() 
     }
 }
 
+/// A component with no `size`: archify draws it `layout.defaultW` = 120 px wide (render-architecture.mjs at 7e45f36), so
+/// its tag has (120 - 8) / 3.6 = 31 columns at the 6 px floor, whatever the grid's cell is.
+fn no_size(id: &str, label: &str, source: &str, tag: Option<&str>) -> Value {
+    let mut c = json!({"id": id, "type": "backend", "label": label, "pos": [40, 120]});
+    c["sources"] = json!([{"path": source, "line": 1}]);
+    if let Some(tag) = tag {
+        c["tag"] = json!(tag);
+    }
+    c
+}
+
+fn tag_units(tag: &str) -> usize {
+    tag.chars().count()
+}
+
+#[test]
+fn a_component_with_no_size_is_120_px_wide_so_its_tag_has_31_columns() {
+    // Exactly 31 columns fits: "the pump tea | HOLDS · REQ-0001" is 12 + 3 + 16.
+    let s = Scratch::new("width-120-fits");
+    repo(&s);
+    let inputs = Inputs {
+        diagram: diagram(vec![no_size(
+            "pump",
+            "Pump",
+            "src/a.rs",
+            Some("the pump tea"),
+        )]),
+        satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
+        trace: trace(&claims()),
+    };
+    let out = run(&s, &inputs);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let tag = tag_of(&overlay(&s), "pump").to_string();
+    assert_eq!(tag, "the pump tea | HOLDS · REQ-0001");
+    assert_eq!(tag_units(&tag), 31);
+
+    // One column more fits a 130 px box (33 columns) but not 120: the id is cut, the status stays, the card holds it.
+    let s = Scratch::new("width-120-cuts");
+    repo(&s);
+    let inputs = Inputs {
+        diagram: diagram(vec![no_size(
+            "pump",
+            "Pump",
+            "src/a.rs",
+            Some("the pump team"),
+        )]),
+        satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
+        trace: trace(&claims()),
+    };
+    let out = run(&s, &inputs);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let overlay = overlay(&s);
+    let tag = tag_of(&overlay, "pump").to_string();
+    assert!(tag_units(&tag) <= 31, "{tag}");
+    assert!(tag.starts_with("the pump team | HOLDS"), "{tag}");
+    assert!(!tag.contains("REQ-0001"), "{tag}");
+    assert!(
+        card(&overlay, STATUS_CARD)
+            .iter()
+            .any(|item| item.contains("REQ-0001")),
+        "the card still holds the id"
+    );
+}
+
+#[test]
+fn a_grid_cell_is_the_step_between_boxes_never_a_boxs_width() {
+    // `layout.cellW` 200 is the grid step; a component with no `size` is still 120 px wide, so 31 columns.
+    let s = Scratch::new("grid-cell");
+    repo(&s);
+    let ids: Vec<String> = (1..=8).map(|n| format!("REQ-{n:04}")).collect();
+    let rows: Vec<(String, String, String)> = ids
+        .iter()
+        .map(|id| {
+            (
+                id.clone(),
+                format!("{id} statement."),
+                "applies".to_string(),
+            )
+        })
+        .collect();
+    let rows: Vec<(&str, &str, &str)> = rows
+        .iter()
+        .map(|(a, b, c)| (a.as_str(), b.as_str(), c.as_str()))
+        .collect();
+    let mut input = diagram(vec![json!({
+        "id": "pump", "type": "backend", "label": "Pump", "row": 0, "col": 0,
+        "sources": [{"path": "src/a.rs", "line": 1}],
+    })]);
+    input["layout"] = json!({"mode": "grid", "cols": 3, "cellW": 200});
+    let inputs = Inputs {
+        diagram: input,
+        satisfy: satisfy(ids.iter().map(|id| link("src/a.rs", id, "holds")).collect()),
+        trace: trace(&rows),
+    };
+    let out = run(&s, &inputs);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let tag = tag_of(&overlay(&s), "pump").to_string();
+    assert!(
+        tag_units(&tag) <= 31,
+        "{tag} is {} columns",
+        tag_units(&tag)
+    );
+    assert!(tag.starts_with("HOLDS") && tag.contains('+'), "{tag}");
+}
+
+#[test]
+fn an_authored_tag_the_status_cannot_fit_beside_is_kept_named_and_exit_3() {
+    // "the pump service team" is 21 columns and fits a 120 px box on its own; with " | NO CLAIM" it is 32 > 31. The
+    // author's text is kept (spec B4), the page is written, and the overlay says it would not pass archify validate.
+    let s = Scratch::new("tag-overflow");
+    repo(&s);
+    let inputs = Inputs {
+        diagram: diagram(vec![
+            no_size("pump", "Pump", "src/c.rs", Some("the pump service team")),
+            no_size("fits", "Fits", "src/c.rs", Some("pump team")),
+        ]),
+        satisfy: satisfy(vec![]),
+        trace: trace(&claims()),
+    };
+    let out = run(&s, &inputs);
+    assert_eq!(out.code, 3, "{}", out.all());
+    let overlay = overlay(&s);
+    let tag = tag_of(&overlay, "pump");
+    assert_eq!(
+        tag, "the pump service team | NO CLAIM",
+        "kept, and added to"
+    );
+    assert!(
+        out.stderr.contains("pump") && out.stderr.contains("tag") && out.stderr.contains("120 px"),
+        "names the component and the reason: {}",
+        out.stderr
+    );
+    assert!(!out.stderr.contains("'fits'"), "{}", out.stderr);
+    assert_eq!(tag_of(&overlay, "fits"), "pump team | NO CLAIM");
+    assert!(s.path("out/matrix.md").is_file());
+}
+
 // ---- the matrix -------------------------------------------------------------------------------
 
 #[test]
