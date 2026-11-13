@@ -124,6 +124,11 @@ A claim that does not apply in a selection because a successor that supersedes i
 kept in the corpus, with its address, and named wherever a view lists what it left out (ADR 0049).
 _Avoid_: deleted, retired (a withdrawn claim is still in the corpus), superseded (the relation, not the state)
 
+**Area**:
+Where a claim is filed in the reader's layout: one slash-separated path per claim, authored, outside identity and
+outside the Baseline (ADR 0051, proposed).
+_Avoid_: category, tag (a claim has one area), subject (the fingerprint input), component
+
 **Proposal**:
 A change to a claim that has not yet been accepted; what an edit from a non-engineer
 produces.
