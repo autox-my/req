@@ -76,17 +76,20 @@ and refines nothing the document holds; a claim's **family** is the lowest-id ro
   rules_v <n> · archify 7e45f36`. `N` and `E` count what this page draws, `M` what the document holds. An index page
   says `index of <G> groups` and counts the relations that run between groups.
 
-Within a page, claims sit in rows by `derives-from`/`refines` depth, ordered to cross as few edges as it can; an edge
-that skips a row passes through a reserved slot in it. Families are blocks running left to right.
+Within a page, claims sit in layers by `derives-from`/`refines` depth, ordered to cross as few edges as it can. A layer
+wider than seven boxes (`WRAP`) continues on further bands directly below it, in the same order, and an edge that skips a
+layer passes through a reserved slot in it. Families are blocks running left to right; a block that would take the page
+past 1710 px (`MAX_WIDTH`) starts a new row of blocks. The target of a dangling edge is drawn below every frame, outside
+all of them. When there are more groups than the limit, the index is cut into parts (`index.json`, `index-part-2.json`)
+that say `part 2 of 3`, and a connection to a group on another part ends on a stub that names that part.
 
 The 150-claim limit is `PAGE_LIMIT` in the converter. A test (and only a test) lowers it with the environment variable
 `REQ_GRAPH_PAGE_LIMIT`, read only when set; a value that is not a positive integer is a refusal.
 
-**A page can still fail archify's `browser-check`.** It fits the drawing to the reader's window and refuses text it would
-shrink below 6 px, which on a 1440 px window is a drawing about 1700 px wide: roughly seven or eight claims in one row.
-Layers are never wrapped, so a row wider than that is not readable at one glance. The receipt names it
-(`viewer/projected-text-readability`); the page is still a valid rendering of its slice. See the implementation note in
-ADR 0050.
+**Why pages are no wider than that.** archify's `browser-check` fits the drawing to the reader's window and refuses text it
+would shrink below 6 px, which on a 1440 px window caps a drawing at about 1776 px; `WRAP` and `MAX_WIDTH` keep every page
+under it (the measurements are in ADR 0050's implementation note). If a page still fails a gate, read its receipt: the page
+is a valid rendering of its slice, but do not call it checked.
 
 ## Rules for an agent running this
 

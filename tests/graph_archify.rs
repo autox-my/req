@@ -988,11 +988,16 @@ fn part_page(id: &str) -> &'static str {
     }
 }
 
-/// The ids a page draws as claims: every component but a stub or a named-but-missing target (both are `cloud`).
+/// The tags the ADR gives the two kinds of node that are not claims of a page: a stub (ADR 0050 decision 4, a claim held
+/// on another page) and the target of a dangling edge (ADR 0046). Every other node is a claim of the page.
+const STUB_TAG: &str = "on another page";
+const DANGLING_TAG: &str = "not in the corpus";
+
+/// The ids a page draws as claims, by tag: anything that is neither a stub nor a dangling target.
 fn claims_on(page: &Value) -> BTreeSet<String> {
     components(page)
         .iter()
-        .filter(|c| c["type"] != "cloud")
+        .filter(|c| c["tag"] != STUB_TAG && c["tag"] != DANGLING_TAG)
         .map(|c| c["id"].as_str().expect("an id").to_string())
         .collect()
 }
@@ -1175,13 +1180,22 @@ fn assert_edges_are_drawn_or_stubbed(
                 if here.contains(end) {
                     continue;
                 }
-                let stub = component(page, end);
-                assert_eq!(stub["type"], "cloud", "{name}: {end} is a stub");
-                let tag = stub["tag"].as_str().expect("a tag");
-                assert!(
-                    !tag.contains("not in the corpus"),
-                    "{name}: a stub is not a dangling target: {tag}"
-                );
+                let far = component(page, end);
+                assert_eq!(far["type"], "cloud", "{name}: {end} is outside the page");
+                let held = document["nodes"]
+                    .as_array()
+                    .expect("nodes")
+                    .iter()
+                    .any(|n| n["claim_id"] == end);
+                if !held {
+                    assert_eq!(far["tag"], DANGLING_TAG, "{name}: {end} is dangling");
+                    assert!(
+                        boundaries(page).iter().all(|b| !wraps(b).contains(end)),
+                        "{name}: a dangling target sits in no frame"
+                    );
+                    continue;
+                }
+                assert_eq!(far["tag"], STUB_TAG, "{name}: {end} is a stub");
                 let frame = boundaries(page)
                     .into_iter()
                     .find(|b| wraps(b).contains(end))
@@ -1524,6 +1538,12 @@ fn placement_holds_on_every_page_of_a_mid_size_document() {
         for (name, page) in group_pages(&pages) {
             assert_no_two_nodes_overlap(page);
             assert_every_edge_is_explicitly_placed(page);
+            assert!(
+                canvas_width(page) <= MAX_WIDTH,
+                "{name}: {}",
+                canvas_width(page)
+            );
+            assert_frames_inside_the_canvas(page);
             assert!(claims_on(page).len() <= 30 || limit.is_none(), "{name}");
         }
         if limit.is_some() {
@@ -1721,4 +1741,402 @@ fn the_page_limit_is_a_named_constant_of_150() {
     let source = fs::read_to_string(script()).expect("the converter source");
     assert!(source.contains("PAGE_LIMIT = 150"));
     assert!(source.contains("SWEEPS = "));
+}
+
+// ---------------------------------------------------------------------------
+// V-2-fix (ADR 0050 decision 5, amended): wide rows wrap, rows of blocks, frames inside the canvas
+// ---------------------------------------------------------------------------
+
+/// The layout constants the converter documents, written out here as oracles: a layer wider than `WRAP` slots
+/// continues on bands `PITCH_Y` apart; a canvas is at most `MAX_WIDTH` wide with both margins of `MARGIN_X`; a frame
+/// pads its members by 30 px (archify's own padding), and its title sits inside that top padding.
+const WRAP: usize = 7;
+const MAX_WIDTH: i64 = 1710;
+const MARGIN_X: i64 = 130;
+const PITCH_Y: i64 = 190;
+const FRAME_PAD: i64 = 30;
+
+/// The canvas width the layout reserves: the rightmost box plus the margin.
+fn canvas_width(page: &Value) -> i64 {
+    boxes(page)
+        .iter()
+        .map(|(_, (_, _, x1, _))| *x1)
+        .max()
+        .expect("a box")
+        + MARGIN_X
+}
+
+/// A frame as archify draws it from its members: their box, padded by `FRAME_PAD` on every side.
+fn frame_rect(page: &Value, frame: &Value) -> Rect {
+    let members = wraps(frame);
+    let inside: Vec<Rect> = boxes(page)
+        .into_iter()
+        .filter(|(id, _)| members.contains(id))
+        .map(|(_, r)| r)
+        .collect();
+    assert!(!inside.is_empty(), "a frame wraps something: {frame}");
+    (
+        inside.iter().map(|r| r.0).min().expect("x0") - FRAME_PAD,
+        inside.iter().map(|r| r.1).min().expect("y0") - FRAME_PAD,
+        inside.iter().map(|r| r.2).max().expect("x1") + FRAME_PAD,
+        inside.iter().map(|r| r.3).max().expect("y1") + FRAME_PAD,
+    )
+}
+
+/// Every frame lies inside the canvas the layout computes: its padded box starts at or past the origin and ends at or
+/// before the canvas width, and the first row leaves the title rail above the frame.
+fn assert_frames_inside_the_canvas(page: &Value) {
+    let width = canvas_width(page);
+    let top = boxes(page)
+        .iter()
+        .map(|(_, (_, y0, _, _))| *y0)
+        .min()
+        .expect("a box");
+    for frame in boundaries(page) {
+        let (x0, y0, x1, _) = frame_rect(page, frame);
+        assert!(x0 >= 0 && y0 >= 0, "{frame} starts at ({x0}, {y0})");
+        assert!(x1 <= width, "{frame} ends at {x1}, canvas {width}");
+    }
+    assert!(
+        top >= FRAME_PAD + 24 + 16,
+        "the title rail fits above row 0: {top}"
+    );
+}
+
+/// A binary heap of `n` claims numbered from `first`: claim `k` derives from (or, every third, refines) claim
+/// `(k - 1) / 2`. The widest layer is the last, so the shape is wide for its size.
+fn heap(first: usize, n: usize) -> (Vec<String>, Vec<Value>) {
+    let ids: Vec<String> = (0..n).map(|k| format!("REQ-{:04}", first + k)).collect();
+    let edges = (1..n)
+        .map(|k| {
+            let relation = if k % 3 == 0 {
+                "refines"
+            } else {
+                "derives-from"
+            };
+            edge(&ids[k], relation, &ids[(k - 1) / 2])
+        })
+        .collect();
+    (ids, edges)
+}
+
+/// Two families of 34 claims (68), one page, with a relation each way across them: the widest layer of each is 16
+/// slots, past `WRAP`, so each wraps onto bands. The page is no wider than `MAX_WIDTH`, every frame lies inside the
+/// canvas, and placement holds.
+#[test]
+fn a_wide_two_family_page_fits_max_width_and_its_frames_lie_inside_the_canvas() {
+    let (a, mut edges) = heap(1, 34);
+    let (b, more) = heap(101, 34);
+    edges.extend(more);
+    edges.push(edge(&a[20], "constrains", &b[25]));
+    edges.push(edge(&b[30], "constrains", &a[15]));
+    let nodes = a.iter().chain(&b).map(|i| claim(i)).collect();
+    let scratch = Scratch::new("wide");
+    let page = converted(&scratch, &document(json!({}), nodes, edges));
+
+    assert_eq!(claims_on(&page).len(), 68);
+    assert!(
+        canvas_width(&page) <= MAX_WIDTH,
+        "the canvas is {} wide",
+        canvas_width(&page)
+    );
+    assert_eq!(boundaries(&page).len(), 2);
+    assert_frames_inside_the_canvas(&page);
+    assert_no_two_nodes_overlap(&page);
+    assert_every_edge_is_explicitly_placed(&page);
+    // No row holds more than WRAP boxes: bands are WRAP wide at most.
+    let mut per_row: BTreeMap<(i64, i64), usize> = BTreeMap::new();
+    for (_, (x0, y0, _, _)) in boxes(&page) {
+        let family = i64::from(x0 > 1000);
+        *per_row.entry((y0, family)).or_default() += 1;
+    }
+    assert!(per_row.values().all(|n| *n <= WRAP), "{per_row:?}");
+}
+
+/// ADR 0050 decision 5 (amended): a layer wider than `WRAP` continues on further bands directly below, in the same
+/// median order. REQ-0002 and REQ-0003 refine REQ-0001; 0015..0018 derive from 0002 and 0010..0014 from 0003. By the
+/// median 0002's children come first, so the nine claims of that layer read, band by band and left to right:
+/// 0015 0016 0017 0018 0010 0011 0012 / 0013 0014, the second band one row (`PITCH_Y`) below the first.
+#[test]
+fn a_layer_wider_than_wrap_continues_on_bands_below_in_the_same_order() {
+    let mut nodes: Vec<Value> = ["0001", "0002", "0003"]
+        .iter()
+        .map(|n| claim(&format!("REQ-{n}")))
+        .collect();
+    let mut edges = vec![
+        edge("REQ-0002", "refines", "REQ-0001"),
+        edge("REQ-0003", "refines", "REQ-0001"),
+    ];
+    for n in (10..=14).chain(15..=18) {
+        let id = format!("REQ-{n:04}");
+        nodes.push(claim(&id));
+        let parent = if n <= 14 { "REQ-0003" } else { "REQ-0002" };
+        edges.push(edge(&id, "derives-from", parent));
+    }
+    let scratch = Scratch::new("bands");
+    let page = converted(&scratch, &document(json!({}), nodes, edges));
+
+    let mut wide: Vec<(i64, i64, String)> = boxes(&page)
+        .into_iter()
+        .filter(|(id, _)| id.as_str() >= "REQ-0010")
+        .map(|(id, (x0, y0, _, _))| (y0, x0, id))
+        .collect();
+    wide.sort();
+    let order: Vec<&str> = wide.iter().map(|(_, _, id)| id.as_str()).collect();
+    assert_eq!(
+        order,
+        vec![
+            "REQ-0015", "REQ-0016", "REQ-0017", "REQ-0018", "REQ-0010", "REQ-0011", "REQ-0012",
+            "REQ-0013", "REQ-0014"
+        ]
+    );
+    let rows: BTreeSet<i64> = wide.iter().map(|(y, _, _)| *y).collect();
+    assert_eq!(rows.len(), 2, "two bands");
+    let ys: Vec<i64> = rows.into_iter().collect();
+    assert_eq!(ys[1] - ys[0], PITCH_Y, "the second band is directly below");
+    assert_eq!(wide.iter().filter(|(y, _, _)| *y == ys[0]).count(), WRAP);
+    assert_no_two_nodes_overlap(&page);
+    assert_every_edge_is_explicitly_placed(&page);
+}
+
+/// A block that would take the page past `MAX_WIDTH` starts a new row of blocks. Eight families of three claims, each a
+/// root with two children (two slots wide), fit three to a row of blocks: three rows. Relations run between the first
+/// and the last family, across rows of blocks.
+#[test]
+fn blocks_that_would_pass_max_width_start_a_new_row_of_blocks() {
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    for k in 0..8 {
+        let root = format!("REQ-{:04}", 10 * k + 1);
+        nodes.push(claim(&root));
+        for c in 2..=3 {
+            let id = format!("REQ-{:04}", 10 * k + c);
+            nodes.push(claim(&id));
+            edges.push(edge(&id, "refines", &root));
+        }
+    }
+    edges.push(edge("REQ-0001", "constrains", "REQ-0072"));
+    edges.push(edge("REQ-0071", "constrains", "REQ-0003"));
+    let scratch = Scratch::new("block-rows");
+    let page = converted(&scratch, &document(json!({}), nodes, edges));
+
+    assert!(canvas_width(&page) <= MAX_WIDTH, "{}", canvas_width(&page));
+    let root_rows: BTreeSet<i64> = (0..8)
+        .map(|k| {
+            component(&page, &format!("REQ-{:04}", 10 * k + 1))["pos"][1]
+                .as_i64()
+                .expect("y")
+        })
+        .collect();
+    assert_eq!(root_rows.len(), 3, "three rows of blocks: {root_rows:?}");
+    assert_eq!(boundaries(&page).len(), 8);
+    assert_frames_inside_the_canvas(&page);
+    assert_no_two_nodes_overlap(&page);
+    assert_every_edge_is_explicitly_placed(&page);
+}
+
+/// The dangling target of a small document's page is drawn outside every frame.
+#[test]
+fn a_dangling_target_is_drawn_outside_every_family_frame() {
+    let scratch = Scratch::new("dangling-outside");
+    let mut document = families();
+    document["edges"].as_array_mut().expect("edges").push(edge(
+        "REQ-0003",
+        "constrains",
+        "REQ-0099",
+    ));
+    document["findings"]["dangling"] =
+        json!(["constrains -> REQ-0099 (referenced by REQ-0003, not in the corpus)"]);
+    let page = converted(&scratch, &document);
+    let target = component(&page, "REQ-0099");
+    assert_eq!(target["tag"], DANGLING_TAG);
+    assert!(
+        boundaries(&page)
+            .iter()
+            .all(|b| !wraps(b).contains("REQ-0099")),
+        "no frame wraps it"
+    );
+    let (x0, y0, x1, y1) = (
+        target["pos"][0].as_i64().expect("x"),
+        target["pos"][1].as_i64().expect("y"),
+        target["pos"][0].as_i64().expect("x") + 130,
+        target["pos"][1].as_i64().expect("y") + 64,
+    );
+    for frame in boundaries(&page) {
+        assert!(
+            !overlaps((x0, y0, x1, y1), frame_rect(&page, frame)),
+            "REQ-0099 lies inside the frame {frame}"
+        );
+    }
+    assert_eq!(
+        connection(&page, "REQ-0003", "constrains", "REQ-0099")["variant"],
+        "security"
+    );
+    assert_every_edge_is_explicitly_placed(&page);
+}
+
+/// A dangling far end on a split page: the edge is drawn on its claim's page, the target is tagged as ADR 0046 says,
+/// sits in no frame, and is not counted as a claim (falsification 2 still holds).
+#[test]
+fn a_dangling_far_end_on_a_split_page_is_drawn_and_is_not_a_claim() {
+    let scratch = Scratch::new("dangling-split");
+    let mut document = families();
+    document["edges"].as_array_mut().expect("edges").push(edge(
+        "REQ-0003",
+        "constrains",
+        "REQ-0099",
+    ));
+    document["findings"]["dangling"] =
+        json!(["constrains -> REQ-0099 (referenced by REQ-0003, not in the corpus)"]);
+    let pages = converted_pages(&scratch, &document, Some("5"));
+    assert_edges_are_drawn_or_stubbed(&document, &pages, &family_page);
+    let page = &pages["family-REQ-0001"];
+    assert_eq!(component(page, "REQ-0099")["tag"], DANGLING_TAG);
+    assert!(!claims_on(page).contains("REQ-0099"));
+    assert_eq!(claims_on(page), names(&FAMILY_A));
+    // Stubs carry the ADR's tag, word for word.
+    assert_eq!(component(page, "REQ-0012")["tag"], "on another page");
+    assert_eq!(component(page, "REQ-0099")["tag"], "not in the corpus");
+}
+
+/// A family whose claims form a cycle with no root outside it is named after its lowest-id member, and a cycle that
+/// leads out to a root belongs to that root's family. 0001 <- 0002 <- 0003 <- 0001 is one family, REQ-0001 (the layout
+/// calls 0003 its root); 0020 and 0021 derive from each other and 0020 also from 0010, so both are family REQ-0010.
+#[test]
+fn a_cycle_with_no_root_outside_it_is_named_after_its_lowest_id_member() {
+    let nodes = ["0001", "0002", "0003", "0010", "0020", "0021"]
+        .iter()
+        .map(|n| claim(&format!("REQ-{n}")))
+        .collect();
+    let edges = vec![
+        edge("REQ-0001", "derives-from", "REQ-0002"),
+        edge("REQ-0002", "derives-from", "REQ-0003"),
+        edge("REQ-0003", "derives-from", "REQ-0001"),
+        edge("REQ-0020", "derives-from", "REQ-0010"),
+        edge("REQ-0020", "derives-from", "REQ-0021"),
+        edge("REQ-0021", "derives-from", "REQ-0020"),
+    ];
+    let scratch = Scratch::new("cycle-family");
+    let document = document(json!({}), nodes, edges);
+    let page = converted(&scratch, &document);
+    let by_label: BTreeMap<&str, BTreeSet<String>> = boundaries(&page)
+        .iter()
+        .map(|b| (b["label"].as_str().expect("label"), wraps(b)))
+        .collect();
+    assert_eq!(
+        by_label,
+        BTreeMap::from([
+            ("REQ-0001", names(&["REQ-0001", "REQ-0002", "REQ-0003"])),
+            ("REQ-0010", names(&["REQ-0010", "REQ-0020", "REQ-0021"])),
+        ])
+    );
+    // And the same on a split run: the page names follow the family names.
+    let scratch = Scratch::new("cycle-family-split");
+    let pages = converted_pages(&scratch, &document, Some("3"));
+    assert_eq!(
+        pages.keys().map(String::as_str).collect::<Vec<_>>(),
+        vec!["family-REQ-0001", "family-REQ-0010", "index"]
+    );
+}
+
+/// The index is capped like every page: more groups than the limit are cut into parts that declare themselves. Seven
+/// two-claim families and a limit of three give `index` and two more parts; every group is on exactly one part, and a
+/// connection to a group on another part ends on a stub naming that part.
+#[test]
+fn an_index_past_the_limit_is_cut_into_parts_that_declare_themselves() {
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    for k in 0..7 {
+        let root = format!("REQ-{:04}", 10 * k + 1);
+        let child = format!("REQ-{:04}", 10 * k + 2);
+        nodes.push(claim(&root));
+        nodes.push(claim(&child));
+        edges.push(edge(&child, "refines", &root));
+    }
+    // Family 1 (part 1) to family 7 (part 3); family 4 and 5 are both on part 2.
+    edges.push(edge("REQ-0001", "constrains", "REQ-0061"));
+    edges.push(edge("REQ-0031", "constrains", "REQ-0041"));
+    let scratch = Scratch::new("index-parts");
+    let pages = converted_pages(&scratch, &document(json!({}), nodes, edges), Some("3"));
+    let index_names = ["index", "index-part-2", "index-part-3"];
+    for name in index_names {
+        assert!(pages.contains_key(name), "{name} is written");
+    }
+    assert_eq!(
+        pages.len(),
+        3 + 7,
+        "three index pages and a page per family"
+    );
+
+    let mut seen = BTreeSet::new();
+    for (k, name) in index_names.iter().enumerate() {
+        let page = &pages[*name];
+        let groups: BTreeSet<String> = components(page)
+            .iter()
+            .filter(|c| c["tag"] != STUB_TAG)
+            .map(|c| c["id"].as_str().expect("id").to_string())
+            .collect();
+        assert!(groups.len() <= 3, "{name} holds {} groups", groups.len());
+        assert!(seen.is_disjoint(&groups), "{name} repeats a group");
+        seen.extend(groups);
+        assert!(
+            subtitle(page).contains(&format!("part {} of 3", k + 1)),
+            "{name}: {}",
+            subtitle(page)
+        );
+        assert!(
+            subtitle(page).contains("index of 7 groups"),
+            "{}",
+            subtitle(page)
+        );
+    }
+    assert_eq!(seen.len(), 7, "every group on exactly one index page");
+
+    // 0001 constrains 0061: group 1 is on `index`, group 7 on `index-part-3`.
+    let first = &pages["index"];
+    connection(
+        first,
+        "family-REQ-0001",
+        "constrains \u{d7}1",
+        "family-REQ-0061",
+    );
+    let stub = component(first, "family-REQ-0061");
+    assert_eq!(stub["tag"], STUB_TAG);
+    let frame = boundaries(first)
+        .into_iter()
+        .find(|b| wraps(b).contains("family-REQ-0061"))
+        .expect("the stub's frame");
+    assert!(
+        frame["label"]
+            .as_str()
+            .expect("label")
+            .contains("index-part-3")
+    );
+    let last = &pages["index-part-3"];
+    connection(
+        last,
+        "family-REQ-0001",
+        "constrains \u{d7}1",
+        "family-REQ-0061",
+    );
+    assert_eq!(component(last, "family-REQ-0001")["tag"], STUB_TAG);
+    // A connection inside one part is plain, with no stub.
+    let second = &pages["index-part-2"];
+    connection(
+        second,
+        "family-REQ-0031",
+        "constrains \u{d7}1",
+        "family-REQ-0041",
+    );
+    assert!(boundaries(second).is_empty());
+    assert_every_edge_is_explicitly_placed(first);
+}
+
+/// `WRAP` and `MAX_WIDTH` are named constants beside the converter's others, and the converter's own comment states the
+/// measured floor they come from.
+#[test]
+fn wrap_and_max_width_are_named_constants() {
+    let source = fs::read_to_string(script()).expect("the converter source");
+    assert!(source.contains("WRAP = 7"));
+    assert!(source.contains("MAX_WIDTH = 1710"));
 }

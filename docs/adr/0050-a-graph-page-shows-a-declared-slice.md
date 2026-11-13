@@ -86,9 +86,10 @@ a Tier-1 input a second job. A category an author chooses is a separate proposal
    - each layer is ordered to reduce crossings, by repeated median sweeps down and up, a fixed number of passes, with
      ties broken by claim id;
    - an edge that skips layers runs through a reserved waypoint in each layer it crosses;
-   - a connected layer is never wrapped;
-   - each family is laid out as its own block, blocks run left to right in family order, and standalone claims sit in
-     a grid of their own;
+   - a layer wider than `WRAP` boxes continues on further bands directly below, inside that layer's band, in the same
+     median order; arrows still run only in channels and gutters;
+   - each family is laid out as its own block, blocks run left to right in family order, and a block that would take
+     the page past `MAX_WIDTH` starts a new row of blocks; standalone claims sit in a grid of their own;
    - every coordinate is an integer, with no randomness and no clock.
 6. **The page speaks req's words.**
    - `meta.translations` relabels the component types as the claim states (applies, undecided, does not apply,
@@ -108,8 +109,11 @@ a Tier-1 input a second job. A category an author chooses is a separate proposal
 ## Consequences
 
 - A reader opens the index, then the group they care about, and each page fits on a screen or two.
-- A corpus of any size renders, because no page grows past `PAGE_LIMIT`. Whether archify gives a pass for every page
-  is still measured, not assumed.
+- A corpus of any size renders, because no page grows past `PAGE_LIMIT` claims or `MAX_WIDTH` pixels. Whether archify
+  passes every page is measured, and the measurement is in the implementation note below.
+- A wide layer reads as several bands, so the picture no longer shows a layer as one row (the problem decision 5 set out
+  to remove in V-1's six-wide grid). The bands keep the layer's median order, so a reader follows it left to right, then
+  down.
 - The converter's output becomes a directory of diagram files, not one file. The adopter loop in
   `examples/graph/README.md` runs `finalize` once per file.
 - A family can be a poor grouping. A corpus with one deep root puts nearly everything in one family, which is then cut
@@ -136,7 +140,8 @@ This decision is wrong if any of these is observed:
 3. an edge with an end on a page is missing from that page, either as a drawn edge or as a stub;
 4. two runs over one document give different bytes in any output file;
 5. a page holds more than `PAGE_LIMIT` claims;
-6. on this repository's own graph, archify's `routesOverSuggestedBends` is not lower than V-1's 34.
+6. on this repository's own graph, archify's `routesOverSuggestedBends` is not lower than V-1's 34;
+7. a page is wider than `MAX_WIDTH`, or a frame lies outside its page's canvas.
 
 ## Implementation note (2026-11-13, unit V-2)
 
@@ -147,8 +152,11 @@ decisions left open.
   A coordinate pass then runs `ALIGN_PASSES = 4` times (each slot goes towards the mean x of its neighbours, kept in order
   and at least a slot apart by a least-squares fit, floor division throughout). Both are fixed counts, so one document gives
   one layout.
-- **Waypoints.** A long edge reserves one slot in each layer it crosses; the slot takes part in the median ordering, and
-  the route's `via` list passes through the slot's centre in that layer's row.
+- **Waypoints and corridors.** A long edge reserves one slot in each layer it crosses; the slot takes part in the median
+  ordering (and wraps with its layer), and the route's `via` list passes through the slot's centre in that layer's row.
+  A hop that crosses more than one band, because a layer wrapped, runs down a corridor instead: the gap, free of every
+  box in the rows it crosses, nearest the hop's two ends (ties to the smaller x). Routes still run only in channels and
+  corridors, and every edge is routed explicitly.
 - **Part cutting.** A group is cut by layer: layers fill a part whole until the next would not fit. A single layer still
   over `PAGE_LIMIT` is cut in **claim-id order** into consecutive parts of at most `PAGE_LIMIT`, because a group can be one
   layer wide (the standalone group always is, and a corpus with no relations puts every claim there). Part 1 keeps the
@@ -159,8 +167,29 @@ decisions left open.
   and `not in the corpus`). A stub sits in its own `region` frame labelled `page <name>`: that frame is the panel's context,
   and archify offers no per-node context field.
 - **Index page.** Nodes sit in V-1's grid, six wide, in group order. A group's node is named by its first page; its tag
-  counts claims and, past one page, pages. The subtitle counts the relations that run between groups, and every claim
-  as drawn (`M of M claims`).
+  counts claims and, past one page, pages. The subtitle counts the claims of the groups the page holds and the relations
+  it draws (for an unsplit index, every claim and the relations that run between groups). **The index is capped like any
+  page**: more than `PAGE_LIMIT` groups are cut into consecutive parts, `index`, `index-part-2` and so on, each saying
+  `part i of n`; a connection is drawn on every part that holds either group, and a group on another part is a stub inside
+  a frame that names that part.
+- **Wrap and width.** `WRAP = 7` and `MAX_WIDTH = 1710`, chosen from a measurement (archify 7e45f36, `browser-check` at
+  its default 1440x900 window, every edge label 9 px at source): a canvas 1680 px wide, a row of seven boxes here, passes,
+  and one 1900 px wide, a row of eight, fails on `viewer/projected-text-readability` (a floor of 6 px). `MAX_WIDTH` is the
+  canvas with both 130 px margins, so a page's content is at most 1450 px; archify adds about 70 px, which keeps every page
+  at or under 1650 px. A band is `(WRAP - 1) * PITCH_X` wide at most: after the coordinate fit each slot is clipped into
+  that range, in order and still a slot apart (the fit alone is a lower bound on spacing and drifted a band past it).
+  Bands are `PITCH_Y` apart, directly under their layer; blocks start a new row of blocks when the next would pass
+  `MAX_WIDTH`, and the rows of blocks sit on one row grid, with one empty row between them.
+- **Margins and frames.** A frame is the box of its members padded by 30 px; its title sits in the top padding, and archify
+  widens a frame to fit a long title, towards both sides. The left margin (130 px) holds the gutter beside the first block
+  and that widening; the top margin (110 px) holds the channel above the first row, the padding and the title rail. A frame
+  therefore never leaves the viewBox on a page no wider than `MAX_WIDTH` (a test computes both from these constants).
+- **Families and cycles.** A family root is a claim with no `derives-from`/`refines` edge out, and a cycle with no edge
+  out of it is one root, named by its **lowest-id member** (found by strongly connected components over the layering
+  edges; a cycle that leads out to a root belongs to that root's family). The layout may call another member the cycle's
+  root, which only decides rows.
+- **Dangling targets.** On the single page the target of a dangling edge is drawn in a block of its own, below every
+  family frame and outside all of them; on a group page it sits in the group's rows, in no frame.
 - **Translations** (keys of archify's `locales/en.json`): `viewer.kind.*` and `legend.architecture.*` (the states, in the
   words `meta.legend` already used), `node.context.architecture` and `viewer.passport.eyebrow` (`Claim`),
   `viewer.passport.reach`, `.upstream`, `.downstream`, their `.trace` forms, `viewer.passport.reach.{upstream,downstream}`
@@ -172,25 +201,26 @@ decisions left open.
   refines to the claim it rests on, so `upstream` holds the claims that rest on the focused one: `viewer.passport.upstream` is
   `Rests on this`, `viewer.passport.downstream` is `This rests on`. Confirmed in a rendered page's i18n data.
 
-**Verification outside the gate** (archify `7e45f36`, `ARCHIFY_UPDATE_CHECK_DISABLED=1`, `--quality standard`, one
-Apple-silicon laptop; HTML kept in `.scratch/`, not committed).
+**Verification outside the gate** (amended 2026-11-13, unit V-2-fix). archify `7e45f36`, `ARCHIFY_UPDATE_CHECK_DISABLED=1`,
+`--quality standard`, `finalize` per page, one Apple-silicon laptop; HTML kept in `.scratch/`, not committed, and not
+visually reviewed. Every page below exited 0 with `validate`, `deliver`, `check` and `browser-check` all `pass`, and no
+diagnostic.
 
-- **This repository's graph** (`.req/variants` line 1, 40 claims, two families and no standalone claim, one page):
-  `validate`, `deliver` and `check` pass; `browser-check` **fails**. `routesOverSuggestedBends` is **4** (V-1: 34), over-stretch
-  **1** (V-1: 13), so falsification 6 holds. The `browser-check` failure is `viewer/projected-text-readability`, at the
-  floor described below.
-- **Synthetic 500- and 1000-claim corpora** (a heap-shaped tree of `derives-from`, a `refines` cross-link on every seventh
-  claim, every tenth claim standalone; generated by a scratch script, not committed). 500: 6 pages, largest 150 claims;
-  1000: 9 pages, largest 150. In both, the index and the standalone page pass every gate, and **every page of the family
-  fails**: `validate` does not pass (archify refuses a frame label past its canvas edge on a canvas 10 000 to 80 000 px
-  wide), so `browser-check` does not run. The 1000-claim corpus does render, with no buffer overrun, which V-1 could not do,
-  but it does **not** pass on every page.
+| document | pages | largest page | canvas (viewBox) |
+| --- | --- | --- | --- |
+| this repository's graph (`.req/variants` line 1, 40 claims, two families) | 1 | 40 claims | 1650 × 2542 |
+| a 68-claim, two-family document (two 34-claim heaps, a relation each way) | 1 | 68 claims | 1650 × 3682 |
+| synthetic, 500 claims | 6 (an index, a standalone page, four family parts) | 150 claims | 1650 wide at most |
+| synthetic, 1000 claims | 9 (an index, a standalone page, seven family parts) | 150 claims | 1650 wide at most |
 
-**What the measurement found.** `browser-check` shrinks the drawing to the reader's window and fails any text it would
-project below 6 px. Edge labels are 9 px at source, so on a 1440 px window the canvas may be about 1700 px wide. A row of 7
-claims at this layout (1610 px) passes; a row of 8 (1830 px) fails. Decision 5's rule that a connected layer is never
-wrapped, and decision 3's limit of 150 claims, cannot both hold with that floor: a heap-shaped tree puts 128 claims in one
-layer, and this repository's widest layer is 11 wide. The limit is on claims, but the readable page is limited by the
-widest row. This is a finding about the decisions, not a defect of the converter, and the decisions are unchanged here.
-Two remedies are open to the owner and neither is taken in this unit: cut parts by row width as well as by claim count, or
-wrap a row past a width (which returns to the problem that decision 5 set out to remove).
+On this repository's graph `routesOverSuggestedBends` is **23** (V-1: 34) and over-stretch **10** (V-1: 13), so falsification
+6 holds; that first version had 4 and 1 on a page that failed `browser-check`, so the wrap trades some route quality for
+a page that passes. The synthetic corpora are a heap-shaped tree of `derives-from`, a `refines` cross-link on every seventh
+claim, and every tenth claim standalone, made by a scratch script and not committed.
+
+**What an earlier version of this note got wrong.** The first version of V-2 (PR #70 at 6c77f6c) said the 1000-claim corpus "does render".
+It did not pass: with layers never wrapped, a layer of 128 claims was one row about 60 000 px wide, `validate` failed on
+every family page, and `finalize` wrote no page. The cause was the width floor above, which decision 5 as first written
+could not meet; the owner's decision of 2026-11-13 (wide rows wrap) is what changed it. Review V-2-review-1 also found
+that a 68-claim two-family page failed `validate` for the same reason (its frames' titles scale with the canvas width);
+`MAX_WIDTH` bounds the width, and the page now passes.

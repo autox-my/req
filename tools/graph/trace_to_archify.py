@@ -45,12 +45,23 @@ ALIGN_PASSES = 4
 
 # Placement, in integers. A node box and the pitch between slots: a row is PITCH_Y apart, and a slot (a node, or the
 # waypoint a long edge reserves in a layer) PITCH_X apart. Family blocks sit BLOCK_GAP apart so their frames (30 px of
-# padding each, archify's) leave room for the gutter between them. The index grid and the standalone grid wrap at PER_ROW.
+# padding each, archify's) leave room for the gutter between them.
 NODE_W, NODE_H = 130, 64
 PITCH_X, PITCH_Y = 220, 190
-MARGIN_X, MARGIN_Y = 160, 110
+# The left margin holds the gutter beside the first block (BLOCK_GAP / 2 out, 18 px of lanes) and the frame's 30 px of
+# padding with room for its title to widen it; the top margin holds the channel above the first row, then the frame's
+# 30 px of padding and its title rail (archify: label mask 16 + clearance 4 + inset 4).
+MARGIN_X, MARGIN_Y = 130, 110
 BLOCK_GAP = 200
 PER_ROW = 6
+# archify's browser-check fits the drawing to the reader's window and refuses text it would project below 6 px. Measured
+# against archify 7e45f36 at its default 1440x900 window: a canvas 1680 px wide (a row of 7 boxes here) passes and one
+# 1900 px wide (a row of 8) fails on edge labels. A page is therefore laid out inside MAX_WIDTH, the width of the canvas
+# with both margins, which leaves archify's own margin and the route lanes room under the failing width; a layer wider
+# than WRAP slots continues on bands below, so one band is (WRAP - 1) * PITCH_X + NODE_W wide.
+WRAP = 7
+MAX_WIDTH = 1710
+BAND_CAP = (WRAP - 1) * PITCH_X
 # Parallel routes through one channel or gutter fan out over LANES offsets, LANE_STEP apart.
 LANES, LANE_STEP = 5, 9
 
@@ -219,18 +230,70 @@ def layering(ids, edges):
     return layer, followed
 
 
-def families_of(ids, edges, layer, followed):
-    """Each claim's family root (the lowest-id root it reaches), and the set of standalone claims (ADR 0050 decision 2)."""
+def families_of(ids, edges):
+    """Each claim's family root, and the set of standalone claims (ADR 0050 decision 2).
+
+    The family is the lowest-id root the claim reaches over `derives-from` and `refines`. A root is a claim with no
+    such edge out; a cycle with no edge out of it is one root, named by its lowest-id member (the layout may call another
+    member the root of the cycle, which is a drawing choice and does not name a family).
+    """
+    known = set(ids)
+    succ = {i: set() for i in ids}
+    for edge in edges:
+        if edge["relation"] in LAYERING and edge["from"] in known and edge["to"] in known and edge["from"] != edge["to"]:
+            succ[edge["from"]].add(edge["to"])
+
+    # Tarjan's strongly connected components, iterative, in sorted order; components come out sinks first.
+    index, low, on_stack, stack, components = {}, {}, set(), [], []
+    for start in sorted(ids):
+        if start in index:
+            continue
+        index[start] = low[start] = len(index)
+        stack.append(start)
+        on_stack.add(start)
+        work = [(start, iter(sorted(succ[start])))]
+        while work:
+            node, following = work[-1]
+            descended = False
+            for target in following:
+                if target not in index:
+                    index[target] = low[target] = len(index)
+                    stack.append(target)
+                    on_stack.add(target)
+                    work.append((target, iter(sorted(succ[target]))))
+                    descended = True
+                    break
+                if target in on_stack:
+                    low[node] = min(low[node], index[target])
+            if descended:
+                continue
+            work.pop()
+            if work:
+                low[work[-1][0]] = min(low[work[-1][0]], low[node])
+            if low[node] == index[node]:
+                members = []
+                while True:
+                    member = stack.pop()
+                    on_stack.discard(member)
+                    members.append(member)
+                    if member == node:
+                        break
+                components.append(sorted(members))
+
+    component_of = {i: n for n, members in enumerate(components) for i in members}
+    named = {}
+    family = {}
+    for n, members in enumerate(components):
+        leaving = {component_of[t] for i in members for t in succ[i] if component_of[t] != n}
+        named[n] = min(named[o] for o in leaving) if leaving else members[0]
+        for i in members:
+            family[i] = named[n]
+
     touched = set()
     for edge in edges:
         touched.add(edge["from"])
         touched.add(edge["to"])
-    family = {}
-    for identifier in sorted(ids, key=lambda i: (layer[i], i)):
-        parents = followed[identifier]
-        family[identifier] = identifier if not parents else min(family[p] for p in parents)
-    standalone = {i for i in ids if i not in touched}
-    return family, standalone
+    return family, {i for i in ids if i not in touched}
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -267,37 +330,48 @@ def place(desired):
     return result
 
 
+def clipped(fitted):
+    """`fitted` kept inside [0, BAND_CAP], in order and still PITCH_X apart (a band holds at most WRAP slots, so it fits)."""
+    xs = list(fitted)
+    for i in range(len(xs)):
+        xs[i] = max(xs[i], xs[i - 1] + PITCH_X if i else 0)
+    for i in range(len(xs) - 1, -1, -1):
+        xs[i] = min(xs[i], xs[i + 1] - PITCH_X if i < len(xs) - 1 else BAND_CAP)
+    return xs
+
+
 def layered(ids, layer_of, edge_pairs):
     """Order and place one block of nodes in layers (ADR 0050 decision 5).
 
     `ids` are the block's nodes, `layer_of` gives each a layer, `edge_pairs` are `(index, from, to)` with both ends in
-    the block. Returns `(rows, x, row_of, chains, width)`: the rows of slots in order (a slot is a node id, or the
-    reserved waypoint of a long edge in one layer it crosses), each slot's x (the left edge of its box) from 0, its
-    row, each edge's slots in travel order, and the block's width.
+    the block. A layer is ordered by repeated median sweeps; a layer wider than WRAP slots then continues on further
+    bands below, in the same order. Returns `(layers, x, row_of, chains, width, row_count)`: the layers' slots in order
+    (a slot is a node id, or the reserved waypoint of a long edge in one layer it crosses), each slot's x (the left edge of
+    its box) from 0, its visual row (a band), each edge's slots in travel order, the block's width and its visual rows.
     """
     distinct = sorted({layer_of[i] for i in ids})
     rank = {value: index for index, value in enumerate(distinct)}
-    row_of = {i: rank[layer_of[i]] for i in ids}
+    layer_rank = {i: rank[layer_of[i]] for i in ids}
     sortkey = {i: i for i in ids}
     rows = [[] for _ in distinct]
     for i in sorted(ids):
-        rows[row_of[i]].append(i)
+        rows[layer_rank[i]].append(i)
     up = {i: [] for i in ids}
     down = {i: [] for i in ids}
     chains = {}
     for index, source, target in edge_pairs:
-        first, last = (source, target) if row_of[source] <= row_of[target] else (target, source)
+        first, last = (source, target) if layer_rank[source] <= layer_rank[target] else (target, source)
         chain = [first]
-        for r in range(row_of[first] + 1, row_of[last]):
+        for r in range(layer_rank[first] + 1, layer_rank[last]):
             waypoint = f"~{index:06d}-{r}"
-            row_of[waypoint] = r
+            layer_rank[waypoint] = r
             sortkey[waypoint] = f"{first}|{last}|{index:06d}"
             up[waypoint] = []
             down[waypoint] = []
             rows[r].append(waypoint)
             chain.append(waypoint)
         chain.append(last)
-        if row_of[first] != row_of[last]:
+        if layer_rank[first] != layer_rank[last]:
             for above, below in zip(chain, chain[1:]):
                 down[above].append(below)
                 up[below].append(above)
@@ -322,19 +396,26 @@ def layered(ids, layer_of, edge_pairs):
             for i, slot in enumerate(rows[r]):
                 position[slot] = i
 
-    x = {s: i * PITCH_X for row in rows for i, s in enumerate(row)}
+    # A layer wider than WRAP continues on bands directly below it, in the same order.
+    bands = []
+    for row in rows:
+        bands.extend(row[k : k + WRAP] for k in range(0, len(row), WRAP))
+    row_of = {s: v for v, band in enumerate(bands) for s in band}
+
+    x = {s: i * PITCH_X for band in bands for i, s in enumerate(band)}
     for sweep in range(ALIGN_PASSES):
-        for r in range(len(rows)) if sweep % 2 == 0 else range(len(rows) - 1, -1, -1):
+        for v in range(len(bands)) if sweep % 2 == 0 else range(len(bands) - 1, -1, -1):
+            band = bands[v]
             desired = []
-            for slot in rows[r]:
+            for slot in band:
                 around = up[slot] + down[slot]
                 desired.append(sum(x[n] for n in around) // len(around) if around else x[slot])
-            for slot, value in zip(rows[r], place(desired)):
+            for slot, value in zip(band, clipped(place(desired))):
                 x[slot] = value
     low = min(x.values())
     x = {s: v - low for s, v in x.items()}
     width = max(x.values()) + NODE_W
-    return rows, x, row_of, chains, width
+    return rows, x, row_of, chains, width, len(bands)
 
 
 def standalone_grid(ids):
@@ -343,7 +424,7 @@ def standalone_grid(ids):
     cells = {i: (n // columns, n % columns) for n, i in enumerate(sorted(ids))}
     x = {i: c * PITCH_X for i, (r, c) in cells.items()}
     row_of = {i: r for i, (r, c) in cells.items()}
-    return x, row_of, (columns - 1) * PITCH_X + NODE_W
+    return x, row_of, (columns - 1) * PITCH_X + NODE_W, max(row_of.values()) + 1
 
 
 def channel_y(row):
@@ -358,11 +439,13 @@ def lane(lanes, coordinate, axis="y"):
     return coordinate + (used % LANES) * LANE_STEP - (LANES // 2) * LANE_STEP
 
 
-def travel_route(slots, row_of, centre, lanes):
+def travel_route(slots, row_of, centre, lanes, corridor):
     """Fields routing one edge slot to slot, through the channel between each pair of rows and the waypoints.
 
-    The route runs only in channels (horizontal) and in the slots reserved for it (vertical), so it crosses no node.
-    Its label sits on routed segment 1, the first run along a channel: no edge is left to archify's automatic route.
+    The route runs only in channels (horizontal) and in the slots reserved for it (vertical), so it crosses no node. A hop
+    that crosses more than one row (a layer's bands) turns into a corridor chosen among the gaps free in every row it
+    crosses. Its label sits on routed segment 1, the first run along a channel: no edge is left to archify's automatic
+    route.
     """
     first, last = slots[0], slots[-1]
     if row_of[first] == row_of[last]:
@@ -372,12 +455,20 @@ def travel_route(slots, row_of, centre, lanes):
     going_down = row_of[last] > row_of[first]
     via = []
     for k, (a, b) in enumerate(zip(slots, slots[1:])):
-        channel = lane(lanes, channel_y(min(row_of[a], row_of[b])))
-        points = [[centre(a), channel], [centre(b), channel]]
+        (ra, ca), (rb, cb) = (row_of[a], centre(a)), (row_of[b], centre(b))
+        if abs(ra - rb) <= 1:
+            channel = lane(lanes, channel_y(min(ra, rb)))
+            points = [[ca, channel], [cb, channel]]
+        else:
+            down = rb > ra
+            out_y = lane(lanes, channel_y(ra if down else ra - 1))
+            in_y = lane(lanes, channel_y(rb - 1 if down else rb))
+            gap = lane(lanes, corridor(min(ra, rb) + 1, max(ra, rb) - 1, ca, cb), "x")
+            points = [[ca, out_y], [gap, out_y], [gap, in_y], [cb, in_y]]
         if k and points[0] == points[1]:
             points = points[:1]
         if k < len(slots) - 2:  # b is the reserved waypoint of a layer the edge crosses: the route passes through it
-            points.append([centre(b), MARGIN_Y + row_of[b] * PITCH_Y + NODE_H // 2])
+            points.append([cb, MARGIN_Y + rb * PITCH_Y + NODE_H // 2])
         via.extend(points)
     return {
         "fromSide": "bottom" if going_down else "top",
@@ -385,6 +476,32 @@ def travel_route(slots, row_of, centre, lanes):
         "via": via,
         "labelSegment": 1,
     }
+
+
+def corridor_in(boxes_by_row, left, right):
+    """A function choosing the x of a vertical run across rows `lo..hi`: a gap free of every box in those rows.
+
+    `boxes_by_row` maps a row to the left edges of its slots; `left` and `right` are the left edges of the block's
+    first and last slot, outside which (by 60 px) a run is always free. The gap nearest the hop's two ends wins, ties to the
+    smaller x, so the choice is a pure function.
+    """
+    half_gap = (PITCH_X - NODE_W) // 2
+    clearance = 30
+
+    def corridor(lo, hi, from_x, to_x):
+        boxes = [bx for r in range(lo, hi + 1) for bx in boxes_by_row.get(r, [])]
+        candidates = {left - 60, right + NODE_W + 60}
+        for bx in boxes:
+            candidates.add(bx - half_gap)
+            candidates.add(bx + NODE_W + half_gap)
+        free = [
+            c
+            for c in candidates
+            if all(not (bx - clearance < c < bx + NODE_W + clearance) for bx in boxes)
+        ]
+        return min(free, key=lambda c: (abs(c - from_x) + abs(c - to_x), c))
+
+    return corridor
 
 
 def cross_route(source, target, gutter_x, lanes):
@@ -460,7 +577,7 @@ def cut_into_parts(group, layer, edges, limit):
         return [claims]
     inside = set(claims)
     pairs = [(n, e["from"], e["to"]) for n, e in enumerate(edges) if e["from"] in inside and e["to"] in inside]
-    rows, _, row_of, _, _ = layered(claims, layer, pairs)
+    rows = layered(claims, layer, pairs)[0]
     ordered_layers = [[s for s in row if s in inside] for row in rows]
     parts, current = [], []
     for members in ordered_layers:
@@ -531,7 +648,9 @@ def compose(ctx, name, group_phrase, title_group, blocks, drawn, where):
     page_claims = {i for block in blocks for i in block["claims"]}
     layer = ctx["layer"]
 
-    # The ends outside the page, each attached to the block of the lowest-id claim it is joined to.
+    # The ends outside the page, each attached to the block of the lowest-id claim it is joined to. On the single page
+    # of a small document the only such ends are dangling targets, and they go in a block of their own below every
+    # frame, so no frame draws a claim the corpus does not hold.
     block_of = {i: b for b, block in enumerate(blocks) for i in block["claims"]}
     joined = {}
     for _, edge in drawn:
@@ -539,30 +658,43 @@ def compose(ctx, name, group_phrase, title_group, blocks, drawn, where):
             if end not in page_claims and other in page_claims:
                 joined.setdefault(end, set()).add(other)
     extras = {end: sorted(others) for end, others in joined.items()}
-    extra_block = {end: block_of[others[0]] for end, others in extras.items()}
+    layout_blocks = list(blocks)
+    if name == "all" and extras:
+        layout_blocks.append({"kind": "outside", "claims": []})
+        extra_block = {end: len(blocks) for end in extras}
+    else:
+        extra_block = {end: block_of[others[0]] for end, others in extras.items()}
     page_layer = dict(layer)
     for end, others in extras.items():
         page_layer[end] = max(layer[o] for o in others) + 1
 
-    # Layout, block by block.
+    # Layout, block by block, in rows of blocks: a block that would take the page past MAX_WIDTH starts a new row.
     x0 = MARGIN_X
-    placed = {}  # id -> (absolute x, row)
-    block_layout = []  # per block: (chains, row_of, x, x0, width)
+    row_offset = 0  # the first visual row of the current row of blocks
+    row_height = 0
+    placed = {}  # id -> (absolute x, visual row)
+    block_layout = []  # per block: (chains, grow, x, x0, width, block row)
     gutter_x = []
-    for b, block in enumerate(blocks):
+    block_row = 0
+    for b, block in enumerate(layout_blocks):
         members = list(block["claims"]) + sorted(e for e, k in extra_block.items() if k == b)
-        if block["kind"] == "standalone":
-            x, row_of, width = standalone_grid(members)
+        if block["kind"] in ("standalone", "outside"):
+            x, row_of, width, count = standalone_grid(members)
             chains = {}
         else:
             inside = set(members)
             pairs = [(n, e["from"], e["to"]) for n, e in drawn if e["from"] in inside and e["to"] in inside]
-            _, x, row_of, chains, width = layered(members, page_layer, pairs)
+            _, x, row_of, chains, width, count = layered(members, page_layer, pairs)
+        starts_a_row = b > 0 and (block["kind"] == "outside" or x0 + width > MAX_WIDTH - MARGIN_X)
+        if starts_a_row:
+            x0, row_offset, row_height, block_row = MARGIN_X, row_offset + row_height + 1, 0, block_row + 1
+        grow = {slot: row_offset + r for slot, r in row_of.items()}
         for i in members:
-            placed[i] = (x0 + x[i], row_of[i])
-        block_layout.append((chains, row_of, x, x0, width))
+            placed[i] = (x0 + x[i], grow[i])
+        block_layout.append((chains, grow, x, x0, width, block_row))
         gutter_x.append(x0 - BLOCK_GAP // 2)
         x0 += width + BLOCK_GAP
+        row_height = max(row_height, count)
 
     def position(identifier):
         px, row = placed[identifier]
@@ -588,35 +720,39 @@ def compose(ctx, name, group_phrase, title_group, blocks, drawn, where):
     # Family frames, only where the page holds several families.
     family_frames = []
     if name == "all":
-        for b, block in enumerate(blocks):
+        for block in blocks:
             if block["kind"] == "family":
-                wraps = sorted(block["claims"]) + sorted(e for e, k in extra_block.items() if k == b)
-                family_frames.append({"kind": "region", "label": block["label"], "wraps": wraps})
+                family_frames.append({"kind": "region", "label": block["label"], "wraps": sorted(block["claims"])})
     boundaries = family_frames + boundaries
 
     # Connections, every one routed explicitly.
     dangling = set(ctx["dangling"])
     undecided = set(ctx["undecided"])
     lanes = {}
+    corridors = []
+    for chains, grow, x, x0b, width, _ in block_layout:
+        by_row = {}
+        for slot, r in grow.items():
+            by_row.setdefault(r, []).append(x0b + x[slot])
+        corridors.append(corridor_in(by_row, x0b, x0b + width - NODE_W))
     connections = []
     for index, edge in drawn:
         source, target = edge["from"], edge["to"]
         sb = block_of.get(source, extra_block.get(source))
         tb = block_of.get(target, extra_block.get(target))
         if sb == tb:
-            chains, row_of, x, x0b, _ = block_layout[sb]
-            if blocks[sb]["kind"] == "standalone":
-                slots, row_map = [source, target], row_of
-            else:
-                slots, row_map = chains[index], row_of
+            chains, grow, x, x0b, _, _ = block_layout[sb]
+            slots = [source, target] if layout_blocks[sb]["kind"] in ("standalone", "outside") else chains[index]
 
             def centre(slot, x=x, x0b=x0b):
                 return x0b + x[slot] + NODE_W // 2
 
-            route = travel_route(slots, row_map, centre, lanes)
+            route = travel_route(slots, grow, centre, lanes, corridors[sb])
         else:
             (sx, srow), (tx, trow) = placed[source], placed[target]
-            route = cross_route((srow, sx + NODE_W // 2), (trow, tx + NODE_W // 2), gutter_x[tb], lanes)
+            same_row_of_blocks = block_layout[sb][5] == block_layout[tb][5]
+            gutter = gutter_x[tb] if same_row_of_blocks else MARGIN_X - BLOCK_GAP // 2
+            route = cross_route((srow, sx + NODE_W // 2), (trow, tx + NODE_W // 2), gutter, lanes)
         connection = {
             "id": f"edge-{len(connections) + 1:04d}",
             "from": source,
@@ -708,8 +844,12 @@ def page_meta(ctx, name, title_group, group_phrase, claim_count, relation_count,
     }
 
 
-def index_page(ctx, groups, page_names):
-    """One node per group and one connection per ordered pair of groups and relation (ADR 0050 decision 3)."""
+def index_pages(ctx, groups, page_names, limit):
+    """The index: one node per group and one connection per ordered pair of groups and relation (ADR 0050 decision 3).
+
+    More than `limit` groups are cut into consecutive parts, `index`, `index-part-2` and so on, each declaring itself. A
+    connection is drawn on every part that holds either of its groups; a group on another part is a stub, naming that part.
+    """
     group_of = {}
     for g, group in enumerate(groups):
         for i in group["claims"]:
@@ -721,58 +861,87 @@ def index_page(ctx, groups, page_names):
             continue
         counts[(a, b, edge["relation"])] = counts.get((a, b, edge["relation"]), 0) + 1
 
-    cells = {}
-    components = []
-    for g, group in enumerate(groups):
-        row, column = divmod(g, PER_ROW)
-        cells[g] = (row, column)
-        pages = len(page_names[g])
-        tag = f"{len(group['claims'])} claims" + (f" · {pages} pages" if pages > 1 else "")
-        components.append(
-            {
-                "id": page_names[g][0],
-                "type": STATE_TYPE["applies"],
-                "label": group["name"],
-                "tag": tag,
-                "pos": [MARGIN_X + column * PITCH_X, MARGIN_Y + row * PITCH_Y],
-                "size": [NODE_W, NODE_H],
+    parts = [list(range(k, min(k + limit, len(groups)))) for k in range(0, len(groups), limit)]
+    names = ["index" if k == 0 else f"index-part-{k + 1}" for k in range(len(parts))]
+    part_of = {g: names[k] for k, part in enumerate(parts) for g in part}
+    pages = {}
+    for k, (name, part) in enumerate(zip(names, parts)):
+        inside = set(part)
+        drawn = sorted(key for key in counts if key[0] in inside or key[1] in inside)
+        stubs = sorted({g for key in drawn for g in key[:2] if g not in inside})
+        shown = part + stubs
+        cells = {g: divmod(n, PER_ROW) for n, g in enumerate(shown)}
+        components, boundaries = [], []
+        for g in shown:
+            row, column = cells[g]
+            group = groups[g]
+            if g in inside:
+                count = len(page_names[g])
+                tag = f"{len(group['claims'])} claims" + (f" \u00b7 {count} pages" if count > 1 else "")
+                kind = STATE_TYPE["applies"]
+            else:
+                tag, kind = TAG_STUB, STATE_TYPE["missing"]
+                boundaries.append({"kind": "region", "label": f"page {part_of[g]}", "wraps": [page_names[g][0]]})
+            components.append(
+                {
+                    "id": page_names[g][0],
+                    "type": kind,
+                    "label": group["name"],
+                    "tag": tag,
+                    "pos": [MARGIN_X + column * PITCH_X, MARGIN_Y + row * PITCH_Y],
+                    "size": [NODE_W, NODE_H],
+                }
+            )
+        lanes = {}
+        connections = []
+        for a, b, relation in drawn:
+            connection = {
+                "id": f"edge-{len(connections) + 1:04d}",
+                "from": page_names[a][0],
+                "to": page_names[b][0],
+                "label": f"{relation} \u00d7{counts[(a, b, relation)]}",
             }
-        )
-    lanes = {}
-    connections = []
-    for (a, b, relation), count in sorted(counts.items()):
-        connection = {
-            "id": f"edge-{len(connections) + 1:04d}",
-            "from": page_names[a][0],
-            "to": page_names[b][0],
-            "label": f"{relation} ×{count}",
-        }
-        connection.update(grid_route(cells[a], cells[b], lanes))
-        connections.append(connection)
+            connection.update(grid_route(cells[a], cells[b], lanes))
+            connections.append(connection)
 
-    cards = [
-        {
-            "dot": "cyan",
-            "title": f"Group pages ({sum(len(p) for p in page_names)})",
-            "items": [
-                f"{page}.json: {group['name']}, {len(group['claims'])} claims"
-                for group, pages in zip(groups, page_names)
-                for page in pages
-            ],
+        cards = [
+            {
+                "dot": "cyan",
+                "title": f"Group pages ({sum(len(page_names[g]) for g in part)})",
+                "items": [
+                    f"{page}.json: {groups[g]['name']}, {len(groups[g]['claims'])} claims"
+                    for g in part
+                    for page in page_names[g]
+                ],
+            }
+        ]
+        if len(parts) > 1:
+            cards.append(
+                {
+                    "dot": "slate",
+                    "title": f"Index pages ({len(parts)})",
+                    "items": [f"{n}.json: {groups[p[0]]['name']} to {groups[p[-1]]['name']}" for n, p in zip(names, parts)],
+                }
+            )
+        phrase = f"index of {len(groups)} groups" + (f", part {k + 1} of {len(parts)}" if len(parts) > 1 else "")
+        title_group = None if len(parts) == 1 else f"index, part {k + 1} of {len(parts)}"
+        claim_count = sum(len(groups[g]["claims"]) for g in part)
+        used = {c["type"] for c in components}
+        meta = page_meta(
+            ctx, name, title_group, phrase, claim_count, sum(counts[key] for key in drawn), used, words=GROUP_WORDS
+        )
+        page = {
+            "schema_version": 1,
+            "diagram_type": "architecture",
+            "meta": meta,
+            "components": components,
+            "connections": connections,
+            "cards": cards,
         }
-    ]
-    phrase = f"index of {len(groups)} groups"
-    meta = page_meta(
-        ctx, "index", None, phrase, len(ctx["nodes"]), sum(counts.values()), {STATE_TYPE["applies"]}, words=GROUP_WORDS
-    )
-    return {
-        "schema_version": 1,
-        "diagram_type": "architecture",
-        "meta": meta,
-        "components": components,
-        "connections": connections,
-        "cards": cards,
-    }
+        if boundaries:
+            page["boundaries"] = boundaries
+        pages[name] = page
+    return pages
 
 
 def convert(document):
@@ -793,8 +962,8 @@ def convert(document):
             refuse(f"the edge {edge['from']} -{edge['relation']}-> {edge['to']} has no end in the corpus; no page could hold it")
     limit = page_limit()
 
-    layer, followed = layering(ids, edges)
-    family, standalone = families_of(ids, edges, layer, followed)
+    layer, _ = layering(ids, edges)
+    family, standalone = families_of(ids, edges)
     selection = " ".join(f"{k}={v}" for k, v in sorted(document["selection"].items())) or "no context"
     ctx = {
         "nodes": nodes,
@@ -840,7 +1009,7 @@ def convert(document):
             block = dict(group, claims=list(part))
             phrase = group["name"] if len(parts) == 1 else f"{group['name']}, part {k + 1} of {len(parts)}"
             pages[name] = compose(ctx, name, phrase, phrase, [block], drawn, where)
-    pages["index"] = index_page(ctx, groups, page_names)
+    pages.update(index_pages(ctx, groups, page_names, limit))
     return pages
 
 
