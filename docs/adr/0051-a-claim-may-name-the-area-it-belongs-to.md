@@ -185,9 +185,12 @@ renderer that reads only the trace document (ADR 0046) learns a label, and how a
   `renderers/shared/text-fit.mjs`, `renderers/shared/utils.mjs`), written here in words and not copied:
   - a label's width is its *units* times 6.6 px and must not pass the box's width plus 8, so a 130 px box holds **20 units**;
   - a tag or sublabel is judged at the 6 px floor, 3.6 px a unit against the width minus 8, so the box holds **33 units**;
-  - a unit is a column of text: two for a wide character (East Asian ranges, emoji), one otherwise, nothing for a variation
-    selector but the emoji one, which reserves two. The converter counts every character of the symbol and emoji blocks as
-    wide as well, so it errs high and only ever cuts early;
+  - a unit is a column of text: two for a character in archify's width table, one otherwise. The table counts every code
+    point of U+2E80–U+A4CF as wide, among them nine that East Asian Width calls Ambiguous (U+303F, U+3248–U+324F), so the
+    converter counts a character as two when it is in archify's ranges (a superset: the whole U+2300–U+2BFF block and
+    everything from U+1F000), or is East Asian Wide or Fullwidth. It errs high and only ever cuts early; a test pins that it
+    is never below archify's table over every code point in it (A-2-fix, from review A-2-review-1, which found the first
+    count low by 332 code points);
   - a frame is widened to its title (units times the font times 0.6, plus 10), and the font is at least 6 px times the
     canvas width over 930, so about 11 px on a page at `MAX_WIDTH`. A title of 30 units widens a one-box frame by 13 px a
     side, which ADR 0050's margin holds (the guard in `tests/graph_archify.rs` models it);

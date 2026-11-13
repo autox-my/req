@@ -217,16 +217,35 @@ def page_limit():
     return int(text)
 
 
-def units(text):
-    """Columns `text` takes: one per character, two for a wide one (East Asian or an emoji), one for a variation selector.
+# The code points archify draws two columns wide, as ranges, read from its width table at 7e45f36 and widened where a
+# symbol block mixes wide and narrow characters, so the converter counts at least what archify counts. (East Asian Width
+# alone is not enough: archify counts every code point of 2E80-A4CF as wide, among them nine Ambiguous ones such as U+3248.)
+WIDE_RANGES = (
+    (0x1100, 0x115F),
+    (0x2300, 0x2BFF),
+    (0x2E80, 0xA4CF),
+    (0xA960, 0xA97C),
+    (0xAC00, 0xD7A3),
+    (0xF900, 0xFAFF),
+    (0xFE10, 0xFE19),
+    (0xFE30, 0xFE6F),
+    (0xFF01, 0xFF60),
+    (0xFFE0, 0xFFE6),
+    (0x16FE0, 0x1B2FF),
+    (0x1F000, 0x10FFFF),
+)
 
-    A bound that errs high: it counts every character of the symbol and emoji blocks as wide, so a label this passes is
-    one archify's own count passes (archify refuses what is wider than its box), and the converter only ever cuts early.
+
+def units(text):
+    """Columns `text` takes: one per character, two for a wide one (archify's table, or East Asian Wide or Fullwidth).
+
+    A bound that errs high, never low: a label this passes is one archify's own count passes (archify refuses what is wider
+    than its box), and the converter only ever cuts early. A variation selector counts one.
     """
     total = 0
     for char in text:
         code = ord(char)
-        wide = unicodedata.east_asian_width(char) in ("W", "F") or 0x2300 <= code <= 0x2BFF or code >= 0x1F000
+        wide = unicodedata.east_asian_width(char) in ("W", "F") or any(lo <= code <= hi for lo, hi in WIDE_RANGES)
         total += 2 if wide else 1
     return total
 

@@ -74,9 +74,11 @@ the document says which: **by area when any claim carries an `area`, and by fami
   but the document. Families are not computed. Inside a group the layers follow only the `derives-from`/`refines` edges
   whose two ends are both in it, and a claim with no such edge sits in a grid under them, inside the group's frame; an
   edge to another group is drawn like any edge that leaves a group (below). On a split run a page is `area-<path>.json`,
-  with `/` written as `.` (`area-diagnostics.startup.json`), and `no-area.json`. A label is free text, so a node or a frame
-  title never carries more than archify can draw: the index labels a node with the path's last segment and the name rides
-  in its tag, a frame title is cut with an ellipsis, and the whole name is in the page's title, subtitle and cards.
+  with `/` written as `.` (`area-diagnostics.startup.json`), and `no-area.json`. A label is free text, so the converter
+  counts its width at least as wide as archify does and cuts what would not fit: the index labels a node with the path's
+  last segment and the name rides in its tag, a frame title is cut with an ellipsis, and the whole name is in the page's
+  title, subtitle and cards. The count errs on the side of cutting; it is not archify's check, so run `finalize` on every
+  page as above.
 
 - **Up to 150 claims: one page**, `all.json`. Each family (or area) gets a labelled frame and, when there are five or
   fewer, a focus view; standalone claims sit outside the frames.
