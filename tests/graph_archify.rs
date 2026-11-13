@@ -1800,8 +1800,7 @@ fn archify_frame(page: &Value, frame: &Value) -> Rect {
         inside.iter().map(|r| r.2).max().expect("x1"),
         inside.iter().map(|r| r.3).max().expect("y1"),
     );
-    let units = i64::try_from(frame["label"].as_str().expect("a label").chars().count())
-        .expect("a short label");
+    let units = units(frame["label"].as_str().expect("a label"));
     let title = ((units * 36 * MAX_WIDTH + 9299) / 9300 + 10).max(30) + 8;
     let width = right - left + 2 * FRAME_PAD;
     let extra = (title - width).max(0);
@@ -2823,19 +2822,74 @@ const TAG_UNITS: i64 = 33;
 /// 13 px the margin holds (ADR 0050's note), so no frame leaves the canvas.
 const FRAME_TITLE_UNITS: i64 = 30;
 
+/// The characters archify 7e45f36 counts as two units, as ranges: its width table (`FULLWIDTH_RE` in
+/// `renderers/shared/utils.mjs`), read in the scratch clone and written out here as data, not copied as code.
+const ARCHIFY_WIDE: &[(u32, u32)] = &[
+    (0x1100, 0x115F),
+    (0x231A, 0x231B),
+    (0x2329, 0x232A),
+    (0x23E9, 0x23EC),
+    (0x23F0, 0x23F0),
+    (0x23F3, 0x23F3),
+    (0x25FD, 0x25FE),
+    (0x2614, 0x2615),
+    (0x2630, 0x2637),
+    (0x2648, 0x2653),
+    (0x267F, 0x267F),
+    (0x268A, 0x268F),
+    (0x2693, 0x2693),
+    (0x26A1, 0x26A1),
+    (0x26AA, 0x26AB),
+    (0x26BD, 0x26BE),
+    (0x26C4, 0x26C5),
+    (0x26CE, 0x26CE),
+    (0x26D4, 0x26D4),
+    (0x26EA, 0x26EA),
+    (0x26F2, 0x26F3),
+    (0x26F5, 0x26F5),
+    (0x26FA, 0x26FA),
+    (0x26FD, 0x26FD),
+    (0x2705, 0x2705),
+    (0x270A, 0x270B),
+    (0x2728, 0x2728),
+    (0x274C, 0x274C),
+    (0x274E, 0x274E),
+    (0x2753, 0x2755),
+    (0x2757, 0x2757),
+    (0x2795, 0x2797),
+    (0x27B0, 0x27B0),
+    (0x27BF, 0x27BF),
+    (0x2B1B, 0x2B1C),
+    (0x2B50, 0x2B50),
+    (0x2B55, 0x2B55),
+    (0x2E80, 0xA4CF),
+    (0xA960, 0xA97C),
+    (0xAC00, 0xD7A3),
+    (0xF900, 0xFAFF),
+    (0xFE10, 0xFE19),
+    (0xFE30, 0xFE6F),
+    (0xFF01, 0xFF60),
+    (0xFFE0, 0xFFE6),
+    (0x16FE0, 0x18DFF),
+    (0x1AFF0, 0x1AFFF),
+    (0x1B000, 0x1B2FF),
+    (0x1F000, 0x1FAFF),
+    (0x20000, 0x3FFFD),
+];
+
+/// The units archify draws `text` at: two for a character in its width table, one otherwise.
 fn units(text: &str) -> i64 {
     text.chars()
-        .map(|c| match u32::from(c) {
-            0x1100..=0x115F
-            | 0x2E80..=0xA4CF
-            | 0xAC00..=0xD7A3
-            | 0xF900..=0xFAFF
-            | 0xFE30..=0xFE6F
-            | 0xFF01..=0xFF60
-            | 0xFFE0..=0xFFE6
-            | 0x1F000..=0x1FAFF
-            | 0x20000..=0x3FFFD => 2,
-            _ => 1,
+        .map(|c| {
+            let code = u32::from(c);
+            if ARCHIFY_WIDE
+                .iter()
+                .any(|(lo, hi)| (*lo..=*hi).contains(&code))
+            {
+                2
+            } else {
+                1
+            }
         })
         .sum()
 }
@@ -3166,4 +3220,103 @@ fn a_route_that_repeats_its_first_point_still_runs_in_right_angles() {
     for page in pages.values() {
         assert_every_edge_is_explicitly_placed(page);
     }
+}
+
+/// A label of characters archify counts as two but East Asian Width calls Ambiguous (U+3248, a circled number): a converter
+/// that counts only the Wide and Fullwidth classes counts it as one, keeps it whole, and archify refuses the tag
+/// (`component-tag-overflow`) or widens the frame off the canvas. Found in A-2-review-1.
+#[test]
+fn a_label_of_characters_archify_counts_wide_but_unicode_calls_ambiguous_is_cut_to_fit() {
+    let tag_label = "\u{3248}".repeat(21);
+    let title_label = "\u{3248}".repeat(30);
+    let document = with_areas(
+        document(
+            json!({}),
+            vec![
+                filed("REQ-0001", Some("a")),
+                filed("REQ-0002", Some("a")),
+                filed("REQ-0003", Some("b")),
+                filed("REQ-0004", Some("b")),
+            ],
+            vec![edge("REQ-0002", "refines", "REQ-0001")],
+        ),
+        &[("a", tag_label.as_str()), ("b", title_label.as_str())],
+    );
+
+    // One page: no frame title passes 30 units as archify counts them, and no frame leaves the canvas.
+    let scratch = Scratch::new("area-ambiguous-one");
+    let page = converted(&scratch, &document);
+    for frame in boundaries(&page) {
+        let label = frame["label"].as_str().expect("label");
+        assert!(
+            units(label) <= FRAME_TITLE_UNITS,
+            "the frame title `{label}` is {} units as archify counts them",
+            units(label)
+        );
+    }
+    assert_frames_inside_the_canvas(&page);
+
+    // Split: the index tag holds at most 33 units, the label 20, and every page's frames fit.
+    let scratch = Scratch::new("area-ambiguous-split");
+    let pages = converted_pages(&scratch, &document, Some("2"));
+    for (name, page) in &pages {
+        for c in components(page) {
+            let label = c["label"].as_str().expect("label");
+            assert!(units(label) <= LABEL_UNITS, "{name}: `{label}`");
+            if let Some(tag) = c["tag"].as_str() {
+                assert!(
+                    units(tag) <= TAG_UNITS,
+                    "{name}: the tag `{tag}` is {} units as archify counts them",
+                    units(tag)
+                );
+            }
+        }
+        for frame in boundaries(page) {
+            let label = frame["label"].as_str().expect("label");
+            assert!(units(label) <= FRAME_TITLE_UNITS, "{name}: `{label}`");
+        }
+        assert_frames_inside_the_canvas(page);
+    }
+}
+
+/// The converter never counts a character as narrower than archify does: over every code point in archify's width table,
+/// `units()` in the script is at least two. (The script is loaded by path in a throwaway interpreter: it is a program, not
+/// a module, and the check reads its own function, not a copy.)
+#[test]
+fn the_converters_unit_count_is_at_least_archifys_over_every_wide_code_point() {
+    let scratch = Scratch::new("area-units");
+    let driver = scratch.path("driver.py");
+    fs::write(
+        &driver,
+        "import importlib.util, json, sys\n\
+         spec = importlib.util.spec_from_file_location('converter', sys.argv[1])\n\
+         module = importlib.util.module_from_spec(spec)\n\
+         spec.loader.exec_module(module)\n\
+         low = []\n\
+         for lo, hi in json.loads(sys.argv[2]):\n\
+        \x20   for code in range(lo, hi + 1):\n\
+        \x20       if module.units(chr(code)) < 2:\n\
+        \x20           low.append(code)\n\
+         print(len(low), [hex(c) for c in low[:8]])\n",
+    )
+    .expect("writes the driver");
+    let ranges = serde_json::to_string(&ARCHIFY_WIDE).expect("ranges");
+    let out = Command::new(python3())
+        .arg("-I")
+        .arg(&driver)
+        .arg(script())
+        .arg(ranges)
+        .output()
+        .expect("runs the driver");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "0 []",
+        "code points the converter counts as one that archify counts as two"
+    );
 }
