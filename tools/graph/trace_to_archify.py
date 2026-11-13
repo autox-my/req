@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Turn one `req.trace/1` document into one archify `architecture` diagram file (ADR 0046, unit V-1).
+"""Turn one `req.trace/1` document into a directory of archify `architecture` diagram files (ADR 0046, 0050).
 
-usage: python3 -I tools/graph/trace_to_archify.py <trace.json> <out.json>     (`-` reads the document from stdin)
+usage: python3 -I tools/graph/trace_to_archify.py <trace.json> <out-dir>     (`-` reads the document from stdin)
 
 The trace document is the graph contract. Every node and every edge of the output comes from it and from nothing
-else: a node per entry of `nodes` (plus, for an edge into a claim the corpus does not hold, one node for that
-named target), an edge per entry of `edges`, labelled with its `relation`. Placement is computed from the graph,
-never chosen by a model: layer = the longest `derives-from`/`refines` path to a root, column order by claim id,
-integers only. No clock, no randomness, sorted keys: one document gives one file.
+else: a node per entry of `nodes`, an edge per entry of `edges`, labelled with its `relation`, and, for an edge that
+leaves a page, a stub node named for the claim at its far end. Placement is computed from the graph, never chosen by a
+model, in integers only; there is no clock and no randomness, keys are sorted, and one document gives one directory,
+byte for byte.
 
-It refuses a schema other than `req.trace/1` (exit 2, naming it) and malformed JSON (exit 2), and writes nothing on a
-refusal. It uses only the standard library and never touches the network or the corpus.
+A page shows a declared slice (ADR 0050). Claims are grouped into families; a document of at most PAGE_LIMIT claims is
+one page, `all.json`, and a larger one is an index page plus one page per group (a group past the limit is cut into
+parts by layer). The directory holds `index.json` only when there are several pages, and one `<page>.json` per page.
+It refuses an existing non-empty directory, a schema other than `req.trace/1` and malformed JSON (exit 2, naming what is
+wrong), and writes nothing on a refusal. It uses only the standard library and never touches the network or the corpus.
 
 Written against archify `tt-a1i/archify` at commit 7e45f36 (Apache-2.0, `architecture` type); the pin is tooling
 provenance, recorded here and in `docs/adr/0046-the-trace-document-is-the-graph-contract.md`.
@@ -19,19 +22,34 @@ provenance, recorded here and in `docs/adr/0046-the-trace-document-is-the-graph-
 import json
 import re
 import sys
+from math import isqrt
+from os import environ
+from pathlib import Path
 
 # The archify commit this converter was written against (ADR 0046 decision 7).
 ARCHIFY_COMMIT = "7e45f36"
 SCHEMA = "req.trace/1"
-# The relations whose direction says "this claim rests on that one": they decide a node's layer.
+# The relations whose direction says "this claim rests on that one": they decide a node's layer and its family.
 LAYERING = ("derives-from", "refines")
 # archify's own id grammar (`common.schema.json#/$defs/id`): an id outside it is refused, never rewritten.
 ARCHIFY_ID = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
 
-# Placement, in integers: a node box, the pitch between boxes, the margin, and the width of a row.
+# A page holds at most this many claims (ADR 0050 decision 3). A test sets REQ_GRAPH_PAGE_LIMIT to a smaller number;
+# the variable is read only when it is set.
+PAGE_LIMIT = 150
+LIMIT_ENV = "REQ_GRAPH_PAGE_LIMIT"
+# Median ordering runs this many passes over the layers, alternately down and up, then the coordinate pass runs
+# ALIGN_PASSES times (ADR 0050 decision 5). Fixed counts, so one document always gives one layout.
+SWEEPS = 8
+ALIGN_PASSES = 4
+
+# Placement, in integers. A node box and the pitch between slots: a row is PITCH_Y apart, and a slot (a node, or the
+# waypoint a long edge reserves in a layer) PITCH_X apart. Family blocks sit BLOCK_GAP apart so their frames (30 px of
+# padding each, archify's) leave room for the gutter between them. The index grid and the standalone grid wrap at PER_ROW.
 NODE_W, NODE_H = 130, 64
-PITCH_X, PITCH_Y = 190, 170
-MARGIN = 40
+PITCH_X, PITCH_Y = 220, 190
+MARGIN_X, MARGIN_Y = 160, 110
+BLOCK_GAP = 200
 PER_ROW = 6
 # Parallel routes through one channel or gutter fan out over LANES offsets, LANE_STEP apart.
 LANES, LANE_STEP = 5, 9
@@ -49,7 +67,7 @@ STATE_LEGEND = {
     "unknown": "undecided in this selection",
     "does_not_apply": "does not apply in this selection",
     "withdrawn": "withdrawn: superseded where its successor applies",
-    "missing": "named by an edge, not in the corpus",
+    "missing": "not on this page: see its tag",
 }
 STATE_TAG = {
     "unknown": "undecided",
@@ -62,6 +80,35 @@ STATE_DOT = {
     "does_not_apply": "slate",
     "withdrawn": "rose",
     "missing": "orange",
+}
+TAG_STUB = "on another page"
+TAG_DANGLING = "not in the corpus"
+
+# The panel's and legend's own words, in req's (ADR 0050 decision 6). Keys are archify's `locales/en.json` keys.
+# archify's `upstream` follows an edge backwards, to the claims that point at the focused one: those are the claims
+# that rest on it (an edge runs from the claim that derives or refines, to the claim it rests on).
+CLAIM_WORDS = {
+    "node.context.architecture": "Claim",
+    "viewer.passport.eyebrow": "Claim",
+    "viewer.passport.reach": "Dependencies",
+    "viewer.passport.upstream": "Rests on this",
+    "viewer.passport.downstream": "This rests on",
+    "viewer.passport.upstream.trace": "Trace the claims that rest on this one",
+    "viewer.passport.downstream.trace": "Trace the claims this one rests on",
+    "viewer.passport.reach.upstream.one": "Trace {count} claim that rests on this one",
+    "viewer.passport.reach.upstream.other": "Trace {count} claims that rest on this one",
+    "viewer.passport.reach.downstream.one": "Trace {count} claim this one rests on",
+    "viewer.passport.reach.downstream.other": "Trace {count} claims this one rests on",
+    "viewer.passport.reach.noUpstream": "No claim rests on this one",
+    "viewer.passport.reach.noDownstream": "This claim rests on no other claim",
+    "viewer.passport.close": "Close claim panel",
+    "viewer.passport.move": "Move claim panel. Drag, use arrow keys, or press Home to reset.",
+}
+GROUP_WORDS = {
+    "node.context.architecture": "Group",
+    "viewer.passport.eyebrow": "Group",
+    "viewer.kind.backend": "Group",
+    "legend.architecture.backend": "Group",
 }
 
 
@@ -113,6 +160,16 @@ def check_document(document):
             refuse(f"`findings.{key}` is not an array")
 
 
+def page_limit():
+    """PAGE_LIMIT, or the test-only override when the variable is set (a positive integer, else a refusal)."""
+    text = environ.get(LIMIT_ENV)
+    if text is None:
+        return PAGE_LIMIT
+    if not re.fullmatch(r"[0-9]+", text) or int(text) < 1:
+        refuse(f"{LIMIT_ENV}={text!r} is not a positive integer")
+    return int(text)
+
+
 def state_of(node):
     """A claim's drawn state: withdrawn (ADR 0049) is a kind of does-not-apply, drawn on its own."""
     if node["superseded_by"]:
@@ -122,8 +179,12 @@ def state_of(node):
     refuse(f"unknown `applies` {node['applies']!r} on {node['claim_id']}")
 
 
-def layers_of(ids, edges):
-    """Layer = the longest layering-relation path to a root; a cycle's closing edge is not followed."""
+def layering(ids, edges):
+    """Layer = the longest layering-relation path to a root, and each claim's followed targets.
+
+    A cycle's closing edge is not followed (ADR 0046): a claim whose only layering edges close a cycle has no followed
+    target, so it is a root, at layer 0. Returns `(layer, followed)`.
+    """
     known = set(ids)
     targets = {i: [] for i in ids}
     for edge in edges:
@@ -134,6 +195,7 @@ def layers_of(ids, edges):
         targets[i] = sorted(set(targets[i]))
 
     layer = {}
+    followed = {}
     state = {}  # absent = unseen, 1 = on the path, 2 = done
     for root in sorted(ids):
         if root in state:
@@ -150,167 +212,636 @@ def layers_of(ids, edges):
                     state[following] = 1
                     stack.append((following, 0))
                 continue
-            depth = 0
-            for following in targets[current]:
-                if state.get(following) == 2:  # a back edge (state 1) closes a cycle: skipped
-                    depth = max(depth, layer[following] + 1)
-            layer[current] = depth
+            chosen = [f for f in targets[current] if state.get(f) == 2]  # a back edge (state 1) is skipped
+            layer[current] = max((layer[f] + 1 for f in chosen), default=0)
+            followed[current] = chosen
             state[current] = 2
-    return layer
+    return layer, followed
 
 
-def tag_of(node, state):
-    """The modality, then the state when it is not the ordinary one: colour alone never says it."""
-    if state == "applies":
-        return node["modality"]
-    return f"{node['modality']} \u00b7 {STATE_TAG[state]}"
+def families_of(ids, edges, layer, followed):
+    """Each claim's family root (the lowest-id root it reaches), and the set of standalone claims (ADR 0050 decision 2)."""
+    touched = set()
+    for edge in edges:
+        touched.add(edge["from"])
+        touched.add(edge["to"])
+    family = {}
+    for identifier in sorted(ids, key=lambda i: (layer[i], i)):
+        parents = followed[identifier]
+        family[identifier] = identifier if not parents else min(family[p] for p in parents)
+    standalone = {i for i in ids if i not in touched}
+    return family, standalone
 
 
-def lane(lanes, coordinate):
-    """The next free offset beside `coordinate`: routes sharing a channel or a gutter do not lie on one line."""
-    used = lanes.get(coordinate, 0)
-    lanes[coordinate] = used + 1
+# ---------------------------------------------------------------------------------------------------------------
+# Layout: median ordering, waypoints, coordinates
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def median2(positions):
+    """Twice the median of a sorted list (integers only: an even count averages its two middles)."""
+    count = len(positions)
+    if count % 2:
+        return 2 * positions[count // 2]
+    return positions[count // 2 - 1] + positions[count // 2]
+
+
+def place(desired):
+    """Integer x positions as close to `desired` as possible, in order, at least PITCH_X apart.
+
+    The least-squares fit under the spacing constraint: shift each slot by its index, pool neighbours that violate the
+    order into their mean (floor division), and shift back.
+    """
+    blocks = []  # [sum, count] of the shifted values
+    for index, value in enumerate(desired):
+        blocks.append([value - index * PITCH_X, 1])
+        while len(blocks) > 1 and blocks[-2][0] * blocks[-1][1] > blocks[-1][0] * blocks[-2][1]:
+            total, count = blocks.pop()
+            blocks[-1][0] += total
+            blocks[-1][1] += count
+    result = []
+    for total, count in blocks:
+        mean = total // count
+        for _ in range(count):
+            result.append(mean + len(result) * PITCH_X)
+    return result
+
+
+def layered(ids, layer_of, edge_pairs):
+    """Order and place one block of nodes in layers (ADR 0050 decision 5).
+
+    `ids` are the block's nodes, `layer_of` gives each a layer, `edge_pairs` are `(index, from, to)` with both ends in
+    the block. Returns `(rows, x, row_of, chains, width)`: the rows of slots in order (a slot is a node id, or the
+    reserved waypoint of a long edge in one layer it crosses), each slot's x (the left edge of its box) from 0, its
+    row, each edge's slots in travel order, and the block's width.
+    """
+    distinct = sorted({layer_of[i] for i in ids})
+    rank = {value: index for index, value in enumerate(distinct)}
+    row_of = {i: rank[layer_of[i]] for i in ids}
+    sortkey = {i: i for i in ids}
+    rows = [[] for _ in distinct]
+    for i in sorted(ids):
+        rows[row_of[i]].append(i)
+    up = {i: [] for i in ids}
+    down = {i: [] for i in ids}
+    chains = {}
+    for index, source, target in edge_pairs:
+        first, last = (source, target) if row_of[source] <= row_of[target] else (target, source)
+        chain = [first]
+        for r in range(row_of[first] + 1, row_of[last]):
+            waypoint = f"~{index:06d}-{r}"
+            row_of[waypoint] = r
+            sortkey[waypoint] = f"{first}|{last}|{index:06d}"
+            up[waypoint] = []
+            down[waypoint] = []
+            rows[r].append(waypoint)
+            chain.append(waypoint)
+        chain.append(last)
+        if row_of[first] != row_of[last]:
+            for above, below in zip(chain, chain[1:]):
+                down[above].append(below)
+                up[below].append(above)
+        chains[index] = chain if first == source else chain[::-1]
+    for row in rows:
+        row.sort(key=lambda s: sortkey[s])
+
+    position = {s: i for row in rows for i, s in enumerate(row)}
+    for sweep in range(SWEEPS):
+        if sweep % 2 == 0:
+            order, neighbours = range(1, len(rows)), up
+        else:
+            order, neighbours = range(len(rows) - 2, -1, -1), down
+
+        for r in order:
+
+            def key(slot):
+                spots = sorted(position[n] for n in neighbours[slot])
+                return (median2(spots) if spots else 2 * position[slot], sortkey[slot])
+
+            rows[r].sort(key=key)
+            for i, slot in enumerate(rows[r]):
+                position[slot] = i
+
+    x = {s: i * PITCH_X for row in rows for i, s in enumerate(row)}
+    for sweep in range(ALIGN_PASSES):
+        for r in range(len(rows)) if sweep % 2 == 0 else range(len(rows) - 1, -1, -1):
+            desired = []
+            for slot in rows[r]:
+                around = up[slot] + down[slot]
+                desired.append(sum(x[n] for n in around) // len(around) if around else x[slot])
+            for slot, value in zip(rows[r], place(desired)):
+                x[slot] = value
+    low = min(x.values())
+    x = {s: v - low for s, v in x.items()}
+    width = max(x.values()) + NODE_W
+    return rows, x, row_of, chains, width
+
+
+def standalone_grid(ids):
+    """Claims with no edge: a grid in claim id order, as square as it can be and at most PER_ROW wide."""
+    columns = min(PER_ROW, isqrt(len(ids) - 1) + 1)
+    cells = {i: (n // columns, n % columns) for n, i in enumerate(sorted(ids))}
+    x = {i: c * PITCH_X for i, (r, c) in cells.items()}
+    row_of = {i: r for i, (r, c) in cells.items()}
+    return x, row_of, (columns - 1) * PITCH_X + NODE_W
+
+
+def channel_y(row):
+    """The middle of the free channel below `row` (and above `row + 1`); row -1 is the channel above the first row."""
+    return MARGIN_Y + row * PITCH_Y + NODE_H + (PITCH_Y - NODE_H) // 2
+
+
+def lane(lanes, coordinate, axis="y"):
+    """The next free offset beside `coordinate`: routes sharing a channel (`y`) or a gutter (`x`) do not lie on one line."""
+    used = lanes.get((axis, coordinate), 0)
+    lanes[(axis, coordinate)] = used + 1
     return coordinate + (used % LANES) * LANE_STEP - (LANES // 2) * LANE_STEP
 
 
-def route_of(source, target, lanes):
-    """Fields that route one edge through the free channels between rows and the gutters between columns.
+def travel_route(slots, row_of, centre, lanes):
+    """Fields routing one edge slot to slot, through the channel between each pair of rows and the waypoints.
 
-    Nodes sit on a grid, so a straight line can cross an unrelated node, and archify's automatic route puts the label
-    of a neighbour's edge on a node; a route that runs only in channels (the horizontal gaps between rows) and gutters
-    (the vertical gaps between columns), with its label on the channel segment, cannot. **Every** edge gets one: no
-    edge is left to archify's automatic route or label placement.
+    The route runs only in channels (horizontal) and in the slots reserved for it (vertical), so it crosses no node.
+    Its label sits on routed segment 1, the first run along a channel: no edge is left to archify's automatic route.
     """
-    (src_row, src_col), (dst_row, dst_col) = source, target
-    row_gap = abs(src_row - dst_row)
-    src_x = MARGIN + src_col * PITCH_X + NODE_W // 2
-    dst_x = MARGIN + dst_col * PITCH_X + NODE_W // 2
+    first, last = slots[0], slots[-1]
+    if row_of[first] == row_of[last]:
+        channel = lane(lanes, channel_y(row_of[first] - 1))
+        via = [[centre(first), channel], [centre(last), channel]]
+        return {"fromSide": "top", "toSide": "top", "via": via, "labelSegment": 1}
+    going_down = row_of[last] > row_of[first]
+    via = []
+    for k, (a, b) in enumerate(zip(slots, slots[1:])):
+        channel = lane(lanes, channel_y(min(row_of[a], row_of[b])))
+        points = [[centre(a), channel], [centre(b), channel]]
+        if k and points[0] == points[1]:
+            points = points[:1]
+        if k < len(slots) - 2:  # b is the reserved waypoint of a layer the edge crosses: the route passes through it
+            points.append([centre(b), MARGIN_Y + row_of[b] * PITCH_Y + NODE_H // 2])
+        via.extend(points)
+    return {
+        "fromSide": "bottom" if going_down else "top",
+        "toSide": "top" if going_down else "bottom",
+        "via": via,
+        "labelSegment": 1,
+    }
 
-    def above(row):
-        return MARGIN + row * PITCH_Y - (PITCH_Y - NODE_H) // 2
 
-    def below(row):
-        return MARGIN + row * PITCH_Y + NODE_H + (PITCH_Y - NODE_H) // 2
-
-    if row_gap == 0:
-        channel = lane(lanes, above(src_row))
-        return {"fromSide": "top", "toSide": "top", "via": [[src_x, channel], [dst_x, channel]], "labelSegment": 1}
-    if dst_row > src_row:
-        out_y, in_y, from_side, to_side = below(src_row), above(dst_row), "bottom", "top"
-    else:
-        out_y, in_y, from_side, to_side = above(src_row), below(dst_row), "top", "bottom"
-    if out_y == in_y:
-        channel = lane(lanes, out_y)
+def cross_route(source, target, gutter_x, lanes):
+    """Fields routing an edge between two blocks: along the channel beside the source, down the gutter left of the
+    target's block (free of nodes and frames), and along the channel beside the target. `source` and `target` are
+    `(row, centre x)`."""
+    (src_row, src_x), (dst_row, dst_x) = source, target
+    if src_row == dst_row:
+        channel = lane(lanes, channel_y(src_row - 1))
+        return {
+            "fromSide": "top",
+            "toSide": "top",
+            "via": [[src_x, channel], [dst_x, channel]],
+            "labelSegment": 1,
+        }
+    going_down = dst_row > src_row
+    out_row = src_row if going_down else src_row - 1
+    in_row = dst_row - 1 if going_down else dst_row
+    if out_row == in_row:
+        channel = lane(lanes, channel_y(out_row))
         via = [[src_x, channel], [dst_x, channel]]
     else:
-        out_y, in_y = lane(lanes, out_y), lane(lanes, in_y)
-        gutter = MARGIN + max(src_col, dst_col) * PITCH_X + NODE_W + (PITCH_X - NODE_W) // 2
-        gutter = lane(lanes, gutter)
+        out_y, in_y = lane(lanes, channel_y(out_row)), lane(lanes, channel_y(in_row))
+        gutter = lane(lanes, gutter_x, "x")
         via = [[src_x, out_y], [gutter, out_y], [gutter, in_y], [dst_x, in_y]]
-    return {"fromSide": from_side, "toSide": to_side, "via": via, "labelSegment": 1}
+    return {
+        "fromSide": "bottom" if going_down else "top",
+        "toSide": "top" if going_down else "bottom",
+        "via": via,
+        "labelSegment": 1,
+    }
 
 
-def convert(document):
-    """The archify `architecture` diagram for a checked document. Pure: same document, same value."""
-    nodes = sorted(document["nodes"], key=lambda n: n["claim_id"])
-    ids = [n["claim_id"] for n in nodes]
-    if len(set(ids)) != len(ids):
-        refuse("two nodes share one claim_id")
-    edges = document["edges"]
-    known = set(ids)
-    missing = sorted({e["to"] for e in edges if e["to"] not in known} | {e["from"] for e in edges if e["from"] not in known})
+def grid_route(source, target, lanes):
+    """The V-1 route between two cells `(row, column)` of a plain grid (the index page): channels and gutters only."""
+    (src_row, src_col), (dst_row, dst_col) = source, target
+    src_x = MARGIN_X + src_col * PITCH_X + NODE_W // 2
+    dst_x = MARGIN_X + dst_col * PITCH_X + NODE_W // 2
+    if src_row == dst_row:
+        channel = lane(lanes, channel_y(src_row - 1))
+        return {"fromSide": "top", "toSide": "top", "via": [[src_x, channel], [dst_x, channel]], "labelSegment": 1}
+    going_down = dst_row > src_row
+    out_row = src_row if going_down else src_row - 1
+    in_row = dst_row - 1 if going_down else dst_row
+    if out_row == in_row:
+        channel = lane(lanes, channel_y(out_row))
+        via = [[src_x, channel], [dst_x, channel]]
+    else:
+        out_y, in_y = lane(lanes, channel_y(out_row)), lane(lanes, channel_y(in_row))
+        gutter = lane(lanes, MARGIN_X + max(src_col, dst_col) * PITCH_X + NODE_W + (PITCH_X - NODE_W) // 2, "x")
+        via = [[src_x, out_y], [gutter, out_y], [gutter, in_y], [dst_x, in_y]]
+    return {
+        "fromSide": "bottom" if going_down else "top",
+        "toSide": "top" if going_down else "bottom",
+        "via": via,
+        "labelSegment": 1,
+    }
 
-    for identifier in ids + missing:
-        if not ARCHIFY_ID.match(identifier):
-            refuse(f"the id {identifier!r} is outside archify's id grammar; nothing was rewritten")
 
-    layer = layers_of(ids, edges)
-    rows = {}  # layer -> ids, in claim id order
-    for identifier in ids:
-        rows.setdefault(layer[identifier], []).append(identifier)
+# ---------------------------------------------------------------------------------------------------------------
+# Groups, parts and pages
+# ---------------------------------------------------------------------------------------------------------------
 
-    cell = {}  # id -> (visual row, column)
-    row_index = 0
-    for depth in sorted(rows):
-        members = rows[depth]
-        for offset, identifier in enumerate(members):
-            cell[identifier] = (row_index + offset // PER_ROW, offset % PER_ROW)
-        row_index += (len(members) + PER_ROW - 1) // PER_ROW
-    for offset, identifier in enumerate(missing):
-        cell[identifier] = (row_index + offset // PER_ROW, offset % PER_ROW)
-    position = {i: (MARGIN + c * PITCH_X, MARGIN + r * PITCH_Y) for i, (r, c) in cell.items()}
+
+def cut_into_parts(group, layer, edges, limit):
+    """Consecutive parts of at most `limit` claims, cut between layers (ADR 0050 decision 3).
+
+    Layers fill a part whole until the next would not fit; a layer larger than the limit is cut in claim id order, into
+    consecutive parts of at most `limit` (a standalone group is one such layer).
+    """
+    claims = group["claims"]
+    if len(claims) <= limit:
+        return [claims]
+    inside = set(claims)
+    pairs = [(n, e["from"], e["to"]) for n, e in enumerate(edges) if e["from"] in inside and e["to"] in inside]
+    rows, _, row_of, _, _ = layered(claims, layer, pairs)
+    ordered_layers = [[s for s in row if s in inside] for row in rows]
+    parts, current = [], []
+    for members in ordered_layers:
+        if len(members) > limit:
+            if current:
+                parts.append(current)
+            by_id = sorted(members)
+            chunks = [by_id[i : i + limit] for i in range(0, len(by_id), limit)]
+            parts.extend(chunks[:-1])
+            current = chunks[-1]
+        elif len(current) + len(members) > limit:
+            parts.append(current)
+            current = list(members)
+        else:
+            current = current + members
+    if current:
+        parts.append(current)
+    return parts
+
+
+def claim_component(node, x, y):
+    state = state_of(node)
+    modality = node["modality"]
+    return {
+        "id": node["claim_id"],
+        "type": STATE_TYPE[state],
+        "label": node["claim_id"],
+        "tag": modality if state == "applies" else f"{modality} · {STATE_TAG[state]}",
+        "pos": [x, y],
+        "size": [NODE_W, NODE_H],
+    }
+
+
+def outside_component(identifier, tag, x, y):
+    return {
+        "id": identifier,
+        "type": STATE_TYPE["missing"],
+        "label": identifier,
+        "tag": tag,
+        "pos": [x, y],
+        "size": [NODE_W, NODE_H],
+    }
+
+
+def finding_reasons(node, outgoing_dangling):
+    """The reasons a claim is a finding, in req's words (ADR 0050 decision 7); empty for an ordinary claim."""
+    reasons = []
+    state = state_of(node)
+    if state == "withdrawn":
+        reasons.append("withdrawn: superseded by " + ", ".join(node["superseded_by"]))
+    elif state == "unknown":
+        reasons.append("undecided in this selection")
+    elif state == "does_not_apply":
+        reasons.append("does not apply in this selection")
+    for relation, target in outgoing_dangling:
+        reasons.append(f"dangling: {relation} {target}, not in the corpus")
+    return reasons
+
+
+def compose(ctx, name, group_phrase, title_group, blocks, drawn, where):
+    """One group page, or the single page of a small document.
+
+    `blocks` is a list of `{"claims": [...], "kind": "family"|"standalone", "label": root or None}`, left to right.
+    `drawn` is the list of `(index, edge)` the page draws: every edge with an end on it. An end that is not a claim of
+    the page becomes a stub (a claim held on another page, naming it through `where`) or a dangling target.
+    """
+    nodes, known, edges = ctx["nodes"], ctx["known"], ctx["edges"]
+    page_claims = {i for block in blocks for i in block["claims"]}
+    layer = ctx["layer"]
+
+    # The ends outside the page, each attached to the block of the lowest-id claim it is joined to.
+    block_of = {i: b for b, block in enumerate(blocks) for i in block["claims"]}
+    joined = {}
+    for _, edge in drawn:
+        for end, other in ((edge["to"], edge["from"]), (edge["from"], edge["to"])):
+            if end not in page_claims and other in page_claims:
+                joined.setdefault(end, set()).add(other)
+    extras = {end: sorted(others) for end, others in joined.items()}
+    extra_block = {end: block_of[others[0]] for end, others in extras.items()}
+    page_layer = dict(layer)
+    for end, others in extras.items():
+        page_layer[end] = max(layer[o] for o in others) + 1
+
+    # Layout, block by block.
+    x0 = MARGIN_X
+    placed = {}  # id -> (absolute x, row)
+    block_layout = []  # per block: (chains, row_of, x, x0, width)
+    gutter_x = []
+    for b, block in enumerate(blocks):
+        members = list(block["claims"]) + sorted(e for e, k in extra_block.items() if k == b)
+        if block["kind"] == "standalone":
+            x, row_of, width = standalone_grid(members)
+            chains = {}
+        else:
+            inside = set(members)
+            pairs = [(n, e["from"], e["to"]) for n, e in drawn if e["from"] in inside and e["to"] in inside]
+            _, x, row_of, chains, width = layered(members, page_layer, pairs)
+        for i in members:
+            placed[i] = (x0 + x[i], row_of[i])
+        block_layout.append((chains, row_of, x, x0, width))
+        gutter_x.append(x0 - BLOCK_GAP // 2)
+        x0 += width + BLOCK_GAP
+
+    def position(identifier):
+        px, row = placed[identifier]
+        return px, MARGIN_Y + row * PITCH_Y
 
     components = []
-    cards = []
-    for node in nodes:
-        state = state_of(node)
-        x, y = position[node["claim_id"]]
-        components.append(
-            {
-                "id": node["claim_id"],
-                "type": STATE_TYPE[state],
-                "label": node["claim_id"],
-                "tag": tag_of(node, state),
-                "pos": [x, y],
-                "size": [NODE_W, NODE_H],
-            }
-        )
-        items = [node["statement"], f"{node['modality']} · {STATE_LEGEND[state]}"]
-        if node["superseded_by"]:
-            items.append("superseded by " + ", ".join(node["superseded_by"]))
-        cards.append({"dot": STATE_DOT[state], "title": node["claim_id"], "items": items})
-    for identifier in missing:
-        x, y = position[identifier]
-        components.append(
-            {
-                "id": identifier,
-                "type": STATE_TYPE["missing"],
-                "label": identifier,
-                "tag": "not in the corpus",
-                "pos": [x, y],
-                "size": [NODE_W, NODE_H],
-            }
-        )
+    boundaries = []
+    for block in blocks:
+        for i in block["claims"]:
+            px, py = position(i)
+            components.append((placed[i][0], placed[i][1], i, claim_component(nodes[i], px, py)))
+    for end in sorted(extras):
+        px, py = position(end)
+        if end in known:
+            tag = TAG_STUB
+            boundaries.append({"kind": "region", "label": f"page {where[end]}", "wraps": [end]})
+        else:
+            tag = TAG_DANGLING
+        components.append((placed[end][0], placed[end][1], end, outside_component(end, tag, px, py)))
+    components.sort(key=lambda c: (c[1], c[0], c[2]))
+    components = [c[3] for c in components]
 
-    dangling = set(document["findings"]["dangling"])
-    undecided = set(document["findings"]["undecided_edges"])
-    lanes = {}  # a channel or gutter coordinate -> how many routes already run along it
+    # Family frames, only where the page holds several families.
+    family_frames = []
+    if name == "all":
+        for b, block in enumerate(blocks):
+            if block["kind"] == "family":
+                wraps = sorted(block["claims"]) + sorted(e for e, k in extra_block.items() if k == b)
+                family_frames.append({"kind": "region", "label": block["label"], "wraps": wraps})
+    boundaries = family_frames + boundaries
+
+    # Connections, every one routed explicitly.
+    dangling = set(ctx["dangling"])
+    undecided = set(ctx["undecided"])
+    lanes = {}
     connections = []
-    for index, edge in enumerate(edges):
+    for index, edge in drawn:
+        source, target = edge["from"], edge["to"]
+        sb = block_of.get(source, extra_block.get(source))
+        tb = block_of.get(target, extra_block.get(target))
+        if sb == tb:
+            chains, row_of, x, x0b, _ = block_layout[sb]
+            if blocks[sb]["kind"] == "standalone":
+                slots, row_map = [source, target], row_of
+            else:
+                slots, row_map = chains[index], row_of
+
+            def centre(slot, x=x, x0b=x0b):
+                return x0b + x[slot] + NODE_W // 2
+
+            route = travel_route(slots, row_map, centre, lanes)
+        else:
+            (sx, srow), (tx, trow) = placed[source], placed[target]
+            route = cross_route((srow, sx + NODE_W // 2), (trow, tx + NODE_W // 2), gutter_x[tb], lanes)
         connection = {
-            "id": f"edge-{index + 1:04d}",
-            "from": edge["from"],
-            "to": edge["to"],
+            "id": f"edge-{len(connections) + 1:04d}",
+            "from": source,
+            "to": target,
             "label": edge["relation"],
         }
-        connection.update(route_of(cell[edge["from"]], cell[edge["to"]], lanes))
-        if f"{edge['relation']} -> {edge['to']} (referenced by {edge['from']}, not in the corpus)" in dangling or edge["to"] not in known:
+        connection.update(route)
+        reference = f"{edge['relation']} -> {target} (referenced by {source}, not in the corpus)"
+        if reference in dangling or target not in known or source not in known:
             connection["variant"] = "security"
-        elif f"{edge['from']} -{edge['relation']}-> {edge['to']} (target undecided)" in undecided:
+        elif f"{source} -{edge['relation']}-> {target} (target undecided)" in undecided:
             connection["variant"] = "dashed"
         connections.append(connection)
 
-    selection = " ".join(f"{k}={v}" for k, v in sorted(document["selection"].items())) or "no context"
-    used = sorted({STATE_TYPE[state_of(n)] for n in nodes} | ({STATE_TYPE["missing"]} if missing else set()))
-    legend = {}
-    for state, kind in STATE_TYPE.items():
-        if kind in used:
-            legend[kind] = {"label": STATE_LEGEND[state]}
+    # Cards: the findings first, only when there are any, then one card per group on the page.
+    dangling_of = {}
+    for _, edge in drawn:
+        if edge["to"] not in known and edge["from"] in page_claims:
+            dangling_of.setdefault(edge["from"], []).append((edge["relation"], edge["to"]))
+    findings = []
+    for i in sorted(page_claims):
+        reasons = finding_reasons(nodes[i], dangling_of.get(i, []))
+        if reasons:
+            findings.append(f"{i}: {nodes[i]['statement']} ({'; '.join(reasons)})")
+    cards = []
+    if findings:
+        cards.append({"dot": "rose", "title": f"Findings ({len(findings)})", "items": findings})
+    for block in blocks:
+        label = block["name"]
+        items = [f"{i}: {nodes[i]['statement']}" for i in sorted(block["claims"])]
+        cards.append({"dot": "cyan", "title": f"{label} ({len(items)} claims)", "items": items})
 
-    return {
+    used = {c["type"] for c in components}
+    meta = page_meta(ctx, name, title_group, group_phrase, len(page_claims), len(connections), used)
+    if name == "all" and 0 < len(family_frames) <= 5:
+        meta["views"] = [
+            {
+                "id": f"view-{k + 1}",
+                "label": block["name"],
+                "focus": sorted(block["claims"]),
+                "note": f"{len(block['claims'])} claims",
+            }
+            for k, block in enumerate(b for b in blocks if b["kind"] == "family")
+        ]
+    page = {
         "schema_version": 1,
         "diagram_type": "architecture",
-        "meta": {
-            "title": f"req trace: {selection}",
-            "subtitle": f"{SCHEMA}, rules_v {document.get('rules_v', '?')}; converter written for archify {ARCHIFY_COMMIT}",
-            "output": "req-trace-graph.html",
-            "quality_profile": "standard",
-            "legend": {"mode": "auto", "entries": legend},
-        },
+        "meta": meta,
         "components": components,
         "connections": connections,
         "cards": cards,
     }
+    if boundaries:
+        page["boundaries"] = boundaries
+    return page
+
+
+def page_meta(ctx, name, title_group, group_phrase, claim_count, relation_count, used_types, words=None):
+    legend = {}
+    translations = dict(CLAIM_WORDS if words is None else words)
+    for state, kind in STATE_TYPE.items():
+        translations[f"viewer.kind.{kind}"] = STATE_LEGEND[state]
+        translations[f"legend.architecture.{kind}"] = STATE_LEGEND[state]
+    if words is not None:
+        translations.update(words)
+    for state, kind in STATE_TYPE.items():
+        if kind in used_types:
+            legend[kind] = {"label": translations[f"legend.architecture.{kind}"]}
+    title = "Requirement graph" if title_group is None else f"Requirement graph: {title_group}"
+    subtitle = " · ".join(
+        [
+            ctx["selection"],
+            group_phrase,
+            f"{claim_count} of {len(ctx['nodes'])} claims",
+            f"{relation_count} relations",
+            f"rules_v {ctx['rules_v']}",
+            f"archify {ARCHIFY_COMMIT}",
+        ]
+    )
+    return {
+        "title": title,
+        "subtitle": subtitle,
+        # archify applies `translations` only for a document that names its locale.
+        "locale": "en",
+        "output": f"{name}.html",
+        "quality_profile": "standard",
+        "legend": {"mode": "auto", "entries": legend},
+        "translations": translations,
+    }
+
+
+def index_page(ctx, groups, page_names):
+    """One node per group and one connection per ordered pair of groups and relation (ADR 0050 decision 3)."""
+    group_of = {}
+    for g, group in enumerate(groups):
+        for i in group["claims"]:
+            group_of[i] = g
+    counts = {}
+    for edge in ctx["edges"]:
+        a, b = group_of.get(edge["from"]), group_of.get(edge["to"])
+        if a is None or b is None or a == b:
+            continue
+        counts[(a, b, edge["relation"])] = counts.get((a, b, edge["relation"]), 0) + 1
+
+    cells = {}
+    components = []
+    for g, group in enumerate(groups):
+        row, column = divmod(g, PER_ROW)
+        cells[g] = (row, column)
+        pages = len(page_names[g])
+        tag = f"{len(group['claims'])} claims" + (f" · {pages} pages" if pages > 1 else "")
+        components.append(
+            {
+                "id": page_names[g][0],
+                "type": STATE_TYPE["applies"],
+                "label": group["name"],
+                "tag": tag,
+                "pos": [MARGIN_X + column * PITCH_X, MARGIN_Y + row * PITCH_Y],
+                "size": [NODE_W, NODE_H],
+            }
+        )
+    lanes = {}
+    connections = []
+    for (a, b, relation), count in sorted(counts.items()):
+        connection = {
+            "id": f"edge-{len(connections) + 1:04d}",
+            "from": page_names[a][0],
+            "to": page_names[b][0],
+            "label": f"{relation} ×{count}",
+        }
+        connection.update(grid_route(cells[a], cells[b], lanes))
+        connections.append(connection)
+
+    cards = [
+        {
+            "dot": "cyan",
+            "title": f"Group pages ({sum(len(p) for p in page_names)})",
+            "items": [
+                f"{page}.json: {group['name']}, {len(group['claims'])} claims"
+                for group, pages in zip(groups, page_names)
+                for page in pages
+            ],
+        }
+    ]
+    phrase = f"index of {len(groups)} groups"
+    meta = page_meta(
+        ctx, "index", None, phrase, len(ctx["nodes"]), sum(counts.values()), {STATE_TYPE["applies"]}, words=GROUP_WORDS
+    )
+    return {
+        "schema_version": 1,
+        "diagram_type": "architecture",
+        "meta": meta,
+        "components": components,
+        "connections": connections,
+        "cards": cards,
+    }
+
+
+def convert(document):
+    """The archify pages for a checked document, by page name. Pure: same document, same value."""
+    node_list = sorted(document["nodes"], key=lambda n: n["claim_id"])
+    ids = [n["claim_id"] for n in node_list]
+    if len(set(ids)) != len(ids):
+        refuse("two nodes share one claim_id")
+    nodes = {n["claim_id"]: n for n in node_list}
+    known = set(ids)
+    edges = document["edges"]
+    outside = sorted({e["to"] for e in edges if e["to"] not in known} | {e["from"] for e in edges if e["from"] not in known})
+    for identifier in ids + outside:
+        if not ARCHIFY_ID.match(identifier):
+            refuse(f"the id {identifier!r} is outside archify's id grammar; nothing was rewritten")
+    for edge in edges:
+        if edge["from"] not in known and edge["to"] not in known:
+            refuse(f"the edge {edge['from']} -{edge['relation']}-> {edge['to']} has no end in the corpus; no page could hold it")
+    limit = page_limit()
+
+    layer, followed = layering(ids, edges)
+    family, standalone = families_of(ids, edges, layer, followed)
+    selection = " ".join(f"{k}={v}" for k, v in sorted(document["selection"].items())) or "no context"
+    ctx = {
+        "nodes": nodes,
+        "known": known,
+        "edges": edges,
+        "layer": layer,
+        "selection": selection,
+        "rules_v": document.get("rules_v", "?"),
+        "dangling": document["findings"]["dangling"],
+        "undecided": document["findings"]["undecided_edges"],
+    }
+
+    groups = []
+    for root in sorted({family[i] for i in ids if i not in standalone}):
+        members = sorted(i for i in ids if i not in standalone and family[i] == root)
+        groups.append({"kind": "family", "label": root, "name": f"family {root}", "page": f"family-{root}", "claims": members})
+    if standalone:
+        groups.append(
+            {"kind": "standalone", "label": None, "name": "standalone claims", "page": "standalone", "claims": sorted(standalone)}
+        )
+
+    pages = {}
+    if len(ids) <= limit:
+        blocks = [dict(group) for group in groups]
+        drawn = list(enumerate(edges))
+        pages["all"] = compose(ctx, "all", "all claims", None, blocks, drawn, {})
+        return pages
+
+    parts_of = [cut_into_parts(group, layer, edges, limit) for group in groups]
+    page_names = [
+        [group["page"] if k == 0 else f"{group['page']}-part-{k + 1}" for k in range(len(parts))]
+        for group, parts in zip(groups, parts_of)
+    ]
+    where = {}
+    for names, parts in zip(page_names, parts_of):
+        for name, part in zip(names, parts):
+            for i in part:
+                where[i] = name
+    for group, names, parts in zip(groups, page_names, parts_of):
+        for k, (name, part) in enumerate(zip(names, parts)):
+            inside = set(part)
+            drawn = [(n, e) for n, e in enumerate(edges) if e["from"] in inside or e["to"] in inside]
+            block = dict(group, claims=list(part))
+            phrase = group["name"] if len(parts) == 1 else f"{group['name']}, part {k + 1} of {len(parts)}"
+            pages[name] = compose(ctx, name, phrase, phrase, [block], drawn, where)
+    pages["index"] = index_page(ctx, groups, page_names)
+    return pages
 
 
 def render(value):
@@ -319,9 +850,9 @@ def render(value):
 
 def main(argv):
     if len(argv) != 3:
-        print("usage: trace_to_archify.py <trace.json> <out.json>   (`-` reads stdin)", file=sys.stderr)
+        print("usage: trace_to_archify.py <trace.json> <out-dir>   (`-` reads stdin)", file=sys.stderr)
         return 2
-    source, target = argv[1], argv[2]
+    source, target = argv[1], Path(argv[2])
     try:
         if source == "-":
             text = sys.stdin.read()
@@ -338,13 +869,18 @@ def main(argv):
         return 2
     try:
         check_document(document)
-        output = render(convert(document))
+        pages = convert(document)
+        if target.exists() and (not target.is_dir() or any(target.iterdir())):
+            refuse(f"{target} exists and is not an empty directory: stale pages must not mix with new ones")
+        outputs = {f"{name}.json": render(page) for name, page in pages.items()}
     except Refusal as error:
         print(f"refused: {error}", file=sys.stderr)
         return 2
     try:
-        with open(target, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(output)
+        target.mkdir(parents=True, exist_ok=True)
+        for file_name, output in sorted(outputs.items()):
+            with open(target / file_name, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(output)
     except OSError as error:
         print(f"cannot write {target}: {error}", file=sys.stderr)
         return 2
