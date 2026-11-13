@@ -36,3 +36,10 @@ them are rewritten against synthetic files; nothing else changes.
   temporary directory and label as synthetic.
 
 The Polarion text is placeholder text; no doc quotes any of these files' content.
+
+## `areas-sample.reqif` (task I-1)
+
+Not a public file: a **synthetic** ReqIF written by hand for the `--areas` tests (`tests/reqif_import.rs`).
+Its header comment draws the specification hierarchy (nested headings, a requirement under a requirement,
+a requirement directly under the specification, one reached from two places, one under no node). It is an
+export of no tool, and nothing is claimed from it about a real specification.

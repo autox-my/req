@@ -1,0 +1,71 @@
+{
+  "current_version": "1.0",
+  "versions": {
+    "1.0": {
+      "needs": {
+        "N_1": {
+          "id": "N_1",
+          "type": "req",
+          "content": "The tool shall start in two seconds.",
+          "title": "N_1",
+          "status": "open",
+          "lineno": 1,
+          "docname": "requirements/Diag_Startup"
+        },
+        "N_2": {
+          "id": "N_2",
+          "type": "req",
+          "content": "The tool shall log each start.",
+          "title": "N_2",
+          "status": "open",
+          "lineno": 1,
+          "docname": "requirements/Diag_Startup"
+        },
+        "N_3": {
+          "id": "N_3",
+          "type": "req",
+          "content": "The tool shall read the CAN bus.",
+          "title": "N_3",
+          "status": "open",
+          "lineno": 1,
+          "docname": "requirements/interfaces/CAN_Bus"
+        },
+        "N_4": {
+          "id": "N_4",
+          "type": "req",
+          "content": "The tool shall print its version.",
+          "title": "N_4",
+          "status": "open",
+          "lineno": 1,
+          "docname": "index"
+        },
+        "N_5": {
+          "id": "N_5",
+          "type": "req",
+          "content": "The tool shall stay silent.",
+          "title": "N_5",
+          "status": "open",
+          "lineno": 1
+        },
+        "N_6": {
+          "id": "N_6",
+          "type": "req",
+          "content": "The tool shall not write to disk.",
+          "title": "N_6",
+          "status": "open",
+          "lineno": 1,
+          "docname": null
+        },
+        "N_7": {
+          "id": "N_7",
+          "type": "doc",
+          "content": "A section heading.",
+          "title": "N_7",
+          "status": "open",
+          "lineno": 1,
+          "docname": "requirements/Diag_Startup"
+        }
+      }
+    }
+  }
+}

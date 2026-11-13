@@ -2530,3 +2530,669 @@ fn the_already_drafted_refusal_still_adds_up() {
         again.stderr
     );
 }
+
+// --- (q) --areas: the specification hierarchy as the claim's area (ADR 0051 decision 2, task I-1) ------------------------------
+//
+// Oracles are ADR 0051, `docs/specs/I-1-importer-areas.md` and hand-written ReqIF: the shared one is
+// `tests/fixtures/reqif/areas-sample.reqif` (its header comment draws the hierarchy), the variants are
+// synthetic `Doc`s. No expected value is read back from a run of the script.
+
+const AREAS_SAMPLE: &str = "areas-sample.reqif";
+
+/// The arguments every sample run shares: the requirement type, its text, and the human id.
+const SAMPLE_ARGS: [&str; 6] = [
+    "--type",
+    "Requirement",
+    "--text-attr",
+    "ReqIF.Text",
+    "--id-attr",
+    "ID",
+];
+
+/// The sample's registry with the heading text as the label (a heading has `ReqIF.ChapterName`; the
+/// requirement `R-1`, an ancestor too, has none and falls back to its `ID`).
+const SAMPLE_REGISTRY: &str = "h-0/h-1 Démarrage 起動\nh-0/h-1/r-1 SW-1\nh-0 Diagnostics\n";
+
+fn sample_run(fx: &Fixture, more: &[&str]) -> Outcome {
+    let mut args = base(&SAMPLE_ARGS);
+    args.extend(strings(&[
+        "--areas",
+        "--area-label-attr",
+        "ReqIF.ChapterName",
+    ]));
+    args.extend(strings(more));
+    import(fx.path(), &args)
+}
+
+/// The claim a run drafted from the object `ident`, by the report's own draft line.
+fn claim_of(fx: &Fixture, out: &Outcome, ident: &str) -> String {
+    let drafts = drafts_of(out);
+    let draft = drafts
+        .iter()
+        .find(|d| d.identifier == ident)
+        .unwrap_or_else(|| panic!("{ident} is drafted:\n{}", out.stdout));
+    fx.read(&format!("claims/{}.yml", draft.claim))
+}
+
+/// The line after `claim_id:` and the `schema:` line, so a test can say where `area:` sits.
+fn schema_of(claim: &str) -> &str {
+    field(claim, "schema: ").expect("a schema line")
+}
+
+fn area_of(claim: &str) -> Option<&str> {
+    field(claim, "area: ")
+}
+
+fn fake_req_reporting(fx: &Fixture, reported: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = fx.path().join("fake-bin");
+    fs::create_dir_all(&bin).expect("fake bin dir");
+    let fake = bin.join("req");
+    fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  printf 'req 0.1.0\\n  rules_v            9\\n  claim_schema       {reported}\\n'\nelse\n  exec \"{}\" \"$@\"\nfi\n",
+            req_bin().display()
+        ),
+    )
+    .expect("fake req");
+    fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).expect("chmod");
+    bin
+}
+
+#[test]
+fn areas_are_off_by_default_a_run_without_the_flag_changes_no_byte() {
+    let fx = Fixture::with_public("req-reqif-areas-off", AREAS_SAMPLE);
+    let out = import(fx.path(), &plus(base(&SAMPLE_ARGS), &["--write"]));
+    out.assert_code(0, "no --areas, on a file with a hierarchy");
+    let drafts = drafts_of(&out);
+    assert_eq!(drafts.len(), 6, "{}", out.stdout);
+
+    let r3 = claim_of(&fx, &out, "R-3");
+    let claim_id = &drafts.iter().find(|d| d.identifier == "R-3").unwrap().claim;
+    let expected = format!(
+        "# A draft claim, drafted from the ReqIF file module.reqif (object R-3; ID SW-3). The object's\n\
+         # IDENTIFIER is kept in rationale.source. Nothing derived is stored: `req canon` shows the parse\n\
+         # this statement derives. A draft is a proposal (ADR 0004): edit the statement, add the\n\
+         # applicability and relations it needs, and pin a load-bearing bound under `pins:` if it has one.\n\
+         schema: req.claim/2\n\
+         claim_id: {claim_id}\n\
+         statement: \"The R-3 shall hold.\"\n\
+         applicability: []\n\
+         rationale:\n\
+         \x20 source: \"{ORIGIN}#R-3\"\n\
+         \x20 date: {DATE}\n\
+         \x20 rejected_alternatives: []\n\
+         \x20 assumptions: []\n\
+         relations: []\n"
+    );
+    assert_eq!(r3, expected);
+    for (name, text) in fx.claims() {
+        assert!(area_of(&text).is_none(), "{name} carries an area:\n{text}");
+    }
+    for prefix in ["areas:", "no area:", "registry:"] {
+        assert!(
+            out.lines(prefix).is_empty(),
+            "no `{prefix}` line without --areas:\n{}",
+            out.stdout
+        );
+    }
+    assert!(
+        out.line("hierarchy")
+            .contains("the structure is not carried"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        !fx.path().join(".req").exists(),
+        "no registry is created without --areas"
+    );
+    assert_adds_up(&out, "areas off");
+}
+
+#[test]
+fn an_object_under_two_headings_is_filed_under_its_chain_of_ancestors() {
+    let fx = Fixture::with_public("req-reqif-areas-two-levels", AREAS_SAMPLE);
+    let out = sample_run(&fx, &["--write"]);
+    out.assert_code(0, "areas, the sample");
+    let r1 = claim_of(&fx, &out, "R-1");
+    assert_eq!(schema_of(&r1), "schema: req.claim/3", "{r1}");
+    assert_eq!(area_of(&r1), Some("area: h-0/h-1"), "{r1}");
+    // `area:` is the line right after `claim_id:`, and the rest of the template is as it was.
+    let lines: Vec<&str> = r1.lines().collect();
+    let at = lines
+        .iter()
+        .position(|l| l.starts_with("claim_id: "))
+        .expect("a claim_id line");
+    assert_eq!(lines[at + 1], "area: h-0/h-1", "{r1}");
+    assert!(lines[at + 2].starts_with("statement: "), "{r1}");
+    let r3 = claim_of(&fx, &out, "R-3");
+    assert_eq!(area_of(&r3), Some("area: h-0"), "{r3}");
+}
+
+#[test]
+fn a_drafted_parent_is_filed_under_its_own_ancestors_and_is_a_segment_of_its_children() {
+    let fx = Fixture::with_public("req-reqif-areas-parent", AREAS_SAMPLE);
+    let out = sample_run(&fx, &["--write"]);
+    out.assert_code(0, "areas, a drafted parent");
+    let parent = claim_of(&fx, &out, "R-1");
+    let child = claim_of(&fx, &out, "R-2");
+    assert_eq!(area_of(&parent), Some("area: h-0/h-1"), "{parent}");
+    assert_eq!(area_of(&child), Some("area: h-0/h-1/r-1"), "{child}");
+}
+
+#[test]
+fn no_ancestor_and_several_places_are_filed_nowhere_and_counted_by_reason() {
+    let fx = Fixture::with_public("req-reqif-areas-no-area", AREAS_SAMPLE);
+    let out = sample_run(&fx, &["--write"]);
+    out.assert_code(0, "areas, objects with no area");
+    for ident in ["R-4", "R-5", "R-6"] {
+        let claim = claim_of(&fx, &out, ident);
+        assert_eq!(
+            schema_of(&claim),
+            "schema: req.claim/2",
+            "{ident}:\n{claim}"
+        );
+        assert!(area_of(&claim).is_none(), "{ident}:\n{claim}");
+    }
+    assert_eq!(
+        out.line("no area:"),
+        "no area: 3 (no ancestor 2, several places 1)"
+    );
+    assert_eq!(out.line("areas:"), "areas: 3 paths; filed 3 of 6 drafted");
+    assert_adds_up(&out, "areas, no area");
+}
+
+#[test]
+fn an_object_in_two_specifications_has_no_area_and_the_reader_picks_no_place() {
+    // SYNTHETIC: `r` sits under heading `h-a` in one specification and under `h-b` in another.
+    let mut doc = Doc::new()
+        .object(obj("h-a", "T-NOTE", &[text_xhtml("AD-NTEXT", &div("A"))]))
+        .object(obj("h-b", "T-NOTE", &[text_xhtml("AD-NTEXT", &div("B"))]))
+        .object(req_xhtml("r", &div("The r shall hold.")))
+        .object(req_xhtml("s", &div("The s shall hold.")));
+    doc.specs = format!(
+        "{}{}",
+        specification(
+            "One",
+            &node("h-a", &format!("{}{}", node("r", ""), node("s", "")))
+        ),
+        specification("Two", &node("h-b", &node("r", "")))
+    );
+    let fx = synthetic_fixture("req-reqif-areas-two-specs", &doc);
+    let out = import(fx.path(), &plus(base(&REQ_ARGS), &["--areas", "--write"]));
+    out.assert_code(0, "two specifications");
+    let r = claim_of(&fx, &out, "r");
+    let s = claim_of(&fx, &out, "s");
+    assert!(area_of(&r).is_none(), "{r}");
+    assert_eq!(area_of(&s), Some("area: h-a"), "{s}");
+    assert_eq!(out.line("no area:"), "no area: 1 (several places 1)");
+}
+
+#[test]
+fn depth_keeps_only_the_outermost_segments() {
+    let fx = Fixture::with_public("req-reqif-areas-depth", AREAS_SAMPLE);
+    let out = sample_run(&fx, &["--area-depth", "1", "--write"]);
+    out.assert_code(0, "--area-depth 1");
+    for ident in ["R-1", "R-2", "R-3"] {
+        let claim = claim_of(&fx, &out, ident);
+        assert_eq!(area_of(&claim), Some("area: h-0"), "{ident}:\n{claim}");
+    }
+    assert_eq!(out.line("areas:"), "areas: 1 paths; filed 3 of 6 drafted");
+    assert_eq!(fx.read(".req/areas"), "h-0 Diagnostics\n");
+
+    // A depth past the deepest chain changes nothing.
+    let fx = Fixture::with_public("req-reqif-areas-depth-deep", AREAS_SAMPLE);
+    let out = sample_run(&fx, &["--area-depth", "9", "--write"]);
+    out.assert_code(0, "--area-depth 9");
+    assert_eq!(fx.read(".req/areas"), SAMPLE_REGISTRY);
+}
+
+#[test]
+fn the_key_rule_lowercases_collapses_runs_and_strips_the_ends() {
+    // SYNTHETIC: the heading's IDENTIFIER is `_Sec.A 12`.
+    let mut doc = Doc::new()
+        .object(obj(
+            "_Sec.A 12",
+            "T-NOTE",
+            &[text_xhtml("AD-NTEXT", &div("A"))],
+        ))
+        .object(req_xhtml("r", &div("The r shall hold.")));
+    doc.specs = specification("S", &node("_Sec.A 12", &node("r", "")));
+    let fx = synthetic_fixture("req-reqif-areas-key", &doc);
+    let out = import(fx.path(), &plus(base(&REQ_ARGS), &["--areas", "--write"]));
+    out.assert_code(0, "key rule");
+    assert_eq!(
+        area_of(&claim_of(&fx, &out, "r")),
+        Some("area: sec-a-12"),
+        "{}",
+        out.stdout
+    );
+}
+
+#[test]
+fn two_identifiers_that_make_one_path_are_a_problem_naming_both_and_nothing_is_written() {
+    // SYNTHETIC: `Sec.A` and `sec_a` are two headings, one key.
+    let mut doc = Doc::new()
+        .object(obj("Sec.A", "T-NOTE", &[text_xhtml("AD-NTEXT", &div("A"))]))
+        .object(obj("sec_a", "T-NOTE", &[text_xhtml("AD-NTEXT", &div("B"))]))
+        .object(req_xhtml("r1", &div("The r1 shall hold.")))
+        .object(req_xhtml("r2", &div("The r2 shall hold.")));
+    doc.specs = specification(
+        "S",
+        &format!(
+            "{}{}",
+            node("Sec.A", &node("r1", "")),
+            node("sec_a", &node("r2", ""))
+        ),
+    );
+    let fx = synthetic_fixture("req-reqif-areas-collision", &doc);
+    let before = fx.claims();
+    let out = import(fx.path(), &plus(base(&REQ_ARGS), &["--areas", "--write"]));
+    out.assert_code(1, "a key collision");
+    assert!(
+        out.stderr.contains("Sec.A")
+            && out.stderr.contains("sec_a")
+            && out.stderr.contains("sec-a"),
+        "names both identifiers and the path: {}",
+        out.stderr
+    );
+    assert_eq!(fx.claims(), before, "nothing is drafted");
+    assert!(
+        !fx.path().join(".req/areas").exists(),
+        "no registry is written"
+    );
+}
+
+#[test]
+fn an_identifier_that_leaves_no_key_is_a_problem_naming_it() {
+    // SYNTHETIC: the heading's IDENTIFIER is only punctuation.
+    let mut doc = Doc::new()
+        .object(obj("___", "T-NOTE", &[text_xhtml("AD-NTEXT", &div("A"))]))
+        .object(req_xhtml("r", &div("The r shall hold.")));
+    doc.specs = specification("S", &node("___", &node("r", "")));
+    let fx = synthetic_fixture("req-reqif-areas-empty-key", &doc);
+    let before = fx.claims();
+    let out = import(fx.path(), &plus(base(&REQ_ARGS), &["--areas", "--write"]));
+    out.assert_code(1, "an identifier with no key");
+    assert!(out.stderr.contains("___"), "{}", out.stderr);
+    assert_eq!(fx.claims(), before);
+}
+
+#[test]
+fn an_ancestor_the_file_does_not_hold_is_unverifiable() {
+    // SYNTHETIC: the hierarchy names a parent object that no SPEC-OBJECT declares.
+    let mut doc = Doc::new().object(req_xhtml("r", &div("The r shall hold.")));
+    doc.specs = specification("S", &node("GHOST", &node("r", "")));
+    let fx = synthetic_fixture("req-reqif-areas-ghost", &doc);
+    let before = fx.claims();
+    let out = import(fx.path(), &plus(base(&REQ_ARGS), &["--areas", "--write"]));
+    out.assert_code(3, "an unresolved ancestor");
+    assert!(out.stderr.starts_with("[UNVERIFIABLE]"), "{}", out.stderr);
+    assert!(out.stderr.contains("GHOST"), "{}", out.stderr);
+    assert_eq!(fx.claims(), before);
+}
+
+#[test]
+fn the_label_comes_from_the_label_attribute_then_the_id_attribute_then_the_segment() {
+    // (a) both flags: a heading's text; the parent requirement has no such attribute, so its ID.
+    let fx = Fixture::with_public("req-reqif-areas-label-a", AREAS_SAMPLE);
+    let out = sample_run(&fx, &[]);
+    out.assert_code(0, "label, both flags");
+    let added: Vec<&str> = out.lines("  + ");
+    assert_eq!(
+        added,
+        vec![
+            "  + h-0/h-1 Démarrage 起動",
+            "  + h-0/h-1/r-1 SW-1",
+            "  + h-0 Diagnostics"
+        ],
+        "{}",
+        out.stdout
+    );
+    assert!(!fx.path().join(".req").exists(), "a dry run writes nothing");
+
+    // (b) the label attribute alone: the requirement falls back to its segment.
+    let fx = Fixture::with_public("req-reqif-areas-label-b", AREAS_SAMPLE);
+    let mut args = base(&["--type", "Requirement", "--text-attr", "ReqIF.Text"]);
+    args.extend(strings(&[
+        "--areas",
+        "--area-label-attr",
+        "ReqIF.ChapterName",
+        "--write",
+    ]));
+    import(fx.path(), &args).assert_code(0, "label, attribute alone");
+    assert_eq!(
+        fx.read(".req/areas"),
+        "h-0/h-1 Démarrage 起動\nh-0/h-1/r-1 r-1\nh-0 Diagnostics\n"
+    );
+
+    // (c) the id attribute alone: every ancestor's own ID.
+    let fx = Fixture::with_public("req-reqif-areas-label-c", AREAS_SAMPLE);
+    import(
+        fx.path(),
+        &plus(base(&SAMPLE_ARGS), &["--areas", "--write"]),
+    )
+    .assert_code(0, "label, id attribute alone");
+    assert_eq!(
+        fx.read(".req/areas"),
+        "h-0/h-1 D-1\nh-0/h-1/r-1 SW-1\nh-0 D-0\n"
+    );
+
+    // (d) neither: the last segment of each path.
+    let fx = Fixture::with_public("req-reqif-areas-label-d", AREAS_SAMPLE);
+    let args = plus(
+        base(&["--type", "Requirement", "--text-attr", "ReqIF.Text"]),
+        &["--areas", "--write"],
+    );
+    import(fx.path(), &args).assert_code(0, "label, neither flag");
+    assert_eq!(
+        fx.read(".req/areas"),
+        "h-0/h-1 h-1\nh-0/h-1/r-1 r-1\nh-0 h-0\n"
+    );
+}
+
+#[test]
+fn a_non_ascii_label_survives_byte_for_byte() {
+    let fx = Fixture::with_public("req-reqif-areas-label-utf8", AREAS_SAMPLE);
+    sample_run(&fx, &["--write"]).assert_code(0, "a non-ASCII label");
+    let bytes = fs::read(fx.path().join(".req/areas")).expect("the registry");
+    let wanted = "Démarrage 起動".as_bytes();
+    assert!(
+        bytes.windows(wanted.len()).any(|window| window == wanted),
+        "the label's UTF-8 bytes are in the registry: {bytes:?}"
+    );
+}
+
+#[test]
+fn a_label_attribute_no_type_defines_is_a_problem_and_one_matching_two_definitions_is_unverifiable()
+{
+    let fx = Fixture::with_public("req-reqif-areas-label-unknown", AREAS_SAMPLE);
+    let before = fx.claims();
+    let out = import(
+        fx.path(),
+        &plus(
+            base(&SAMPLE_ARGS),
+            &[
+                "--areas",
+                "--area-label-attr",
+                "No Such Attribute",
+                "--write",
+            ],
+        ),
+    );
+    out.assert_code(1, "an unknown label attribute");
+    assert!(out.stderr.contains("No Such Attribute"), "{}", out.stderr);
+    assert_eq!(fx.claims(), before);
+
+    // SYNTHETIC: the parent requirement's type defines `Dup` twice.
+    let mut doc = Doc::new()
+        .object(req_xhtml("p", &div("The p shall hold.")))
+        .object(req_xhtml("c", &div("The c shall hold.")));
+    doc.extra_defs = "<ATTRIBUTE-DEFINITION-STRING IDENTIFIER=\"AD-D1\" LONG-NAME=\"Dup\"><TYPE><DATATYPE-DEFINITION-STRING-REF>DT-S</DATATYPE-DEFINITION-STRING-REF></TYPE></ATTRIBUTE-DEFINITION-STRING><ATTRIBUTE-DEFINITION-STRING IDENTIFIER=\"AD-D2\" LONG-NAME=\"Dup\"><TYPE><DATATYPE-DEFINITION-STRING-REF>DT-S</DATATYPE-DEFINITION-STRING-REF></TYPE></ATTRIBUTE-DEFINITION-STRING>".to_string();
+    doc.specs = specification("S", &node("p", &node("c", "")));
+    let fx = synthetic_fixture("req-reqif-areas-label-two", &doc);
+    let before = fx.claims();
+    let out = import(
+        fx.path(),
+        &plus(
+            base(&REQ_ARGS),
+            &["--areas", "--area-label-attr", "Dup", "--write"],
+        ),
+    );
+    out.assert_code(3, "a label attribute with two definitions");
+    assert!(
+        out.stderr.contains("Dup") && out.stderr.contains("two"),
+        "{}",
+        out.stderr
+    );
+    assert_eq!(fx.claims(), before);
+}
+
+#[test]
+fn a_write_creates_the_registry_in_source_order_and_a_dry_run_reports_the_same_lines() {
+    let fx = Fixture::with_public("req-reqif-areas-registry-create", AREAS_SAMPLE);
+    let dry = sample_run(&fx, &[]);
+    dry.assert_code(0, "dry run");
+    assert_eq!(
+        dry.line("registry:"),
+        "registry: 3 lines to add, 0 already declared"
+    );
+    assert!(!fx.path().join(".req/areas").exists());
+    assert_eq!(fx.claims().len(), 1, "only the corpus the init made");
+
+    let out = sample_run(&fx, &["--write"]);
+    out.assert_code(0, "write");
+    // The hierarchy's reading order (R-1's chain, R-2's, then R-3's), not the file's object order.
+    assert_eq!(fx.read(".req/areas"), SAMPLE_REGISTRY);
+    assert_eq!(out.lines("  + "), dry.lines("  + "));
+    assert_adds_up(&out, "registry created");
+}
+
+#[test]
+fn a_declared_path_is_left_alone_whatever_its_label_and_the_rest_is_appended() {
+    let fx = Fixture::with_public("req-reqif-areas-registry-existing", AREAS_SAMPLE);
+    // No trailing newline, a comment, and a label that differs from the source's.
+    fx.write(".req/areas", "# my areas\nh-0 Custom name");
+    let out = sample_run(&fx, &["--write"]);
+    out.assert_code(0, "an existing registry");
+    assert_eq!(
+        fx.read(".req/areas"),
+        "# my areas\nh-0 Custom name\nh-0/h-1 Démarrage 起動\nh-0/h-1/r-1 SW-1\n"
+    );
+    assert_eq!(
+        out.line("registry:"),
+        "registry: 2 lines to add, 1 already declared"
+    );
+
+    // All three declared: the file is not touched, byte for byte.
+    let fx = Fixture::with_public("req-reqif-areas-registry-full", AREAS_SAMPLE);
+    let declared = "h-0 One\nh-0/h-1 Two\nh-0/h-1/r-1 Three\n";
+    fx.write(".req/areas", declared);
+    let out = sample_run(&fx, &["--write"]);
+    out.assert_code(0, "a registry that declares everything");
+    assert_eq!(fx.read(".req/areas"), declared);
+    assert_eq!(
+        out.line("registry:"),
+        "registry: 0 lines to add, 3 already declared"
+    );
+}
+
+#[test]
+fn a_registry_that_is_malformed_before_the_run_is_unverifiable_and_names_the_line() {
+    let fx = Fixture::with_public("req-reqif-areas-registry-bad", AREAS_SAMPLE);
+    fx.write(".req/areas", "h-0 Fine\nNot A Path x\n");
+    let before = fx.claims();
+    let out = sample_run(&fx, &["--write"]);
+    out.assert_code(3, "a malformed registry");
+    assert!(out.stderr.starts_with("[UNVERIFIABLE]"), "{}", out.stderr);
+    assert!(out.stderr.contains(".req/areas:2"), "{}", out.stderr);
+    assert_eq!(fx.claims(), before);
+    assert_eq!(fx.read(".req/areas"), "h-0 Fine\nNot A Path x\n");
+}
+
+/// Makes a directory writable again when dropped, so a failed test does not leave a fixture the
+/// harness cannot remove.
+#[cfg(unix)]
+struct Unlock(PathBuf);
+
+#[cfg(unix)]
+impl Drop for Unlock {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
+    }
+}
+
+/// The claims directory cannot be written: the registry is written first, so a failure then comes
+/// *after* it changed, and its earlier bytes must come back (or the file go, when the run made it).
+#[cfg(unix)]
+#[test]
+fn a_failure_after_the_registry_was_written_puts_it_back() {
+    use std::os::unix::fs::PermissionsExt;
+
+    for existing in [Some("# mine\nh-0 Custom\n"), None] {
+        let fx = Fixture::with_public("req-reqif-areas-restore", AREAS_SAMPLE);
+        if let Some(text) = existing {
+            fx.write(".req/areas", text);
+        }
+        let claims = fx.path().join("claims");
+        fs::set_permissions(&claims, fs::Permissions::from_mode(0o555)).expect("chmod");
+        let _unlock = Unlock(claims.clone());
+        assert!(
+            fs::write(claims.join(".probe"), "x").is_err(),
+            "this test needs a user the permission bits bind (not root): claims/ is still writable"
+        );
+        let out = sample_run(&fx, &["--write"]);
+        out.assert_code(3, "claims/ cannot be written");
+        assert!(out.stderr.starts_with("[UNVERIFIABLE]"), "{}", out.stderr);
+        assert!(
+            out.stderr.contains("cannot write"),
+            "the failure is the claims write, after the registry's: {}",
+            out.stderr
+        );
+        match existing {
+            Some(text) => assert_eq!(fx.read(".req/areas"), text, "its earlier bytes are back"),
+            None => assert!(
+                !fx.path().join(".req/areas").exists(),
+                "the file the run created is removed"
+            ),
+        }
+    }
+}
+
+#[test]
+fn the_corpus_the_run_leaves_loads_and_check_finds_no_undeclared_area() {
+    let fx = Fixture::with_public("req-reqif-areas-loads", AREAS_SAMPLE);
+    sample_run(&fx, &["--write"]).assert_code(0, "write");
+    req(fx.path(), &["canon"]).assert_code(0, "req canon on the corpus the run leaves");
+
+    let check = req(fx.path(), &["check", "--format", "json"]);
+    let doc: serde_json::Value = serde_json::from_str(&check.stdout).unwrap_or_else(|e| {
+        panic!(
+            "req check --format json ({e}):\n{}\n{}",
+            check.stdout, check.stderr
+        )
+    });
+    let step = doc["steps"]
+        .as_array()
+        .expect("steps")
+        .iter()
+        .find(|s| s["kind"] == "completeness")
+        .expect("a completeness step");
+    let undeclared = step["completeness"]["undeclared_area"]
+        .as_array()
+        .unwrap_or_else(|| panic!("undeclared_area is a list when `.req/areas` exists:\n{step}"));
+    assert!(undeclared.is_empty(), "{undeclared:?}");
+
+    // The area is what `req canon` shows, and only the filed drafts have one.
+    let canon = req(fx.path(), &["canon"]);
+    assert!(canon.stdout.contains("h-0/h-1/r-1"), "{}", canon.stdout);
+}
+
+#[cfg(unix)]
+#[test]
+fn areas_need_a_req_that_reports_claim_schema_3() {
+    let fx = Fixture::with_public("req-reqif-areas-old-req", AREAS_SAMPLE);
+    let bin = fake_req_reporting(&fx, "req.claim/2");
+    let before = fx.claims();
+    let out = import_in(
+        fx.path(),
+        &plus(base(&SAMPLE_ARGS), &["--areas", "--write"]),
+        &Env {
+            path_first: Some(&bin),
+            ..Env::default()
+        },
+    );
+    out.assert_code(3, "--areas against a req reporting req.claim/2");
+    assert!(
+        out.stderr.starts_with("[UNVERIFIABLE]")
+            && out.stderr.contains("req.claim/2")
+            && out.stderr.contains("req.claim/3"),
+        "{}",
+        out.stderr
+    );
+    assert_eq!(fx.claims(), before);
+    assert!(!fx.path().join(".req/areas").exists());
+
+    // Without the flag the same req is accepted, as before.
+    let out = import_in(
+        fx.path(),
+        &plus(base(&SAMPLE_ARGS), &["--write"]),
+        &Env {
+            path_first: Some(&bin),
+            ..Env::default()
+        },
+    );
+    out.assert_code(0, "no --areas against a req reporting req.claim/2");
+
+    // And a req that reports req.claim/3 takes the flag.
+    let fx = Fixture::with_public("req-reqif-areas-new-req", AREAS_SAMPLE);
+    let bin = fake_req_reporting(&fx, "req.claim/3");
+    let out = import_in(
+        fx.path(),
+        &plus(base(&SAMPLE_ARGS), &["--areas", "--write"]),
+        &Env {
+            path_first: Some(&bin),
+            ..Env::default()
+        },
+    );
+    out.assert_code(0, "--areas against a req reporting req.claim/3");
+}
+
+#[test]
+fn a_malformed_area_option_is_a_usage_error() {
+    let fx = Fixture::with_public("req-reqif-areas-usage", AREAS_SAMPLE);
+    let before = fx.claims();
+    for extra in [
+        vec!["--areas", "--area-depth", "0"],
+        vec!["--areas", "--area-depth", "-1"],
+        vec!["--areas", "--area-depth", "two"],
+        vec!["--areas", "--area-label-attr", ""],
+        vec!["--area-depth", "1"],
+        vec!["--area-label-attr", "ReqIF.ChapterName"],
+    ] {
+        let out = import(fx.path(), &plus(base(&SAMPLE_ARGS), &extra));
+        out.assert_code(2, &format!("{extra:?}"));
+    }
+    let out = import(
+        fx.path(),
+        &strings(&["--from", "module.reqif", "--list", "--areas"]),
+    );
+    out.assert_code(2, "--list takes no --areas");
+    assert_eq!(fx.claims(), before);
+
+    // The control: the same options, well formed, are a run.
+    let out = import(
+        fx.path(),
+        &plus(base(&SAMPLE_ARGS), &["--areas", "--area-depth", "1"]),
+    );
+    out.assert_code(0, "well-formed area options");
+}
+
+#[test]
+fn the_self_check_holds_the_key_rule() {
+    let bare = Fixture::new("req-reqif-areas-selfcheck");
+    let out = Command::new(python3())
+        .arg(script())
+        .arg("--self-check")
+        .current_dir(bare.path())
+        .env("PATH", "")
+        .env_remove("REQ_ROOT")
+        .output()
+        .expect("runs tools/reqif_import.py --self-check");
+    let out = outcome(&out);
+    out.assert_code(0, "--self-check");
+    let rows: Vec<&str> = out
+        .stdout
+        .lines()
+        .filter(|line| line.trim_start().starts_with("ok") && line.contains(" key: "))
+        .collect();
+    assert!(
+        rows.len() >= 6,
+        "the self-check holds the key rule's cases ({} rows):\n{}",
+        rows.len(),
+        out.stdout
+    );
+    assert!(out.stdout.contains("0 failure(s)"), "{}", out.stdout);
+}
