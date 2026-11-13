@@ -2827,6 +2827,109 @@ fn an_ancestor_that_names_no_object_files_nothing_and_is_counted_by_reason() {
     assert_adds_up(&out, "unnamed ancestor");
 }
 
+/// A several-places draft is filed nowhere, but each of its chains is walked as strictly as a filed
+/// one: an undeclared ancestor is exit 3, an identifier that leaves no key is exit 1, and nothing is
+/// written. A check that stops quietly is a check reported as a pass.
+#[test]
+fn every_chain_of_a_several_places_draft_is_walked_as_strictly_as_a_filed_one() {
+    // (name, objects to declare besides `r`, the two places' hierarchy nodes, the exit, a word in stderr)
+    let heading = |id: &str| obj(id, "T-NOTE", &[text_xhtml("AD-NTEXT", &div(id))]);
+    let cases: Vec<(&str, Vec<String>, String, i32, &str)> = vec![
+        (
+            "undeclared",
+            vec![heading("h")],
+            format!(
+                "{}{}",
+                node("h", &node("r", "")),
+                node("GHOST", &node("r", ""))
+            ),
+            3,
+            "GHOST",
+        ),
+        (
+            "keyless",
+            vec![heading("h"), heading("___")],
+            format!(
+                "{}{}",
+                node("h", &node("r", "")),
+                node("___", &node("r", ""))
+            ),
+            1,
+            "___",
+        ),
+        (
+            // `MISSING` is not declared, `missing` is: read leniently the two chains would stop
+            // at the first and meet nothing.
+            "case-differs",
+            vec![heading("H1"), heading("H2"), heading("missing")],
+            format!(
+                "{}{}",
+                node("H1", &node("MISSING", &node("r", ""))),
+                node("H2", &node("missing", &node("r", "")))
+            ),
+            3,
+            "MISSING",
+        ),
+    ];
+    for (name, headings, nodes, code, word) in cases {
+        let mut doc = Doc::new();
+        for object in headings {
+            doc = doc.object(object);
+        }
+        doc = doc.object(req_xhtml("r", &div("The r shall hold.")));
+        doc.specs = specification("S", &nodes);
+        let fx = synthetic_fixture(&format!("req-reqif-areas-strict-{name}"), &doc);
+        let before = fx.claims();
+        let out = import(fx.path(), &plus(base(&REQ_ARGS), &["--areas", "--write"]));
+        out.assert_code(code, &format!("a several-places draft, chain: {name}"));
+        assert!(out.stderr.contains(word), "{name}: {}", out.stderr);
+        assert_eq!(fx.claims(), before, "{name}: nothing is drafted");
+        assert!(
+            !fx.path().join(".req/areas").exists(),
+            "{name}: no registry"
+        );
+    }
+}
+
+#[test]
+fn an_unnamed_node_ends_a_chain_without_an_error() {
+    // SYNTHETIC: `r` is reached under an unnamed node and under a heading: no area, exit 0. A name
+    // past the unnamed node is never read, since no path exists beyond it.
+    let mut doc = Doc::new()
+        .object(obj("h", "T-NOTE", &[text_xhtml("AD-NTEXT", &div("H"))]))
+        .object(req_xhtml("r", &div("The r shall hold.")));
+    doc.specs = specification(
+        "S",
+        &format!(
+            "<SPEC-HIERARCHY IDENTIFIER=\"HN-unnamed\"><CHILDREN>{}</CHILDREN></SPEC-HIERARCHY>{}",
+            node("GHOST", &node("r", "")),
+            node("h", &node("r", ""))
+        ),
+    );
+    let fx = synthetic_fixture("req-reqif-areas-unnamed-ends", &doc);
+    let out = import(fx.path(), &plus(base(&REQ_ARGS), &["--areas", "--write"]));
+    out.assert_code(0, "an unnamed node ends its chain");
+    assert_eq!(out.line("no area:"), "no area: 1 (several places 1)");
+}
+
+#[test]
+fn the_hierarchy_line_counts_one_drafted_object_in_the_singular() {
+    // SYNTHETIC: one requirement under one heading.
+    let mut doc = Doc::new()
+        .object(obj("h", "T-NOTE", &[text_xhtml("AD-NTEXT", &div("H"))]))
+        .object(req_xhtml("r", &div("The r shall hold.")));
+    doc.specs = specification("S", &node("h", &node("r", "")));
+    let fx = synthetic_fixture("req-reqif-areas-singular", &doc);
+    let out = import(fx.path(), &plus(base(&REQ_ARGS), &["--areas"]));
+    out.assert_code(0, "one filed draft");
+    assert!(
+        out.line("hierarchy")
+            .ends_with("— the ancestors of 1 drafted object are carried as the area (--areas)"),
+        "{}",
+        out.line("hierarchy")
+    );
+}
+
 /// The claims write cleans up after anything that ends it, an interrupt included: a partial set
 /// of claims beside a registry that was rolled back is a half-run. Driven through the tool's own
 /// function, since a signal cannot be aimed at one write.
