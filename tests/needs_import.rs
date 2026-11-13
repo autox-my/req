@@ -1976,7 +1976,7 @@ fn the_corpus_root_is_named_or_the_working_directory_never_an_ancestor() {
 // --- (q) --areas: the document as the claim's area (ADR 0051 decision 2, task I-1) ----------------------------------------------
 //
 // Oracles are ADR 0051, `docs/specs/I-1-importer-areas.md` and a hand-written export,
-// `tests/fixtures/needs/areas.needs.json` (six `req` needs in four documents or none, and one `doc` need that
+// `tests/fixtures/needs/areas.needs.json` (six `req` needs, four of them carrying one of three distinct docnames, and one `doc` need that
 // is not selected). No expected value is read back from a run of the script.
 
 const AREAS_EXPORT: &str = "areas.needs.json";
@@ -2018,6 +2018,17 @@ fn report_line<'a>(out: &'a Outcome, prefix: &str) -> &'a str {
 }
 
 /// The claim a run drafted from the need `need_id`, by the report's own draft line.
+/// The registry lines a report proposes: the indented lines right after its `registry:` line,
+/// untrimmed, so a test can say what marks them.
+fn proposal_lines(out: &Outcome) -> Vec<&str> {
+    out.stdout
+        .lines()
+        .skip_while(|line| !line.starts_with("registry:"))
+        .skip(1)
+        .take_while(|line| line.starts_with("  "))
+        .collect()
+}
+
 fn claim_for(fx: &Fixture, out: &Outcome, need_id: &str) -> String {
     for line in out.stdout.lines() {
         if let Some(rest) = line.strip_prefix("draft ") {
@@ -2335,14 +2346,59 @@ fn a_write_creates_the_registry_in_source_order_and_a_dry_run_reports_the_same_l
     let out = areas_run(&fx, &["--write"]);
     out.assert_code(0, "write");
     assert_eq!(fx.read(".req/areas"), AREAS_REGISTRY);
-    assert_eq!(report_lines(&out, "  + "), report_lines(&dry, "  + "));
-    assert_eq!(report_lines(&out, "  + ").len(), 3);
+    assert_eq!(proposal_lines(&out), proposal_lines(&dry));
+    assert_eq!(proposal_lines(&out).len(), 3);
     assert!(
-        report_lines(&out, "  + ").contains(&"  + index index"),
+        proposal_lines(&out).contains(&"  index index"),
         "{}",
         out.stdout
     );
+    // Each proposed line is `<path> <label>` and pastes into `.req/areas` as it is.
+    let pasted: String = proposal_lines(&dry)
+        .iter()
+        .map(|line| format!("{}\n", line.trim()))
+        .collect();
+    assert_eq!(pasted, AREAS_REGISTRY);
 }
+
+/// An interrupt during the claims write removes what was written, as any other end of it does.
+#[test]
+fn an_interrupt_during_the_claims_write_removes_what_was_written() {
+    let fx = Fixture::new("req-needs-areas-interrupt");
+    let out = Command::new(python3())
+        .arg("-I")
+        .arg("-c")
+        .arg(INTERRUPT_SCRIPT)
+        .arg(script())
+        .arg(fx.path())
+        .output()
+        .expect("runs python3");
+    outcome(&out).assert_code(
+        0,
+        "the interrupt: 3 = no interrupt, 4 = a claim was left behind",
+    );
+}
+
+const INTERRUPT_SCRIPT: &str = r#"
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location("tool", sys.argv[1])
+tool = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tool)
+directory = pathlib.Path(sys.argv[2])
+
+class Interrupt:
+    def __fspath__(self):
+        raise KeyboardInterrupt
+
+first = directory / "REQ-0100.yml"
+try:
+    tool.write_claims([first, Interrupt()], ["a\n", "b\n"])
+except KeyboardInterrupt:
+    pass
+else:
+    sys.exit(3)
+sys.exit(4 if first.exists() else 0)
+"#;
 
 #[test]
 fn a_declared_path_is_left_alone_whatever_its_label_and_the_rest_is_appended() {

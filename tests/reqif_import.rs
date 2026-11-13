@@ -2583,6 +2583,17 @@ fn area_of(claim: &str) -> Option<&str> {
     field(claim, "area: ")
 }
 
+/// The registry lines a report proposes: the indented lines right after its `registry:` line,
+/// untrimmed, so a test can say what marks them.
+fn proposal_lines(out: &Outcome) -> Vec<&str> {
+    out.stdout
+        .lines()
+        .skip_while(|line| !line.starts_with("registry:"))
+        .skip(1)
+        .take_while(|line| line.starts_with("  "))
+        .collect()
+}
+
 fn fake_req_reporting(fx: &Fixture, reported: &str) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
     let bin = fx.path().join("fake-bin");
@@ -2700,8 +2711,162 @@ fn no_ancestor_and_several_places_are_filed_nowhere_and_counted_by_reason() {
         "no area: 3 (no ancestor 2, several places 1)"
     );
     assert_eq!(out.line("areas:"), "areas: 3 paths; filed 3 of 6 drafted");
+    // The hierarchy line names how many drafts the ancestors were carried for.
+    let hierarchy = out.line("hierarchy");
+    assert!(
+        hierarchy
+            .ends_with("— the ancestors of 3 drafted objects are carried as the area (--areas)"),
+        "{hierarchy}"
+    );
     assert_adds_up(&out, "areas, no area");
 }
+
+#[test]
+fn the_hierarchy_line_does_not_say_carried_when_no_draft_was_filed() {
+    // SYNTHETIC: the one requirement sits directly under the specification, so nothing is filed.
+    let mut doc = Doc::new().object(req_xhtml("r", &div("The r shall hold.")));
+    doc.specs = specification("S", &node("r", ""));
+    let fx = synthetic_fixture("req-reqif-areas-hierarchy-none", &doc);
+    let out = import(fx.path(), &plus(base(&REQ_ARGS), &["--areas"]));
+    out.assert_code(0, "nothing filed");
+    assert_eq!(out.line("areas:"), "areas: 0 paths; filed 0 of 1 drafted");
+    let hierarchy = out.line("hierarchy");
+    assert!(
+        hierarchy.ends_with("— the structure is not carried") && !hierarchy.contains("area"),
+        "{hierarchy}"
+    );
+}
+
+#[test]
+fn a_collision_above_a_draft_that_is_filed_nowhere_is_still_a_problem() {
+    // SYNTHETIC: `r` is reached twice (so it has no area), once under `Sec.A` and once under
+    // `sec_a`, two identifiers that make one key. Nothing is filed, and it is exit 1 all the same.
+    let mut doc = Doc::new()
+        .object(obj("Sec.A", "T-NOTE", &[text_xhtml("AD-NTEXT", &div("A"))]))
+        .object(obj("sec_a", "T-NOTE", &[text_xhtml("AD-NTEXT", &div("B"))]))
+        .object(req_xhtml("r", &div("The r shall hold.")));
+    doc.specs = specification(
+        "S",
+        &format!(
+            "{}{}",
+            node("Sec.A", &node("r", "")),
+            node("sec_a", &node("r", ""))
+        ),
+    );
+    let fx = synthetic_fixture("req-reqif-areas-collision-unfiled", &doc);
+    let before = fx.claims();
+    let out = import(fx.path(), &plus(base(&REQ_ARGS), &["--areas", "--write"]));
+    out.assert_code(1, "a collision above an unfiled draft");
+    assert!(
+        out.stderr.contains("Sec.A") && out.stderr.contains("sec_a"),
+        "names both identifiers: {}",
+        out.stderr
+    );
+    assert_eq!(fx.claims(), before, "nothing is drafted");
+    assert!(
+        !fx.path().join(".req/areas").exists(),
+        "no registry is written"
+    );
+
+    // The depth cut applies to this check as to the rest: the same two identifiers one level
+    // down, with `--area-depth 1` stopping above them, collide nowhere.
+    let mut doc = Doc::new()
+        .object(obj("top", "T-NOTE", &[text_xhtml("AD-NTEXT", &div("T"))]))
+        .object(obj("Sec.A", "T-NOTE", &[text_xhtml("AD-NTEXT", &div("A"))]))
+        .object(obj("sec_a", "T-NOTE", &[text_xhtml("AD-NTEXT", &div("B"))]))
+        .object(req_xhtml("r", &div("The r shall hold.")));
+    doc.specs = specification(
+        "S",
+        &node(
+            "top",
+            &format!(
+                "{}{}",
+                node("Sec.A", &node("r", "")),
+                node("sec_a", &node("r", ""))
+            ),
+        ),
+    );
+    let fx = synthetic_fixture("req-reqif-areas-collision-cut", &doc);
+    let out = import(
+        fx.path(),
+        &plus(base(&REQ_ARGS), &["--areas", "--area-depth", "1"]),
+    );
+    out.assert_code(0, "the colliding identifiers are below the depth");
+    let full = import(fx.path(), &plus(base(&REQ_ARGS), &["--areas"]));
+    full.assert_code(1, "without the cut they collide");
+}
+
+#[test]
+fn an_ancestor_that_names_no_object_files_nothing_and_is_counted_by_reason() {
+    // SYNTHETIC: a hierarchy node with no SPEC-OBJECT-REF above `r`; `s` sits under a real heading.
+    let mut doc = Doc::new()
+        .object(obj("h", "T-NOTE", &[text_xhtml("AD-NTEXT", &div("H"))]))
+        .object(req_xhtml("r", &div("The r shall hold.")))
+        .object(req_xhtml("s", &div("The s shall hold.")));
+    doc.specs = specification(
+        "S",
+        &format!(
+            "<SPEC-HIERARCHY IDENTIFIER=\"HN-unnamed\"><CHILDREN>{}</CHILDREN></SPEC-HIERARCHY>{}",
+            node("r", ""),
+            node("h", &node("s", ""))
+        ),
+    );
+    let fx = synthetic_fixture("req-reqif-areas-unnamed", &doc);
+    let out = import(fx.path(), &plus(base(&REQ_ARGS), &["--areas", "--write"]));
+    out.assert_code(0, "an ancestor that names no object is not exit 3");
+    let r = claim_of(&fx, &out, "r");
+    assert_eq!(schema_of(&r), "schema: req.claim/2", "{r}");
+    assert!(area_of(&r).is_none(), "{r}");
+    assert_eq!(
+        area_of(&claim_of(&fx, &out, "s")),
+        Some("area: h"),
+        "{}",
+        out.stdout
+    );
+    assert_eq!(out.line("no area:"), "no area: 1 (unnamed ancestor 1)");
+    assert_adds_up(&out, "unnamed ancestor");
+}
+
+/// The claims write cleans up after anything that ends it, an interrupt included: a partial set
+/// of claims beside a registry that was rolled back is a half-run. Driven through the tool's own
+/// function, since a signal cannot be aimed at one write.
+#[test]
+fn an_interrupt_during_the_claims_write_removes_what_was_written() {
+    let fx = Fixture::new("req-reqif-areas-interrupt");
+    let out = Command::new(python3())
+        .arg("-I")
+        .arg("-c")
+        .arg(INTERRUPT_SCRIPT)
+        .arg(script())
+        .arg(fx.path())
+        .output()
+        .expect("runs python3");
+    outcome(&out).assert_code(
+        0,
+        "the interrupt: 3 = no interrupt, 4 = a claim was left behind",
+    );
+}
+
+const INTERRUPT_SCRIPT: &str = r#"
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location("tool", sys.argv[1])
+tool = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tool)
+directory = pathlib.Path(sys.argv[2])
+
+class Interrupt:
+    def __fspath__(self):
+        raise KeyboardInterrupt
+
+first = directory / "REQ-0100.yml"
+try:
+    tool.write_claims([first, Interrupt()], ["a\n", "b\n"])
+except KeyboardInterrupt:
+    pass
+else:
+    sys.exit(3)
+sys.exit(4 if first.exists() else 0)
+"#;
 
 #[test]
 fn an_object_in_two_specifications_has_no_area_and_the_reader_picks_no_place() {
@@ -2839,13 +3004,12 @@ fn the_label_comes_from_the_label_attribute_then_the_id_attribute_then_the_segme
     let fx = Fixture::with_public("req-reqif-areas-label-a", AREAS_SAMPLE);
     let out = sample_run(&fx, &[]);
     out.assert_code(0, "label, both flags");
-    let added: Vec<&str> = out.lines("  + ");
     assert_eq!(
-        added,
+        proposal_lines(&out),
         vec![
-            "  + h-0/h-1 Démarrage 起動",
-            "  + h-0/h-1/r-1 SW-1",
-            "  + h-0 Diagnostics"
+            "  h-0/h-1 Démarrage 起動",
+            "  h-0/h-1/r-1 SW-1",
+            "  h-0 Diagnostics"
         ],
         "{}",
         out.stdout
@@ -2965,7 +3129,13 @@ fn a_write_creates_the_registry_in_source_order_and_a_dry_run_reports_the_same_l
     out.assert_code(0, "write");
     // The hierarchy's reading order (R-1's chain, R-2's, then R-3's), not the file's object order.
     assert_eq!(fx.read(".req/areas"), SAMPLE_REGISTRY);
-    assert_eq!(out.lines("  + "), dry.lines("  + "));
+    assert_eq!(proposal_lines(&out), proposal_lines(&dry));
+    // Each proposed line is `<path> <label>` and pastes into `.req/areas` as it is.
+    let pasted: String = proposal_lines(&dry)
+        .iter()
+        .map(|line| format!("{}\n", line.trim()))
+        .collect();
+    assert_eq!(pasted, SAMPLE_REGISTRY);
     assert_adds_up(&out, "registry created");
 }
 
