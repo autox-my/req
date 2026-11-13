@@ -21,7 +21,7 @@
 //! * **No flag narrows the steps.** `PASS` is printed only when every declared step ran and passed.
 
 use crate::canon::RULES_V;
-use crate::completeness::{self, COMPLETENESS, Findings, Policy};
+use crate::completeness::{self, AREAS, COMPLETENESS, Findings, Policy};
 use crate::format::{self, Format};
 use crate::gate::{self, Evaluation, GateDocument, Outcome, TestEvidence};
 use crate::satisfy;
@@ -407,27 +407,24 @@ fn projection_step(path: &str, root: &Path) -> Step {
 }
 
 /// The completeness step (ADR 0039): structural omissions across the declared releases, the signed
-/// Baselines and the claims. An unusable `.req/completeness` is a list step's 3, never a pass.
+/// Baselines and the claims. An unusable `.req/completeness` or `.req/areas` is a list step's 3, never
+/// a pass.
 fn completeness_step(
     root: &Path,
     releases: &[Context],
     policy: &Policy,
-    listing: &Listing,
+    listings: [(&str, &Listing); 2],
 ) -> Step {
-    if let Listing::Unreadable(reason) = listing {
-        return Step::new(
-            "list",
-            COMPLETENESS.to_string(),
-            3,
-            vec![reason.clone()],
-            None,
-        );
+    for (name, listing) in listings {
+        if let Listing::Unreadable(reason) = listing {
+            return Step::new("list", name.to_string(), 3, vec![reason.clone()], None);
+        }
     }
     match completeness::evaluate(root, releases, policy) {
         Ok(findings) => {
             let mut step = Step::new(
                 "completeness",
-                Findings::label_for(policy.need_design),
+                Findings::label_for(policy),
                 findings.exit(),
                 findings.notes(),
                 None,
@@ -577,6 +574,7 @@ pub fn run(args: &[String], root: &Path) -> i32 {
     let variants_listing = read_list(root, VARIANTS);
     let projections_listing = read_list(root, PROJECTIONS);
     let completeness_listing = read_list(root, COMPLETENESS);
+    let areas_listing = read_list(root, AREAS);
     let variants = match &variants_listing {
         Listing::Text(text) => Some(parse_variants(text)),
         _ => None,
@@ -606,6 +604,14 @@ pub fn run(args: &[String], root: &Path) -> i32 {
     {
         match completeness::parse_policy(text, &known) {
             Ok(parsed) => policy = parsed,
+            Err(errors) => malformed.extend(errors),
+        }
+    }
+    // `.req/areas` (ADR 0051) is validated on its own, as the other lists are: a malformed line is
+    // named `<file>:<line>` before any step runs. An unreadable one is the completeness step's 3.
+    if let Listing::Text(text) = &areas_listing {
+        match completeness::parse_areas(text) {
+            Ok(entries) => policy.areas = Some(entries),
             Err(errors) => malformed.extend(errors),
         }
     }
@@ -671,7 +677,10 @@ pub fn run(args: &[String], root: &Path) -> i32 {
         root,
         &releases,
         &policy,
-        &completeness_listing,
+        [
+            (COMPLETENESS, &completeness_listing),
+            (AREAS, &areas_listing),
+        ],
     ));
 
     let mut projections_pinned = true;

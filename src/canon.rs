@@ -60,7 +60,20 @@ pub const RULES_V: u32 = 9;
 /// its bytes do not change, so the bump moves no address — the dogfood list and the signed
 /// Baseline are the proof. A `req.claim/1` file is a migration candidate
 /// (`tools/migrate_claims.py`).
-pub const CLAIM_SCHEMA_V: u32 = 2;
+///
+/// 2 -> 3 (ADR 0051): `req.claim/3` is `req.claim/2` plus the optional `area` (where a claim is
+/// filed), outside identity and in no attested hash, so the bump moves no address either. Unlike the
+/// bumps before it, `/2` is **not** a migration candidate: it is on [`READS_AS_IS`], which a `/3`
+/// build loads as a `/3` file with no area. Only a `/3` file may carry `area`.
+pub const CLAIM_SCHEMA_V: u32 = 3;
+/// The formats older than [`CLAIM_SCHEMA_V`] that this build **loads as they are** (ADR 0051 decision
+/// 6): no migration message, nothing rewritten, no address moved. Stated once, as data — a later
+/// format that keeps an earlier one readable adds its number here, and no judgement is re-derived.
+/// Every older format not listed is a migration candidate ([`ClaimSchema::Older`]).
+pub const READS_AS_IS: &[u32] = &[2];
+/// The schema `tools/migrate_claims.py` writes. It migrates `req.claim/1` to `req.claim/2` and stops
+/// there, because `/2` is on [`READS_AS_IS`]: a build that reads `/2` as it is needs no second hop.
+pub const MIGRATION_TARGET: &str = "req.claim/2";
 /// The `schema:` identifier's prefix: the value is `req.claim/<version>`. Split from the
 /// version so the version is stated once, as a number, and the identifier is derived.
 pub const CLAIM_SCHEMA_PREFIX: &str = "req.claim/";
@@ -82,8 +95,12 @@ pub fn claim_schema() -> String {
 pub enum ClaimSchema {
     /// The schema this build reads and writes.
     Current,
-    /// A schema this build no longer writes: a migration candidate.
+    /// A schema this build no longer writes and does not read as it is: a migration candidate.
     Older(u32),
+    /// An older schema this build loads as it is ([`READS_AS_IS`]): nothing to report, nothing to
+    /// migrate. The file is judged under its own declaration — it may not carry a key a later format
+    /// added ([`parse_claim`]).
+    ReadAsIs(u32),
     /// A schema newer than this build's: the reader is old, the file is not wrong.
     Newer(u32),
     /// Not the identifier this build's contract defines — no `req.claim/<n>` shape, or a numeral
@@ -97,7 +114,8 @@ pub fn classify_claim_schema(declared: &str) -> ClaimSchema {
     classify_claim_schema_at(declared, CLAIM_SCHEMA_V)
 }
 
-/// The same judgement against an explicitly given build version.
+/// The same judgement against an explicitly given build version. An older declaration is
+/// [`ClaimSchema::ReadAsIs`] when [`READS_AS_IS`] lists it, and a migration candidate otherwise.
 ///
 /// The build version is a parameter for the same reason [`crate::baseline::rules_mismatch`]'s
 /// direction is reachable from a test: the `Older` arm is what a file written before the first
@@ -118,6 +136,9 @@ pub fn classify_claim_schema_at(declared: &str, build_v: u32) -> ClaimSchema {
     }
     match declared_v.cmp(&build_v) {
         std::cmp::Ordering::Equal => ClaimSchema::Current,
+        std::cmp::Ordering::Less if READS_AS_IS.contains(&declared_v) => {
+            ClaimSchema::ReadAsIs(declared_v)
+        }
         std::cmp::Ordering::Less => ClaimSchema::Older(declared_v),
         std::cmp::Ordering::Greater => ClaimSchema::Newer(declared_v),
     }
@@ -136,12 +157,13 @@ impl ClaimSchema {
     pub fn reason(&self, declared: &str) -> Option<String> {
         let current = claim_schema();
         match self {
-            ClaimSchema::Current => None,
+            ClaimSchema::Current | ClaimSchema::ReadAsIs(_) => None,
             ClaimSchema::Older(_) => Some(format!(
                 "declares schema {declared}, which predates {current}: the claim was NOT JUDGED — \
                  the file is a migration candidate, and a format bump moves no address \
                  (docs/claim-format.md). Migrate it to {current} with tools/migrate_claims.py \
-                 (a dry run by default; `--write` rewrites the file)"
+                 (a dry run by default; `--write` rewrites the file; it writes {MIGRATION_TARGET}, \
+                 which this build loads as it is)"
             )),
             ClaimSchema::Newer(_) => Some(format!(
                 "declares schema {declared}, newer than the {current} this build writes: the claim \
@@ -1876,7 +1898,7 @@ pub fn evaluate_pins(pins: &crate::model::Pins, form: &CanonicalForm) -> Vec<Pin
         .collect()
 }
 
-/// Parse one claim file's text under this build's contract (`req.claim/2`), in the order a
+/// Parse one claim file's text under this build's contract (`req.claim/3`, and `/2` as it is), in the order a
 /// reader needs the answers:
 ///
 /// 1. the declared `schema:` — a file of another format is NOT JUDGED
@@ -1885,7 +1907,9 @@ pub fn evaluate_pins(pins: &crate::model::Pins, form: &CanonicalForm) -> Vec<Pin
 ///    not fifteen key errors);
 /// 2. a removed `req.claim/1` key, **named** — never silently ignored;
 /// 3. the strict [`crate::model::ClaimFile`] (a misspelled key, a missing `relations:`);
-/// 4. the `pins:` values and the `tests:` declaration.
+/// 4. the `pins:` values and the `tests:` declaration;
+/// 5. the `area`: only a `req.claim/3` file may carry it (ADR 0051 decision 6), and its value is a
+///    path of stable keys ([`crate::model::validate_area`]).
 ///
 /// The one parse every reader calls — the corpus loader and `compare`'s two paths — so the
 /// judgement has one home.
@@ -1902,7 +1926,10 @@ pub fn parse_claim(text: &str) -> Result<crate::model::ClaimFile, String> {
     {
         return Err(reason);
     }
-    if let Ok(keys) = yaml_serde::from_str::<BTreeMap<String, serde::de::IgnoredAny>>(text) {
+    // The file's keys, whatever their values: a key is carried or it is not, and a null value does not
+    // un-carry it (removed v1 keys and `area` are both judged on presence).
+    let keys = yaml_serde::from_str::<BTreeMap<String, serde::de::IgnoredAny>>(text).ok();
+    if let Some(keys) = &keys {
         let removed: Vec<String> = crate::model::REMOVED_V1_KEYS
             .iter()
             .filter(|key| keys.contains_key(**key))
@@ -1910,7 +1937,7 @@ pub fn parse_claim(text: &str) -> Result<crate::model::ClaimFile, String> {
             .collect();
         if !removed.is_empty() {
             return Err(format!(
-                "carries {}, removed in {current} (ADR 0022): the parse is derived from \
+                "carries {}, removed in {removed_in} (ADR 0022): the parse is derived from \
                  `statement` when the claim is loaded and nothing derived is stored. A removed \
                  `modality`, `subject`, `operator`, `value` or `unit` can be stated as a pin under \
                  `pins:`. `conditions`, `unstructured`, `canonical` and `address` are derived: \
@@ -1919,7 +1946,7 @@ pub fn parse_claim(text: &str) -> Result<crate::model::ClaimFile, String> {
                  and `req canon` lints any the parse refused to hold (`uncovered_content`). \
                  `tools/migrate_claims.py` migrates a whole `req.claim/1` file",
                 removed.join(", "),
-                current = claim_schema()
+                removed_in = crate::model::REMOVED_V1_KEYS_IN
             ));
         }
     }
@@ -1932,6 +1959,32 @@ pub fn parse_claim(text: &str) -> Result<crate::model::ClaimFile, String> {
     // identity: an empty or duplicated id is refused here, where the file can be named,
     // rather than becoming a confusing gate finding later (ADR 0019).
     crate::model::validate_tests(&claim.tests, claim.evidence)?;
+    let declared_v = claim
+        .schema
+        .strip_prefix(CLAIM_SCHEMA_PREFIX)
+        .and_then(|numeral| numeral.parse::<u32>().ok())
+        .unwrap_or(0);
+    // A `/2` file carrying the KEY `area` is refused as an unknown key is: by name, and with the one
+    // remedy — judged on the key, not its value, because an older `/2` build rejects `area:`,
+    // `area: null` and `area: ~` alike, and loading one silently as "no area" would make the same
+    // file mean two things. Accepting it inside `/2` would let an older build call a valid file
+    // broken (a parse error) where it should say the format is newer (ADR 0051, rejected alternative).
+    if declared_v < crate::model::AREA_SINCE_FORMAT
+        && keys.as_ref().is_some_and(|keys| keys.contains_key("area"))
+    {
+        return Err(format!(
+            "carries `area`, which needs the `req.claim/{v}` declaration: this file declares \
+             {declared} (ADR 0051). Declare `schema: req.claim/{v}` to file {id} by area, or \
+             remove the key",
+            v = crate::model::AREA_SINCE_FORMAT,
+            declared = claim.schema,
+            id = claim.claim_id
+        ));
+    }
+    if let Some(area) = &claim.area {
+        crate::model::validate_area(area)
+            .map_err(|e| format!("{} has a malformed `area`: {e}", claim.claim_id))?;
+    }
     Ok(claim)
 }
 
@@ -2213,7 +2266,7 @@ pub fn run_claim_diagnostics_with(root: &std::path::Path, fail_on_flag: bool) ->
                 dash(form.unit.clone().filter(|u| u != "none")),
             )
         };
-        println!(
+        print!(
             "{:<9} {:<12} {:<9} {:<12} op {:<4} value {:<6} unit {:<5} lints {}",
             loaded.claim.claim_id,
             if derived.unstructured() {
@@ -2232,6 +2285,12 @@ pub fn run_claim_diagnostics_with(root: &std::path::Path, fail_on_flag: bool) ->
                 lints.join(",")
             },
         );
+        // Where the claim is filed (ADR 0051), at the end of its own line: placement, never part of
+        // the parse.
+        if let Some(area) = &loaded.claim.area {
+            print!(" area {area}");
+        }
+        println!();
         // What the row cannot hold: the words a lint names, and the identity-bearing parts of the
         // form (a condition or qualifier that reached the address, or did not).
         if !derived.unstructured() {
@@ -2261,7 +2320,7 @@ pub fn run_claim_diagnostics_with(root: &std::path::Path, fail_on_flag: bool) ->
         "claims: {} ({unstructured} unstructured); pins: {pins} on {pinned_claims} claim(s), \
          {flagged} flagged; lints on {linted} claim(s) \
          (diagnostics: the parse is derived from `statement` at load and stored nowhere \
-         (req.claim/2); a pin agrees or is a flag — a contradiction, or a slot the parse does \
+         (req.claim/3); a pin agrees or is a flag — a contradiction, or a slot the parse does \
          not carry; `req canon` reports and fails on a flag only with `--fail-on-flag`; the check that gates a \
          release is `req gate` (pins_hold))",
         claims.len()

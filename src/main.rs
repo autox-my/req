@@ -188,7 +188,7 @@ usage: req canon [--fail-on-flag]
 
 Prints, per claim, the parse its `statement` derives — structured or unstructured, modality,
 subject, operator, value, unit, and the lints the canonicalizer raised — and each pin's
-verdict. Nothing derived is stored in a claim file (`req.claim/2`, ADR 0022): the parse, the
+verdict. Nothing derived is stored in a claim file (`req.claim/3`, ADR 0022): the parse, the
 canonical form and the address are computed when the claim is loaded, so there is nothing to
 fill and nothing to verify; `--fill` and `--verify` are removed and answer a usage error.
 
@@ -198,9 +198,15 @@ to. It agrees, or it is a flag: a *contradiction* (the parse says something else
 flagged pin moves no address — it reports here, and `req gate` fails on it (`pins_hold`). A
 file whose declared `schema:` is not the one this build writes (`req --version` reports it as
 `claim_schema`) is NOT JUDGED: an older one is a migration candidate
-(`tools/migrate_claims.py`), a newer one is a question for a build that writes it, and a value
-of no `req.claim/<n>` shape is a broken file. A `req.claim/2` file carrying a removed
-`req.claim/1` key is a parse error that names the key.
+(`tools/migrate_claims.py`) — except `req.claim/2`, which this build loads as it is, with no area —
+a newer one is a question for a build that writes it, and a value of no `req.claim/<n>` shape is a
+broken file. A `req.claim/2` file carrying a removed `req.claim/1` key is a parse error that names
+the key, and so is one carrying `area`, which needs the `req.claim/3` declaration.
+
+A claim's optional `area` (ADR 0051: where it is filed, a path of stable keys such as
+`diagnostics/startup`, each segment `[a-z0-9][a-z0-9-]*`) is printed at the end of its line when it has
+one. It is placement only: it enters no parse, address or Baseline, and a malformed one is a load error
+naming the claim and the key.
 
 `--fail-on-flag` is the opt-in for the window between \"pinned\" and \"every claim has a linked
 test\", when `req gate` cannot yet be green: the output is unchanged, and the exit is 1 when any
@@ -368,7 +374,8 @@ Prints the spec view for a selection: every applying claim's address, modality, 
 selector and outgoing relations, with the undecided claims in their own section and the
 outside-the-selection ones named — a claim withdrawn by a successor that applies (`supersedes`,
 ADR 0049) reads `does not apply (superseded by REQ-X)`, and `--format json` rows carry
-`superseded_by`. It is a projection: it reads claims, never writes one.
+`superseded_by` and `area` (where the claim is filed, ADR 0051; `null` when it names none — the text view
+does not show it). It is a projection: it reads claims, never writes one.
 
 `--out <path>` commits the projection: the same view, preceded by an HTML-comment header naming
 the generator, rules_v, selection, applying-claim count and an identity digest over the sorted
@@ -410,8 +417,8 @@ it must name the selection the header records or it is a second question (3).
 
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 matrix as a `req.trace/1` document on stdout: schema, generator, `rules_v`, the selection, the
-nodes (every claim, with its statement, modality, address, applicability and the successors that
-withdrew it), the edges, the derived incoming edges and the findings. It is stdout only —
+nodes (every claim, with its statement, modality, address, applicability, the successors that
+withdrew it and the `area` it is filed under, `null` when none — ADR 0051), the edges, the derived incoming edges and the findings. It is stdout only —
 `--out`/`--check` are text projections, and pairing either with `--format json` is a usage error
 (exit 2). `examples/graph/README.md` turns that document into a graph page.
 
@@ -558,15 +565,19 @@ signature beside it, `.minisig` or a party's `.<key-id>.minisig`; verifying it i
 with no signed Baseline is 3. `unrelated` — a claim with no relation in or out — is listed and changes
 nothing, unless `.req/completeness` says `strict unrelated` (then 1). `need design` in that file adds
 `unsatisfied` (ADR 0040) — a claim a release applies that no design element declares `req-satisfies:`
-for — which is 3. That optional file lists, one per line, root claim ids `unrelated` spares,
-`strict unrelated` and `need design`; an unknown word or an id the corpus does not hold is exit 2 naming
-`<file>:<line>`. A malformed `.req/design` line is exit 2 too. A claim a line leaves undecided is that gate's 3, never named
+for — which is 3. `undeclared_area` (ADR 0051) names each claim whose `area` the repository's optional
+`.req/areas` does not declare (one `<path> <label>` per line, the label any text, `#` at the start of a
+line a comment): listed and changing nothing, unless `.req/completeness` says `strict areas` (then 1).
+With no `.req/areas` there is no such finding; a malformed path, a path declared twice or an empty label
+is exit 2 naming `<file>:<line>`, every bad line in one run. `.req/completeness` lists, one per line,
+root claim ids `unrelated` spares, `strict unrelated`, `strict areas` and `need design`; an unknown
+word or an id the corpus does not hold is exit 2 naming `<file>:<line>`. A malformed `.req/design` line is exit 2 too. A claim a line leaves undecided is that gate's 3, never named
 here. Nothing says the requirements are complete: req holds nothing to be complete against.
 
 `verdict: PASS` is printed only when every declared step ran and passed. There is no `--only`,
 no `--skip` and no flag that narrows what is examined. `--format json` prints one `req.check/1`
 document on stdout — the folded verdict and, per step, its kind, its line or path, its exit and,
-for a gate step, the whole `req.gate/2` document, and for the completeness step its lists (three, and `unsatisfied` with `need design`) —
+for a gate step, the whole `req.gate/2` document, and for the completeness step its lists (three, `undeclared_area` with `.req/areas`, and `unsatisfied` with `need design`) —
 with the same fold and the same exit as the text.
 
 exit: 0 every declared step ran and passed; 1 a defect in any step (a gate that fails, a stale or
@@ -768,7 +779,7 @@ Decision signature that cannot be judged), 2 usage.
 const INIT_HELP: &str = "\
 usage: req init
 
-Creates a corpus in the current directory: a `req.claim/2` starter claim (authored fields and
+Creates a corpus in the current directory: a `req.claim/3` starter claim (authored fields and
 pins, nothing derived) read back through the loader every command uses with its pins held, the
 claims README, and the subject registry. It
 refuses rather than overwrite an existing corpus, and it reads no root — it creates one, so it

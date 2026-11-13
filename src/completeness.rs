@@ -1,6 +1,6 @@
 //! Structural omissions (ADR 0039): what req can prove is missing from files it already reads.
 //!
-//! Three findings (a fourth with `need design`), each naming the claim, and never a verdict that the requirements are complete —
+//! Three findings (a fourth with `need design`, a fifth with `.req/areas`), each naming the claim, and never a verdict that the requirements are complete —
 //! req holds no hazard list, no stakeholder needs and no standard's clauses, so it has nothing to be
 //! complete *against*:
 //!
@@ -14,6 +14,9 @@
 //!   that signature verifies stays `req baseline --verify`'s answer (the gate runs it).
 //! * **`unrelated`** — the claim has no outgoing and no derived incoming relation. Reported, and FAIL
 //!   only when `.req/completeness` says `strict unrelated`; a claim listed there as a root is exempt.
+//! * **`undeclared_area`** (only with `.req/areas`, ADR 0051) — the claim names an area the registry does not
+//!   declare. Reported, and FAIL only when `.req/completeness` says `strict areas`: authoring stays
+//!   friction-free (ADR 0006), so a path nobody declared is a finding and never a load error.
 //! * **`unsatisfied`** (only with `need design`, ADR 0040) — the claim applies in a release line and no
 //!   design element declares `req-satisfies:` for it: **UNVERIFIABLE**. A repository policy rather than
 //!   a per-claim field, so no claim-schema change.
@@ -30,24 +33,91 @@ use std::path::Path;
 /// The optional policy file, repository-relative.
 pub const COMPLETENESS: &str = ".req/completeness";
 
+/// The optional area registry, repository-relative (ADR 0051 decision 3).
+pub const AREAS: &str = ".req/areas";
+
 /// Where the committed Baselines live.
 const BASELINES: &str = "baselines";
 
 /// The number of checks the step runs, printed so a pass says what it examined.
 const CHECKS: usize = 3;
 
-/// `.req/completeness`, validated: the declared roots, whether `unrelated` is promoted to FAIL and
-/// whether every applying claim needs a design element (`need design`, ADR 0040).
+/// One line of `.req/areas`: an area path and the reader-facing label for it, in any language.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AreaEntry {
+    pub path: String,
+    pub label: String,
+}
+
+/// Validate `.req/areas` (ADR 0051 decision 3). Grammar as the other `.req/` lists: a trailing CR is
+/// stripped and a blank line is skipped. A line is `<path> <label>`: the path is the claim key's grammar
+/// ([`crate::model::validate_area`], one rule with one home), the label is the rest of the line,
+/// trimmed, never empty. A line **starting** with `#` is a comment; a `#` inside a label is part of the
+/// label (a name such as `C# support` is not cut short). A malformed path, an empty label and a path
+/// declared twice are refused naming `<file>:<line>`, every bad line in one run. Line order is the
+/// reading order, and a parent need not be declared.
+pub fn parse_areas(text: &str) -> Result<Vec<AreaEntry>, Vec<String>> {
+    let mut entries: Vec<AreaEntry> = Vec::new();
+    let mut first_seen: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    let mut errors = Vec::new();
+    for (index, raw) in text.split('\n').enumerate() {
+        let number = index + 1;
+        let line = raw.strip_suffix('\r').unwrap_or(raw).trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let (path, label) = match line.split_once([' ', '\t']) {
+            Some((path, rest)) => (path, rest.trim()),
+            None => (line, ""),
+        };
+        if let Err(reason) = crate::model::validate_area(path) {
+            errors.push(format!("{AREAS}:{number}: {reason}"));
+            continue;
+        }
+        if label.is_empty() {
+            errors.push(format!(
+                "{AREAS}:{number}: `{path}` has no label: a line is `<path> <label>`, and the label is \
+                 the name a reader sees (in any language), never the key"
+            ));
+            continue;
+        }
+        if let Some(first) = first_seen.get(path) {
+            errors.push(format!(
+                "{AREAS}:{number}: `{path}` is declared twice (first at {AREAS}:{first}): one line per \
+                 area"
+            ));
+            continue;
+        }
+        first_seen.insert(path.to_string(), number);
+        entries.push(AreaEntry {
+            path: path.to_string(),
+            label: label.to_string(),
+        });
+    }
+    if errors.is_empty() {
+        Ok(entries)
+    } else {
+        Err(errors)
+    }
+}
+
+/// `.req/completeness`, validated: the declared roots, whether `unrelated` is promoted to FAIL,
+/// whether every applying claim needs a design element (`need design`, ADR 0040) and whether an
+/// undeclared area is a FAIL (`strict areas`, ADR 0051). `areas` is the validated `.req/areas`, read
+/// beside it by the caller; `None` when the repository declares none, which is no finding at all.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Policy {
     pub roots: BTreeSet<String>,
     pub strict_unrelated: bool,
     pub need_design: bool,
+    pub strict_areas: bool,
+    pub areas: Option<Vec<AreaEntry>>,
 }
 
 /// Validate `.req/completeness` against the corpus's ids. Grammar as the other `.req/` lists: `#`
 /// starts a comment, a blank line is skipped, a trailing CR is stripped. A line is either one claim
-/// id (a root), `strict unrelated` or `need design`. Anything else — an unknown word, an id the corpus
+/// id (a root), `strict unrelated`, `strict areas` or `need design`. Anything else — an unknown word, an id the corpus
 /// does not hold, two ids on one line — is refused naming `<file>:<line>`, every bad line in one run.
 pub fn parse_policy(text: &str, known: &BTreeSet<String>) -> Result<Policy, Vec<String>> {
     let mut policy = Policy::default();
@@ -63,17 +133,18 @@ pub fn parse_policy(text: &str, known: &BTreeSet<String>) -> Result<Policy, Vec<
         match words.as_slice() {
             [] => {}
             ["strict", "unrelated"] => policy.strict_unrelated = true,
+            ["strict", "areas"] => policy.strict_areas = true,
             ["need", "design"] => policy.need_design = true,
             [id] if known.contains(*id) => {
                 policy.roots.insert((*id).to_string());
             }
             [id] => errors.push(format!(
                 "{COMPLETENESS}:{number}: `{id}` is neither a claim id this corpus holds nor a known \
-                 word: a line is one root claim id, `strict unrelated` or `need design`"
+                 word: a line is one root claim id, `strict unrelated`, `strict areas` or `need design`"
             )),
             many => errors.push(format!(
                 "{COMPLETENESS}:{number}: `{}` is not a line this file takes: one root claim id per \
-                 line, `strict unrelated` or `need design`",
+                 line, `strict unrelated`, `strict areas` or `need design`",
                 many.join(" ")
             )),
         }
@@ -85,6 +156,13 @@ pub fn parse_policy(text: &str, known: &BTreeSet<String>) -> Result<Policy, Vec<
     }
 }
 
+/// A claim naming an area the registry does not declare (ADR 0051): the claim and the area it names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UndeclaredArea {
+    pub claim_id: String,
+    pub area: String,
+}
+
 /// What the step found. Every list is sorted by claim id and holds each id once.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
 pub struct Findings {
@@ -93,6 +171,13 @@ pub struct Findings {
     pub unrelated: Vec<String>,
     /// Whether `unrelated` decides the verdict (`strict unrelated`) or is reported only.
     pub unrelated_judged: bool,
+    /// With `.req/areas` (ADR 0051): the claims naming an area it does not declare. `None` when no
+    /// registry is declared — absent from the JSON, so "not judged" is not read as "none found".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub undeclared_area: Option<Vec<UndeclaredArea>>,
+    /// Whether `undeclared_area` decides the verdict (`strict areas`) or is reported only.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub undeclared_area_judged: bool,
     /// With `need design` (ADR 0040): the applying claims no design element declares a link for.
     /// `None` when the policy does not ask — absent from the JSON, so "not judged" is not read as
     /// "none found".
@@ -108,7 +193,10 @@ pub struct Findings {
 impl Findings {
     /// FAIL outranks UNVERIFIABLE outranks PASS, as everywhere else in req.
     pub fn exit(&self) -> i32 {
-        if !self.in_no_release.is_empty() || (self.unrelated_judged && !self.unrelated.is_empty()) {
+        if !self.in_no_release.is_empty()
+            || (self.unrelated_judged && !self.unrelated.is_empty())
+            || (self.undeclared_area_judged && !self.undeclared().is_empty())
+        {
             1
         } else if !self.in_no_baseline.is_empty()
             || !self.not_counted.is_empty()
@@ -118,6 +206,11 @@ impl Findings {
         } else {
             0
         }
+    }
+
+    /// The undeclared-area findings, empty when none or when no registry is declared.
+    fn undeclared(&self) -> &[UndeclaredArea] {
+        self.undeclared_area.as_deref().unwrap_or(&[])
     }
 
     /// The lines the text view prints under the step.
@@ -166,11 +259,29 @@ impl Findings {
                 self.unrelated.join(", ")
             ));
         }
-        if self.exit() == 0 && self.unrelated.is_empty() {
+        if !self.undeclared().is_empty() {
+            let how = if self.undeclared_area_judged {
+                "FAIL, `strict areas`"
+            } else {
+                "reported, not judged"
+            };
+            let named: Vec<String> = self
+                .undeclared()
+                .iter()
+                .map(|found| format!("{} ({})", found.claim_id, found.area))
+                .collect();
+            notes.push(format!(
+                "undeclared_area ({how}): {} — names an area {AREAS} does not declare; add the line \
+                 `<path> <label>` there, or file the claim under a declared area",
+                named.join(", ")
+            ));
+        }
+        let reported_only = !self.unrelated.is_empty() || !self.undeclared().is_empty();
+        if self.exit() == 0 && !reported_only {
             notes.push("no structural omission found".to_string());
         } else if self.exit() == 0 {
             notes.push(
-                "no structural omission judged (unrelated claims are listed above)".to_string(),
+                "no structural omission judged (reported-only claims are listed above)".to_string(),
             );
         }
         notes
@@ -178,16 +289,36 @@ impl Findings {
 
     /// The step's label: what was checked, never what is true.
     pub fn label() -> String {
-        Self::label_for(false)
+        Self::label_for(&Policy::default())
     }
 
-    /// [`Findings::label`] for a policy: `need design` adds a check, and the label counts it.
-    pub fn label_for(need_design: bool) -> String {
+    /// [`Findings::label`] for a policy: `need design` and a declared `.req/areas` each add a check,
+    /// and the label counts them.
+    pub fn label_for(policy: &Policy) -> String {
         format!(
             "structural omissions ({} checks)",
-            CHECKS + usize::from(need_design)
+            CHECKS + usize::from(policy.need_design) + usize::from(policy.areas.is_some())
         )
     }
+}
+
+/// The claims naming an area `declared` does not hold, sorted by claim id. A claim with no area is no
+/// finding: filing is optional, and `strict areas` judges what a claim says, not what it leaves out.
+pub fn undeclared_areas(rows: &[Row], declared: &[AreaEntry]) -> Vec<UndeclaredArea> {
+    let known: BTreeSet<&str> = declared.iter().map(|entry| entry.path.as_str()).collect();
+    let mut found: Vec<UndeclaredArea> = rows
+        .iter()
+        .filter_map(|row| {
+            let area = row.area.as_deref()?;
+            (!known.contains(area)).then(|| UndeclaredArea {
+                claim_id: row.claim_id.clone(),
+                area: area.to_string(),
+            })
+        })
+        .collect();
+    found.sort_by(|a, b| a.claim_id.cmp(&b.claim_id));
+    found.dedup();
+    found
 }
 
 /// Ids of claims with no outgoing relation and no incoming one from any claim in the corpus.
@@ -336,6 +467,12 @@ pub fn evaluate(root: &Path, releases: &[Context], policy: &Policy) -> Result<Fi
         in_no_baseline,
         unrelated: unrelated(&rows, &policy.roots),
         unrelated_judged: policy.strict_unrelated,
+        undeclared_area: policy
+            .areas
+            .as_ref()
+            .map(|declared| undeclared_areas(&rows, declared)),
+        // `strict areas` judges the registry's claims; with no registry there is nothing to judge.
+        undeclared_area_judged: policy.strict_areas && policy.areas.is_some(),
         unsatisfied,
         baselines,
         not_counted,
@@ -388,6 +525,19 @@ mod tests {
         .expect_err("three bad lines");
         assert_eq!(errors.len(), 3, "{errors:?}");
         assert!(errors[1].starts_with(".req/completeness:2:"), "{errors:?}");
+    }
+
+    #[test]
+    fn the_areas_grammar_is_path_then_label_and_names_every_bad_line() {
+        let entries =
+            parse_areas("# order\n\ndiagnostics/startup  Start-up (診断) \r\nplain C# support\n")
+                .expect("parses");
+        assert_eq!(entries[0].path, "diagnostics/startup");
+        assert_eq!(entries[0].label, "Start-up (診断)");
+        assert_eq!(entries[1].label, "C# support", "an inline # is label text");
+        let errors = parse_areas("a A\na B\nb\nBad x\n").expect_err("three bad lines");
+        assert_eq!(errors.len(), 3, "{errors:?}");
+        assert!(errors[0].starts_with(".req/areas:2:"), "{errors:?}");
     }
 
     #[test]

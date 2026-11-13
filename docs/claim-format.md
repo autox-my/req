@@ -1,9 +1,10 @@
-# Claim-file format — v2
+# Claim-file format — v3
 
-Status: `req.claim/2`. Implements docs/adr/0002-git-is-transport-not-identity.md
+Status: `req.claim/3`. Implements docs/adr/0002-git-is-transport-not-identity.md
 (one claim per file), docs/adr/0019-claims-carry-authored-test-links.md (authored test
 links, attested and outside identity), docs/adr/0022-claims-are-authored-fingerprints-are-derived.md
-(a claim is authored, its parse is derived at load, no fingerprint is stored) and
+(a claim is authored, its parse is derived at load, no fingerprint is stored),
+docs/adr/0051-a-claim-may-name-the-area-it-belongs-to.md (an optional `area`, outside identity) and
 docs/canonical-hashing.md (identity, tiers, freeze).
 
 ## Layout
@@ -40,7 +41,7 @@ reader is `src/decision.rs`, whose `log_paths` reads `root.join("decisions")`.
 
 | Axis | Where | Effect of a bump |
 |---|---|---|
-| File format | `schema: req.claim/2` | a migration; addresses unchanged — v2 removes the authored slots and the stored fingerprint (ADR 0022), an older declaration is a migration candidate (exit 3, `tools/migrate_claims.py`), and no `RULES_V` moves |
+| File format | `schema: req.claim/3` | a migration where one is needed; addresses unchanged — v2 removed the authored slots and the stored fingerprint (ADR 0022), v3 adds the optional `area` and nothing else (ADR 0051). An older declaration is a migration candidate (exit 3, `tools/migrate_claims.py`) **except v2, which a v3 build loads as it is**; no `RULES_V` moves |
 | Normalization rules | the build (`RULES_V`, `req --version`) | moves the derived addresses of affected claims → *candidates* needing re-ratification, seen as drift against the signed manifest (hashing spec §5); history never silently rewritten |
 | Subject registry | `aliases/subjects.yml` version | same effect as a rules bump, scoped to claims using affected subjects |
 
@@ -51,9 +52,16 @@ neither, because it stores nothing they produce.
 The declared `schema:` is **judged when a file is loaded**, first, against the value this build
 writes (`CLAIM_SCHEMA_V` in `src/canon.rs`, reported by `req --version` as `claim_schema`). A file
 declaring an *older* format is a migration candidate — the message names
-`tools/migrate_claims.py`; a *newer* one is a question this build cannot answer, because the file
-is not wrong — the reader is old; and a value that is not of the `req.claim/<n>` shape at all is a
-broken file, not a version question. All three are **NOT JUDGED** (exit 3): nothing inside the
+`tools/migrate_claims.py` — **unless that format is one this build reads as it is**: the set is
+`READS_AS_IS` in `src/canon.rs`, stated once as data, and today it holds `/2`. A `/2` file loads as a
+`/3` file with no area: no message, nothing rewritten, no address moved (ADR 0051 decision 6), so
+`req.claim/2` needs **no migration**. It is still judged under its own declaration: a `/2` file may not
+carry `area`, a key only `/3` has, and one that does is a parse error naming the key and the format it
+needs. A *newer* format is a question this build cannot answer, because the file
+is not wrong — the reader is old (a `/2` build reading a `/3` file says exactly this, never a parse
+error); and a value that is not of the `req.claim/<n>` shape at all is a
+broken file, not a version question. The three that are reported — older, newer, malformed — are
+**NOT JUDGED** (exit 3): nothing inside the
 file was compared to anything, and the declared format is what makes the rest of it readable as
 a claim of this build's contract. The judgement lives in `parse_claim` (`src/canon.rs`), which the
 loader calls and so does every reader that reads a claim by path (`compare`, `propose`) — one
@@ -70,8 +78,9 @@ reports it the same way. The two classes are therefore **coupled**: if either ev
 A claim file carries what a human **authors**, and nothing derived.
 
 ```yaml
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0009
+area: evidence/direction-gold-set
 statement: >-
   The benchmark harness shall classify direction of change on the structural
   direction gold set with accuracy of at least 0.95.
@@ -95,7 +104,7 @@ pins:
 
 | Field | Meaning | Notes |
 |---|---|---|
-| `schema` | `req.claim/2` | judged first, by direction (above) |
+| `schema` | `req.claim/3` (or `req.claim/2`, loaded as it is) | judged first, by direction (above) |
 | `claim_id` | stable human label | never derived — it survives rewording (CONTEXT.md) |
 | `statement` | the human sentence | **the source of truth**: its parse, canonical form and address are derived from it at load |
 | `applicability[]` | variant predicates (`applies_when`) — the **selector slot** | **required** (an omitted key is a parse error, never `[]`); part of identity (ADR 0003): an *input* to the canonical form, because the statement carries no formal selector syntax — the sorted authored list is hashed |
@@ -103,6 +112,7 @@ pins:
 | `tests` | the test ids that prove the claim — **authored**, optional | `[String]` of `classname::name` ids (the `classname` and the test's `name` the JUnit report writes, joined by `::`); **outside the canonical form**, so adding, removing or renaming a link moves no address (ADR 0019); on a **machine** claim (the default) absent or `[]` = no linked test, which the gate names (a finding, never a parse error); under `evidence: process` the list is empty by definition; attested in the signed Baseline by `tests_hash`, hashed over the **sorted** list; an empty or duplicated string in the list is a load error — a link that names no test, or names one twice, is not a link |
 | `evidence` | how the claim's evidence is established — `machine` (default) or `process` | authored, optional (omitted = `machine`); `process` is an explicit declaration that the **process itself** establishes the claim — a Decision, a signature, a workflow — and it must carry **no** `tests:` (naming both is a load error: machine or process, never both); **outside identity**, attested together with the links by `tests_hash`; an empty `tests:` list never implies `process` — that is the *no linked test* finding, not a declaration |
 | `rationale` | object: `source`, `date`, `rejected_alternatives[]`, `assumptions[]` | all four **required** (an omitted list is a parse error, not an empty one); the losing side is preserved — never a string field |
+| `area` | the one place the claim is filed in the reader's layout — optional, **`req.claim/3` only** | a path of stable keys: segments joined by `/`, each `[a-z0-9][a-z0-9-]*`, no empty segment and no leading or trailing `/` (`diagnostics/startup`); anything else is a load error naming the claim and `area`, and a `/2` file carrying it is a parse error naming the key (*Area*, below); **outside the canonical form** and in no attested hash, so adding, changing or removing it moves no address and breaks no Baseline (ADR 0051) |
 | `pins` | what the parse **must** be, where it is load-bearing — optional | an object with any of `modality`, `subject`, `operator`, `value`, `unit` (any other key is a parse error); judged against the derived parse, never part of identity (see *Pins* below) |
 
 Reference types (`to`, `source`) use `claim_id`s, addresses, or repo paths —
@@ -124,6 +134,43 @@ edits no better than the line does: prefer the path alone, or a heading, where t
 A condition may come first or last: "When X, the pump shall stop" and "The pump shall stop when X" are one claim (rules v8,
 ADR 0038). Put a **comma after a leading condition**: without one there is nothing marking where the condition ends, the whole clause is
 read as the subject, and rewording only the trigger would then look like a new subject.
+
+## Area (`area`, `.req/areas`)
+
+`area` says where a claim is filed — the heading or hierarchy its source placed it under — and is **placement
+only** (ADR 0051). It is not an input to the canonical form and in no attested hash (`relations_hash`,
+`rationale_hash`, `tests_hash`, a manifest field), so a claim moves to another section with no address
+change and no re-signature; the cost is that a Baseline cannot show where a claim was filed when it was
+signed. Area never supplies meaning: a statement stands alone, and context its source left to a heading is
+written into the statement.
+
+A claim has **one** area (a list is refused: a claim shown under two headings is two places). A segment is a
+stable key — it must survive the source renumbering a section — and the reader-facing name of an area, in any
+language, is its label in the registry, never the key. The path gives the hierarchy: `diagnostics` holds
+`diagnostics/startup`.
+
+The registry is the optional `.req/areas`, one line per area, `<path> <label>`:
+
+```
+# the reading order is the line order
+diagnostics          Diagnostics
+diagnostics/startup  Start-up
+interfaces/can-bus   CAN bus
+```
+
+The grammar is that of the other `.req/` lists: a trailing CR is stripped and a blank line is skipped. A line
+starting with `#` is a comment; a `#` inside a label is part of the label. The label is the rest of the line,
+trimmed, in any language, and never empty. A malformed path, an empty label or a path declared twice is refused
+naming `.req/areas:<line>`, every bad line in one run, and `req check` refuses it (exit 2) before any step runs.
+A parent need not be declared (`diagnostics/startup` may stand without `diagnostics`). With no registry any
+well-formed path is accepted, and the order is the path's sort order.
+
+A claim naming an area the registry does not declare is a **finding**, never a load error (authoring stays
+friction-free, ADR 0006): `req check`'s completeness step (ADR 0039) names it as `undeclared_area`, listing the
+claim and the area. It is reported and does not change the verdict, unless `.req/completeness` says `strict
+areas` (then FAIL, exit 1). With no `.req/areas` there is no finding at all. `req canon` prints a claim's area at
+the end of its line, and the `--format json` rows of `render`, and `trace`'s nodes, carry it as `area` (`null`
+when the claim names none); no text projection changes.
 
 ## The derived view (computed at load, stored nowhere)
 
@@ -285,6 +332,9 @@ naming both process evidence and links is a load error (exit 3). With only proce
 gate needs no `--test-report`.
 
 ## Migrating from `req.claim/1`
+
+`req.claim/2` needs none: a `req.claim/3` build loads it as it is (see *Version axes*). Declare `/3` only
+when a claim is first filed under an `area`, and change nothing else in the file.
 
 A `req.claim/1` file is a migration candidate: every command reports it NOT JUDGED (exit 3) and
 names the tool. `tools/migrate_claims.py` (a starting point an adopter copies, like

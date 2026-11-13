@@ -42,9 +42,10 @@ Exit codes, the same three-state discipline as req:
      read, so nothing can be drafted honestly
 
 Nothing derived is ever written, and no pin is guessed. This tool drafts `req.claim/2` claims
-only (`DRAFT_SCHEMA`): it asks `req --version` which schema the binary judges and refuses
-(UNVERIFIABLE, exit 3) any other, so a format bump fails loud instead of leaving this template
-behind; the report names the build's `rules_v` it ran against.
+only (`DRAFT_SCHEMA`), whatever the build writes: it asks `req --version` which schema the binary
+reports and refuses (UNVERIFIABLE, exit 3) any it cannot draft against (`ACCEPTED_SCHEMAS`:
+`req.claim/2`, and `req.claim/3`, which loads a `/2` draft as it is), so a format bump fails loud
+instead of leaving this template behind; the report names the build's `rules_v` it ran against.
 """
 import argparse
 import datetime
@@ -82,6 +83,11 @@ VERSION_SCHEMA_RE = re.compile(r"^[ \t]*claim_schema[ \t]+(?P<value>\S+)[ \t]*$"
 CLAIM_SCHEMA_RE = re.compile(r"^req\.claim/\d+$")
 # The one schema `CLAIM_TEMPLATE` writes; a binary reporting another cannot load the draft.
 DRAFT_SCHEMA = "req.claim/2"
+# The schemas a `req` may report for this tool to draft against (ADR 0051 decision 6): a `req.claim/3`
+# build loads a `req.claim/2` draft as it is, and the draft carries no area, so the tool keeps
+# drafting `DRAFT_SCHEMA` and accepts either. Any other value is refused. A later format that keeps
+# `req.claim/2` readable is added here deliberately, not discovered.
+ACCEPTED_SCHEMAS = (DRAFT_SCHEMA, "req.claim/3")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 CLAIMS_DIR = "claims"
@@ -366,7 +372,7 @@ def parse_version(text):
     """`(rules_v, claim_schema)` from `req --version`, or None.
 
     Pure so the self-check can table-drive the shapes without a binary. `rules_v` is reported,
-    never hardcoded; the claim schema is compared with `DRAFT_SCHEMA` by `read_axes`, which is the
+    never hardcoded; the claim schema is checked against `ACCEPTED_SCHEMAS` by `read_axes`, which is the
     one place that refuses a binary this template cannot be loaded by.
     """
     rules = VERSION_RULES_RE.search(text)
@@ -566,7 +572,7 @@ def req_binary():
     if binary is None:
         raise Unverifiable(
             "`req` is not on PATH — install it at a pinned rev (docs/adopting.md), because a "
-            "draft's claim schema comes from the binary that will judge it"
+            "that binary judges the drafts and must read the schema they declare"
         )
     return binary
 
@@ -605,8 +611,12 @@ def loader_check(binary, root, targets, texts):
 
 
 def read_axes():
-    """`(rules_v, claim_schema)` from the `req` on PATH — the schema a draft declares, and the
-    rules version its parse is derived under (reported)."""
+    """`(rules_v, DRAFT_SCHEMA)`, after asking the `req` on PATH what it reports.
+
+    The schema a draft declares is `DRAFT_SCHEMA`, always — never the one the binary reports. The
+    reported `claim_schema` only decides whether this tool may draft against that build at all
+    (`ACCEPTED_SCHEMAS`); `rules_v` is the rules version the drafts' parse is derived under
+    (reported)."""
     binary = req_binary()
     try:
         completed = subprocess.run(
@@ -620,18 +630,20 @@ def read_axes():
             f"{completed.stderr.strip() or 'no output'}"
         )
     axes = parse_version(completed.stdout)
-    if axes is not None and axes[1] != DRAFT_SCHEMA:
+    if axes is not None and axes[1] not in ACCEPTED_SCHEMAS:
         raise Unverifiable(
             f"`{binary}` reports claim_schema {axes[1]}, but this tool drafts {DRAFT_SCHEMA} "
-            "claims: a draft under another schema would not load — use a matching req build or "
-            "the matching copy of this tool"
+            f"claims and accepts a req that reports {' or '.join(ACCEPTED_SCHEMAS)}: a draft under "
+            "another schema would not load — use a matching req build or the matching copy of "
+            "this tool"
         )
     if axes is None:
         raise Unverifiable(
             f"`{binary} --version` does not name `rules_v` and `claim_schema` — a build "
             "older than the claim format this tool writes cannot be drafted against"
         )
-    return axes
+    # The binary was judged acceptable; the draft declares the schema this tool is written for.
+    return axes[0], DRAFT_SCHEMA
 
 
 def git_date(document):
@@ -1139,7 +1151,7 @@ def self_check():
             ["applicability: []", "relations: []"],
         ),
         (
-            "draft: the schema is the one the binary reports",
+            "draft: the schema is the one the draft is handed (DRAFT_SCHEMA)",
             field(draft, "schema: "),
             "schema: req.claim/2",
         ),

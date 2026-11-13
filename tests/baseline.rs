@@ -221,6 +221,7 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
         rationale_source: provenance.source,
         rationale_date: provenance.date,
         superseded_by: Vec::new(),
+        area: None,
     }
 }
 
