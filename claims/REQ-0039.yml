@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0039
+area: operation
 statement: >-
   The install script shall refuse a tarball whose hash differs from the pin.
 applicability: []

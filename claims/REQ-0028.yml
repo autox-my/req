@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0028
+area: baselines
 statement: >-
   The req tool shall fail the verification of a Baseline when a claim was edited after
   signing.

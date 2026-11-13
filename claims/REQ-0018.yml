@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0018
+area: identity
 statement: >-
   The req tool shall require numeric claim fields to be serialized as exact
   decimal strings.

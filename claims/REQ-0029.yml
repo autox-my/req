@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0029
+area: baselines
 statement: >-
   The req tool shall not report a Baseline as verified when its signature does not verify
   or no verifier is installed.

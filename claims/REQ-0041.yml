@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0041
+area: verification
 statement: >-
   The req tool shall report an outcome it cannot establish as UNVERIFIABLE rather
   than as a pass.

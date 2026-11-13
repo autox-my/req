@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0016
+area: variants
 statement: >-
   The req tool shall resolve the applicability of an undecided feature as UNKNOWN
   rather than silently excluding it.

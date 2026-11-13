@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0017
+area: identity
 statement: >-
   The req tool shall derive each claim's address at load as the versioned-tag
   digest of its canonical form bytes, so that recomputing the digest over those

@@ -501,16 +501,24 @@ fn emit(s: &Scratch) -> String {
 #[test]
 fn adding_changing_or_removing_an_area_moves_no_byte_of_the_baseline() {
     let plain = repo_copy("baseline-plain");
+    // The repo's claims are filed (/3 with an area); start from REQ-0001 as a bare /2 file.
+    let path = plain.path().join("claims/REQ-0001.yml");
+    let filed_now = fs::read_to_string(&path).expect("reads REQ-0001");
+    let original: String = filed_now
+        .replacen("schema: req.claim/3\n", "schema: req.claim/2\n", 1)
+        .lines()
+        .filter(|l| !l.starts_with("area:"))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    assert!(
+        original.contains("schema: req.claim/2\n") && !original.contains("\narea:"),
+        "REQ-0001 reduced to a bare /2 file"
+    );
+    fs::write(&path, &original).expect("writes the bare /2 claim");
     let reference = emit(&plain);
     let addresses_before = addresses_under(&plain, &SELECTION);
 
     // The same claim, declared /3 with an area: nothing signed moves.
-    let path = plain.path().join("claims/REQ-0001.yml");
-    let original = fs::read_to_string(&path).expect("reads REQ-0001");
-    assert!(
-        original.contains("schema: req.claim/2"),
-        "the repo's claims stay /2"
-    );
     let filed = |area: &str| {
         original.replacen(
             "schema: req.claim/2\n",
@@ -650,35 +658,41 @@ fn text_projections_do_not_change_with_an_area() {
 }
 
 #[test]
-fn this_repositorys_claims_stay_v2() {
-    // ADR 0051 decision 6, live: /3 loads every /2 claim as it is, so nothing here is migrated.
-    let claims = Path::new(env!("CARGO_MANIFEST_DIR")).join("claims");
+fn this_repositorys_claims_are_filed_in_declared_areas() {
+    // Owner ruling of 2026-11-13: req's own claims are /3, each filed under one area its registry declares.
+    // That /2 still loads as it is stays proven by the scratch corpora above.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let registry = fs::read_to_string(root.join(".req/areas")).expect(".req/areas");
+    let declared: Vec<&str> = registry
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        .filter_map(|l| l.split_whitespace().next())
+        .collect();
     let mut seen = 0;
-    for entry in fs::read_dir(&claims).expect("claims/") {
+    for entry in fs::read_dir(root.join("claims")).expect("claims/") {
         let path = entry.expect("an entry").path();
         if path.extension().is_some_and(|e| e == "yml") {
             let text = fs::read_to_string(&path).expect("reads a claim");
             assert!(
-                text.lines().any(|l| l == "schema: req.claim/2"),
-                "{} stays req.claim/2",
+                text.lines().any(|l| l == "schema: req.claim/3"),
+                "{} is req.claim/3",
                 path.display()
             );
+            let areas: Vec<&str> = text
+                .lines()
+                .filter_map(|l| l.strip_prefix("area: "))
+                .collect();
             assert!(
-                !text.lines().any(|l| l.starts_with("area:")),
-                "{}",
+                areas.len() == 1 && declared.contains(&areas[0]),
+                "{} names one declared area, found {areas:?}",
                 path.display()
             );
             seen += 1;
         }
     }
     assert!(seen > 0);
-    let out = run(Path::new(env!("CARGO_MANIFEST_DIR")), &["canon"]);
-    assert_eq!(
-        out.code,
-        0,
-        "the /2 corpus loads under a /3 build:\n{}",
-        out.all()
-    );
+    let out = run(root, &["canon"]);
+    assert_eq!(out.code, 0, "the filed corpus loads:\n{}", out.all());
 }
 
 // --- `.req/areas` (decision 3) ---------------------------------------------------------------------

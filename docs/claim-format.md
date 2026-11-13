@@ -80,7 +80,7 @@ A claim file carries what a human **authors**, and nothing derived.
 ```yaml
 schema: req.claim/3
 claim_id: REQ-0009
-area: evidence/direction-gold-set
+area: evidence
 statement: >-
   The benchmark harness shall classify direction of change on the structural
   direction gold set with accuracy of at least 0.95.

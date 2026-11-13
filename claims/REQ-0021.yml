@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0021
+area: decisions
 statement: >-
   The req tool shall never rewrite a claim or merge two claims
   automatically.

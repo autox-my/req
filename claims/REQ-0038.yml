@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0038
+area: baselines
 statement: >-
   The req tool shall report a corpus that is not the pinned commit as a failure.
 applicability: []

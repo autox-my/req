@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0012
+area: operation
 statement: >-
   The req tool shall need no network access for any claim operation when the
   deployment is configured offline.

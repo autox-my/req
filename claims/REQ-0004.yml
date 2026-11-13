@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0004
+area: decisions
 statement: >-
   The req tool shall emit proposals for reviewer ratification.
 applicability: []

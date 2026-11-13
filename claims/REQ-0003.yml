@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0003
+area: variants
 statement: >-
   The req tool shall express permanent product variation as a selection governed by
   applicability predicates over one claim set.

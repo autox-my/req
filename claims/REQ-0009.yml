@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0009
+area: evidence
 statement: >-
   The benchmark harness shall classify direction of change on the structural
   direction gold set with accuracy of at least 0.95.

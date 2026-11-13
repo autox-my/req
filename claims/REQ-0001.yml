@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0001
+area: authoring
 statement: >-
   The req tool shall treat a single claim as the unit of requirements authorship,
   review, and merge.

@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0025
+area: verification
 statement: >-
   The req tool shall report a claim with no linked test as UNVERIFIABLE.
 applicability: []

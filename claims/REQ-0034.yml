@@ -1,5 +1,6 @@
-schema: req.claim/2
+schema: req.claim/3
 claim_id: REQ-0034
+area: decisions
 statement: >-
   The req tool shall report a change that loosens an obligation as weakened.
 applicability: []
