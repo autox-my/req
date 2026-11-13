@@ -1,8 +1,8 @@
 # 0051. A claim may name the area it belongs to
 
 Extends ADR 0022 (`req.claim/2`: claims are authored, fingerprints are derived). It proposes one optional authored key.
-No `RULES_V` bump and no address moves: the key is outside identity. Some loader rules change, and decision 6 is a
-claim-schema question the owner rules on.
+No `RULES_V` bump and no address moves: the key is outside identity. The claim file format moves to `req.claim/3`
+(decision 6, the owner's ruling of 2026-11-13).
 
 **Status: proposed.** The owner ratifies it by merging; no code is attached yet. Asked for by the owner on
 2026-11-13. Date proposed: 2026-11-13.
@@ -69,12 +69,17 @@ A grouping cannot be borrowed from anything req already has:
      Claims with no area form a `no area` group.
    - A grouped `req render` is a natural next step, but it moves committed projection bytes. It is **not** decided
      here.
-6. **The format version.** `req.claim/2` refuses an unknown key, so an older build reading a file that carries
-   `area` reports a parse error, not a newer-format question. This decision proposes **`req.claim/3`** as `/2` plus
-   the optional `area`, and proposes that a `/3` build go on loading `/2` files as they are, as `/3` files with no
-   area, with no migration. That is a change to the rule that an older declaration is a migration candidate
-   (`docs/claim-format.md`, *Version axes*), and the owner rules on it. The alternative is to accept `area` inside
-   `/2` and live with old builds misreporting it.
+6. **The format moves to `req.claim/3`, and `/2` keeps loading.** Owner's ruling, 2026-11-13.
+   - `req.claim/3` is `req.claim/2` plus the optional `area`, and nothing else.
+   - A `/3` build loads a `/2` file as it is, as a `/3` file with no area: no migration, no rewrite, and no address
+     moves. This amends the rule that an older declaration is a migration candidate (`docs/claim-format.md`,
+     *Version axes*) for `/2` alone. `req.claim/1` is still a migration candidate.
+   - A `/2` file carrying `area` is a parse error naming the key, as an unknown key is today: `area` needs the `/3`
+     declaration.
+   - An older `/2` build reading a `/3` file reports a newer format (NOT JUDGED), the existing answer for a reader
+     that is too old.
+   - *Rejected:* accept `area` inside `/2`. Old builds would report a valid file as broken, with a parse error, not a
+     version question.
 
 ## Consequences
 
@@ -116,6 +121,7 @@ This decision is wrong if any of these is observed:
 1. adding, changing or removing a claim's `area` moves its address or breaks a Baseline's verification;
 2. a claim is shown in two groups of a view grouped by area;
 3. a claim naming an undeclared area fails to load, when it should be reported as a finding;
-4. after the format decision, a file carrying `area` is read by an older build without that build naming the cause;
+4. a `/3` build refuses or rewrites a `/2` file, or a `/2` build reading a `/3` file reports anything other than a
+   newer format;
 5. a real adopter's sections cannot be expressed as one path of stable keys per requirement;
 6. a claim's address, applicability or derived parse changes because of its area.
