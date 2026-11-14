@@ -1,0 +1,4 @@
+# one root covers every linked file;
+# it also reads audit, completeness, main and satisfy, whose 14 bare mentions of the marker are mentions since O-1,
+# never links
+src

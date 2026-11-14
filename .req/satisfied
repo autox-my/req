@@ -1,0 +1,92 @@
+schema: req.satisfied/1
+links:
+- element: src/baseline.rs
+  claim_id: REQ-0028
+  statement: The req tool shall fail the verification of a Baseline when a claim was edited after signing.
+- element: src/baseline.rs
+  claim_id: REQ-0029
+  statement: The req tool shall not report a Baseline as verified when its signature does not verify or no verifier is installed.
+- element: src/baseline.rs
+  claim_id: REQ-0030
+  statement: The req tool shall report a Baseline written under another rules version as UNVERIFIABLE.
+- element: src/bench.rs
+  claim_id: REQ-0008
+  statement: The benchmark harness shall report a false merge rate of exactly zero on the parity and adversarial mutation corpora.
+- element: src/bench.rs
+  claim_id: REQ-0009
+  statement: The benchmark harness shall classify direction of change on the structural direction gold set with accuracy of at least 0.95.
+- element: src/bench.rs
+  claim_id: REQ-0010
+  statement: The benchmark harness should show a false split rate of at most 0.30 on the parity corpus at v0.
+- element: src/bench.rs
+  claim_id: REQ-0035
+  statement: The benchmark harness shall report a corpus with no not-equivalent pairs as UNVERIFIABLE.
+- element: src/canon.rs
+  claim_id: REQ-0001
+  statement: The req tool shall treat a single claim as the unit of requirements authorship, review, and merge.
+- element: src/canon.rs
+  claim_id: REQ-0017
+  statement: The req tool shall derive each claim's address at load as the versioned-tag digest of its canonical form bytes, so that recomputing the digest over those bytes reproduces the address the signed Baseline attests.
+- element: src/canon.rs
+  claim_id: REQ-0018
+  statement: The req tool shall require numeric claim fields to be serialized as exact decimal strings.
+- element: src/canon.rs
+  claim_id: REQ-0019
+  statement: The req tool shall emit a lint finding for any construct its normalization rules cannot decide rather than guessing a resolution.
+- element: src/canon.rs
+  claim_id: REQ-0032
+  statement: The req tool shall refuse a claim file that carries a key it does not define.
+- element: src/canon.rs
+  claim_id: REQ-0033
+  statement: The req tool shall report a corpus with no claim files as UNVERIFIABLE when it derives the parse.
+- element: src/check.rs
+  claim_id: REQ-0037
+  statement: The req tool shall rank a failure above an undecided line when it folds the checks of a repository.
+- element: src/decision.rs
+  claim_id: REQ-0002
+  statement: The req tool shall record each acceptance or rejection of a change as a signed Decision carrying role, meaning, timestamp, and any dissent.
+- element: src/decision.rs
+  claim_id: REQ-0031
+  statement: The req tool shall report an edited decision record as tampered.
+- element: src/diff.rs
+  claim_id: REQ-0034
+  statement: The req tool shall report a change that loosens an obligation as weakened.
+- element: src/gate.rs
+  claim_id: REQ-0024
+  statement: The req tool shall report a gate invocation that leaves a claim undecided as UNVERIFIABLE.
+- element: src/gate.rs
+  claim_id: REQ-0025
+  statement: The req tool shall report a claim with no linked test as UNVERIFIABLE.
+- element: src/gate.rs
+  claim_id: REQ-0026
+  statement: The req tool shall not count a skipped test as a pass.
+- element: src/gate.rs
+  claim_id: REQ-0027
+  statement: The req tool shall fail the gate when a claim's pin disagrees with the parse its statement derives.
+- element: src/junit.rs
+  claim_id: REQ-0026
+  statement: The req tool shall not count a skipped test as a pass.
+- element: src/main.rs
+  claim_id: REQ-0040
+  statement: The req tool shall exit with status 2 for a command it does not know.
+- element: src/model.rs
+  claim_id: REQ-0032
+  statement: The req tool shall refuse a claim file that carries a key it does not define.
+- element: src/pin.rs
+  claim_id: REQ-0038
+  statement: The req tool shall report a corpus that is not the pinned commit as a failure.
+- element: src/propose.rs
+  claim_id: REQ-0004
+  statement: The req tool shall emit proposals for reviewer ratification.
+- element: src/select.rs
+  claim_id: REQ-0003
+  statement: The req tool shall express permanent product variation as a selection governed by applicability predicates over one claim set.
+- element: src/select.rs
+  claim_id: REQ-0016
+  statement: The req tool shall resolve the applicability of an undecided feature as UNKNOWN rather than silently excluding it.
+- element: src/view.rs
+  claim_id: REQ-0020
+  statement: The req tool shall serialize each relation on the outgoing side of its origin claim.
+- element: src/view.rs
+  claim_id: REQ-0036
+  statement: The req tool shall report a hand-edited projection as stale.
