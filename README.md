@@ -21,13 +21,15 @@ against what was signed.
 
 ## Requirements on the architecture
 
-[![req's architecture: each part, with the requirements it satisfies](docs/architecture/req.png)](https://autox-my.github.io/req/architecture.html)
+[![req's architecture: twelve parts from authoring to a signed Baseline, each with the requirements it satisfies](docs/architecture/req-overview.png)](https://autox-my.github.io/req/architecture.html)
 
-[The architecture page](https://autox-my.github.io/req/architecture.html) draws each part of req and labels it with whether the code
-still satisfies the requirements it was recorded against (`req satisfy`, ADR 0040). It is drawn by hand from the source, and the
-status on every part is computed, never typed. 28 of req's 40 claims are linked to a part, and all 29 claim–part pairs hold; the
-[claims × parts matrix](docs/architecture/matrix.md) lists them and the 12 claims no part reaches. How it is made and what the
-gate checks of it: [ADR 0052](docs/adr/0052-an-architecture-diagram-shows-the-claims-its-components-satisfy.md).
+[The architecture page](https://autox-my.github.io/req/architecture.html) draws twelve parts of req and labels each with the worst
+state of the requirements its code was recorded against (`req satisfy`, ADR 0040), and how many claims are in it. It is drawn by
+hand from the source, and the status on every part is computed, never typed. 28 of req's 40 claims are linked to a part, and
+all 28 claim–part pairs hold (29 on the detailed page, which splits the gate from its test-report reader); the [claims × parts matrix](docs/architecture/overview-matrix.md) lists them and the 12 claims no
+part reaches. [Every part, with every arrow](https://autox-my.github.io/req/architecture-detail.html), is the detailed page
+(its [matrix](docs/architecture/matrix.md)). How they are made and what the gate checks of them:
+[ADR 0052](docs/adr/0052-an-architecture-diagram-shows-the-claims-its-components-satisfy.md).
 
 ## The bet, stated so it can fail
 

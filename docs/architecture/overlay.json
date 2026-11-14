@@ -3,7 +3,7 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "req architecture",
-    "output": "docs/architecture.html",
+    "output": "docs/architecture-detail.html",
     "quality_profile": "standard",
     "subtitle": "each part of req, with the requirements it satisfies · req overlay of diagram revision b0dbee4f670653fdf30f2929e8fe55612fda67bf · rules_v 9 · archify 7e45f36",
     "repository": {
@@ -18,7 +18,7 @@
       "id": "importers",
       "type": "frontend",
       "label": "Importers",
-      "sublabel": "adopt, Needs, ReqIF",
+      "sublabel": "no claim",
       "pos": [
         70,
         950
@@ -44,13 +44,13 @@
           "end_line": 60
         }
       ],
-      "tag": "NO CLAIM"
+      "tag": "adopt, Needs, ReqIF"
     },
     {
       "id": "cli",
       "type": "frontend",
       "label": "CLI entry",
-      "sublabel": "one table of commands",
+      "sublabel": "HOLDS · 1 claim",
       "pos": [
         788,
         100
@@ -73,13 +73,13 @@
           "label": "resolve_corpus_root"
         }
       ],
-      "tag": "HOLDS · REQ-0040"
+      "tag": "one table of commands"
     },
     {
       "id": "setup",
       "type": "frontend",
       "label": "Setup, self-test",
-      "sublabel": "init, next-id, selftest",
+      "sublabel": "no claim",
       "pos": [
         480,
         950
@@ -105,13 +105,13 @@
           "end_line": 494
         }
       ],
-      "tag": "NO CLAIM"
+      "tag": "init, next-id, selftest"
     },
     {
       "id": "canonicalizer",
       "type": "backend",
       "label": "Canonicalizer",
-      "sublabel": "model, Tier-1 form, loader",
+      "sublabel": "HOLDS · 6 claims",
       "pos": [
         275,
         780
@@ -140,13 +140,13 @@
           "label": "ClaimFile, strict"
         }
       ],
-      "tag": "HOLDS · REQ-0001, REQ-0017, +4"
+      "tag": "model, Tier-1 form, loader"
     },
     {
       "id": "direction",
       "type": "backend",
       "label": "Direction",
-      "sublabel": "compare: kind of change",
+      "sublabel": "no claim",
       "pos": [
         275,
         440
@@ -162,13 +162,13 @@
           "end_line": 445
         }
       ],
-      "tag": "NO CLAIM"
+      "tag": "compare: kind of change"
     },
     {
       "id": "contradict",
       "type": "backend",
       "label": "Contradictions",
-      "sublabel": "structural, exact",
+      "sublabel": "no claim",
       "pos": [
         275,
         610
@@ -184,13 +184,13 @@
           "end_line": 482
         }
       ],
-      "tag": "NO CLAIM"
+      "tag": "structural, exact"
     },
     {
       "id": "diffs",
       "type": "backend",
       "label": "Diff and pin",
-      "sublabel": "meaning between revisions",
+      "sublabel": "HOLDS · 2 claims",
       "pos": [
         275,
         270
@@ -213,13 +213,13 @@
           "label": "pin verify"
         }
       ],
-      "tag": "HOLDS · REQ-0034, REQ-0038"
+      "tag": "meaning between revisions"
     },
     {
       "id": "propose",
       "type": "backend",
       "label": "Propose",
-      "sublabel": "one pair to a provider",
+      "sublabel": "HOLDS · 1 claim",
       "pos": [
         70,
         440
@@ -235,13 +235,13 @@
           "end_line": 83
         }
       ],
-      "tag": "HOLDS · REQ-0004"
+      "tag": "one pair to a provider"
     },
     {
       "id": "select",
       "type": "backend",
       "label": "Selectors",
-      "sublabel": "tri-state variants",
+      "sublabel": "HOLDS · 2 claims",
       "pos": [
         1095,
         610
@@ -257,13 +257,13 @@
           "end_line": 227
         }
       ],
-      "tag": "HOLDS · REQ-0003, REQ-0016"
+      "tag": "tri-state variants"
     },
     {
       "id": "views",
       "type": "backend",
       "label": "Views",
-      "sublabel": "spec, trace, impact",
+      "sublabel": "HOLDS · 2 claims",
       "pos": [
         1095,
         440
@@ -291,13 +291,13 @@
           "end_line": 106
         }
       ],
-      "tag": "HOLDS · REQ-0020, REQ-0036"
+      "tag": "spec, trace, impact"
     },
     {
       "id": "audit",
       "type": "backend",
       "label": "Audit packet",
-      "sublabel": "coverage and provenance",
+      "sublabel": "no claim",
       "pos": [
         1095,
         270
@@ -313,13 +313,13 @@
           "end_line": 703
         }
       ],
-      "tag": "NO CLAIM"
+      "tag": "coverage and provenance"
     },
     {
       "id": "gate",
       "type": "backend",
       "label": "Release gate",
-      "sublabel": "policies, tri-state",
+      "sublabel": "HOLDS · 4 claims",
       "pos": [
         685,
         440
@@ -341,13 +341,13 @@
           "end_line": 131
         }
       ],
-      "tag": "HOLDS · REQ-0024, REQ-0025, +2"
+      "tag": "policies, tri-state"
     },
     {
       "id": "junit",
       "type": "backend",
       "label": "Test report",
-      "sublabel": "nextest JUnit reader",
+      "sublabel": "HOLDS · 1 claim",
       "pos": [
         480,
         440
@@ -364,13 +364,13 @@
           "label": "parse_testcase"
         }
       ],
-      "tag": "HOLDS · REQ-0026"
+      "tag": "nextest JUnit reader"
     },
     {
       "id": "check",
       "type": "backend",
       "label": "Repository check",
-      "sublabel": "every variant, folded",
+      "sublabel": "HOLDS · 1 claim",
       "pos": [
         685,
         270
@@ -393,13 +393,13 @@
           "label": "run"
         }
       ],
-      "tag": "HOLDS · REQ-0037"
+      "tag": "every variant, folded"
     },
     {
       "id": "satisfy",
       "type": "backend",
       "label": "Design links",
-      "sublabel": "req-satisfies judged",
+      "sublabel": "no claim",
       "pos": [
         890,
         440
@@ -415,13 +415,13 @@
           "end_line": 639
         }
       ],
-      "tag": "NO CLAIM"
+      "tag": "req-satisfies judged"
     },
     {
       "id": "completeness",
       "type": "backend",
       "label": "Completeness",
-      "sublabel": "structural omissions",
+      "sublabel": "no claim",
       "pos": [
         890,
         270
@@ -437,13 +437,13 @@
           "end_line": 480
         }
       ],
-      "tag": "NO CLAIM"
+      "tag": "structural omissions"
     },
     {
       "id": "bench",
       "type": "backend",
       "label": "Benchmark",
-      "sublabel": "the FMR = 0 gate",
+      "sublabel": "HOLDS · 4 claims",
       "pos": [
         480,
         610
@@ -459,13 +459,13 @@
           "end_line": 719
         }
       ],
-      "tag": "HOLDS · REQ-0008, REQ-0009, +2"
+      "tag": "the FMR = 0 gate"
     },
     {
       "id": "baseline",
       "type": "security",
       "label": "Baseline",
-      "sublabel": "manifest and signature",
+      "sublabel": "HOLDS · 3 claims",
       "pos": [
         1300,
         270
@@ -488,13 +488,13 @@
           "label": "judge_signature, verify"
         }
       ],
-      "tag": "HOLDS · REQ-0028, REQ-0029, REQ-0030"
+      "tag": "manifest and signature"
     },
     {
       "id": "decision",
       "type": "security",
       "label": "Decisions",
-      "sublabel": "hash-chained log",
+      "sublabel": "HOLDS · 2 claims",
       "pos": [
         1300,
         440
@@ -511,13 +511,13 @@
           "label": "Decision, verify_chain"
         }
       ],
-      "tag": "HOLDS · REQ-0002, REQ-0031"
+      "tag": "hash-chained log"
     },
     {
       "id": "claims",
       "type": "database",
       "label": "Claims",
-      "sublabel": "claims/ and aliases/",
+      "sublabel": "no claim",
       "pos": [
         275,
         950
@@ -538,13 +538,13 @@
           "end_line": 24
         }
       ],
-      "tag": "NO CLAIM"
+      "tag": "claims/ and aliases/"
     },
     {
       "id": "reqdir",
       "type": "database",
       "label": "Repository lists",
-      "sublabel": ".req/ lists and records",
+      "sublabel": "no claim",
       "pos": [
         890,
         610
@@ -570,13 +570,13 @@
           "end_line": 92
         }
       ],
-      "tag": "NO CLAIM"
+      "tag": ".req/ lists and records"
     },
     {
       "id": "corpus",
       "type": "database",
       "label": "Benchmark data",
-      "sublabel": "bench/corpus, results",
+      "sublabel": "no claim",
       "pos": [
         480,
         780
@@ -592,13 +592,13 @@
           "end_line": 138
         }
       ],
-      "tag": "NO CLAIM"
+      "tag": "bench/corpus, results"
     },
     {
       "id": "baselines",
       "type": "database",
       "label": "Baselines",
-      "sublabel": "baselines/ and trust.yml",
+      "sublabel": "no claim",
       "pos": [
         1505,
         270
@@ -619,13 +619,13 @@
           "end_line": 1
         }
       ],
-      "tag": "NO CLAIM"
+      "tag": "baselines/ and trust.yml"
     },
     {
       "id": "decisions",
       "type": "database",
       "label": "Decision files",
-      "sublabel": "decisions/DEC-*.yml",
+      "sublabel": "no claim",
       "pos": [
         1300,
         610
@@ -641,13 +641,13 @@
           "end_line": 26
         }
       ],
-      "tag": "NO CLAIM"
+      "tag": "decisions/DEC-*.yml"
     },
     {
       "id": "git",
       "type": "external",
       "label": "git",
-      "sublabel": "local process",
+      "sublabel": "no claim",
       "pos": [
         275,
         100
@@ -656,13 +656,13 @@
         140,
         64
       ],
-      "tag": "NO CLAIM"
+      "tag": "local process"
     },
     {
       "id": "minisign",
       "type": "external",
       "label": "minisign",
-      "sublabel": "signature verifier",
+      "sublabel": "no claim",
       "pos": [
         1300,
         100
@@ -671,13 +671,13 @@
         140,
         64
       ],
-      "tag": "NO CLAIM"
+      "tag": "signature verifier"
     },
     {
       "id": "provider",
       "type": "external",
       "label": "Provider",
-      "sublabel": "a command, one pair",
+      "sublabel": "no claim",
       "pos": [
         70,
         100
@@ -686,7 +686,7 @@
         140,
         64
       ],
-      "tag": "NO CLAIM"
+      "tag": "a command, one pair"
     }
   ],
   "boundaries": [
@@ -1100,6 +1100,13 @@
     }
   ],
   "cards": [
+    {
+      "dot": "cyan",
+      "title": "The overview",
+      "items": [
+        "Twelve parts, from authoring to a signed Baseline, on the front page: architecture.html"
+      ]
+    },
     {
       "dot": "slate",
       "title": "Reading the picture",

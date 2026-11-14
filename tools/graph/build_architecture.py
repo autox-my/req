@@ -1,25 +1,29 @@
 #!/usr/bin/env python3
 """Build, or check, the generated half of docs/architecture/ (ADR 0052 decision 7, step 3).
 
-`docs/architecture/req.archify.json` is the diagram an architect drew from the repository (reviewed like a
-document, never generated). Everything else here is computed from it, from `req satisfy --format json` and from
-`req trace --format json` of THIS repository, by `tools/graph/arch_overlay.py`:
+There are two diagrams an architect drew from the repository (reviewed like a document, never generated): the
+overview, `docs/architecture/req-overview.archify.json` (at most 12 components, the front page), and the detail,
+`docs/architecture/req.archify.json` (every part). Everything else here is computed from them, from
+`req satisfy --format json` and from `req trace --format json` of THIS repository, by `tools/graph/arch_overlay.py`:
 
-    docs/architecture/overlay.json   the diagram with each component's status and claim ids (archify's input)
-    docs/architecture/matrix.md      the claims x components matrix, and the claims no component reaches
+    docs/architecture/overview-overlay.json   the overview with each component's status line (archify's input)
+    docs/architecture/overview-matrix.md      the claims x components matrix of the overview
+    docs/architecture/overlay.json            the detail with each component's status line (archify's input)
+    docs/architecture/matrix.md               the claims x components matrix of the detail
 
-Both are byte-for-byte what the converter writes and are never hand-edited. `docs/architecture.html` is archify's
-rendering of overlay.json (pinned at 7e45f36); it needs Node and a browser, so this script never runs archify, and
-the gate cannot check the page itself (the named gap in ADR 0052's note).
+All four are byte-for-byte what the converter writes and are never hand-edited. `docs/architecture.html` (the overview)
+and `docs/architecture-detail.html` are archify's renderings of the two overlays (pinned at 7e45f36); they need Node and
+a browser, so this script never runs archify, and the gate cannot check the pages themselves (the named gap in ADR
+0052's note).
 
-    python3 tools/graph/build_architecture.py [--req <path>] --out <dir>      write the two files into <dir>
+    python3 tools/graph/build_architecture.py [--req <path>] --out <dir>      write the four files into <dir>
     python3 tools/graph/build_architecture.py [--req <path>] --check <dir>    exit 0 current, 1 stale
 
 Python standard library only, offline. `req` is taken from `--req`, else PATH, like tools/overview/build.py. The
 corpus is the repository this script lives in (its parent's parent), so a copy of the repository checks itself.
 
 Exit: 0 written / current; 1 stale (the file is named), or the converter reported a stale citation, an
-unknown claim or a tag that does not fit (its reason is printed): the page cannot be made honestly; 2 usage;
+unknown claim or a status line or tag that does not fit (its reason is printed): the page cannot be made honestly; 2 usage;
 3 UNVERIFIABLE, nothing was compared or written: `req` cannot be run, or did not print the complete `req.satisfy/1` and
 `req.trace/1` documents (a schema it was not written against, or a file `req satisfy` could not read), or the converter
 refused its input (a regenerate cannot fix that).
@@ -35,8 +39,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 CONVERTER = os.path.join(ROOT, "tools", "graph", "arch_overlay.py")
 SATISFY_SCHEMA = "req.satisfy/1"
 TRACE_SCHEMA = "req.trace/1"
-DIAGRAM = "req.archify.json"
-GENERATED = ("overlay.json", "matrix.md")
+# (the architect's diagram, the overlay and the matrix made from it), the overview first.
+VIEWS = (
+    ("req-overview.archify.json", "overview-overlay.json", "overview-matrix.md"),
+    ("req.archify.json", "overlay.json", "matrix.md"),
+)
+GENERATED = tuple(name for _, overlay, matrix in VIEWS for name in (overlay, matrix))
 
 
 class Unverifiable(Exception):
@@ -75,12 +83,15 @@ def req_json(binary, schema, *args):
     return done.stdout
 
 
-def generate(binary, diagram, into):
-    """Write overlay.json and matrix.md for `diagram` into the (new) directory `into`.
+def generate(binary, directory, into):
+    """Write the overlay and the matrix of each diagram in `directory` into the (new) directory `into`.
 
     Returns None when written, or the reason the page cannot be made honestly (the converter's exit 3: a stale citation,
     an unknown claim, a tag with no room). A converter that refused its input (exit 2) is Unverifiable: regenerating
-    cannot fix an input it will not read."""
+    cannot fix an input it will not read. Every diagram is converted before the first reason is returned, so one run
+    reports them all."""
+    reasons = []
+    os.makedirs(into)
     with tempfile.TemporaryDirectory(prefix="req-architecture-in-") as work:
         satisfy = os.path.join(work, "satisfy.json")
         trace = os.path.join(work, "trace.json")
@@ -88,14 +99,21 @@ def generate(binary, diagram, into):
                                    (trace, TRACE_SCHEMA, ("trace", "--format", "json"))):
             with open(path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(req_json(binary, schema, *args))
-        done = subprocess.run([sys.executable, "-I", CONVERTER, "--root", ROOT, diagram, satisfy, trace, into],
-                              capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, timeout=300)
-    said = done.stderr.strip() or done.stdout.strip()
-    if done.returncode == 3:
-        return f"arch_overlay.py exited 3: {said}"
-    if done.returncode != 0:
-        raise Unverifiable(f"arch_overlay.py exited {done.returncode} and wrote nothing: {said}")
-    return None
+        for name, overlay, matrix in VIEWS:
+            diagram = os.path.join(directory, name)
+            if not os.path.isfile(diagram):
+                raise Unverifiable(f"{diagram} cannot be read: the architect's diagram is not here")
+            one = os.path.join(work, "one-" + overlay)
+            done = subprocess.run([sys.executable, "-I", CONVERTER, "--root", ROOT, diagram, satisfy, trace, one],
+                                  capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, timeout=300)
+            said = done.stderr.strip() or done.stdout.strip()
+            if done.returncode not in (0, 3):
+                raise Unverifiable(f"arch_overlay.py exited {done.returncode} and wrote nothing for {name}: {said}")
+            if done.returncode == 3:
+                reasons.append(f"arch_overlay.py exited 3 for {name}: {said}")
+            for written, final in (("overlay.json", overlay), ("matrix.md", matrix)):
+                shutil.copyfile(os.path.join(one, written), os.path.join(into, final))
+    return "\n".join(reasons) or None
 
 
 def main(argv):
@@ -121,14 +139,15 @@ def main(argv):
         print("UNVERIFIABLE: `req` is not on PATH (and no --req was given); the overlay is computed from its "
               "real output and cannot be built or checked without it", file=sys.stderr)
         return 3
-    diagram = os.path.join(directory, DIAGRAM)
-    if not os.path.isfile(diagram):
-        print(f"{diagram} cannot be read: the architect's diagram is not here", file=sys.stderr)
+    missing = [os.path.join(directory, name) for name, _, _ in VIEWS if not os.path.isfile(os.path.join(directory, name))]
+    if missing:
+        for path in missing:
+            print(f"{path} cannot be read: the architect's diagram is not here", file=sys.stderr)
         return 1
     with tempfile.TemporaryDirectory(prefix="req-architecture-out-") as scratch:
         built = os.path.join(scratch, "built")
         try:
-            reason = generate(binary, diagram, built)
+            reason = generate(binary, directory, built)
         except Unverifiable as why:
             print(f"UNVERIFIABLE: {why}", file=sys.stderr)
             return 3
@@ -155,7 +174,8 @@ def main(argv):
             for line in stale:
                 print(line, file=sys.stderr)
             print(f"regenerate with `python3 tools/graph/build_architecture.py --out {directory}`, then render "
-                  "docs/architecture.html again (examples/graph/README.md)", file=sys.stderr)
+                  "docs/architecture.html and docs/architecture-detail.html again (examples/graph/README.md)",
+                  file=sys.stderr)
             return 1
         for name in GENERATED:
             print(f"[CURRENT] {os.path.join(directory, name)}")

@@ -3,7 +3,7 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "req architecture",
-    "output": "docs/architecture.html",
+    "output": "docs/architecture-detail.html",
     "quality_profile": "standard",
     "subtitle": "each part of req, with the requirements it satisfies",
     "repository": {
@@ -1073,6 +1073,13 @@
     }
   ],
   "cards": [
+    {
+      "dot": "cyan",
+      "title": "The overview",
+      "items": [
+        "Twelve parts, from authoring to a signed Baseline, on the front page: architecture.html"
+      ]
+    },
     {
       "dot": "slate",
       "title": "Reading the picture",

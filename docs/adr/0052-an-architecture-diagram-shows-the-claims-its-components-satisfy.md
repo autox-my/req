@@ -234,3 +234,34 @@ Not an edit of the decisions above; decision 7 step 3 (`docs/specs/O-3-architect
   gates (validate, deliver, check, browser-check) pass with no diagnostics; `visual-check` passes containment, readability,
   viewer chrome, themes and captures at 1440×900 and 2048×1320. archify's route-readability signal reports 28 crossings, 16
   routes over the suggested bends: the picture is dense, and the page's Route and Lens controls are how to read one part.
+
+## Implementation note — 2026-11-14 (O-4: the architecture page shows the requirements at first sight)
+
+Not an edit of the decisions above; decision 3 leaves which archify fields carry the status to the implementation, and this
+unit changes that one choice (`docs/specs/O-4-architecture-readable.md`). The owner merged O-3 as it was and asked for two
+improvements.
+
+- **The field.** The status moves from a component's `tag` to its `sublabel`, in the form `HOLDS · 6 claims`,
+  `SUSPECT · 1 of 3 claims`, `STALE`, `no claim`. Why: archify `7e45f36` draws a `tag` only at its finest zoom
+  (`data-detail="fine"`) and a `sublabel` at the overview zoom (`data-detail="context"`), so the status was invisible on the
+  published page and in the README image. The author's own `sublabel` is not lost: it moves to the `tag`, after the author's tag,
+  where it shows at the fine zoom and in the passport panel. The claim ids are on the status card, no longer in the box. Both
+  fields share archify's 6 px floor, so the box holds `(width - 8) / 3.6` columns of either; a status line or a moved text
+  that cannot fit is still written whole, named on stderr, and the converter exits 3, as for the tag in O-1.
+- **Two views.** `docs/architecture/req-overview.archify.json` is a second diagram of the same revision (`b0dbee4…`): 12
+  components (one per area of `.req/areas` with code, merged where the code is one thing, plus three stores, `minisign` and
+  the CLI entry) and 13 connections that are calls and reads or writes, only those that carry a claim from authoring to a
+  signed Baseline. Every file that declares a `req-satisfies:` link is cited by one of its boxes, so it leaves no linked file
+  to the detail; what it leaves out (Direction, Contradictions, Design links, Completeness, the Audit packet, self-test,
+  the provider and git) holds no link. `docs/architecture.html` is now the overview; the detailed diagram, unchanged but for
+  a card that names the overview and its `meta.output`, is `docs/architecture-detail.html`. A card is plain text in archify
+  `7e45f36`, so each page names the other by file name. `docs/architecture/req.png` (the detail) is replaced by
+  `req-overview.png`, the README image (light theme, cropped, 1400×1060, 136 KB).
+- **Regenerate** both: `python3 tools/graph/build_architecture.py --out docs/architecture` writes `overview-overlay.json`,
+  `overview-matrix.md`, `overlay.json` and `matrix.md`; `--check docs/architecture` compares all four with the O-3 exit
+  contract; then render each overlay again with `finalize … --quality standard` (`examples/graph/README.md`) to
+  `docs/architecture.html` and `docs/architecture-detail.html`.
+- **Run on this repository, 2026-11-14:** archify `validate` and `finalize --quality standard --json` on both overlays: all four
+  gates pass with no diagnostics; `visual-check` passes at 1440×900 and 2048×1320. The overview reports 0 proper crossings and
+  0 resolved crossovers; the detail 3 and 28, as before. The gate's named gap is unchanged: it reads back what a page carries
+  as attributes and as embedded source evidence (now for both pages, including each status line), not the picture.

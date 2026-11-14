@@ -148,10 +148,12 @@ ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
   `.req/design` are read under (default: the current directory). It writes into `<out-dir>` only, and refuses an existing
   non-empty one.
 - **`overlay.json`** is a new archify file: every component and connection, in the author's order with the author's
-  geometry and labels. Each component's `tag` keeps the author's text and adds `<STATUS> · <claim ids>` (the ids are cut to
-  fit the box with `+N`; the card lists them all). Status is the worst outcome of the links of the cited files, worst
+  geometry and labels. **The status is the component's `sublabel`**, the line archify draws at every zoom: the worst state and
+  how many claims are in it, `HOLDS · 6 claims`, `SUSPECT · 1 of 3 claims`, `STALE`, `no claim`. The author's own `sublabel`
+  moves to the `tag` (after the author's tag, if any; archify draws a tag only at the finest zoom and in the passport panel),
+  so no text is lost; the claim ids are on the status card. Status is the worst outcome of the links of the cited files, worst
   first: `UNKNOWN CLAIM`, `ORPHANED`, `SUSPECT`, `UNRATIFIED`, `HOLDS (weakened)`, `HOLDS`. Two more states are not outcomes:
-  `STALE` (a cited path does not exist under `--root`; worst of all) and `NO CLAIM` (no link; not a finding). Three cards
+  `STALE` (a cited path does not exist under `--root`; worst of all) and `no claim` (no link; not a finding). Three cards
   are appended: components by status, claims no component reaches, and cited paths outside every `.req/design` root (the
   satisfy document holds no link for those). The subtitle names the diagram's pinned revision, the `rules_v` and archify
   `7e45f36`, so the page never claims to be current.
@@ -159,9 +161,10 @@ ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
   cell the link's outcome, then the claims no component reaches.
 - **`--repo-root`** is archify's: a diagram that cites `sources` is verified against the committed bytes at its pinned
   revision, in a checkout whose `origin` matches the diagram's `meta.repository.url`. Without it archify refuses the page.
-- **Exit:** `0` written; `3` written, but a component is `STALE`, a link names an unknown claim, or an author's tag leaves
-  no room for the status (archify would refuse it; the box is `size[0]`, else 120 px) (the reason is printed); `2` refused (a wrong schema, malformed JSON, an unreadable input, a non-empty out-dir), nothing written.
+- **Exit:** `0` written; `3` written, but a component is `STALE`, a link names an unknown claim, or a status line or the
+  author's moved text does not fit its box (archify would refuse it as `component-sublabel-overflow` or
+  `component-tag-overflow`; the box is `size[0]`, else 120 px, and holds `(width - 8) / 3.6` columns) (the reason is printed); `2` refused (a wrong schema, malformed JSON, an unreadable input, a non-empty out-dir), nothing written.
 - Two runs over the same inputs give the same bytes. Like the trace pages, the overlay is not committed and is as current
   as the run that made it. A model never edits it: the status comes from `req satisfy` alone.
 
-The one overlay that is committed is this repository's own architecture, as a worked example: [`docs/architecture/`](../../docs/architecture/) holds the diagram, the generated overlay and matrix, and `tools/graph/build_architecture.py` regenerates and checks them.
+The overlays that are committed are this repository's own architecture, as a worked example: [`docs/architecture/`](../../docs/architecture/) holds two diagrams (an overview of at most twelve components, the front page, and the detail), the generated overlay and matrix of each, and `tools/graph/build_architecture.py` regenerates and checks all four files.

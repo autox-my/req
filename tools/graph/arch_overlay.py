@@ -17,12 +17,17 @@ outcome among those links, worst first: stale (a cited path does not exist under
 unknown_claim, orphaned, suspect, unratified, holds_weakened, holds; a component with no link is "no claim".
 
 Writes `<out-dir>/overlay.json` (the diagram, presentation only: ids, order, geometry, connections and labels are the
-author's; the status and the claim ids are added to the component's `tag`, after any tag the author wrote; three cards
-are appended; the `meta.subtitle` says which revision, which `rules_v` and which archify the page is made from) and
-`<out-dir>/matrix.md` (a claims x components table, then the claims no component reaches).
+author's; the status line is the component's `sublabel`, the line archify draws at every zoom, and the author's own
+`sublabel` moves to the `tag` after any tag the author wrote, so no text is lost; three cards are appended, the claim ids
+are on the status card; the `meta.subtitle` says which revision, which `rules_v` and which archify the page is made from)
+and `<out-dir>/matrix.md` (a claims x components table, then the claims no component reaches).
 
-Exit: 0 written; 3 written, but a component is stale, a link names an unknown claim, or an author's tag leaves no room
-for the status (archify would refuse the overlay: component-tag-overflow); the reason is printed; 2 refused (a wrong
+The status line is the worst state and how many claims are in it: `HOLDS · 6 claims`, `SUSPECT · 1 of 3 claims`, `STALE`
+(a cited path is missing), `no claim` (no link).
+
+Exit: 0 written; 3 written, but a component is stale, a link names an unknown claim, or a status line or an author's text
+does not fit its box (archify would refuse the overlay: component-sublabel-overflow, component-tag-overflow); the reason
+is printed and the text is written whole; 2 refused (a wrong
 schema, malformed JSON, an unreadable input or an out-dir that exists and is not empty), with nothing written.
 Deterministic: the same inputs give the same bytes (no clock, no randomness, no network). Python standard library only;
 it never opens an input for writing and writes only inside `<out-dir>`.
@@ -62,8 +67,10 @@ OUTSIDE_CARD = "Cited paths outside every design root"
 # archify's component box when a component gives no `size`: `layout.defaultW` (renderers/architecture/render-architecture.mjs
 # at 7e45f36). The grid's `cellW` is the step between boxes, never a box's width.
 DEFAULT_WIDTH = 120
-# archify draws a tag as one unwrapped line, shrunk to a 6 px floor at 0.6 px per column per px of font, inside the box
-# less 8 px of padding (renderers/shared/text-fit.mjs at 7e45f36): (width - 8) / 3.6 columns. Integer arithmetic.
+# archify draws a sublabel (at every zoom, `componentTextFit.sublabelMinimum` 6) and a tag (at the finest zoom,
+# `tagMinimum` 6) each as one unwrapped line, shrunk to a 6 px floor at 0.6 px per column per px of font, inside the box
+# less 8 px of padding (renderers/shared/text-fit.mjs and render-architecture.mjs at 7e45f36): (width - 8) / 3.6 columns.
+# Both fields have the same floor, so one budget serves both. Integer arithmetic.
 SEP = " | "
 
 
@@ -243,33 +250,31 @@ def cell_label(text):
     return clean(text).replace("|", "\\|")
 
 
-def tag_budget(width):
+def budget(width):
+    """Columns archify draws in a box of `width` px at its 6 px floor (the sublabel and the tag share this floor)."""
     return int(((width - 8) * 10) // 36)
 
 
-def fit_tag(existing, word, claims, width):
-    """The author's tag (kept), then the status word and as many claim ids as fit the box; the card holds them all.
+def status_line(status, claims, outcomes):
+    """The status word and how many claims are in that state: `HOLDS · 6 claims`, `SUSPECT · 1 of 3 claims`.
 
-    Returns the text and whether it fits the box. Even the author's tag plus the word may not: it is written all the same
-    (the author's text is kept), and the caller says the page would not pass archify's `component-tag-overflow`.
-    """
-    budget = tag_budget(width)
-    prefix = existing + SEP if existing else ""
-    if not claims:
-        text = prefix + word
-        return text, units(text) <= budget
-    for shown in range(len(claims), -1, -1):
-        if shown == len(claims):
-            ids = ", ".join(claims)
-        elif shown:
-            ids = ", ".join(claims[:shown]) + f", +{len(claims) - shown}"
-        else:
-            ids = f"{len(claims)} claims"
-        text = f"{prefix}{word} · {ids}"
-        if units(text) <= budget:
-            return text, True
-    text = f"{prefix}{word}"
-    return text, units(text) <= budget
+    A stale component says only STALE (a cited path is missing; its links are not the news), and a component with no link
+    says `no claim`. A claim counts under its worst link."""
+    if status == "stale":
+        return WORD["stale"]
+    if status == "no_claim":
+        return "no claim"
+    inside = sum(1 for claim in claims if outcomes[claim] == status)
+    noun = "claim" if len(claims) == 1 else "claims"
+    if inside == len(claims):
+        return f"{WORD[status]} · {len(claims)} {noun}"
+    return f"{WORD[status]} · {inside} of {len(claims)} {noun}"
+
+
+def moved_text(component):
+    """The author's tag, then the author's sublabel, which this overlay gives up the sublabel line for."""
+    parts = [component[key] for key in ("tag", "sublabel") if component.get(key)]
+    return SEP.join(parts)
 
 
 def box_width(component):
@@ -351,13 +356,24 @@ def overlay(diagram, satisfy, trace, root):
     overflow = []
     for component, state in zip(result["components"], states):
         width = box_width(component)
-        component["tag"], fits = fit_tag(component.get("tag", ""), WORD[state["status"]], state["claims"], width)
-        if not fits:
-            overflow.append(
-                f"tag overflow: component {component['id']!r} ({component['label']}): {component['tag']!r} needs "
-                f"{units(component['tag'])} columns and a {width} px box draws {tag_budget(width)}; the author's tag is kept, "
-                "so archify validate would refuse the overlay (component-tag-overflow): widen `size` or shorten the tag"
-            )
+        moved = moved_text(component)
+        line = status_line(state["status"], state["claims"], state["outcomes"])
+        # Written whole either way: the status is never cut, the author's text is never dropped; one that does not fit is named.
+        for field, text, reason in (
+            ("sublabel", line, "widen `size`: the status line is never cut"),
+            ("tag", moved, "widen `size` or shorten the author's tag and sublabel"),
+        ):
+            if text and units(text) > budget(width):
+                overflow.append(
+                    f"{field} overflow: component {component['id']!r} ({component['label']}): {text!r} needs "
+                    f"{units(text)} columns and a {width} px box draws {budget(width)}; the text is kept whole, so "
+                    f"archify validate would refuse the overlay (component-{field}-overflow): {reason}"
+                )
+        component["sublabel"] = line
+        if moved:
+            component["tag"] = moved
+        else:
+            component.pop("tag", None)
 
     cards = result.setdefault("cards", [])
     cards.append({"dot": "violet", "title": STATUS_CARD, "items": status_items or ["none"]})
