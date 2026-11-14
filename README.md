@@ -43,7 +43,7 @@ copy of the corpus**, never on req's own claims, by `python3 tools/graph/build_a
 
 | edit, on a copy | `req satisfy` says | the Evidence box | exact output |
 | --- | --- | --- | --- |
-| **cosmetic**: `at most 0.30` written `at most 0.3` | `HOLDS`: same meaning fingerprint, so no false alarm | `HOLDS · 4 claims` | [satisfy.txt](docs/architecture/drift/cosmetic/satisfy.txt) |
+| **cosmetic**: `at most 0.30` re-worded `no more than 0.30` | `HOLDS`: same meaning fingerprint (`req compare`: identical), so no false alarm | `HOLDS · 4 claims` | [satisfy.txt](docs/architecture/drift/cosmetic/satisfy.txt) |
 | **loosening**: `at most 0.30` becomes `at most 0.40` | `HOLDS (weakened)`, `numeric_loosening`: what met the stronger requirement meets the weaker one | `HOLDS (weakened) · 1 of 4 claims` | [satisfy.txt](docs/architecture/drift/loosening/satisfy.txt) |
 | **tightening**: `at most 0.30` becomes `at most 0.20` | `SUSPECT`, `numeric_tightening`, with the `req satisfy --record` command a human runs once the design is re-checked | `SUSPECT · 1 of 4 claims` | [satisfy.txt](docs/architecture/drift/tightening/satisfy.txt) |
 

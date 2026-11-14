@@ -6,7 +6,7 @@
       "kind": "re-word",
       "claim_id": "REQ-0010",
       "before": "The benchmark harness should show a false split rate of at most 0.30 on the parity corpus at v0.",
-      "after": "The benchmark harness should show a false split rate of at most 0.3 on the parity corpus at v0.",
+      "after": "The benchmark harness should show a false split rate of no more than 0.30 on the parity corpus at v0.",
       "expect": {
         "element": "src/bench.rs",
         "outcome": "holds"

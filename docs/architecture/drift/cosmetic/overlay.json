@@ -498,7 +498,7 @@
       "items": [
         "REQ-0010 was edited on a throw-away copy of the corpus (cosmetic); the real claims are not changed, and architecture.html is the real state, where every link holds",
         "It read \"The benchmark harness should show a false split rate of at most 0.30 on the parity corpus at v0.\"",
-        "On the copy it reads \"The benchmark harness should show a false split rate of at most 0.3 on the parity corpus at v0.\"",
+        "On the copy it reads \"The benchmark harness should show a false split rate of no more than 0.30 on the parity corpus at v0.\"",
         "What req satisfy prints for it: [HOLDS] src/bench.rs -> REQ-0010"
       ]
     },

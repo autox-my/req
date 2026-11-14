@@ -275,11 +275,10 @@ Not an edit of the decisions above; decision 7 step 4 (`docs/specs/O-6-drift-dem
 
 - **Three edits, one claim, always on a copy.** `docs/architecture/drift/edits.json` (`req.drift-edits/1`) names, for REQ-0010
   (the false-split bound, linked from `src/bench.rs`, drawn in the Evidence box of the overview), the statement before and
-  after and the outcome `req satisfy` is expected to give: a **cosmetic** re-word (`at most 0.30` written `at most 0.3`:
-  HOLDS, the same meaning fingerprint), a **loosening** (`at most 0.40`: HOLDS (weakened), `numeric_loosening`, an admitted
+  after and the outcome `req satisfy` is expected to give: a **cosmetic** re-word (`at most 0.30` written `no more than 0.30`: HOLDS, the same meaning fingerprint, `req compare` says identical, e4f9b4878326 on both sides), a **loosening** (`at most 0.40`: HOLDS (weakened), `numeric_loosening`, an admitted
   carry) and a **tightening** (`at most 0.20`: SUSPECT, `numeric_tightening`). They were probed with `req satisfy` first; a
-  re-wording that adds words (`for the parity corpus`, a comma, `no greater than`) is not cosmetic to req: it classified
-  `scope_divergence` or `unrelated`, SUSPECT, which is the asymmetric cost of ADR 0007 and not a defect of the demonstration.
+  re-wording that adds words (`for the parity corpus`, a comma) or that names the bound otherwise (`no greater than`, `not exceeding`,
+  which disagrees with the pin) is not cosmetic to req: it classified `scope_divergence` or `unrelated`, SUSPECT, which is the asymmetric cost of ADR 0007 and not a defect of the demonstration.
   The pin (`pins: value 0.3`) is left as the claim has it: a statement edited on a copy is the copy's own, and `canon` would
   flag the pin there (the statement is the source of truth, never the pin).
 - **The build** is `python3 tools/graph/build_architecture.py --drift docs/architecture/drift` (`--check-drift` is the same

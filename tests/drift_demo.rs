@@ -256,6 +256,75 @@ fn the_edits_are_data_over_one_real_claim() {
     }
 }
 
+/// The cosmetic edit is a re-WORDING, not a change of numeral: the words differ, every number is written as before, and
+/// `req compare` (an oracle independent of `satisfy`) says the two statements are identical, one meaning fingerprint.
+#[test]
+fn the_cosmetic_edit_rewords_and_req_compare_says_identical() {
+    let edits = json(&root().join(DRIFT).join("edits.json"));
+    let cosmetic = edits["edits"]
+        .as_array()
+        .expect("an edits list")
+        .iter()
+        .find(|edit| edit["id"] == "cosmetic")
+        .expect("a cosmetic edit");
+    let before = cosmetic["before"].as_str().expect("before");
+    let after = cosmetic["after"].as_str().expect("after");
+    let split = |text: &str| -> (Vec<String>, Vec<String>) {
+        let tokens = text.split_whitespace().map(|t| t.trim_end_matches('.'));
+        let (numbers, words): (Vec<&str>, Vec<&str>) =
+            tokens.partition(|t| t.chars().next().is_some_and(|c| c.is_ascii_digit()));
+        (
+            words.into_iter().map(str::to_string).collect(),
+            numbers.into_iter().map(str::to_string).collect(),
+        )
+    };
+    let (before_words, before_numbers) = split(before);
+    let (after_words, after_numbers) = split(after);
+    assert_ne!(before_words, after_words, "the cosmetic edit changes words");
+    assert_eq!(
+        before_numbers, after_numbers,
+        "the cosmetic edit leaves every number written as it was (a re-wording, not a decimal form)"
+    );
+    // Two claim files, the committed claim with each statement, compared by req.
+    let claim = read(&root().join(format!("claims/{CLAIM}.yml")));
+    let lines: Vec<&str> = claim.lines().collect();
+    let start = lines
+        .iter()
+        .position(|l| *l == "statement: >-")
+        .expect("a folded statement");
+    let end = start
+        + 1
+        + lines[start + 1..]
+            .iter()
+            .take_while(|l| l.starts_with("  "))
+            .count();
+    let with = |statement: &str| {
+        let mut out: Vec<String> = lines[..=start].iter().map(|l| l.to_string()).collect();
+        out.push(format!("  {statement}"));
+        out.extend(lines[end..].iter().map(|l| l.to_string()));
+        out.join("\n") + "\n"
+    };
+    let dir = std::env::temp_dir().join(format!("req-drift-compare-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("makes the dir");
+    fs::write(dir.join("a.yml"), with(before)).expect("writes a");
+    fs::write(dir.join("b.yml"), with(after)).expect("writes b");
+    let output = Command::new(req_bin())
+        .arg("compare")
+        .arg(dir.join("a.yml"))
+        .arg(dir.join("b.yml"))
+        .current_dir(root())
+        .env_remove("REQ_ROOT")
+        .output()
+        .expect("runs req compare");
+    let _ = fs::remove_dir_all(&dir);
+    let said = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        said.contains(&format!("{CLAIM} -> {CLAIM}: identical")),
+        "req compare must call the cosmetic edit identical:\n{said}"
+    );
+}
+
 /// Each edit's committed `satisfy.txt` says what req says of the edited link, and the box that cites the file carries the
 /// same word in the overlay.
 #[test]
