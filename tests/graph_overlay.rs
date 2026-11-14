@@ -1386,9 +1386,12 @@ fn a_cell_names_the_component_with_the_worst_outcome_of_its_files_and_each_file_
         2,
         "name and URL, once: {cell}"
     );
-    assert!(cell.contains(&format!("{base}/src/a.rs#L7")), "{cell}");
+    // The line comes from the working tree and the URL pins a revision, so a line anchor could point at the wrong line of
+    // the pinned file: the file is linked at the revision, with no `#L`.
+    assert!(!cell.contains("#L"), "no line anchor: {cell}");
+    assert!(cell.contains(&format!("]({base}/src/a.rs)")), "{cell}");
     assert_eq!(cell.matches("src/b.rs").count(), 2, "{cell}");
-    assert!(cell.contains(&format!("{base}/src/b.rs#L3")), "{cell}");
+    assert!(cell.contains(&format!("]({base}/src/b.rs)")), "{cell}");
 }
 
 #[test]
@@ -1431,6 +1434,88 @@ fn a_label_and_a_source_with_a_pipe_do_not_break_the_table() {
     );
     assert!(row[2].contains("Read \\| Write (holds)"), "{row:?}");
     assert!(row[1].contains("read \\| write"), "{row:?}");
+}
+
+// ---- a component links to its architecture page (ADR 0053 decision 6) ---------------------------
+
+/// Run with `--page <path>` (and `--root` the miniature repository) into `<scratch>/out`.
+fn convert_with_page(s: &Scratch, paths: &Paths, page: &[&str]) -> Run {
+    let mut command = Command::new(python3());
+    command.arg("-I").arg(script()).arg("--root").arg(s.repo());
+    for arg in page {
+        command.arg(arg);
+    }
+    let out = command
+        .arg(&paths.diagram)
+        .arg(&paths.satisfy)
+        .arg(&paths.trace)
+        .arg(s.path("out"))
+        .current_dir(&s.0)
+        .output()
+        .expect("runs the converter");
+    Run {
+        code: out.status.code().expect("exits"),
+        stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+    }
+}
+
+#[test]
+fn with_a_page_each_component_links_to_its_node_on_that_page() {
+    // archify's viewer focuses a node from `#focus=<node id>` (viewer runtime: `syncFocusFromHash`); the node id is the
+    // component's id.
+    let s = Scratch::new("page");
+    repo(&s);
+    let inputs = Inputs {
+        diagram: diagram(vec![
+            component("pump", "Pump", &["src/a.rs"], 0),
+            component("my part", "Read | Write", &["src/b.rs"], 1),
+        ]),
+        satisfy: satisfy(vec![
+            link("src/a.rs", "REQ-0001", "holds"),
+            link("src/b.rs", "REQ-0001", "suspect"),
+        ]),
+        trace: trace(&claims()),
+    };
+    let paths = inputs.write(&s);
+    let out = convert_with_page(&s, &paths, &["--page", "../architecture.html"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let cell = row_of(&matrix(&s), "REQ-0001")[2].clone();
+    assert!(
+        cell.contains("[Pump](../architecture.html#focus=pump) (holds)"),
+        "{cell}"
+    );
+    assert!(
+        cell.contains("[Read \\| Write](../architecture.html#focus=my%20part) (suspect)"),
+        "the id is percent-encoded, the label escaped: {cell}"
+    );
+}
+
+#[test]
+fn without_a_page_a_component_is_plain_text_nothing_is_guessed() {
+    let s = Scratch::new("no-page");
+    repo(&s);
+    let inputs = Inputs {
+        diagram: diagram(vec![component("pump", "Pump", &["src/a.rs"], 0)]),
+        satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
+        trace: trace(&claims()),
+    };
+    assert_eq!(run(&s, &inputs).code, 0);
+    let cell = row_of(&matrix(&s), "REQ-0001")[2].clone();
+    assert!(cell.starts_with("Pump (holds)"), "{cell}");
+    assert!(!cell.contains("#focus"), "{cell}");
+}
+
+#[test]
+fn a_page_option_with_no_value_or_given_twice_is_usage_exit_2() {
+    let s = Scratch::new("page-usage");
+    repo(&s);
+    let paths = full_inputs().write(&s);
+    for page in [vec!["--page"], vec!["--page", "a.html", "--page", "b.html"]] {
+        let out = convert_with_page(&s, &paths, &page);
+        assert_eq!(out.code, 2, "{page:?}: {}", out.all());
+        assert!(out.stderr.contains("usage:"), "{}", out.stderr);
+    }
 }
 
 // ---- Falsification 5 (ADR 0053): a component is never a column ----------------------------------
@@ -2021,4 +2106,72 @@ fn a_wrong_argument_list_is_exit_2_with_usage() {
         .expect("runs the converter");
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("usage:"));
+}
+
+#[test]
+fn a_namespaced_report_is_read_by_local_names() {
+    // `req gate --test-report` reads a root that declares a default namespace; so does this.
+    let s = Scratch::new("report-namespace");
+    repo(&s);
+    let paths = tested_inputs().write(&s);
+    let report = s.path("junit.xml");
+    fs::write(
+        &report,
+        "<testsuites xmlns=\"urn:junit\"><testsuite name=\"x\">\
+         <testcase classname=\"suite\" name=\"passes\"/>\
+         <testcase classname=\"suite\" name=\"fails\"><failure message=\"m\"/></testcase>\
+         </testsuite></testsuites>",
+    )
+    .expect("writes");
+    let out = convert_with_report(&s, &paths, &report, &s.path("out"));
+    assert_eq!(out.code, 0, "{}", out.all());
+    let cell = row_of(&matrix(&s), "REQ-0001")[3].clone();
+    assert!(cell.contains("suite::passes (passed)"), "{cell}");
+    assert!(cell.contains("suite::fails (failed)"), "{cell}");
+    assert!(cell.contains("suite::missing (not found)"), "{cell}");
+}
+
+#[test]
+fn doctype_text_inside_a_comment_or_cdata_is_not_a_declaration() {
+    let s = Scratch::new("report-doctype-text");
+    repo(&s);
+    let paths = tested_inputs().write(&s);
+    let report = s.path("junit.xml");
+    fs::write(
+        &report,
+        "<testsuites><!-- <!DOCTYPE a [<!ENTITY x \"y\">]> --><testsuite name=\"x\">\
+         <testcase classname=\"suite\" name=\"passes\">\
+         <system-out><![CDATA[<!ENTITY x \"y\"> <!DOCTYPE z>]]></system-out></testcase>\
+         </testsuite></testsuites>",
+    )
+    .expect("writes");
+    let out = convert_with_report(&s, &paths, &report, &s.path("out"));
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(
+        row_of(&matrix(&s), "REQ-0001")[3].contains("suite::passes (passed)"),
+        "{}",
+        matrix(&s)
+    );
+}
+
+#[test]
+fn a_real_doctype_is_still_refused_with_or_without_an_entity() {
+    for (label, text) in [
+        ("entity", "<!DOCTYPE a [<!ENTITY x \"y\">]><testsuites/>"),
+        ("plain", "<!DOCTYPE testsuites><testsuites/>"),
+        (
+            "after a comment",
+            "<!-- hi --><!DOCTYPE testsuites><testsuites/>",
+        ),
+    ] {
+        let s = Scratch::new("report-doctype-real");
+        repo(&s);
+        let paths = tested_inputs().write(&s);
+        let report = s.path("junit.xml");
+        fs::write(&report, text).expect("writes");
+        let out = convert_with_report(&s, &paths, &report, &s.path("out"));
+        assert_eq!(out.code, 2, "{label}: {}", out.all());
+        assert!(out.stderr.contains("junit.xml"), "{label}: {}", out.stderr);
+        assert!(!s.path("out").exists(), "{label}");
+    }
 }

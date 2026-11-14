@@ -93,24 +93,39 @@ This decision is wrong if any of these is observed:
 ## Implementation note — 2026-11-14 (O-5: the coverage matrix)
 
 - **`req.trace/1` nodes** gain `source`, `evidence` and `tests` after `area` (`src/view.rs`; the `req trace --help` page names
-  them). `source` is the claim's `rationale.source`, `null` when empty. `evidence` is `machine` or `process`: the loader holds
-  the declaration as a value with the default `machine` (ADR 0019), so an absent key and a declared default cannot be told
-  apart and the node never says `null` for it; the converter reads `machine` and an absent field alike. `tests` are the
-  claim's ids in file order, `[]` when none. Text `req trace` and `docs/trace.md` are untouched.
+  them). `source` is the claim's `rationale.source`, `null` when empty. `evidence` is `machine` or `process`: **the loaded
+  value, `machine` when the file declares none, never `null`**. The loader holds the declaration as a value with the default
+  `machine` (ADR 0019), so a claim that omits `evidence:` and one that writes `evidence: machine` are the same to `req trace`
+  (the implementation spec asked for `null` when absent; that cannot be told from the default); `req trace --help` says so; the converter reads `machine`
+  and an absent field alike. `tests` are the claim's ids in file order, `[]` when none. Text `req trace` and `docs/trace.md` are untouched.
 - **`matrix.md`** (`tools/graph/arch_overlay.py`) is the four-column table of decision 1, one row per claim of `req.trace/1`
   that does not carry `applies: does_not_apply`, by claim id. *Source* is `source` verbatim (a pipe escaped, a line break
   folded to a space). *Claim* is the id linked to `claims/<id>.yml`, a colon and the statement. *Satisfied by* is each
   component whose cited files carry a link to the claim, in diagram order, as `<label> (<outcome>)` (`holds`, `holds
   (weakened)`, `suspect`, `unratified`, `orphaned`, `unknown claim`: the worst of the component's links for that claim, ADR 0052
-  decision 2's order), then the files that carry the link, each once, linked to the link's line at `meta.repository.revision`
-  when the diagram's repository is on GitHub and pinned (decision 6; otherwise the path alone). *Verified by* is the count and
-  ids of the claim's tests; the gaps are `no source`, `no design element`, `no test` and `<evidence> evidence, no test asked`.
-  The unreached-claims list that followed the old grid is gone from the file (the rows say `no design element`; the overlay's
-  card of the same name is unchanged), and the overlay JSON is byte-for-byte what it was.
+  decision 2's order), then the files that carry the link, each once (decision 6). *Verified by* is the
+  count and ids of the claim's tests; the gaps are `no source`, `no design element`, `no test` and `<evidence> evidence, no
+  test asked`. The unreached-claims list that followed the old grid is gone from the file (the rows say `no design element`;
+  the overlay's card of the same name is unchanged), and the overlay JSON is byte-for-byte what it was.
+- **Links (decision 6), after review 1.** A **component** is linked to its node on the architecture page when the converter is
+  given `--page <path>` (the page as the matrix reaches it; no default is guessed, so without it a component is plain text):
+  `<path>#focus=<component id>`, the fragment archify's viewer (`7e45f36`, `syncFocusFromHash`, which reads `focus=<node id>`
+  from `location.hash`) focuses a node by, so the link opens the page with the part selected. `build_architecture.py` passes
+  `../architecture.html` for the overview matrix and `../architecture-detail.html` for the detail. A **file** is linked to the
+  file at `meta.repository.revision` **with no line anchor**, when the diagram's repository is on GitHub and pinned (otherwise
+  the path alone): a link's `line` comes from `req satisfy` over the working tree, while the URL pins a revision, so after a
+  line moves a committed `#L<n>` would point at the wrong line of the pinned file. A claim is linked to its file relative to
+  the matrix (`--matrix-dir`, below).
 - **`--test-report <junit.xml>`** (optional) reads a JUnit report with the same mapping as `src/junit.rs` (`failure` or
   `error` is failed, `skipped` is skipped, a bare case is passed, a conflicting duplicate id or a DTD is refused) and appends
   each linked test's outcome: passed, failed, skipped or not found. An unreadable or malformed report is exit 2 naming it,
-  with nothing written. Without the flag the report is never opened, so a committed matrix cannot move when a report does
+  with nothing written. Elements are matched by local name, so a report that declares a default namespace is read as
+  `req gate --test-report` reads it. A DTD is refused only when the document really declares one (a `DOCTYPE` or an `ENTITY`
+  declaration, found by the XML parser, not by searching the text), so `<!DOCTYPE …>` written inside a comment or a CDATA
+  section is not a refusal. **What still differs from `src/junit.rs`:** the converter uses the standard library's XML
+  parser, so it also accepts a *prefixed* element name (`<j:testsuites>`), which the gate's hand-written reader treats as an
+  unknown root, (a prefix declared in the document); this reader
+  feeds a matrix a human reads, never a gate verdict, and the gate stays the judge of a report. Without the flag the report is never opened, so a committed matrix cannot move when a report does
   (*Falsification* 3).
 - **`--matrix-dir <dir>`** (optional, default the root) is the directory, relative to the root, the matrix will be read from,
   so the claim links are right where the file is committed (`../../claims/…` from `docs/architecture/`). `build_architecture.py`

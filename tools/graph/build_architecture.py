@@ -40,14 +40,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 CONVERTER = os.path.join(ROOT, "tools", "graph", "arch_overlay.py")
 SATISFY_SCHEMA = "req.satisfy/1"
 TRACE_SCHEMA = "req.trace/1"
-# (the architect's diagram, the overlay and the matrix made from it), the overview first.
+# (the architect's diagram, the overlay and the matrix made from it, the page archify renders the overlay to as the matrix
+# reaches it from docs/architecture/), the overview first.
 VIEWS = (
-    ("req-overview.archify.json", "overview-overlay.json", "overview-matrix.md"),
-    ("req.archify.json", "overlay.json", "matrix.md"),
+    ("req-overview.archify.json", "overview-overlay.json", "overview-matrix.md", "../architecture.html"),
+    ("req.archify.json", "overlay.json", "matrix.md", "../architecture-detail.html"),
 )
 # Where the committed matrices are read from, so the converter writes their claim links relative to it.
 MATRIX_DIR = "docs/architecture"
-GENERATED = tuple(name for _, overlay, matrix in VIEWS for name in (overlay, matrix))
+GENERATED = tuple(name for _, overlay, matrix, _ in VIEWS for name in (overlay, matrix))
 
 
 class Unverifiable(Exception):
@@ -102,12 +103,12 @@ def generate(binary, directory, into):
                                    (trace, TRACE_SCHEMA, ("trace", "--format", "json"))):
             with open(path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(req_json(binary, schema, *args))
-        for name, overlay, matrix in VIEWS:
+        for name, overlay, matrix, page in VIEWS:
             diagram = os.path.join(directory, name)
             if not os.path.isfile(diagram):
                 raise Unverifiable(f"{diagram} cannot be read: the architect's diagram is not here")
             one = os.path.join(work, "one-" + overlay)
-            done = subprocess.run([sys.executable, "-I", CONVERTER, "--root", ROOT, "--matrix-dir", MATRIX_DIR, diagram, satisfy, trace, one],
+            done = subprocess.run([sys.executable, "-I", CONVERTER, "--root", ROOT, "--matrix-dir", MATRIX_DIR, "--page", page, diagram, satisfy, trace, one],
                                   capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, timeout=300)
             said = done.stderr.strip() or done.stdout.strip()
             if done.returncode not in (0, 3):
@@ -142,7 +143,7 @@ def main(argv):
         print("UNVERIFIABLE: `req` is not on PATH (and no --req was given); the overlay is computed from its "
               "real output and cannot be built or checked without it", file=sys.stderr)
         return 3
-    missing = [os.path.join(directory, name) for name, _, _ in VIEWS if not os.path.isfile(os.path.join(directory, name))]
+    missing = [os.path.join(directory, name) for name, _, _, _ in VIEWS if not os.path.isfile(os.path.join(directory, name))]
     if missing:
         for path in missing:
             print(f"{path} cannot be read: the architect's diagram is not here", file=sys.stderr)

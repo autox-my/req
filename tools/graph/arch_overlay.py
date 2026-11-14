@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Overlay the claims a repository's files satisfy onto an archify `architecture` diagram (ADR 0052).
 
-usage: python3 -I tools/graph/arch_overlay.py [--root <dir>] [--test-report <junit.xml>] [--matrix-dir <dir>]
+usage: python3 -I tools/graph/arch_overlay.py [--root <dir>] [--test-report <junit.xml>] [--matrix-dir <dir>] [--page <path>]
                                               <diagram.json> <satisfy.json> <trace.json> <out-dir>
 
 Inputs, all read-only:
@@ -19,6 +19,10 @@ Inputs, all read-only:
   --matrix-dir <dir>
                   the directory, relative to the root, the matrix will be read from (default: the root itself); the claim links
                   are written relative to it.
+  --page <path>   the architecture page this diagram is rendered to, as the matrix will reach it (a relative URL such as
+                  `../architecture.html`): each component in the matrix then links to its node there, `<path>#focus=<component
+                  id>`, the fragment archify's viewer focuses a node by (7e45f36, `syncFocusFromHash`). Without it a component
+                  is plain text: no page is guessed.
 
 A component satisfies the union of the claims its cited files declare (ADR 0052 decision 1): a link is found by the
 file path alone, never by the component's id, and a line range in `sources` is ignored. Its status is the worst
@@ -52,6 +56,7 @@ import json
 import posixpath
 import sys
 import xml.etree.ElementTree as ET
+import xml.parsers.expat as expat
 from pathlib import Path
 
 # The archify commit this converter was written against (ADR 0046 decision 7, ADR 0052 decision 8).
@@ -286,11 +291,16 @@ class ReportError(Exception):
     """A JUnit report this converter will not read; the reason names it."""
 
 
+def local(tag):
+    """An element's name without its namespace (`{urn:junit}testsuites` is `testsuites`); a comment's tag is not a string."""
+    return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
+
+
 def read_report(path):
     """The outcomes a JUnit report holds: {`classname::name`: passed | failed | skipped}.
 
     Read as `src/junit.rs` reads nextest's subset (ADR 0024), written again here and never copied: the root is `<testsuites>`
-    or `<testsuite>`; a `<testcase>` needs a non-empty `classname` and `name` and is `failed` when it holds a `<failure>` or an
+    or `<testsuite>` (matched by local name, so a default namespace is read as `req gate --test-report` reads it); a `<testcase>` needs a non-empty `classname` and `name` and is `failed` when it holds a `<failure>` or an
     `<error>`, `skipped` when it holds a `<skipped>` and no failure, else `passed`; a conflicting duplicate id is refused
     rather than chosen between, and a DTD is refused. An unreadable or malformed report is `ReportError`."""
     try:
@@ -298,20 +308,28 @@ def read_report(path):
         text = data.decode("utf-8")
     except (OSError, UnicodeDecodeError) as error:
         raise ReportError(f"cannot read test report {path}: {error}") from None
-    if "<!DOCTYPE" in text or "<!ENTITY" in text:
-        raise ReportError(f"cannot parse test report {path}: it carries a DTD")
+    declared = []
+    scan = expat.ParserCreate()
+    scan.StartDoctypeDeclHandler = lambda *_: declared.append("a DOCTYPE")
+    scan.EntityDeclHandler = lambda *_: declared.append("an ENTITY")
+    try:
+        scan.Parse(data, True)
+    except expat.ExpatError as error:
+        raise ReportError(f"cannot parse test report {path}: {error}") from None
+    if declared:
+        raise ReportError(f"cannot parse test report {path}: it declares {declared[0]}, which a JUnit report does not carry")
     try:
         root = ET.fromstring(data)
     except (ET.ParseError, ValueError) as error:
         raise ReportError(f"cannot parse test report {path}: {error}") from None
-    if root.tag not in ("testsuites", "testsuite"):
-        raise ReportError(f"cannot parse test report {path}: unexpected root element <{root.tag}>: expected <testsuites> or <testsuite>")
+    if local(root.tag) not in ("testsuites", "testsuite"):
+        raise ReportError(f"cannot parse test report {path}: unexpected root element <{local(root.tag)}>: expected <testsuites> or <testsuite>")
     cases = []
     for child in root:
-        if child.tag == "testcase":
+        if local(child.tag) == "testcase":
             cases.append(child)
-        elif root.tag == "testsuites" and child.tag == "testsuite":
-            cases.extend(case for case in child if case.tag == "testcase")
+        elif local(root.tag) == "testsuites" and local(child.tag) == "testsuite":
+            cases.extend(case for case in child if local(case.tag) == "testcase")
     outcomes = {}
     for case in cases:
         name, classname = case.get("name"), case.get("classname")
@@ -319,7 +337,7 @@ def read_report(path):
             raise ReportError(f"cannot parse test report {path}: a <testcase> lacks `name` or `classname`")
         if not name or not classname:
             raise ReportError(f"cannot parse test report {path}: a <testcase> has an empty `name` or `classname`: the id is `classname::name`")
-        kinds = {child.tag for child in case}
+        kinds = {local(child.tag) for child in case}
         outcome = "failed" if kinds & {"failure", "error"} else "skipped" if "skipped" in kinds else "passed"
         identity = f"{classname}::{name}"
         if outcomes.setdefault(identity, outcome) != outcome:
@@ -332,9 +350,9 @@ def cell_text(text):
     return text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").replace("|", "\\|")
 
 
-def url_path(path):
-    """`path` for a URL, keeping letters, digits and `-._~/` and writing every other byte as `%XX`."""
-    safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~/"
+def url_path(path, extra="/"):
+    """`path` for a URL, keeping letters, digits and `-._~` (and `extra`) and writing every other byte as `%XX`."""
+    safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~" + extra
     return "".join(char if char in safe else "".join(f"%{byte:02X}" for byte in char.encode("utf-8")) for char in path)
 
 
@@ -353,9 +371,11 @@ def github_blob(diagram):
     return f"{url}/blob/{url_path(revision)}"
 
 
-def satisfied_by(claim, states, links_by_element, blob):
+def satisfied_by(claim, states, links_by_element, blob, page):
     """The *Satisfied by* cell: each component of the diagram whose cited files link `claim`, in diagram order, as
-    `<label> (<worst outcome>)` and the files that carry the link, each once, linked to its line at the pinned revision."""
+    `<label> (<worst outcome>)` (the label linked to the component's node on `page`, when there is one) and the files that
+    carry the link, each once, linked at the pinned revision. No line anchor: a link's line comes from the working tree and
+    the URL pins a revision, so after a line moves the anchor would name the wrong line of the pinned file."""
     parts = []
     for state in states:
         outcome = state["outcomes"].get(claim)
@@ -366,10 +386,12 @@ def satisfied_by(claim, states, links_by_element, blob):
             ours = [link for link in links_by_element.get(path, []) if link["claim_id"] == claim]
             if not ours:
                 continue
-            lines = [link["line"] for link in ours if isinstance(link.get("line"), int) and not isinstance(link.get("line"), bool)]
             name = f"`{path}`"
-            files.append(f"[{name}]({blob}/{url_path(path)}#L{min(lines)})" if blob and lines else name)
-        text = f"{cell_label(state['component']['label'])} ({OUTCOME_TEXT[outcome]})"
+            files.append(f"[{name}]({blob}/{url_path(path)})" if blob else name)
+        label = cell_label(state["component"]["label"])
+        if page is not None:
+            label = f"[{label}]({url_path(page)}#focus={url_path(state['component']['id'], extra='')})"
+        text = f"{label} ({OUTCOME_TEXT[outcome]})"
         parts.append(text + (": " + ", ".join(files) if files else ""))
     return "<br>".join(parts) or "no design element"
 
@@ -391,7 +413,7 @@ def verified_by(node, report):
     return text if evidence == "machine" else f"{text}; {cell_text(evidence)} evidence"
 
 
-def coverage_matrix(nodes, states, links_by_element, blob, matrix_dir, report):
+def coverage_matrix(nodes, states, links_by_element, blob, matrix_dir, report, page):
     """ADR 0053's matrix, as Markdown: one row per applying claim by id, four columns, a named gap in every empty cell."""
     claims_dir = posixpath.relpath("claims", matrix_dir)
     table = ["| " + " | ".join(HEADER) + " |", "| " + " | ".join(["---"] * len(HEADER)) + " |"]
@@ -405,7 +427,7 @@ def coverage_matrix(nodes, states, links_by_element, blob, matrix_dir, report):
                 [
                     cell_text(source) if source else "no source",
                     claim_cell,
-                    satisfied_by(claim, states, links_by_element, blob),
+                    satisfied_by(claim, states, links_by_element, blob, page),
                     verified_by(node, report),
                 ]
             )
@@ -449,7 +471,7 @@ def box_width(component):
     return DEFAULT_WIDTH
 
 
-def overlay(diagram, satisfy, trace, root, report=None, matrix_dir="."):
+def overlay(diagram, satisfy, trace, root, report=None, matrix_dir=".", page=None):
     """The overlay diagram, the matrix text and the reasons the exit is 3."""
     links = satisfy["links"]
     by_element = {}
@@ -563,7 +585,7 @@ def overlay(diagram, satisfy, trace, root, report=None, matrix_dir="."):
     parts.append(f"archify {ARCHIFY_COMMIT}")
     result["meta"]["subtitle"] = " · ".join(parts)
 
-    matrix = coverage_matrix(nodes, states, by_element, github_blob(diagram), matrix_dir, report)
+    matrix = coverage_matrix(nodes, states, by_element, github_blob(diagram), matrix_dir, report, page)
 
     reasons = []
     for state in states:
@@ -580,15 +602,15 @@ def render(value):
 
 
 USAGE = (
-    "usage: arch_overlay.py [--root <dir>] [--test-report <junit.xml>] [--matrix-dir <dir>] "
+    "usage: arch_overlay.py [--root <dir>] [--test-report <junit.xml>] [--matrix-dir <dir>] [--page <path>] "
     "<diagram.json> <satisfy.json> <trace.json> <out-dir>"
 )
 
 
 def parse(argv):
-    """(root, report path or None, matrix dir, the four positionals), or None for a usage error."""
+    """(root, report path or None, matrix dir, page or None, the four positionals), or None for a usage error."""
     args = argv[1:]
-    options = {"--root": ".", "--test-report": None, "--matrix-dir": "."}
+    options = {"--root": ".", "--test-report": None, "--matrix-dir": ".", "--page": None}
     given = set()
     while args and args[0].startswith("--"):
         key = args[0]
@@ -598,7 +620,7 @@ def parse(argv):
         options[key], args = args[1], args[2:]
     if len(args) != 4 or any(arg.startswith("--") for arg in args):
         return None
-    return Path(options["--root"]), options["--test-report"], options["--matrix-dir"], args[0], args[1], args[2], Path(args[3])
+    return Path(options["--root"]), options["--test-report"], options["--matrix-dir"], options["--page"], args[0], args[1], args[2], Path(args[3])
 
 
 def main(argv):
@@ -606,7 +628,7 @@ def main(argv):
     if parsed is None:
         print(USAGE, file=sys.stderr)
         return 2
-    root, report_path, matrix_dir, diagram_path, satisfy_path, trace_path, target = parsed
+    root, report_path, matrix_dir, page, diagram_path, satisfy_path, trace_path, target = parsed
     try:
         diagram = load(diagram_path, "the diagram")
         satisfy = load(satisfy_path, "the satisfy document")
@@ -620,7 +642,7 @@ def main(argv):
             refuse(str(error))
         if target.exists() and (not target.is_dir() or any(target.iterdir())):
             refuse(f"{target} exists and is not an empty directory: a stale overlay must not mix with a new one")
-        result, matrix, reasons = overlay(diagram, satisfy, trace, root, report, matrix_dir)
+        result, matrix, reasons = overlay(diagram, satisfy, trace, root, report, matrix_dir, page)
         outputs = {"overlay.json": render(result), "matrix.md": matrix}
     except Refusal as error:
         print(f"refused: {error}", file=sys.stderr)

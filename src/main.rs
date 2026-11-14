@@ -420,7 +420,7 @@ it must name the selection the header records or it is a second question (3).
 matrix as a `req.trace/1` document on stdout: schema, generator, `rules_v`, the selection, the
 nodes (every claim, with its statement, modality, address, applicability, the successors that
 withdrew it, the `area` it is filed under, `null` when none — ADR 0051 — and, after it, `source` (its
-`rationale.source`, `null` when empty), `evidence` (`machine` or `process`; an absent declaration is `machine`)
+`rationale.source`, `null` when empty), `evidence` (`machine` or `process`: the loaded value, `machine` when the file declares none, never `null`)
 and `tests` (its `tests:` ids in file order, `[]` when none) — ADR 0053), `areas` (the lines of
 `.req/areas` as `path` and `label`, in the registry's order, `[]` with no registry: a renderer
 names an area by its label, and a malformed registry is exit 2 naming `<file>:<line>` with

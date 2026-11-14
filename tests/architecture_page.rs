@@ -692,3 +692,44 @@ fn the_readme_quotes_the_counts_the_matrix_shows() {
         );
     }
 }
+
+/// ADR 0053 decision 6: a part in the matrix links to the page that draws it, at its node (`#focus=<component id>`), the
+/// overview matrix to the overview page and the detail matrix to the detail page, relative to `docs/architecture/`.
+#[test]
+fn each_matrix_links_its_parts_to_the_page_that_draws_them() {
+    for (diagram, _, matrix, page) in VIEWS {
+        let file = page.trim_start_matches("docs/");
+        let diagram: Value =
+            serde_json::from_str(&read(&root().join("docs/architecture").join(diagram)))
+                .expect("the diagram is JSON");
+        let text = read(&root().join("docs/architecture").join(matrix));
+        let linked: Vec<&str> = diagram["components"]
+            .as_array()
+            .expect("components")
+            .iter()
+            .filter_map(|component| component["id"].as_str())
+            .filter(|id| text.contains(&format!("](../{file}#focus={id})")))
+            .collect();
+        assert!(
+            !linked.is_empty(),
+            "{matrix} links no part to ../{file}#focus=<id>"
+        );
+        // The fragment names a node archify drew: its `data-node-id` is the component's id.
+        let html = read(&root().join(page));
+        for id in &linked {
+            assert!(
+                html.contains(&format!("data-node-id=\"{id}\"")),
+                "{page} draws no node `{id}`"
+            );
+        }
+        let other = if file == "architecture.html" {
+            "architecture-detail.html"
+        } else {
+            "architecture.html"
+        };
+        assert!(
+            !text.contains(&format!("](../{other}#")),
+            "{matrix} links to the other page"
+        );
+    }
+}

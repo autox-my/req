@@ -627,4 +627,10 @@ fn trace_help_names_source_evidence_and_tests() {
     for field in ["`source`", "`evidence`", "`tests`"] {
         assert!(text.contains(field), "the help names {field}:\n{text}");
     }
+    // `evidence` is the loaded value: a claim that declares none is `machine`, and the help says so plainly.
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        flat.contains("the loaded value, `machine` when the file declares none"),
+        "the help says what `evidence` is when a file declares none:\n{text}"
+    );
 }
