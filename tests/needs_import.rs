@@ -1228,6 +1228,99 @@ fn equal_statements_are_two_drafts_with_one_address() {
 // --- (i) not carried -------------------------------------------------------------------------------------------------------
 
 #[test]
+fn links_carry_edges_between_drafts_and_every_other_target_is_counted() {
+    // The demo excerpt links SYSREQ_BRAKE_01 to FSR_BRAKE_CTRL_02, which is not in it. Add that
+    // target (a draft) and a link to GH_ISSUE_12 (selected, but skipped) so both classes show.
+    let mut export = fixture_json(DEMO);
+    needs_mut(&mut export).insert(
+        "FSR_BRAKE_CTRL_02".into(),
+        json!({"type": "fsr", "content": "The brake controller shall fail operational.",
+               "implements": [], "implements_back": [], "links": [], "links_back": []}),
+    );
+    needs_mut(&mut export)
+        .get_mut("SYSREQ_BRAKE_01")
+        .expect("the linking need")
+        .as_object_mut()
+        .expect("a need is an object")
+        .insert("links".into(), json!(["GH_ISSUE_12", "FSR_BRAKE_CTRL_01"]));
+    let fx = Fixture::with_export("req-needs-links", &export.to_string());
+
+    let out = import(fx.path(), &plus(base(&DEMO_TYPES), &["--links", "--write"]));
+    out.assert_code(0, "the demo excerpt with --links");
+    let report = parse_report(&out.stdout);
+    let claim_of = |need: &str| {
+        report
+            .drafts
+            .iter()
+            .find(|draft| draft.need == need)
+            .unwrap_or_else(|| panic!("{need} is drafted:\n{}", out.stdout))
+            .claim
+            .clone()
+    };
+    let sysreq = claim_of("SYSREQ_BRAKE_01");
+    let fsr = claim_of("FSR_BRAKE_CTRL_02");
+    let target = claim_of("FSR_BRAKE_CTRL_01");
+
+    let line = out
+        .stdout
+        .lines()
+        .find(|line| line.starts_with("links: "))
+        .expect("the report has a `links:` line");
+    assert_eq!(
+        line,
+        format!(
+            "links: 2 relation(s) on 1 of {} drafted needs (implements 1, links 1); \
+             3 target(s) not carried (not in the export 2, target skipped 1)",
+            report.drafts.len()
+        )
+    );
+
+    // The edges are on the outgoing side, and a backlink is not written as a second edge.
+    let text = fx.read(&format!("claims/{sysreq}.yml"));
+    assert!(text.contains(&format!(
+        "relations:\n  - type: \"implements\"\n    to: \"{fsr}\"\n  - type: \"links\"\n    to: \"{target}\"\n"
+    )), "{sysreq} carries both relations:\n{text}");
+    let backlinked = claim_of("FSR_BRAKE_CTRL_01");
+    assert_eq!(
+        field(&fx.read(&format!("claims/{backlinked}.yml")), "relations: "),
+        Some("relations: []"),
+        "a declared backlink is derived by req, never stored a second time"
+    );
+
+    // req reads the edges back.
+    let trace = req(fx.path(), &["trace"]);
+    trace.assert_code(0, "req trace over the drafts");
+    assert!(
+        trace
+            .stdout
+            .contains(&format!("- {sysreq} -implements-> {fsr}")),
+        "trace shows the carried edge:\n{}",
+        trace.stdout
+    );
+    assert!(
+        trace
+            .stdout
+            .contains(&format!("- {sysreq} -links-> {target}")),
+        "trace shows the link edge:\n{}",
+        trace.stdout
+    );
+
+    // Without --links the same run writes `relations: []`, byte for byte what it always wrote.
+    let plain = Fixture::with_export("req-needs-links-off", &export.to_string());
+    let off = import(plain.path(), &plus(base(&DEMO_TYPES), &["--write"]));
+    off.assert_code(0, "the demo excerpt without --links");
+    assert!(
+        !off.stdout.contains("links: "),
+        "a run without --links has no `links:` line:\n{}",
+        off.stdout
+    );
+    assert_eq!(
+        field(&plain.read(&format!("claims/{sysreq}.yml")), "relations: "),
+        Some("relations: []")
+    );
+}
+
+#[test]
 fn status_tags_safety_security_reqtype_and_links_are_in_no_claim_and_the_report_says_so() {
     let (fx, report, _rows) = end_to_end(SCORE, &SCORE_TYPES);
     let export = fixture_json(SCORE);

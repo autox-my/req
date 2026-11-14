@@ -135,8 +135,7 @@ rationale:
   date: {date}
   rejected_alternatives: []
   assumptions: []
-relations: []
-"""
+{relations}"""
 
 HELP_EPILOG = """\
 what is drafted, and what is named instead (no heuristics, no model):
@@ -161,12 +160,25 @@ written), so a second run over the same export does not duplicate; the same file
 --origin is a different provenance and is allowed. A partial overlap is refused too.
 
 not carried, and said so in the report: status, tags, safety, security, reqtype, every other
-field, and the typed links. The link types are the ones the export declares: a field whose
-`versions.<v>.needs_schema.properties.<name>.field_type` is `links` or `backlinks` (the report says
-"declared by needs_schema"). An export with no `needs_schema` (an older Sphinx-Needs) falls back to
-inference, and the report says "inferred": a non-empty list of strings that is `links`, ends in
-`_back`, or has a `<name>_back` partner field somewhere in the file. Every other field is listed
-under "fields", so nothing is hidden; `relations` stays `[]`.
+field, and — without --links — the typed links. The link types are the ones the export declares: a
+field whose `versions.<v>.needs_schema.properties.<name>.field_type` is `links` or `backlinks` (the
+report says "declared by needs_schema"). An export with no `needs_schema` (an older Sphinx-Needs)
+falls back to inference, and the report says "inferred": a non-empty list of strings that is
+`links`, ends in `_back`, or has a `<name>_back` partner field somewhere in the file. Every other
+field is listed under "fields", so nothing is hidden; `relations` stays `[]` unless --links is given.
+
+--links     opt-in: carry the typed links whose target is also drafted in this run as `relations:`
+             edges, so `req trace` and `req impact` work instead of an empty matrix. The relation
+             `type` is the source link field's name (`derives_from`, `implements`, `links`, …) and
+             `to` is the claim id the target need became. Only outgoing fields are carried: the
+             `_back` partner is the same edge derived on the other side, and req stores an edge
+             once (REQ-0020). A Sphinx-Needs link filter (`<id>[version==1]`) is stripped; a claim
+             has no version axis, so the edge is carried and the filter is not. A target that is
+             not drafted here (another type, a skipped need, an id not in the export) cannot be a
+             relation — a claim id that does not exist would make `req trace` report an unresolved
+             edge — so it is counted by reason in the report's `links:` line, never dropped
+             silently. The report also gains `links: <R> relation(s) on <D> of <N> drafted needs
+             (<kind> <n>, …); <T> target(s) not carried (<reason> <n>, …)`.
 
 --areas     opt-in: file each draft under an area made from the need's `docname` (ADR 0051).
              The docname is split on `/`; each part becomes a key: lowercase it, replace each run
@@ -323,6 +335,86 @@ def link_fields_of(need, all_keys, declared=None):
         if is_link_value(value)
         and (key == "links" or key.endswith("_back") or f"{key}_back" in all_keys)
     )
+
+
+def declared_backlink_fields(export, version):
+    """The link field names `needs_schema` declares as `backlinks`, or frozenset() when it declares
+    none. A backlink is the derived partner of an edge stored on the other need; carrying both
+    would make one link two relations (REQ-0020 stores each edge once), so only outbound fields
+    become `relations:`."""
+    entry = export.get("versions", {}).get(version)
+    schema = entry.get("needs_schema") if isinstance(entry, dict) else None
+    properties = schema.get("properties") if isinstance(schema, dict) else None
+    if not isinstance(properties, dict):
+        return frozenset()
+    return frozenset(
+        name
+        for name, prop in properties.items()
+        if isinstance(prop, dict) and prop.get("field_type") == "backlinks"
+    )
+
+
+def outbound_link_fields(need, all_keys, declared=None, backlinks=frozenset()):
+    """The typed-link fields on `need` that store an edge (not the derived `_back` partner).
+
+    With `needs_schema` the declared `backlinks` are excluded by name. Without one, the inferred
+    rule names a partner by its `_back` suffix, so that suffix is the only signal there is.
+    """
+    return [
+        name
+        for name in link_fields_of(need, all_keys, declared)
+        if name not in backlinks and not (declared is None and name.endswith("_back"))
+    ]
+
+
+def link_target(value):
+    """A link value's target need id, without Sphinx-Needs' link filter.
+
+    Sphinx-Needs writes a filtered link as `<id>[version==1]` (or another filter expression). The
+    need the link names is the part before the first `[`; the filter chooses a version of it, and
+    a claim has no version axis, so the filter is not carried. The edge is.
+    """
+    return value.split("[", 1)[0].strip()
+
+
+def plan_relations(drafts, claim_of, needs, types, all_keys, declared=None, backlinks=frozenset()):
+    """`(relations, kinds, omitted)` for the drafted needs, in draft order.
+
+    `relations[i]` is `[(kind, claim id)]` for draft `i`, where `kind` is the source link field and
+    the claim id is the draft the target need became in this run. Only an edge whose target is
+    also drafted here can become a relation: a relation to a claim id that does not exist would
+    make `req trace` report an unresolved edge. Every other target is counted, by reason, in
+    `omitted` — the reader names what it could not carry instead of dropping it silently.
+    """
+    relations = [[] for _ in drafts]
+    kinds = {}
+    omitted = {}
+    for index, (need_id, need, _statement) in enumerate(drafts):
+        seen = set()
+        for kind in outbound_link_fields(need, all_keys, declared, backlinks):
+            for value in need.get(kind) or []:
+                target = link_target(value)
+                if not target or target == need_id:
+                    reason = "self"
+                elif target in claim_of:
+                    edge = (kind, claim_of[target])
+                    if edge in seen:
+                        continue
+                    seen.add(edge)
+                    relations[index].append(edge)
+                    kinds[kind] = kinds.get(kind, 0) + 1
+                    continue
+                elif target not in needs:
+                    reason = "not in the export"
+                else:
+                    target_type = needs[target].get("type")
+                    reason = (
+                        "target type not selected"
+                        if target_type not in types
+                        else "target skipped"
+                    )
+                omitted[reason] = omitted.get(reason, 0) + 1
+    return relations, kinds, omitted
 
 
 def meaningful(value):
@@ -557,9 +649,21 @@ def unquote_scalar(value):
     return text.split(" #", 1)[0].rstrip()
 
 
-def render_claim(export, location, statement, source, date, claim_id, schema, area=None):
+def render_relations(relations):
+    """The `relations:` block of a draft: `[]` when there are none, else one mapping per edge."""
+    if not relations:
+        return "relations: []\n"
+    lines = ["relations:\n"]
+    for kind, to in relations:
+        lines.append(f"  - type: {yaml_quote(kind)}\n    to: {yaml_quote(to)}\n")
+    return "".join(lines)
+
+
+def render_claim(export, location, statement, source, date, claim_id, schema, area=None,
+                 relations=()):
     """One draft claim file's exact bytes. An `area` makes the draft `AREA_SCHEMA` with an `area:`
-    line after `claim_id`; with none, `schema` is written and the bytes are what they always were."""
+    line after `claim_id`; with none, `schema` is written. `relations` is `[(kind, claim id)]`,
+    empty by default, so a run without `--links` writes the bytes it always wrote."""
     return CLAIM_TEMPLATE.format(
         export=one_line(export),
         location=one_line(location),
@@ -569,6 +673,7 @@ def render_claim(export, location, statement, source, date, claim_id, schema, ar
         statement=yaml_quote(statement),
         quoted_source=yaml_quote(source),
         date=date,
+        relations=render_relations(relations),
     )
 
 
@@ -1120,11 +1225,22 @@ def run(args):
         existing = check_registry(req_binary(), corpus.root)
         suffix, added, registry_declared = registry_suffix(existing, wanted)
 
+    all_keys = {key for need in needs.values() for key in need}
+    declared = declared_link_fields(export, version)
+    backlinks = declared_backlink_fields(export, version)
+
     number = next_claim_number(corpus.used)
+    claim_ids = [f"REQ-{number + offset:04d}" for offset, _draft in enumerate(drafts)]
+    claim_of = {need_id: claim_id for (need_id, _need, _statement), claim_id in zip(drafts, claim_ids)}
+    relations, link_kinds, omitted_links = ([[] for _ in drafts], {}, {})
+    if args.links:
+        relations, link_kinds, omitted_links = plan_relations(
+            drafts, claim_of, needs, set(args.type), all_keys, declared, backlinks
+        )
+
     targets, texts = [], []
     for offset, (need_id, need, statement) in enumerate(drafts):
-        claim_id = f"REQ-{number + offset:04d}"
-        targets.append((claim_id, corpus.root / CLAIMS_DIR / f"{claim_id}.yml"))
+        targets.append((claim_ids[offset], corpus.root / CLAIMS_DIR / f"{claim_ids[offset]}.yml"))
         texts.append(
             render_claim(
                 export=label,
@@ -1132,9 +1248,10 @@ def run(args):
                 statement=statement,
                 source=f"{args.origin}#{need_id}",
                 date=args.date,
-                claim_id=claim_id,
+                claim_id=claim_ids[offset],
                 schema=schema,
                 area=placed[offset][1] if placed is not None and placed[offset][0] == "area" else None,
+                relations=relations[offset],
             )
         )
 
@@ -1160,22 +1277,33 @@ def run(args):
                 registry_write.rollback()
             raise
 
-    all_keys = {key for need in needs.values() for key in need}
-    declared = declared_link_fields(export, version)
     fields, link_names, with_links = not_carried(
         [need for _id, need, _s in drafts], all_keys, declared
     )
+    carried_relations = sum(len(edges) for edges in relations)
+    linked_drafts = sum(1 for edges in relations if edges)
+    link_plan = (
+        args.links,
+        carried_relations,
+        linked_drafts,
+        link_kinds,
+        omitted_links,
+        declared is not None,
+    )
     filing = (placed, wanted, added, registry_declared) if args.areas else None
     report(args, corpus, label, version, drafts, skips, targets, written, rules_v,
-           (fields, link_names, with_links, declared is not None), recon, filing, registry_write)
+           (fields, link_names, with_links), recon, filing, registry_write, link_plan)
     return 0
 
 
 def report(args, corpus, label, version, drafts, skips, targets, written, rules_v, carried, recon,
-           filing=None, registry_write=None):
+           filing=None, registry_write=None, link_plan=None):
     """Print what was drafted, what was skipped and why, what was not carried, and what was
     written — ending with the line that adds up."""
-    fields, link_names, with_links, from_schema = carried
+    fields, link_names, with_links = carried
+    links_on, carried_relations, linked_drafts, link_kinds, omitted_links, from_schema = (
+        link_plan if link_plan is not None else (False, 0, 0, {}, {}, False)
+    )
     print(f"export: {label} (version {version})")
     print(f"origin: {args.origin}")
     print(f"date: {args.date} (--date)")
@@ -1192,10 +1320,23 @@ def report(args, corpus, label, version, drafts, skips, targets, written, rules_
     shown = ", ".join(fields) if fields else "none"
     how = "declared by needs_schema" if from_schema else "inferred: no needs_schema"
     carried_links = f" ({', '.join(link_names)}; {how})" if link_names else f" ({how})"
+    outcome = "carried as `relations`" if links_on else "`relations` stays []"
     print(
         f"not carried: {shown}; typed links on {with_links} of {len(drafts)} drafted needs"
-        f"{carried_links} — `relations` stays []"
+        f"{carried_links} — {outcome}"
     )
+    if links_on:
+        if carried_relations:
+            text = (
+                f"links: {carried_relations} relation(s) on {linked_drafts} of {len(drafts)} "
+                f"drafted needs ({breakdown(link_kinds)})"
+            )
+        else:
+            text = f"links: 0 relations carried on 0 of {len(drafts)} drafted needs"
+        omitted = sum(omitted_links.values())
+        if omitted:
+            text += f"; {omitted} target(s) not carried ({breakdown(omitted_links)})"
+        print(text)
     if filing is not None:
         placed, wanted, added, registry_declared = filing
         for line in area_report_lines(placed, wanted, added, registry_declared, len(drafts)):
@@ -1272,6 +1413,18 @@ def self_check():
         schema="req.claim/2",
     )
     keys = {"derived_from", "derived_from_back", "tags", "links", "links_back", "satisfied_by"}
+    link_schema = {
+        "versions": {
+            "1": {
+                "needs_schema": {
+                    "properties": {
+                        "implements": {"field_type": "links"},
+                        "implements_back": {"field_type": "backlinks"},
+                    }
+                }
+            }
+        }
+    }
     rows = [
         ("select: a named type is selected", judged("Ok.")[0], "draft"),
         (
@@ -1387,6 +1540,51 @@ def self_check():
             "links: no needs_schema declares nothing (None, so the caller infers)",
             declared_link_fields({"versions": {"1": {"needs": {}}}}, "1"),
             None,
+        ),
+        (
+            "links: a declared backlink is not an edge (the edge is stored on the other side)",
+            outbound_link_fields(
+                {"implements": ["A"], "implements_back": ["B"]},
+                {"implements", "implements_back"},
+                frozenset({"implements", "implements_back"}),
+                frozenset({"implements_back"}),
+            ),
+            ["implements"],
+        ),
+        (
+            "links: with no schema the _back suffix is the only signal there is",
+            outbound_link_fields({"links": ["A"], "links_back": ["B"]}, {"links", "links_back"}),
+            ["links"],
+        ),
+        (
+            "links: declared backlinks come from field_type backlinks alone",
+            sorted(declared_backlink_fields(link_schema, "1")),
+            ["implements_back"],
+        ),
+        ("links: a version filter is not part of the target id", link_target("A[version==1]"), "A"),
+        (
+            "links: a target drafted in this run is a relation, every other is counted",
+            plan_relations(
+                [
+                    ("A", {"type": "req", "links": ["B", "X", "C", "B"]}, "a"),
+                    ("B", {"type": "req"}, "b"),
+                ],
+                {"A": "REQ-0001", "B": "REQ-0002"},
+                {"A": {"type": "req"}, "B": {"type": "req"}, "X": {"type": "arch"}, "C": {"type": "req"}},
+                {"req"},
+                {"type", "links"},
+                None,
+            ),
+            (
+                [[("links", "REQ-0002")], []],
+                {"links": 1},
+                {"target skipped": 1, "target type not selected": 1},
+            ),
+        ),
+        (
+            "draft: relations are one mapping per edge, and none is an empty list",
+            (render_relations([]), render_relations([("implements", "REQ-0002")])),
+            ('relations: []\n', 'relations:\n  - type: "implements"\n    to: "REQ-0002"\n'),
         ),
         (
             "not carried: fields exclude what the draft uses and the typed links",
@@ -1707,6 +1905,10 @@ def parse_args(argv):
     parser.add_argument(
         "--areas", action="store_true",
         help="file each draft under an area made from its docname, and propose `.req/areas` lines",
+    )
+    parser.add_argument(
+        "--links", action="store_true",
+        help="carry typed links between drafted needs as `relations:`; count every other target",
     )
     parser.add_argument(
         "--area-depth", type=depth_arg, metavar="<N>",

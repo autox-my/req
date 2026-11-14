@@ -249,13 +249,14 @@ cannot be read — no `claims/` means run `req init` first.
 If the requirements already live in a Sphinx-Needs project, its export is the source and nothing needs
 retyping. `tools/needs_import.py` (a sibling of `adopt.py`, python3 standard library only, also a
 **starting point to copy and adjust**, not a `req` command; ADR 0027) reads the export and writes the same
-legal drafts: the statement, its provenance, empty `applicability` and `relations`, nothing derived, no pin.
+legal drafts: the statement, its provenance, empty `applicability`, and `relations` when `--links` is given,
+nothing derived, no pin.
 
 ```bash
 # from the corpus root, with needs_import.py copied into your project
 python3 tools/needs_import.py --from needs.json --origin <where the export came from> \
     --type <your requirement type> --type <another> --date YYYY-MM-DD           # dry run
-python3 tools/needs_import.py ...the same arguments... --write                  # the drafts
+python3 tools/needs_import.py ...the same arguments... --links --write         # drafts + their typed links
 req canon                # exit 0 — the parse each draft derives
 ```
 
@@ -288,14 +289,28 @@ a different provenance. Two needs with the same text — the same sentence at tw
 and `req render` shows them with one address: that is for you to read, not for the tool to merge.
 
 **Not carried, and the report says so.** The status, tags, safety and security levels, `reqtype` and every
-other field are not written (a source status is not a ratification; applicability is authored), and
-neither are the typed links: `relations` stays `[]`, because a relation names a claim id that does not
-exist yet and the kind of relation is a judgement. The `not carried` line lists the fields it saw on the
-drafted needs and counts the drafted needs that had typed links, naming the fields. The link types are the
-ones the export declares (`needs_schema`, a field whose `field_type` is `links` or `backlinks`), and the line
-says "declared by needs_schema"; an export without one (an older Sphinx-Needs) is read by inference (a list of
-ids that is `links`, ends in `_back`, or has a `<name>_back` partner field in the file) and the line says
-"inferred". Every other field is listed too, so nothing is hidden. `--areas` carries one thing more, the place: a
+other field are not written (a source status is not a ratification; applicability is authored), and —
+without `--links` — neither are the typed links: `relations` stays `[]`, because a relation names a claim
+id that does not exist yet and the kind of relation is a judgement. The `not carried` line lists the fields it
+saw on the drafted needs and counts the drafted needs that had typed links, naming the fields. The link types
+are the ones the export declares (`needs_schema`, a field whose `field_type` is `links` or `backlinks`), and the
+line says "declared by needs_schema"; an export without one (an older Sphinx-Needs) is read by inference (a list
+of ids that is `links`, ends in `_back`, or has a `<name>_back` partner field in the file) and the line says
+"inferred". Every other field is listed too, so nothing is hidden.
+
+**`--links` carries the typed links, where both ends are drafts of this run.** An edge becomes a `relations:`
+entry whose `type` is the source link field (`derives_from`, `implements`, `links`, …) and whose `to` is the
+claim id the target need became, so `req trace` and `req impact` have a matrix instead of nothing. Only the
+outgoing field is written: the `_back` partner is the same edge derived on the other side, and req stores an
+edge once (REQ-0020). A Sphinx-Needs link filter (`<id>[version==1]`) is stripped; a claim has no version axis,
+so the edge is carried and the filter is not. A target that is not drafted here — another type, a skipped
+need, an id the export does not hold — is not a relation (a claim id that does not exist would make `req trace`
+report an unresolved edge), and the report's `links:` line counts each one by reason rather than dropping it:
+`links: <R> relation(s) on <D> of <N> drafted needs (<kind> <n>, …); <T> target(s) not carried (<reason> <n>, …)`.
+The kinds are still a proposal: the source's link vocabulary is kept verbatim, and renaming one (to `refines`,
+or `supersedes`) is a human edit.
+
+`--areas` carries one thing more, the place: a
 need's `docname`, split on `/`, each part made a key (lowercase it, replace each run of characters outside `[a-z0-9]` with `-`, strip `-` from both ends), joined by `/`, becomes the
 draft's `area` (ADR 0051). The draft is then `req.claim/3`, with `area:` after `claim_id`, and needs a `req` that
 reports `claim_schema req.claim/3` (exit **3** otherwise); a need with no `docname` stays `req.claim/2` with none.
