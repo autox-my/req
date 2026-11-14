@@ -354,6 +354,99 @@ fn each_edit_has_the_outcome_its_direction_gives() {
     }
 }
 
+/// Review 1: a drift matrix says what it is made from, in one line above the table; its edited claim links to `edits.json`
+/// (the committed claim holds the unedited statement); and only the edit with a page links its parts to that page.
+#[test]
+fn each_drift_matrix_says_it_is_made_from_a_copy_and_links_honestly() {
+    for (edit, _, _) in EXPECTED {
+        let text = read(&drift_file(edit, "matrix.md"));
+        let lines: Vec<&str> = text.lines().collect();
+        assert!(
+            lines[0].contains("temporary copy")
+                && lines[0].contains(&format!("`{edit}`"))
+                && lines[0].contains(CLAIM),
+            "{edit}: the first line says the matrix is made from a temporary copy with the edit applied:\n{}",
+            lines[0]
+        );
+        assert!(
+            lines[0].contains("](../edits.json)"),
+            "{edit}: the line says where {CLAIM} links"
+        );
+        assert!(
+            lines[1].is_empty() && lines[2].starts_with("| Source |"),
+            "{edit}: one line, then the table"
+        );
+        let row = lines
+            .iter()
+            .find(|l| l.starts_with("| ") && l.contains(&format!("[{CLAIM}](")))
+            .unwrap_or_else(|| panic!("{edit}: a row for {CLAIM}"));
+        assert!(
+            row.contains(&format!("[{CLAIM}](../edits.json)"))
+                && !row.contains(&format!("claims/{CLAIM}.yml")),
+            "{edit}: the edited claim links to edits.json, not to the unedited claim file:\n{row}"
+        );
+        let other = lines
+            .iter()
+            .find(|l| l.starts_with("| ") && l.contains("[REQ-0001]("))
+            .expect("a row for REQ-0001");
+        assert!(
+            other.contains("](../../../../claims/REQ-0001.yml)"),
+            "{edit}: a claim that was not edited still links to its file"
+        );
+        if edit == "tightening" {
+            assert!(
+                row.contains(&format!("]({PAGE_URL}#focus=evidence)")),
+                "{edit}: the page's edit links its parts to the page:\n{row}"
+            );
+        } else {
+            assert!(
+                !text.contains("architecture-drift.html"),
+                "{edit}: no page is rendered for this edit, so no row may point at it"
+            );
+            assert!(
+                row.contains("| Evidence ("),
+                "{edit}: the part is named, without a link:\n{row}"
+            );
+        }
+    }
+}
+
+/// Review 1: a directory edits.json does not name (an edit renamed or removed) is stale, named, even though every edit
+/// that is listed is current; so is a stray file in an edit's directory.
+#[test]
+fn a_directory_no_edit_names_is_stale() {
+    let copy = Copy::new("orphan");
+    let orphan = copy.path(&format!("{DRIFT}/old-edit"));
+    fs::create_dir_all(&orphan).expect("makes the orphan");
+    fs::write(orphan.join("satisfy.txt"), "verdict: PASS\n").expect("writes");
+    let run = build(&copy.0, &["--check-drift", DRIFT], true);
+    assert_eq!(
+        run.code,
+        Some(1),
+        "an orphan directory is stale:\n{}",
+        run.said
+    );
+    assert!(
+        run.said.contains(&format!("STALE {DRIFT}/old-edit")),
+        "the orphan is named:\n{}",
+        run.said
+    );
+    fs::remove_dir_all(&orphan).expect("removes the orphan");
+    let stray = copy.path(&format!("{DRIFT}/cosmetic/notes.txt"));
+    fs::write(&stray, "x").expect("writes a stray file");
+    let run = build(&copy.0, &["--check-drift", DRIFT], true);
+    assert_eq!(run.code, Some(1), "{}", run.said);
+    assert!(
+        run.said
+            .contains(&format!("STALE {DRIFT}/cosmetic/notes.txt")),
+        "{}",
+        run.said
+    );
+    fs::remove_file(&stray).expect("removes it");
+    let run = build(&copy.0, &["--check-drift", DRIFT], true);
+    assert_eq!(run.code, Some(0), "back to current:\n{}", run.said);
+}
+
 /// The point of the demonstration: a re-wording that keeps the meaning raises no alarm, so the whole verdict is PASS.
 #[test]
 fn the_cosmetic_edit_leaves_every_link_holding() {

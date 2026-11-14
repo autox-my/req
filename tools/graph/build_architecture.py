@@ -76,6 +76,9 @@ DRIFT_PAGE = f"{PAGES_URL}/architecture-drift.html"
 DRIFT_COPY = ("claims", "aliases", ".req", "src", "decisions", "baselines")
 DRIFT_FILES = ("overlay.json", "matrix.md", "satisfy.txt")
 DRIFT_OUTCOMES = ("holds", "holds_weakened", "suspect")
+# The one edit `docs/architecture-drift.html` is rendered from; only its matrix links components to that page, so a HOLDS row
+# of another edit never points at a SUSPECT picture.
+DRIFT_PAGE_EDIT = "tightening"
 
 
 class Unverifiable(Exception):
@@ -260,6 +263,15 @@ def drift_diagram(edit, line):
     return diagram
 
 
+def drift_matrix_header(edit, has_page):
+    """The one line above a drift matrix: what it is made from, where its edited claim links, and whether parts link."""
+    parts = ("the parts link to the drift page" if has_page else
+             "the parts are named without a link, since no page is rendered for this edit")
+    return (f"Made from a temporary copy of the corpus with the edit `{edit['id']}` applied to {edit['claim_id']}, never on "
+            f"req's own claims; {edit['claim_id']} links to [{DRIFT_EDITS}](../{DRIFT_EDITS}), which holds its statement "
+            f"before and after, not to claims/{edit['claim_id']}.yml, which holds the unedited one; {parts}.")
+
+
 def generate_drift(binary, directory, into):
     """Write each edit's overlay, matrix and `req satisfy` text into the (new) directory `into`, one subdirectory per edit.
 
@@ -313,8 +325,9 @@ def generate_drift(binary, directory, into):
                 json.dump(drift_diagram(edit, line), handle, indent=2, ensure_ascii=False)
                 handle.write("\n")
             one = os.path.join(work, "one")
+            has_page = edit["id"] == DRIFT_PAGE_EDIT
             done = subprocess.run([sys.executable, "-I", CONVERTER, "--root", ROOT, "--matrix-dir",
-                                   f"{DRIFT_DIR}/{edit['id']}", "--page", DRIFT_PAGE, diagram,
+                                   f"{DRIFT_DIR}/{edit['id']}", *(("--page", DRIFT_PAGE) if has_page else ()), diagram,
                                    documents[SATISFY_SCHEMA][0], documents[TRACE_SCHEMA][0], one],
                                   capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, timeout=300)
             said = done.stderr.strip() or done.stdout.strip()
@@ -324,11 +337,36 @@ def generate_drift(binary, directory, into):
                 reasons.append(f"arch_overlay.py exited 3 for edit {edit['id']!r}: {said}")
             target = os.path.join(into, edit["id"])
             os.makedirs(target)
-            for name in ("overlay.json", "matrix.md"):
-                shutil.copyfile(os.path.join(one, name), os.path.join(target, name))
+            shutil.copyfile(os.path.join(one, "overlay.json"), os.path.join(target, "overlay.json"))
+            with open(os.path.join(one, "matrix.md"), encoding="utf-8") as handle:
+                matrix = handle.read()
+            claim_link = f"[{edit['claim_id']}](../../../../claims/{edit['claim_id']}.yml)"
+            if matrix.count(claim_link) != 1:
+                raise Unverifiable(f"the matrix of edit {edit['id']!r} does not link {edit['claim_id']} exactly once as "
+                                   f"`{claim_link}`: the converter's format is not the one this build reads")
+            with open(os.path.join(target, "matrix.md"), "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(drift_matrix_header(edit, has_page) + "\n\n"
+                             + matrix.replace(claim_link, f"[{edit['claim_id']}](../{DRIFT_EDITS})"))
             with open(os.path.join(target, "satisfy.txt"), "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(text)
     return "\n".join(reasons) or None
+
+
+def drift_orphans(directory, edits):
+    """What sits under the drift directory that no edit in edits.json produces, named: an edit renamed or removed leaves its
+    directory behind, and a committed directory nobody regenerates would still read as current."""
+    known = {edit["id"] for edit in edits}
+    orphans = []
+    for entry in sorted(os.listdir(directory)):
+        path = os.path.join(directory, entry)
+        if os.path.isdir(path):
+            if entry not in known:
+                orphans.append(f"STALE {path} (edits.json names no edit `{entry}`: delete it)")
+                continue
+            for name in sorted(os.listdir(path)):
+                if name not in DRIFT_FILES:
+                    orphans.append(f"STALE {os.path.join(path, name)} (not a file this build writes: delete it)")
+    return orphans
 
 
 def main_drift(mode, directory, binary):
@@ -346,12 +384,14 @@ def main_drift(mode, directory, binary):
             if reason is not None:
                 print(f"the demonstration cannot be made honestly: {reason}", file=sys.stderr)
                 return 1
+            for line in drift_orphans(directory, edits):
+                print(f"warning: {line}", file=sys.stderr)
             for name in names:
                 os.makedirs(os.path.join(directory, os.path.dirname(name)), exist_ok=True)
                 shutil.copyfile(os.path.join(built, name), os.path.join(directory, name))
                 print(f"wrote {os.path.join(directory, name)}")
             return 0
-        stale = []
+        stale = drift_orphans(directory, edits)
         for name in names:
             shown = os.path.join(directory, name)
             built_path = os.path.join(built, name)

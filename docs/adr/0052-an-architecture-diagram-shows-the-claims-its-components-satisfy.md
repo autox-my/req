@@ -276,9 +276,11 @@ Not an edit of the decisions above; decision 7 step 4 (`docs/specs/O-6-drift-dem
 - **Three edits, one claim, always on a copy.** `docs/architecture/drift/edits.json` (`req.drift-edits/1`) names, for REQ-0010
   (the false-split bound, linked from `src/bench.rs`, drawn in the Evidence box of the overview), the statement before and
   after and the outcome `req satisfy` is expected to give: a **cosmetic** re-word (`at most 0.30` written `no more than 0.30`: HOLDS, the same meaning fingerprint, `req compare` says identical, e4f9b4878326 on both sides), a **loosening** (`at most 0.40`: HOLDS (weakened), `numeric_loosening`, an admitted
-  carry) and a **tightening** (`at most 0.20`: SUSPECT, `numeric_tightening`). They were probed with `req satisfy` first; a
-  re-wording that adds words (`for the parity corpus`, a comma) or that names the bound otherwise (`no greater than`, `not exceeding`,
-  which disagrees with the pin) is not cosmetic to req: it classified `scope_divergence` or `unrelated`, SUSPECT, which is the asymmetric cost of ADR 0007 and not a defect of the demonstration.
+  carry) and a **tightening** (`at most 0.20`: SUSPECT, `numeric_tightening`). They were probed with `req satisfy` first. Measured with `req compare` at rules_v 9, `of at most 0.30` against `of no more
+  than 0.30` and `of no greater than 0.30`: identical (e4f9b4878326); `of not exceeding 0.30`, and `no greater than 0.30` without the `of`:
+  `unrelated` (the first also disagrees with the pin); a comma before `on`: `unclassifiable`; a comma before `at v0`, or `for the
+  parity corpus`: `scope_divergence`. Only the first kind is cosmetic to req; `req satisfy` printed SUSPECT for `unrelated` and `scope_divergence`, which is the
+  asymmetric cost of ADR 0007 and not a defect of the demonstration.
   The pin (`pins: value 0.3`) is left as the claim has it: a statement edited on a copy is the copy's own, and `canon` would
   flag the pin there (the statement is the source of truth, never the pin).
 - **The build** is `python3 tools/graph/build_architecture.py --drift docs/architecture/drift` (`--check-drift` is the same
@@ -290,16 +292,21 @@ Not an edit of the decisions above; decision 7 step 4 (`docs/specs/O-6-drift-dem
   `tools/graph/arch_overlay.py` on the overview diagram, which is read, never written. The diagram handed to the converter
   is the architect's with a title, a subtitle and one card added (a demonstration, on a copy, the statement before and
   after, req's own line for the edited link); components, connections and geometry are untouched. It writes
-  `<edit-id>/overlay.json`, `matrix.md` and `satisfy.txt` (the exact `req satisfy` text). The copies are deleted. This checkout's
+  `<edit-id>/overlay.json`, `matrix.md` and `satisfy.txt` (the exact `req satisfy` text). The copies are deleted. Each `matrix.md` opens with one line saying it is made from a temporary copy with that edit applied;
+  its edited claim links to `edits.json` (the committed claim file holds the unedited statement), and only the tightening, the
+  edit the page shows, links its parts to `architecture-drift.html`, so no HOLDS row points at the SUSPECT picture. This checkout's
   corpus is never opened for writing.
 - **The page** `docs/architecture-drift.html` is archify `7e45f36`'s rendering of `tightening/overlay.json` (the Evidence box
   reads `SUSPECT · 1 of 4 claims`, every other box holds), made as the other pages are (`finalize … --quality standard`, with
   `--repo-root` at a checkout whose `origin` is the diagram's URL); `docs/architecture/drift/req-drift.png` is its light
-  1680×1070 crop. archify draws no colour per status, so the SUSPECT box differs by its line, not its fill.
+  1680×1070 crop. archify draws no colour per status, so the SUSPECT box differs by its line, not its fill. Known limit: a card is
+  plain text in archify (the O-5 precedent), so the page names `architecture.html` by file name and cannot link back; the README
+  and `docs/index.html` carry the real links.
 - **What the gate checks** (`tests/drift_demo.rs`, through nextest): `--check-drift` on the committed directory; each edit's
   `satisfy.txt` carries the link line its direction gives and the Evidence box the matching status (the oracles are
   written in the test, not read from `edits.json`); the cosmetic edit's whole verdict is PASS; a copy-based run changes
-  nothing outside the drift directory and leaves the claim byte-for-byte; a tightening edited into a loosening, or a
-  hand-edited `satisfy.txt`, is stale and named; no `req` is UNVERIFIABLE; the page carries the tightening overlay's
+  nothing outside the drift directory and leaves the claim byte-for-byte; a tightening edited into a loosening, a
+  hand-edited `satisfy.txt`, a directory `edits.json` does not name (an edit renamed or removed) and a stray file in an edit's
+  directory are stale and named; each matrix's header line and links as above; no `req` is UNVERIFIABLE; the page carries the tightening overlay's
   subtitle and every node's id, label and status; the README quotes req's words and the generated status for each edit.
   The named gap of this note's step 3 is unchanged: the page's picture is not read back.
