@@ -258,6 +258,13 @@ fn tag_of<'a>(overlay: &'a Value, id: &str) -> &'a str {
         .unwrap_or_else(|| panic!("component {id} has no tag"))
 }
 
+/// The status line (O-4): archify draws a `sublabel` at the overview zoom, so the status lives here, not in the `tag`.
+fn status_of<'a>(overlay: &'a Value, id: &str) -> &'a str {
+    component_named(overlay, id)["sublabel"]
+        .as_str()
+        .unwrap_or_else(|| panic!("component {id} has no sublabel"))
+}
+
 fn card<'a>(overlay: &'a Value, title: &str) -> Vec<&'a str> {
     overlay["cards"]
         .as_array()
@@ -324,11 +331,17 @@ fn a_component_citing_two_files_that_hold_and_are_suspect_is_suspect() {
     };
     let out = run(&s, &inputs);
     assert_eq!(out.code, 0, "{}", out.all());
-    let tag = tag_of(&overlay(&s), "pump").to_string();
-    assert!(tag.starts_with("SUSPECT"), "{tag}");
+    let overlay = overlay(&s);
+    // The worst state and how many of the claims are in it: one of the two is suspect (O-4: the sublabel).
+    assert_eq!(status_of(&overlay, "pump"), "SUSPECT · 1 of 2 claims");
     assert!(
-        tag.contains("REQ-0001") && tag.contains("REQ-0002"),
-        "{tag}"
+        component_named(&overlay, "pump").get("tag").is_none(),
+        "no author text, no tag"
+    );
+    let card = card(&overlay, STATUS_CARD).join("\n");
+    assert!(
+        card.contains("REQ-0001") && card.contains("REQ-0002"),
+        "{card}"
     );
 }
 
@@ -363,10 +376,10 @@ fn each_state_of_the_order_wins_over_every_state_after_it() {
             ORDER[start].0,
             out.all()
         );
-        let tag = tag_of(&overlay(&s), "pump").to_string();
+        let status = status_of(&overlay(&s), "pump").to_string();
         assert!(
-            tag.starts_with(ORDER[start].1),
-            "from {}: the status word is {:?}, the tag is {tag:?}",
+            status.starts_with(ORDER[start].1),
+            "from {}: the status word is {:?}, the sublabel is {status:?}",
             ORDER[start].0,
             ORDER[start].1
         );
@@ -390,7 +403,7 @@ fn stale_outranks_every_outcome() {
     };
     let out = run(&s, &inputs);
     assert_eq!(out.code, 3, "{}", out.all());
-    assert!(tag_of(&overlay(&s), "pump").starts_with("STALE"));
+    assert_eq!(status_of(&overlay(&s), "pump"), "STALE");
 }
 
 #[test]
@@ -409,9 +422,9 @@ fn a_component_with_no_sources_and_one_whose_files_declare_nothing_are_no_claim(
     let out = run(&s, &inputs);
     assert_eq!(out.code, 0, "no claim is not a finding: {}", out.all());
     let overlay = overlay(&s);
-    assert_eq!(tag_of(&overlay, "sketch"), "NO CLAIM");
-    assert_eq!(tag_of(&overlay, "quiet"), "NO CLAIM");
-    assert!(tag_of(&overlay, "pump").starts_with("HOLDS"));
+    assert_eq!(status_of(&overlay, "sketch"), "no claim");
+    assert_eq!(status_of(&overlay, "quiet"), "no claim");
+    assert_eq!(status_of(&overlay, "pump"), "HOLDS · 1 claim");
 }
 
 // ---- Falsification 4: links follow the files, not the id --------------------------------------
@@ -438,7 +451,7 @@ fn renaming_a_component_id_with_the_same_sources_keeps_its_claims_and_status() {
         let out = run(&s, &inputs);
         assert_eq!(out.code, 0, "{}", out.all());
         (
-            tag_of(&overlay(&s), id).to_string(),
+            status_of(&overlay(&s), id).to_string(),
             card(&overlay(&s), STATUS_CARD)
                 .iter()
                 .map(|item| item.to_string())
@@ -449,7 +462,7 @@ fn renaming_a_component_id_with_the_same_sources_keeps_its_claims_and_status() {
     let first = run_with_id("rename-a", "pump");
     let second = run_with_id("rename-b", "pump_service_v2");
     assert_eq!(first, second, "the id changed nothing the page shows");
-    assert!(first.0.starts_with("SUSPECT"), "{}", first.0);
+    assert_eq!(first.0, "SUSPECT · 1 of 2 claims");
 }
 
 #[test]
@@ -467,11 +480,7 @@ fn a_link_for_a_file_no_component_cites_changes_no_status() {
     let out = run(&s, &inputs);
     assert_eq!(out.code, 0, "{}", out.all());
     let overlay = overlay(&s);
-    let tag = tag_of(&overlay, "pump");
-    assert!(
-        tag.starts_with("HOLDS") && !tag.contains("REQ-0002"),
-        "{tag}"
-    );
+    assert_eq!(status_of(&overlay, "pump"), "HOLDS · 1 claim");
     // REQ-0002 is reached by no component, so the page lists it.
     assert!(
         card(&overlay, UNREACHED_CARD)
@@ -499,13 +508,8 @@ fn line_ranges_in_sources_do_not_narrow_a_link() {
     };
     let out = run(&s, &inputs);
     assert_eq!(out.code, 0, "{}", out.all());
-    let tag = tag_of(&overlay(&s), "pump").to_string();
-    assert!(
-        tag.starts_with("SUSPECT") && tag.contains("REQ-0001"),
-        "{tag}"
-    );
-    // The claim appears once, though two source entries cite the file.
-    assert_eq!(tag.matches("REQ-0001").count(), 1, "{tag}");
+    // The claim is counted once, though two source entries cite the file.
+    assert_eq!(status_of(&overlay(&s), "pump"), "SUSPECT · 1 claim");
 }
 
 // ---- Falsification 5: a stale diagram is flagged ----------------------------------------------
@@ -532,8 +536,8 @@ fn a_cited_path_that_does_not_exist_is_stale_the_page_is_written_and_the_exit_is
     );
     assert!(out.all().contains("stale"), "says why: {}", out.all());
     let overlay = overlay(&s);
-    assert!(tag_of(&overlay, "pump").starts_with("STALE"));
-    assert!(tag_of(&overlay, "ok").starts_with("HOLDS"));
+    assert_eq!(status_of(&overlay, "pump"), "STALE");
+    assert_eq!(status_of(&overlay, "ok"), "HOLDS · 1 claim");
     assert!(
         card(&overlay, STATUS_CARD)
             .iter()
@@ -670,7 +674,9 @@ fn geometry_ids_connections_and_labels_are_unchanged_and_existing_text_is_kept()
     for (old, new) in before.iter().zip(after) {
         let strip = |c: &Value| {
             let mut c = c.clone();
-            c.as_object_mut().expect("object").remove("tag");
+            let object = c.as_object_mut().expect("object");
+            object.remove("tag");
+            object.remove("sublabel");
             c
         };
         assert_eq!(
@@ -679,12 +685,14 @@ fn geometry_ids_connections_and_labels_are_unchanged_and_existing_text_is_kept()
             "same id, label, geometry and sources, same order"
         );
     }
-    // The author's tag and sublabel are kept and added to, never replaced.
-    let tag = tag_of(&overlay, "pump");
-    assert!(tag.contains("app team") && tag.contains("HOLDS"), "{tag}");
-    assert_eq!(
-        component_named(&overlay, "pump")["sublabel"],
-        "health endpoint"
+    // O-4: the status takes the sublabel archify draws at the overview zoom; the author's sublabel is kept, moved to
+    // the tag after the author's own tag text, never dropped.
+    assert_eq!(status_of(&overlay, "pump"), "HOLDS · 1 claim");
+    assert_eq!(tag_of(&overlay, "pump"), "app team | health endpoint");
+    assert_eq!(status_of(&overlay, "store"), "UNRATIFIED · 1 claim");
+    assert!(
+        component_named(&overlay, "store").get("tag").is_none(),
+        "no author text, no tag"
     );
     // The author's cards stay first and unchanged.
     assert_eq!(overlay["cards"][0], input["cards"][0]);
@@ -695,6 +703,61 @@ fn geometry_ids_connections_and_labels_are_unchanged_and_existing_text_is_kept()
     assert!(subtitle.contains(REVISION), "{subtitle}");
     assert!(subtitle.contains("rules_v 9"), "{subtitle}");
     assert!(subtitle.contains("7e45f36"), "{subtitle}");
+}
+
+#[test]
+fn the_authors_sublabel_moves_to_the_tag_after_the_authors_tag_and_is_never_dropped() {
+    let s = Scratch::new("keep-text");
+    repo(&s);
+    let mut only_sub = component("only_sub", "Only sub", &["src/b.rs"], 1);
+    only_sub["sublabel"] = json!("reads the queue");
+    let mut both = component("both", "Both", &["src/a.rs"], 0);
+    both["tag"] = json!("app team");
+    both["sublabel"] = json!("health endpoint");
+    let mut only_tag = component("only_tag", "Only tag", &["src/c.rs"], 2);
+    only_tag["tag"] = json!("owned by ops");
+    let inputs = Inputs {
+        diagram: diagram(vec![both, only_sub, only_tag]),
+        satisfy: satisfy(vec![]),
+        trace: trace(&claims()),
+    };
+    let out = run(&s, &inputs);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let overlay = overlay(&s);
+    assert_eq!(tag_of(&overlay, "both"), "app team | health endpoint");
+    assert_eq!(tag_of(&overlay, "only_sub"), "reads the queue");
+    assert_eq!(tag_of(&overlay, "only_tag"), "owned by ops");
+    for id in ["both", "only_sub", "only_tag"] {
+        assert_eq!(status_of(&overlay, id), "no claim", "{id}");
+    }
+}
+
+#[test]
+fn the_status_line_names_the_worst_state_and_how_many_claims_are_in_it() {
+    let s = Scratch::new("status-line");
+    repo(&s);
+    let inputs = Inputs {
+        diagram: diagram(vec![
+            component("a", "A", &["src/a.rs"], 0),
+            component("b", "B", &["src/b.rs"], 1),
+            component("c", "C", &["src/c.rs"], 2),
+        ]),
+        satisfy: satisfy(vec![
+            link("src/a.rs", "REQ-0001", "holds"),
+            link("src/a.rs", "REQ-0002", "holds"),
+            link("src/a.rs", "REQ-1001", "holds"),
+            link("src/b.rs", "REQ-0001", "holds"),
+            link("src/b.rs", "REQ-0002", "suspect"),
+            link("src/b.rs", "REQ-1001", "holds_weakened"),
+            link("src/c.rs", "REQ-0002", "suspect"),
+        ]),
+        trace: trace(&claims()),
+    };
+    assert_eq!(run(&s, &inputs).code, 0);
+    let overlay = overlay(&s);
+    assert_eq!(status_of(&overlay, "a"), "HOLDS · 3 claims");
+    assert_eq!(status_of(&overlay, "b"), "SUSPECT · 1 of 3 claims");
+    assert_eq!(status_of(&overlay, "c"), "SUSPECT · 1 claim");
 }
 
 #[test]
@@ -740,9 +803,8 @@ fn a_diagram_with_no_pinned_revision_says_so_rather_than_claiming_currency() {
 }
 
 #[test]
-fn a_long_claim_list_is_cut_to_fit_the_tag_and_the_status_card_holds_every_id() {
-    // archify's tag is one unwrapped line at the 6 px floor: 33 columns in a 150 px box (spec, archify 7e45f36).
-    let s = Scratch::new("long-tag");
+fn a_long_claim_list_is_counted_in_the_status_line_and_the_status_card_holds_every_id() {
+    let s = Scratch::new("long-list");
     repo(&s);
     let ids: Vec<String> = (1..=8).map(|n| format!("REQ-{n:04}")).collect();
     let nodes: Vec<(String, String, String)> = ids
@@ -766,9 +828,7 @@ fn a_long_claim_list_is_cut_to_fit_the_tag_and_the_status_card_holds_every_id() 
     };
     assert_eq!(run(&s, &inputs).code, 0);
     let overlay = overlay(&s);
-    let tag = tag_of(&overlay, "pump");
-    assert!(tag.chars().count() <= 40, "{tag}");
-    assert!(tag.starts_with("HOLDS") && tag.contains("+"), "{tag}");
+    assert_eq!(status_of(&overlay, "pump"), "HOLDS · 8 claims");
     let card = card(&overlay, STATUS_CARD).join("\n");
     for id in &ids {
         assert!(card.contains(id.as_str()), "{id} missing from {card}");
@@ -783,6 +843,13 @@ fn no_size(id: &str, label: &str, source: &str, tag: Option<&str>) -> Value {
     if let Some(tag) = tag {
         c["tag"] = json!(tag);
     }
+    c
+}
+
+/// `no_size` with the author's sublabel, which the overlay moves to the tag.
+fn no_size_sub(id: &str, source: &str, tag: Option<&str>, sublabel: &str) -> Value {
+    let mut c = no_size(id, "Pump", source, tag);
+    c["sublabel"] = json!(sublabel);
     c
 }
 
@@ -818,60 +885,125 @@ fn tag_units(tag: &str) -> usize {
 }
 
 #[test]
-fn a_component_with_no_size_is_120_px_wide_so_its_tag_has_31_columns() {
-    // Exactly 31 columns fits: "the pump tea | HOLDS · REQ-0001" is 12 + 3 + 16.
+fn a_component_with_no_size_is_120_px_wide_so_the_moved_text_has_31_columns() {
+    // Exactly 31 columns fits: "the pump tea | health endpoint" is 12 + 3 + 15 = 30; with one more it is 31.
     let s = Scratch::new("width-120-fits");
     repo(&s);
     let inputs = Inputs {
-        diagram: diagram(vec![no_size(
+        diagram: diagram(vec![no_size_sub(
             "pump",
-            "Pump",
-            "src/a.rs",
-            Some("the pump tea"),
-        )]),
-        satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
-        trace: trace(&claims()),
-    };
-    let out = run(&s, &inputs);
-    assert_eq!(out.code, 0, "{}", out.all());
-    let tag = tag_of(&overlay(&s), "pump").to_string();
-    assert_eq!(tag, "the pump tea | HOLDS · REQ-0001");
-    assert_eq!(tag_units(&tag), 31);
-
-    // One column more fits a 130 px box (33 columns) but not 120: the id is cut, the status stays, the card holds it.
-    let s = Scratch::new("width-120-cuts");
-    repo(&s);
-    let inputs = Inputs {
-        diagram: diagram(vec![no_size(
-            "pump",
-            "Pump",
             "src/a.rs",
             Some("the pump team"),
+            "health endpoint",
         )]),
         satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
         trace: trace(&claims()),
     };
     let out = run(&s, &inputs);
     assert_eq!(out.code, 0, "{}", out.all());
-    let overlay = overlay(&s);
-    let tag = tag_of(&overlay, "pump").to_string();
-    assert!(tag_units(&tag) <= 31, "{tag}");
-    assert!(tag.starts_with("the pump team | HOLDS"), "{tag}");
-    assert!(!tag.contains("REQ-0001"), "{tag}");
-    assert!(
-        card(&overlay, STATUS_CARD)
-            .iter()
-            .any(|item| item.contains("REQ-0001")),
-        "the card still holds the id"
+    let first = overlay(&s);
+    let tag = tag_of(&first, "pump").to_string();
+    assert_eq!(tag, "the pump team | health endpoint");
+    assert_eq!(tag_units(&tag), 31);
+    assert_eq!(status_of(&first, "pump"), "HOLDS · 1 claim");
+
+    // One column more is what archify's `component-tag-overflow` refuses at 120 px: kept, named, exit 3.
+    let s = Scratch::new("width-120-overflows");
+    repo(&s);
+    let inputs = Inputs {
+        diagram: diagram(vec![no_size_sub(
+            "pump",
+            "src/a.rs",
+            Some("the pump teams"),
+            "health endpoint",
+        )]),
+        satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
+        trace: trace(&claims()),
+    };
+    let out = run(&s, &inputs);
+    assert_eq!(out.code, 3, "{}", out.all());
+    assert_eq!(
+        tag_of(&overlay(&s), "pump"),
+        "the pump teams | health endpoint",
+        "the author's text is kept whole"
     );
 }
 
 #[test]
 fn a_grid_cell_is_the_step_between_boxes_never_a_boxs_width() {
-    // `layout.cellW` 200 is the grid step; a component with no `size` is still 120 px wide, so 31 columns.
-    let s = Scratch::new("grid-cell");
+    // `layout.cellW` 200 is the grid step; a component with no `size` is still 120 px wide, so 31 columns: 31 fit, 32 do
+    // not, whatever the cell is.
+    for (name, text, exit) in [
+        ("fits", "x".repeat(31), 0),
+        ("overflows", "x".repeat(32), 3),
+    ] {
+        let s = Scratch::new(&format!("grid-cell-{name}"));
+        repo(&s);
+        let mut input = diagram(vec![json!({
+            "id": "pump", "type": "backend", "label": "Pump", "row": 0, "col": 0,
+            "sublabel": text,
+            "sources": [{"path": "src/a.rs", "line": 1}],
+        })]);
+        input["layout"] = json!({"mode": "grid", "cols": 3, "cellW": 200});
+        let inputs = Inputs {
+            diagram: input,
+            satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
+            trace: trace(&claims()),
+        };
+        let out = run(&s, &inputs);
+        assert_eq!(out.code, exit, "{name}: {}", out.all());
+        assert_eq!(tag_of(&overlay(&s), "pump"), text, "{name}");
+    }
+}
+
+#[test]
+fn a_moved_text_the_tag_cannot_hold_is_kept_named_and_exit_3() {
+    // "the pump team" (13) + " | " + "health endpoint is fine" (23) is 39 > 31 in a 120 px box. The author's text is
+    // kept whole, the page is written, and the overlay says it would not pass archify validate.
+    let s = Scratch::new("tag-overflow");
     repo(&s);
-    let ids: Vec<String> = (1..=8).map(|n| format!("REQ-{n:04}")).collect();
+    let inputs = Inputs {
+        diagram: diagram(vec![
+            no_size_sub(
+                "pump",
+                "src/c.rs",
+                Some("the pump team"),
+                "health endpoint is fine",
+            ),
+            no_size_sub("fits", "src/c.rs", Some("pump team"), "health"),
+        ]),
+        satisfy: satisfy(vec![]),
+        trace: trace(&claims()),
+    };
+    let out = run(&s, &inputs);
+    assert_eq!(out.code, 3, "{}", out.all());
+    let overlay = overlay(&s);
+    assert_eq!(
+        tag_of(&overlay, "pump"),
+        "the pump team | health endpoint is fine",
+        "kept"
+    );
+    assert!(
+        out.stderr.contains("pump") && out.stderr.contains("tag") && out.stderr.contains("120 px"),
+        "names the component and the reason: {}",
+        out.stderr
+    );
+    assert!(!out.stderr.contains("'fits'"), "{}", out.stderr);
+    assert_eq!(tag_of(&overlay, "fits"), "pump team | health");
+    assert_eq!(status_of(&overlay, "pump"), "no claim");
+    assert!(s.path("out/matrix.md").is_file());
+}
+
+#[test]
+fn a_status_line_that_cannot_fit_is_written_named_and_exit_3() {
+    // A 60 px box draws (60 - 8) / 3.6 = 14 columns at archify's 6 px floor; "HOLDS · 6 claims" is 16.
+    let s = Scratch::new("status-overflow");
+    repo(&s);
+    let mut narrow = component("pump", "Pump", &["src/a.rs"], 0);
+    narrow["size"] = json!([60, 60]);
+    let mut roomy = component("roomy", "Roomy", &["src/b.rs"], 1);
+    roomy["size"] = json!([100, 60]);
+    let ids: Vec<String> = (1..=6).map(|n| format!("REQ-{n:04}")).collect();
     let rows: Vec<(String, String, String)> = ids
         .iter()
         .map(|id| {
@@ -886,113 +1018,83 @@ fn a_grid_cell_is_the_step_between_boxes_never_a_boxs_width() {
         .iter()
         .map(|(a, b, c)| (a.as_str(), b.as_str(), c.as_str()))
         .collect();
-    let mut input = diagram(vec![json!({
-        "id": "pump", "type": "backend", "label": "Pump", "row": 0, "col": 0,
-        "sources": [{"path": "src/a.rs", "line": 1}],
-    })]);
-    input["layout"] = json!({"mode": "grid", "cols": 3, "cellW": 200});
+    let mut links: Vec<Value> = ids.iter().map(|id| link("src/a.rs", id, "holds")).collect();
+    links.push(link("src/b.rs", "REQ-0001", "holds"));
     let inputs = Inputs {
-        diagram: input,
-        satisfy: satisfy(ids.iter().map(|id| link("src/a.rs", id, "holds")).collect()),
+        diagram: diagram(vec![narrow, roomy]),
+        satisfy: satisfy(links),
         trace: trace(&rows),
-    };
-    let out = run(&s, &inputs);
-    assert_eq!(out.code, 0, "{}", out.all());
-    let tag = tag_of(&overlay(&s), "pump").to_string();
-    assert!(
-        tag_units(&tag) <= 31,
-        "{tag} is {} columns",
-        tag_units(&tag)
-    );
-    assert!(tag.starts_with("HOLDS") && tag.contains('+'), "{tag}");
-}
-
-#[test]
-fn an_authored_tag_the_status_cannot_fit_beside_is_kept_named_and_exit_3() {
-    // "the pump service team" is 21 columns and fits a 120 px box on its own; with " | NO CLAIM" it is 32 > 31. The
-    // author's text is kept (spec B4), the page is written, and the overlay says it would not pass archify validate.
-    let s = Scratch::new("tag-overflow");
-    repo(&s);
-    let inputs = Inputs {
-        diagram: diagram(vec![
-            no_size("pump", "Pump", "src/c.rs", Some("the pump service team")),
-            no_size("fits", "Fits", "src/c.rs", Some("pump team")),
-        ]),
-        satisfy: satisfy(vec![]),
-        trace: trace(&claims()),
     };
     let out = run(&s, &inputs);
     assert_eq!(out.code, 3, "{}", out.all());
     let overlay = overlay(&s);
-    let tag = tag_of(&overlay, "pump");
     assert_eq!(
-        tag, "the pump service team | NO CLAIM",
-        "kept, and added to"
+        status_of(&overlay, "pump"),
+        "HOLDS · 6 claims",
+        "the status line is written whole"
     );
     assert!(
-        out.stderr.contains("pump") && out.stderr.contains("tag") && out.stderr.contains("120 px"),
-        "names the component and the reason: {}",
+        out.stderr.contains("pump")
+            && out.stderr.contains("sublabel")
+            && out.stderr.contains("60 px"),
+        "names the component, the field and the box: {}",
         out.stderr
     );
-    assert!(!out.stderr.contains("'fits'"), "{}", out.stderr);
-    assert_eq!(tag_of(&overlay, "fits"), "pump team | NO CLAIM");
+    assert!(!out.stderr.contains("'roomy'"), "{}", out.stderr);
+    assert_eq!(status_of(&overlay, "roomy"), "HOLDS · 1 claim");
     assert!(s.path("out/matrix.md").is_file());
 }
 
 #[test]
-fn a_tag_is_measured_in_archify_columns_at_the_31_column_boundary() {
-    // Each tag is authored on a 120 px component with no claim, so the overlay writes `<tag> | NO CLAIM` (11 columns
-    // past the author's). 31 columns fits; 32 is what archify's `component-tag-overflow` refuses, and the converter
+fn a_moved_text_is_measured_in_archify_columns_at_the_31_column_boundary() {
+    // Each text is authored as a sublabel on a 120 px component, so the overlay moves it to the tag unchanged (there is
+    // no author's tag). 31 columns fits; 32 is what archify's `component-tag-overflow` refuses, and the converter
     // must agree with archify about which is which, whatever the characters are.
     let x = |n: usize| "x".repeat(n);
     let cases: Vec<(&str, String, bool)> = vec![
-        ("ten CJK fit (20 + 11)", "中".repeat(10), true),
-        ("eleven CJK overflow (22 + 11)", "中".repeat(11), false),
-        // U+1F000 is wide in archify (2) though unicodedata says neutral: 19 + 2 + 11 = 32.
+        ("fifteen CJK fit (30)", "中".repeat(15), true),
+        ("sixteen CJK overflow (32)", "中".repeat(16), false),
+        // U+1F000 is wide in archify (2) though unicodedata says neutral: 30 + 2 = 32.
         (
             "a Mahjong tile is two columns",
-            format!("{}\u{1F000}", x(19)),
+            format!("{}\u{1F000}", x(30)),
             false,
         ),
         (
-            "a Mahjong tile fits at 18",
-            format!("{}\u{1F000}", x(18)),
+            "a Mahjong tile fits at 29",
+            format!("{}\u{1F000}", x(29)),
             true,
         ),
-        // U+1D360 is neutral in archify (1) though unicodedata says wide: 19 + 1 + 11 = 31.
+        // U+1D360 is neutral in archify (1) though unicodedata says wide: 30 + 1 = 31.
         (
             "a counting rod is one column",
-            format!("{}\u{1D360}", x(19)),
+            format!("{}\u{1D360}", x(30)),
             true,
         ),
-        // A variation selector adds nothing: U+4E2D (2) with U+FE0E is 2, so 18 + 2 + 11 = 31.
+        // A variation selector adds nothing: U+4E2D (2) with U+FE0E is 2, so 29 + 2 = 31.
         (
             "a variation selector adds no column",
-            format!("{}\u{4E2D}\u{FE0E}", x(18)),
+            format!("{}\u{4E2D}\u{FE0E}", x(29)),
             true,
         ),
-        // U+FE0F asks for emoji presentation: the character takes two. 19 + 2 + 11 = 32.
+        // U+FE0F asks for emoji presentation: the character takes two. 30 + 2 = 32.
         (
             "emoji presentation takes two",
-            format!("{}\u{2764}\u{FE0F}", x(19)),
+            format!("{}\u{2764}\u{FE0F}", x(30)),
             false,
         ),
     ];
-    for (index, (name, tag, fits)) in cases.iter().enumerate() {
+    for (index, (name, text, fits)) in cases.iter().enumerate() {
         let s = Scratch::new(&format!("columns-{index}"));
         repo(&s);
         let inputs = Inputs {
-            diagram: diagram(vec![no_size("pump", "Pump", "src/c.rs", Some(tag))]),
+            diagram: diagram(vec![no_size_sub("pump", "src/c.rs", None, text)]),
             satisfy: satisfy(vec![]),
             trace: trace(&claims()),
         };
         let out = run(&s, &inputs);
         let written = tag_of(&overlay(&s), "pump").to_string();
-        assert_eq!(
-            written,
-            format!("{tag} | NO CLAIM"),
-            "{name}: the author's text is kept"
-        );
+        assert_eq!(&written, text, "{name}: the author's text is kept");
         assert_eq!(
             tag_units(&written) <= 31,
             *fits,
@@ -1030,7 +1132,7 @@ fn a_dot_design_root_is_the_whole_repository_so_nothing_under_it_is_outside() {
             vec!["none"],
             "{root_line:?}: every cited path is under the root"
         );
-        assert!(tag_of(&overlay, "pump").starts_with("HOLDS"));
+        assert!(status_of(&overlay, "pump").starts_with("HOLDS"));
     }
 }
 

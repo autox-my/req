@@ -1,7 +1,9 @@
-//! `docs/architecture.html` and the files behind it stay true to the tool (ADR 0052 decision 7, step 3, unit O-3).
+//! `docs/architecture.html` (the overview), `docs/architecture-detail.html` and the files behind them stay true to the
+//! tool (ADR 0052 decision 7, step 3, units O-3 and O-4).
 //!
-//! The diagram (`docs/architecture/req.archify.json`) is an architect's reading of the code and is reviewed like a
-//! document. `overlay.json` and `matrix.md` are computed from it, from `req satisfy --format json` and from `req trace
+//! The two diagrams (`docs/architecture/req.archify.json`, the detail, and `req-overview.archify.json`) are an
+//! architect's reading of the code and are reviewed like a document. `overlay.json` and `matrix.md` (the detail) and
+//! `overview-overlay.json` and `overview-matrix.md` are computed from them, from `req satisfy --format json` and from `req trace
 //! --format json` of this repository, by `tools/graph/build_architecture.py`; they are checked the way a projection
 //! is: regenerated and compared, never hand-edited. The page itself is rendered by archify (Node and a browser), which
 //! the gate cannot run, so what a test can read back of it is the part archify writes as attributes: every component's
@@ -17,6 +19,22 @@ use serde_json::Value;
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf()
 }
+
+/// The two diagrams and what is made from each: (the architect's diagram, its overlay, its matrix, its page).
+const VIEWS: [(&str, &str, &str, &str); 2] = [
+    (
+        "req-overview.archify.json",
+        "overview-overlay.json",
+        "overview-matrix.md",
+        "docs/architecture.html",
+    ),
+    (
+        "req.archify.json",
+        "overlay.json",
+        "matrix.md",
+        "docs/architecture-detail.html",
+    ),
+];
 
 fn req_bin() -> PathBuf {
     std::env::var_os("CARGO_BIN_EXE_req")
@@ -67,17 +85,20 @@ impl Copy {
         ] {
             copy_tree(&root().join(tree), &dir.join(tree));
         }
-        // Every file the diagram cites, wherever it lives.
-        let diagram: Value =
-            serde_json::from_str(&read(&root().join("docs/architecture/req.archify.json")))
-                .expect("the diagram is JSON");
-        for component in diagram["components"].as_array().expect("components") {
-            for source in component["sources"].as_array().into_iter().flatten() {
-                let path = source["path"].as_str().expect("a source path");
-                let target = dir.join(path);
-                if !target.exists() {
-                    fs::create_dir_all(target.parent().expect("a parent")).expect("makes the dir");
-                    fs::copy(root().join(path), &target).expect("copies a cited file");
+        // Every file either diagram cites, wherever it lives.
+        for (diagram, _, _, _) in VIEWS {
+            let diagram: Value =
+                serde_json::from_str(&read(&root().join("docs/architecture").join(diagram)))
+                    .expect("the diagram is JSON");
+            for component in diagram["components"].as_array().expect("components") {
+                for source in component["sources"].as_array().into_iter().flatten() {
+                    let path = source["path"].as_str().expect("a source path");
+                    let target = dir.join(path);
+                    if !target.exists() {
+                        fs::create_dir_all(target.parent().expect("a parent"))
+                            .expect("makes the dir");
+                        fs::copy(root().join(path), &target).expect("copies a cited file");
+                    }
                 }
             }
         }
@@ -159,6 +180,17 @@ fn the_architecture_files_are_current_with_the_tool() {
             run.said
         ),
     }
+    // Both diagrams are covered: the check names each generated file as current (O-4).
+    for (_, overlay, matrix, _) in VIEWS {
+        for name in [overlay, matrix] {
+            assert!(
+                run.said
+                    .contains(&format!("[CURRENT] docs/architecture/{name}")),
+                "--check must cover {name}:\n{}",
+                run.said
+            );
+        }
+    }
 }
 
 /// ADR 0052 falsification 3 as the page shows it: a linked claim whose meaning moved must turn its components SUSPECT,
@@ -184,16 +216,145 @@ fn a_tightened_claim_makes_the_overlay_stale() {
         "a moved claim must make the page stale:\n{}",
         run.said
     );
-    assert!(
-        run.said.contains("STALE") && run.said.contains("overlay.json"),
-        "the stale file must be named:\n{}",
-        run.said
-    );
+    // Both views cite src/baseline.rs, where REQ-0028 is linked: the detail and the overview are each stale, and each
+    // is named (an overview the check skipped would stay HOLDS).
+    for (_, overlay, _, _) in VIEWS {
+        assert!(
+            run.said
+                .contains(&format!("STALE docs/architecture/{overlay}")),
+            "the stale file {overlay} must be named:\n{}",
+            run.said
+        );
+    }
     let regenerated = build(&copy.0, &["--out", "docs/architecture"]);
     assert_eq!(regenerated.code, Some(0), "{}", regenerated.said);
+    for (_, overlay, _, _) in VIEWS {
+        let regenerated: Value =
+            serde_json::from_str(&read(&copy.path("docs/architecture").join(overlay)))
+                .expect("the overlay is JSON");
+        let baselines = regenerated["components"]
+            .as_array()
+            .expect("components")
+            .iter()
+            .find(|c| {
+                c["label"]
+                    .as_str()
+                    .is_some_and(|l| l.starts_with("Baseline"))
+            })
+            .unwrap_or_else(|| panic!("{overlay} has a Baseline component"));
+        assert!(
+            baselines["sublabel"]
+                .as_str()
+                .is_some_and(|status| status.starts_with("SUSPECT")),
+            "{overlay}: the baselines component must now be drawn SUSPECT: {baselines}"
+        );
+    }
+}
+
+/// O-4: the front page is a diagram a reader can take in, so it is small. The detail keeps every part.
+#[test]
+fn the_overview_has_at_most_twelve_components_and_the_detail_stays_whole() {
+    let overview: Value = serde_json::from_str(&read(
+        &root().join("docs/architecture/req-overview.archify.json"),
+    ))
+    .expect("the overview is JSON");
+    let parts = overview["components"].as_array().expect("components").len();
     assert!(
-        read(&copy.path("docs/architecture/overlay.json")).contains("SUSPECT"),
-        "the baselines component must now be drawn SUSPECT"
+        (1..=12).contains(&parts),
+        "the overview has {parts} components, at most 12"
+    );
+    let detail: Value =
+        serde_json::from_str(&read(&root().join("docs/architecture/req.archify.json")))
+            .expect("the detail is JSON");
+    assert!(
+        detail["components"].as_array().expect("components").len() > parts,
+        "the detailed diagram keeps its own, larger page"
+    );
+    assert_eq!(
+        overview["meta"]["repository"]["revision"], detail["meta"]["repository"]["revision"],
+        "the overview is pinned to the revision the detail is"
+    );
+}
+
+/// O-4-fix: "no claim" on a box means none of its cited files declares a link, not that its area has no satisfied
+/// requirement (REQ-0001, area authoring, is drawn under Identity, where src/canon.rs declares it). Each page's reading
+/// card says so, in the sentence the status line needs beside it.
+#[test]
+fn each_reading_card_says_where_a_status_comes_from() {
+    for (_, overlay, _, _) in VIEWS {
+        let overlay_json: Value =
+            serde_json::from_str(&read(&root().join("docs/architecture").join(overlay)))
+                .expect("the overlay is JSON");
+        let card = overlay_json["cards"]
+            .as_array()
+            .expect("cards")
+            .iter()
+            .find(|card| card["title"] == "Reading the picture")
+            .unwrap_or_else(|| panic!("{overlay} has a reading card"));
+        let said = card["items"]
+            .as_array()
+            .expect("items")
+            .iter()
+            .filter_map(Value::as_str)
+            .any(|item| {
+                item.contains("links in the files a box cites")
+                    && item.contains("area")
+                    && item.contains("no claim")
+            });
+        assert!(
+            said,
+            "{overlay}: the reading card must say a status comes from the links in the cited files, not a claim's area: {card}"
+        );
+    }
+}
+
+/// O-4: each page names the other, in a card.
+#[test]
+fn each_page_points_at_the_other() {
+    let overview = read(&root().join("docs/architecture.html"));
+    let detail = read(&root().join("docs/architecture-detail.html"));
+    // A card is plain text in archify 7e45f36 (no link), so the item ends with the sibling page's file name.
+    assert!(
+        overview.contains("architecture-detail.html</li>"),
+        "the overview page must point at the detailed page in a card"
+    );
+    assert!(
+        detail.contains("architecture.html</li>"),
+        "the detailed page must point at the overview page in a card"
+    );
+    // The Pages index promises every part, so its one item links both pages, the overview first.
+    let index = read(&root().join("docs/index.html"));
+    let overview_link = index
+        .find("href=\"architecture.html\"")
+        .expect("the index links the overview page");
+    let detail_link = index
+        .find("href=\"architecture-detail.html\"")
+        .expect("the index links the detailed page");
+    assert!(
+        overview_link < detail_link,
+        "the overview is linked before the detail"
+    );
+    assert_eq!(
+        index.matches("architecture.html\"").count()
+            + index.matches("architecture-detail.html\"").count(),
+        2,
+        "one item, two links"
+    );
+    let item = index
+        .lines()
+        .find(|line| line.contains("href=\"architecture.html\""))
+        .expect("the item");
+    assert!(
+        item.contains("href=\"architecture-detail.html\""),
+        "both links are in the one item: {item}"
+    );
+    let detail: Value =
+        serde_json::from_str(&read(&root().join("docs/architecture/req.archify.json")))
+            .expect("the detail is JSON");
+    let parts = detail["components"].as_array().expect("components").len();
+    assert!(
+        item.contains(&format!("{parts} parts")),
+        "the item names the detailed page's {parts} parts: {item}"
     );
 }
 
@@ -334,10 +495,16 @@ fn escape(text: &str) -> String {
 /// attributes. A page rendered from an older overlay differs in a tag, a label, the subtitle or a source link.
 #[test]
 fn the_page_carries_what_the_overlay_says() {
-    let page = read(&root().join("docs/architecture.html"));
+    for (_, overlay, _, page) in VIEWS {
+        page_carries(page, overlay);
+    }
+}
+
+fn page_carries(page: &str, overlay: &str) {
+    let page = read(&root().join(page));
     let overlay: Value =
-        serde_json::from_str(&read(&root().join("docs/architecture/overlay.json")))
-            .expect("overlay.json is JSON");
+        serde_json::from_str(&read(&root().join("docs/architecture").join(overlay)))
+            .expect("the overlay is JSON");
     let repository = &overlay["meta"]["repository"];
     let revision = repository["revision"].as_str().expect("a pinned revision");
     let subtitle = overlay["meta"]["subtitle"].as_str().expect("a subtitle");
@@ -354,6 +521,12 @@ fn the_page_carries_what_the_overlay_says() {
                 escape(label)
             )),
             "the page has no node {id} labelled {label}: render it again from overlay.json"
+        );
+        // O-4: the status is the sublabel, drawn at the overview zoom; the tag is the author's text.
+        let status = component["sublabel"].as_str().expect("a status line");
+        assert!(
+            page.contains(&format!("data-node-sublabel=\"{}\"", escape(status))),
+            "the page does not show the status `{status}` of {id}: render it again from the overlay"
         );
         if let Some(tag) = component["tag"].as_str() {
             assert!(
@@ -385,7 +558,13 @@ fn the_page_carries_what_the_overlay_says() {
 /// and component `sources`: a page rendered before a citation or the pinned revision changed fails here.
 #[test]
 fn the_page_embeds_the_overlays_source_evidence() {
-    let page = read(&root().join("docs/architecture.html"));
+    for (_, overlay, _, page) in VIEWS {
+        page_embeds_evidence(page, overlay);
+    }
+}
+
+fn page_embeds_evidence(page: &str, overlay: &str) {
+    let page = read(&root().join(page));
     let opening = "<script id=\"archify-source-evidence-data\" type=\"application/json\">";
     let start = page
         .find(opening)
@@ -395,8 +574,8 @@ fn the_page_embeds_the_overlays_source_evidence() {
     let embedded: Value =
         serde_json::from_str(&page[start..end]).expect("the embedded evidence is JSON");
     let overlay: Value =
-        serde_json::from_str(&read(&root().join("docs/architecture/overlay.json")))
-            .expect("overlay.json is JSON");
+        serde_json::from_str(&read(&root().join("docs/architecture").join(overlay)))
+            .expect("the overlay is JSON");
     assert_eq!(
         embedded["verified"],
         Value::Bool(true),
@@ -440,8 +619,14 @@ fn the_page_embeds_the_overlays_source_evidence() {
 /// The page is committed, standalone and offline: no script or stylesheet is fetched, and no path of the machine that
 /// rendered it leaks into it.
 #[test]
-fn the_page_is_standalone_and_leaks_no_local_path() {
-    let page = read(&root().join("docs/architecture.html"));
+fn the_pages_are_standalone_and_leak_no_local_path() {
+    for (_, _, _, page) in VIEWS {
+        standalone(page);
+    }
+}
+
+fn standalone(page: &str) {
+    let page = read(&root().join(page));
     for fetched in ["<script src=", "<link rel=\"stylesheet\"", "@import url("] {
         assert!(
             !page.contains(fetched),
@@ -460,22 +645,28 @@ fn the_page_is_standalone_and_leaks_no_local_path() {
 /// quoting last month's numbers.
 #[test]
 fn the_readme_quotes_the_counts_the_matrix_shows() {
-    let matrix = read(&root().join("docs/architecture/matrix.md"));
-    let mut claims = 0;
-    let mut linked = 0;
-    let mut holding = 0;
-    for row in matrix.lines().filter(|line| line.starts_with("| REQ-")) {
-        claims += 1;
-        let cells: Vec<&str> = row.split('|').skip(2).map(str::trim).collect();
-        let filled: Vec<&&str> = cells.iter().filter(|cell| !cell.is_empty()).collect();
-        if !filled.is_empty() {
-            linked += 1;
+    // The README's counts are the matrices': the overview's for the front page, the detail's for the second sentence.
+    let counts = |name: &str| {
+        let matrix = read(&root().join("docs/architecture").join(name));
+        let mut claims = 0;
+        let mut linked = 0;
+        let mut holding = 0;
+        for row in matrix.lines().filter(|line| line.starts_with("| REQ-")) {
+            claims += 1;
+            let cells: Vec<&str> = row.split('|').skip(2).map(str::trim).collect();
+            let filled: Vec<&&str> = cells.iter().filter(|cell| !cell.is_empty()).collect();
+            if !filled.is_empty() {
+                linked += 1;
+            }
+            holding += filled
+                .iter()
+                .filter(|cell| cell.starts_with("holds"))
+                .count();
         }
-        holding += filled
-            .iter()
-            .filter(|cell| cell.starts_with("holds"))
-            .count();
-    }
+        (claims, linked, holding)
+    };
+    let (claims, linked, holding) = counts("overview-matrix.md");
+    let (_, _, detail_holding) = counts("matrix.md");
     let unreached = claims - linked;
     let readme = read(&root().join("README.md"));
     let section = readme
@@ -489,6 +680,7 @@ fn the_readme_quotes_the_counts_the_matrix_shows() {
     for expected in [
         format!("{linked} of req's {claims} claims are linked"),
         format!("all {holding} claim–part pairs hold"),
+        format!("({detail_holding} on the detailed page"),
         format!("the {unreached} claims no part reaches"),
     ] {
         assert!(

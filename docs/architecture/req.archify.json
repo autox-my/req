@@ -3,7 +3,7 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "req architecture",
-    "output": "docs/architecture.html",
+    "output": "docs/architecture-detail.html",
     "quality_profile": "standard",
     "subtitle": "each part of req, with the requirements it satisfies",
     "repository": {
@@ -1074,12 +1074,20 @@
   ],
   "cards": [
     {
+      "dot": "cyan",
+      "title": "The overview",
+      "items": [
+        "Twelve parts, from authoring to a signed Baseline, on the front page: architecture.html"
+      ]
+    },
+    {
       "dot": "slate",
       "title": "Reading the picture",
       "items": [
         "Each box is a part of req, drawn from the files it cites; the arrows are calls and reads or writes the code shows",
         "The status line on a box comes from req satisfy, never from this drawing",
-        "The database-coloured boxes are the files in git that a part reads or writes"
+        "The database-coloured boxes are the files in git that a part reads or writes",
+        "Status comes from the links in the files a box cites, never from a claim's area: \"no claim\" means none of this box's files declares a link, and a claim's area need not be the box that carries it"
       ]
     },
     {

@@ -1,0 +1,503 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "req overview",
+    "output": "docs/architecture.html",
+    "quality_profile": "standard",
+    "subtitle": "from authoring to a signed Baseline, with the requirements each part satisfies",
+    "repository": {
+      "url": "https://github.com/autox-my/req",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "b0dbee4f670653fdf30f2929e8fe55612fda67bf"
+    }
+  },
+  "components": [
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "CLI entry",
+      "sublabel": "one command table, offline",
+      "pos": [
+        70,
+        100
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/main.rs",
+          "line": 1004,
+          "end_line": 1046,
+          "label": "command lookup, exit 2"
+        },
+        {
+          "path": "src/root.rs",
+          "line": 68,
+          "end_line": 97,
+          "label": "resolve_corpus_root"
+        }
+      ]
+    },
+    {
+      "id": "signed",
+      "type": "database",
+      "label": "Signed records",
+      "sublabel": "decisions/, baselines/",
+      "pos": [
+        430,
+        100
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "decisions/DEC-0001.yml",
+          "line": 1,
+          "end_line": 26
+        },
+        {
+          "path": "baselines/trust.yml",
+          "line": 1,
+          "end_line": 44
+        },
+        {
+          "path": "baselines/air-gapped.json",
+          "line": 1,
+          "end_line": 1
+        }
+      ]
+    },
+    {
+      "id": "minisign",
+      "type": "external",
+      "label": "minisign",
+      "sublabel": "signature verifier",
+      "pos": [
+        790,
+        100
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "authoring",
+      "type": "frontend",
+      "label": "Authoring",
+      "sublabel": "init, next-id, importers",
+      "pos": [
+        70,
+        270
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/init.rs",
+          "line": 88,
+          "end_line": 125
+        },
+        {
+          "path": "src/next_id.rs",
+          "line": 121,
+          "end_line": 270
+        },
+        {
+          "path": "tools/adopt.py",
+          "line": 2,
+          "end_line": 60
+        }
+      ]
+    },
+    {
+      "id": "decisions",
+      "type": "security",
+      "label": "Decisions",
+      "sublabel": "ratify, propose, diff",
+      "pos": [
+        310,
+        270
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/decision.rs",
+          "line": 46,
+          "end_line": 335
+        },
+        {
+          "path": "src/propose.rs",
+          "line": 22,
+          "end_line": 83
+        },
+        {
+          "path": "src/diff.rs",
+          "line": 57,
+          "end_line": 320
+        }
+      ]
+    },
+    {
+      "id": "baselines",
+      "type": "security",
+      "label": "Baseline",
+      "sublabel": "manifest, signature, pin",
+      "pos": [
+        550,
+        270
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/baseline.rs",
+          "line": 472,
+          "end_line": 549
+        },
+        {
+          "path": "src/baseline.rs",
+          "line": 1341,
+          "end_line": 1417
+        },
+        {
+          "path": "src/pin.rs",
+          "line": 120,
+          "end_line": 230
+        }
+      ]
+    },
+    {
+      "id": "claims",
+      "type": "database",
+      "label": "Claims",
+      "sublabel": "claims/ and aliases/",
+      "pos": [
+        70,
+        440
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "claims/REQ-0001.yml",
+          "line": 1,
+          "end_line": 19
+        },
+        {
+          "path": "aliases/subjects.yml",
+          "line": 1,
+          "end_line": 24
+        }
+      ]
+    },
+    {
+      "id": "identity",
+      "type": "backend",
+      "label": "Identity",
+      "sublabel": "model, Tier-1 form, loader",
+      "pos": [
+        310,
+        440
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/canon.rs",
+          "line": 328,
+          "end_line": 429,
+          "label": "decimal, canonical form, address"
+        },
+        {
+          "path": "src/canon.rs",
+          "line": 1375,
+          "end_line": 2208,
+          "label": "canonicalize_statement to load_claims"
+        },
+        {
+          "path": "src/model.rs",
+          "line": 300,
+          "end_line": 348,
+          "label": "ClaimFile, strict"
+        }
+      ]
+    },
+    {
+      "id": "variants",
+      "type": "backend",
+      "label": "Variants and views",
+      "sublabel": "select, spec, trace",
+      "pos": [
+        550,
+        440
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/select.rs",
+          "line": 94,
+          "end_line": 227
+        },
+        {
+          "path": "src/view.rs",
+          "line": 164,
+          "end_line": 262
+        },
+        {
+          "path": "src/view.rs",
+          "line": 1052,
+          "end_line": 1200
+        }
+      ]
+    },
+    {
+      "id": "verification",
+      "type": "backend",
+      "label": "Verification",
+      "sublabel": "gate, check, test report",
+      "pos": [
+        790,
+        440
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/gate.rs",
+          "line": 336,
+          "end_line": 597
+        },
+        {
+          "path": "src/check.rs",
+          "line": 567,
+          "end_line": 723
+        },
+        {
+          "path": "src/junit.rs",
+          "line": 277,
+          "end_line": 343
+        }
+      ]
+    },
+    {
+      "id": "evidence",
+      "type": "backend",
+      "label": "Evidence",
+      "sublabel": "the FMR = 0 benchmark",
+      "pos": [
+        310,
+        610
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/bench.rs",
+          "line": 320,
+          "end_line": 719
+        },
+        {
+          "path": "bench/corpus/parity.yml",
+          "line": 1,
+          "end_line": 138
+        }
+      ]
+    },
+    {
+      "id": "reqdir",
+      "type": "database",
+      "label": "Repository lists",
+      "sublabel": "variants, design, satisfied",
+      "pos": [
+        790,
+        610
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": ".req/variants",
+          "line": 1,
+          "end_line": 21
+        },
+        {
+          "path": ".req/design",
+          "line": 1,
+          "end_line": 4
+        },
+        {
+          "path": ".req/satisfied",
+          "line": 1,
+          "end_line": 92
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "authoring",
+      "to": "claims",
+      "label": "init, drafts",
+      "labelAt": [
+        140,
+        394
+      ]
+    },
+    {
+      "from": "identity",
+      "to": "claims",
+      "label": "reads claims",
+      "labelAt": [
+        260,
+        479
+      ]
+    },
+    {
+      "from": "decisions",
+      "to": "identity",
+      "label": "claims per revision",
+      "labelAt": [
+        380,
+        394
+      ]
+    },
+    {
+      "from": "variants",
+      "to": "identity",
+      "label": "load_claims",
+      "labelAt": [
+        500,
+        479
+      ]
+    },
+    {
+      "from": "evidence",
+      "to": "identity",
+      "label": "canonicalize_statement",
+      "labelAt": [
+        380,
+        564
+      ]
+    },
+    {
+      "from": "verification",
+      "to": "variants",
+      "label": "gate rows",
+      "labelAt": [
+        740,
+        479
+      ]
+    },
+    {
+      "from": "verification",
+      "to": "reqdir",
+      "label": "lists",
+      "labelAt": [
+        860,
+        564
+      ]
+    },
+    {
+      "from": "baselines",
+      "to": "variants",
+      "label": "baseline rows",
+      "labelAt": [
+        620,
+        394
+      ]
+    },
+    {
+      "from": "baselines",
+      "to": "signed",
+      "label": "manifest, trust",
+      "labelAt": [
+        560,
+        224
+      ]
+    },
+    {
+      "from": "decisions",
+      "to": "signed",
+      "label": "read, write",
+      "labelAt": [
+        440,
+        224
+      ]
+    },
+    {
+      "from": "baselines",
+      "to": "minisign",
+      "label": "signature",
+      "labelAt": [
+        740,
+        224
+      ]
+    },
+    {
+      "from": "baselines",
+      "to": "decisions",
+      "label": "verify_chain",
+      "labelAt": [
+        500,
+        309
+      ]
+    },
+    {
+      "from": "decisions",
+      "to": "baselines",
+      "label": "judge_signature",
+      "labelAt": [
+        500,
+        365
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Reading the picture",
+      "items": [
+        "Each box is a part of req, drawn from the files it cites; the arrows are calls and reads or writes the code shows",
+        "The line under a box's name is the status req satisfy gives it: the worst state among its linked claims, and how many claims are in it",
+        "The database-coloured boxes are the files in git that a part reads or writes",
+        "Status comes from the links in the files a box cites, never from a claim's area: \"no claim\" means none of this box's files declares a link, and a claim's area need not be the box that carries it"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Left to the detailed view",
+      "items": [
+        "src/main.rs dispatches every command to its module: those arrows are left out of both pictures because each would cross the parts it passes",
+        "Every file that declares a requirement link is cited by a box here; the parts left out (Direction, Contradictions, Design links, Completeness, Audit packet, self-test, the Provider and git processes) hold none",
+        "Every part, with every arrow and the files it cites: architecture-detail.html"
+      ]
+    }
+  ]
+}
