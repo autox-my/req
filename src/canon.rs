@@ -16,6 +16,12 @@
 //! Units: only *power-of-ten* factors convert exactly (ms→s, kN→N, %→ratio, the
 //! °C→K offset). `km/h→m/s` (×5/18, a repeating decimal) is NOT Tier-1 — such units
 //! stay as their own canonical symbols, never guessed.
+//! req-satisfies: REQ-0001 — load_claims: claims/ is flat, one claim per file named by its id
+//! req-satisfies: REQ-0017 — address_hex: the tagged sha256 of the canonical form bytes
+//! req-satisfies: REQ-0018 — canonical_decimal, is_canonical_decimal: exact decimal strings
+//! req-satisfies: REQ-0019 — the canonicalizer lints a construct it cannot decide, never guesses
+//! req-satisfies: REQ-0032 — parse_claim refuses a removed or unknown key, naming it
+//! req-satisfies: REQ-0033 — load_claims: an empty corpus is UNVERIFIABLE, never a pass
 
 use std::collections::{BTreeMap, BTreeSet};
 

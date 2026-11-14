@@ -23,6 +23,7 @@
 //! The exit is not a verdict. 0 the report was produced; 1 only with `--fail-on` and a named class
 //! or flag present; 3 UNVERIFIABLE (it cannot be produced); 2 usage. The words PASS, FAIL and
 //! UNVERIFIABLE never reach stdout: this describes a change, `req check` is the release verdict.
+//! req-satisfies: REQ-0034 — Class::of_direction: a change that loosens an obligation is weakened
 
 use crate::canon::{self, CanonicalForm, LoadedClaim, Modality};
 use crate::check::{self, Listing};

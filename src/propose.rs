@@ -1,6 +1,7 @@
 //! `req propose <a.yml> <b.yml> [--provider-cmd <cmd>]`: the one Tier-2 seam the core keeps (ADR
 //! 0021). A provider's answer about ONE explicit pair is an **unratified proposal**, never an edit:
 //! nothing is written, no address moves, and no provider is UNVERIFIABLE (never "unrelated").
+//! req-satisfies: REQ-0004 — run: a provider answer is an unratified proposal, nothing written
 use crate::model::ClaimFile;
 use std::{collections::BTreeSet, io::Write, process::Stdio};
 

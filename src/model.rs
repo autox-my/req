@@ -2,6 +2,7 @@
 //!
 //! Field names and semantics follow [docs/claim-format.md] exactly. `value` stays a
 //! `String` (the exact decimal string, never a float — claim-format authoring rule).
+//! req-satisfies: REQ-0032 — ClaimFile and its nested structs deny unknown fields
 
 use std::collections::BTreeMap;
 

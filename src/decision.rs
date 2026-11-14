@@ -27,6 +27,8 @@
 //! definite finding is untouched rather than half-filled. (A write that fails part-way can still
 //! leave a partially filled log — the records before it carry derived fields, the command exits 3,
 //! and `--verify` then reports UNVERIFIABLE rather than passing.)
+//! req-satisfies: REQ-0002 — Decision: actor, role, date, ratified address and dissent note
+//! req-satisfies: REQ-0031 — verify_chain: an edited record no longer recomputes, so it is TAMPERED
 
 use serde::Deserialize;
 

@@ -7,6 +7,10 @@
 //! the unstructured fallback are Tier-2 candidates — the provider funnel's domain
 //! — and are excluded from the FSR headline by design, exactly as the corpus notes
 //! declare.
+//! req-satisfies: REQ-0008 — fmr_gate: any collapse among not-equivalent pairs is a FAIL
+//! req-satisfies: REQ-0009 — measures direction accuracy against the 0.95 soft target
+//! req-satisfies: REQ-0010 — measures the false split rate over structured equivalent pairs
+//! req-satisfies: REQ-0035 — fmr_measurable: no not-equivalent pair measured is UNVERIFIABLE
 
 use serde_json::json;
 

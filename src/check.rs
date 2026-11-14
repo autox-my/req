@@ -19,6 +19,7 @@
 //! * **It validates before it runs.** Both lists are read once into bytes and every line is checked
 //!   before any step starts; a malformed line is exit 2 naming `<file>:<line>`, and nothing ran.
 //! * **No flag narrows the steps.** `PASS` is printed only when every declared step ran and passed.
+//!   req-satisfies: REQ-0037 — fold: a failure outranks an undecided step, which outranks a pass
 
 use crate::canon::RULES_V;
 use crate::completeness::{self, AREAS, COMPLETENESS, Findings, Policy};

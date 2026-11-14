@@ -30,6 +30,8 @@
 //! The plain commands are untouched: `render` and `trace` with no flag print the same bytes and
 //! answer the same 0/3 classes as before, because a view printed for a human and a document
 //! committed for a repository are different things.
+//! req-satisfies: REQ-0020 — trace derives incoming edges from each claim's outgoing relations
+//! req-satisfies: REQ-0036 — judge_projection: an edited or outdated projection is STALE
 
 use crate::canon::RULES_V;
 use crate::check::{Listing, read_list};
