@@ -31,6 +31,26 @@ part reaches. [Every part, with every arrow](https://autox-my.github.io/req/arch
 (its [matrix](docs/architecture/matrix.md)). How they are made and what the gate checks of them:
 [ADR 0052](docs/adr/0052-an-architecture-diagram-shows-the-claims-its-components-satisfy.md).
 
+### What drift looks like
+
+[![the same diagram after REQ-0010 is tightened on a copy: the Evidence box reads SUSPECT, every other box still holds](docs/architecture/drift/req-drift.png)](https://autox-my.github.io/req/architecture-drift.html)
+
+A presence check, or a tool that raises an alarm on any edit, cannot tell a re-wording from a change of meaning. req judges a link by the
+*direction* of the claim's change since a human recorded it. [The drift page](https://autox-my.github.io/req/architecture-drift.html) is the
+overview after one edit to REQ-0010 (the false-split bound, linked from `src/bench.rs`, drawn in the Evidence box): **made on a throw-away
+copy of the corpus**, never on req's own claims, by `python3 tools/graph/build_architecture.py --drift docs/architecture/drift` from
+[`edits.json`](docs/architecture/drift/edits.json), and checked by the gate. Three edits, side by side, with req's words for each:
+
+| edit, on a copy | `req satisfy` says | the Evidence box | exact output |
+| --- | --- | --- | --- |
+| **cosmetic**: `at most 0.30` re-worded `no more than 0.30` | `HOLDS`: same meaning fingerprint (`req compare`: identical), so no false alarm | `HOLDS · 4 claims` | [satisfy.txt](docs/architecture/drift/cosmetic/satisfy.txt) |
+| **loosening**: `at most 0.30` becomes `at most 0.40` | `HOLDS (weakened)`, `numeric_loosening`: what met the stronger requirement meets the weaker one | `HOLDS (weakened) · 1 of 4 claims` | [satisfy.txt](docs/architecture/drift/loosening/satisfy.txt) |
+| **tightening**: `at most 0.30` becomes `at most 0.20` | `SUSPECT`, `numeric_tightening`, with the `req satisfy --record` command a human runs once the design is re-checked | `SUSPECT · 1 of 4 claims` | [satisfy.txt](docs/architecture/drift/tightening/satisfy.txt) |
+
+Each directory under [`docs/architecture/drift/`](docs/architecture/drift/) also holds that edit's `overlay.json` and `matrix.md`; the matrix reads
+the edited statement. The page is rendered from the tightening overlay; the real state, every link holding, is
+[the architecture page](https://autox-my.github.io/req/architecture.html).
+
 ## The bet, stated so it can fail
 
 > Deterministic canonicalization yields **zero false merges** on the corpora that measured it:

@@ -183,3 +183,5 @@ ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
   as the run that made it. A model never edits it: the status comes from `req satisfy` alone.
 
 The overlays that are committed are this repository's own architecture, as a worked example: [`docs/architecture/`](../../docs/architecture/) holds two diagrams (an overview of at most twelve components, the front page, and the detail), the generated overlay and matrix of each, and `tools/graph/build_architecture.py` regenerates and checks all four files.
+
+[`docs/architecture/drift/`](../../docs/architecture/drift/) is the worked example of drift: three edits to one claim, each made on a copy of the corpus, with the overlay, matrix and `req satisfy` output they give (`build_architecture.py --drift`).
