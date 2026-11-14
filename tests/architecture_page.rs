@@ -694,11 +694,15 @@ fn the_readme_quotes_the_counts_the_matrix_shows() {
 }
 
 /// ADR 0053 decision 6: a part in the matrix links to the page that draws it, at its node (`#focus=<component id>`), the
-/// overview matrix to the overview page and the detail matrix to the detail page, relative to `docs/architecture/`.
+/// overview matrix to the overview page and the detail matrix to the detail page. The matrix is read on github.com, where a
+/// relative `.html` link opens the file's source, so the link is the published page's absolute URL, the one the README uses.
 #[test]
 fn each_matrix_links_its_parts_to_the_page_that_draws_them() {
+    let readme = read(&root().join("README.md"));
     for (diagram, _, matrix, page) in VIEWS {
         let file = page.trim_start_matches("docs/");
+        let url = format!("https://autox-my.github.io/req/{file}");
+        assert!(readme.contains(&url), "the README links {url}");
         let diagram: Value =
             serde_json::from_str(&read(&root().join("docs/architecture").join(diagram)))
                 .expect("the diagram is JSON");
@@ -708,11 +712,24 @@ fn each_matrix_links_its_parts_to_the_page_that_draws_them() {
             .expect("components")
             .iter()
             .filter_map(|component| component["id"].as_str())
-            .filter(|id| text.contains(&format!("](../{file}#focus={id})")))
+            .filter(|id| text.contains(&format!("]({url}#focus={id})")))
             .collect();
         assert!(
             !linked.is_empty(),
-            "{matrix} links no part to ../{file}#focus=<id>"
+            "{matrix} links no part to {url}#focus=<id>"
+        );
+        assert!(
+            !text.contains("](../architecture"),
+            "{matrix} links a page by a relative path, which github.com shows as source"
+        );
+        let other = if file == "architecture.html" {
+            "architecture-detail.html"
+        } else {
+            "architecture.html"
+        };
+        assert!(
+            !text.contains(&format!("](https://autox-my.github.io/req/{other}#")),
+            "{matrix} links to the other page"
         );
         // The fragment names a node archify drew: its `data-node-id` is the component's id.
         let html = read(&root().join(page));
@@ -722,14 +739,5 @@ fn each_matrix_links_its_parts_to_the_page_that_draws_them() {
                 "{page} draws no node `{id}`"
             );
         }
-        let other = if file == "architecture.html" {
-            "architecture-detail.html"
-        } else {
-            "architecture.html"
-        };
-        assert!(
-            !text.contains(&format!("](../{other}#")),
-            "{matrix} links to the other page"
-        );
     }
 }

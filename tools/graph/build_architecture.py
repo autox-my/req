@@ -40,11 +40,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 CONVERTER = os.path.join(ROOT, "tools", "graph", "arch_overlay.py")
 SATISFY_SCHEMA = "req.satisfy/1"
 TRACE_SCHEMA = "req.trace/1"
-# (the architect's diagram, the overlay and the matrix made from it, the page archify renders the overlay to as the matrix
-# reaches it from docs/architecture/), the overview first.
+# Where the pages are published (the URL README.md links). A matrix is read on github.com, where a relative link to an
+# `.html` file opens its source, so each part links to the published page by this absolute URL (ADR 0053 decision 6).
+PAGES_URL = "https://autox-my.github.io/req"
+# (the architect's diagram, the overlay and the matrix made from it, the published page the overlay is rendered to), the
+# overview first.
 VIEWS = (
-    ("req-overview.archify.json", "overview-overlay.json", "overview-matrix.md", "../architecture.html"),
-    ("req.archify.json", "overlay.json", "matrix.md", "../architecture-detail.html"),
+    ("req-overview.archify.json", "overview-overlay.json", "overview-matrix.md", f"{PAGES_URL}/architecture.html"),
+    ("req.archify.json", "overlay.json", "matrix.md", f"{PAGES_URL}/architecture-detail.html"),
 )
 # Where the committed matrices are read from, so the converter writes their claim links relative to it.
 MATRIX_DIR = "docs/architecture"

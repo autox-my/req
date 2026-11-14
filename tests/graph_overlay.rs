@@ -1492,6 +1492,76 @@ fn with_a_page_each_component_links_to_its_node_on_that_page() {
 }
 
 #[test]
+fn an_absolute_https_page_is_used_as_given_and_a_relative_one_is_encoded() {
+    // The matrix is read on github.com, where a relative `.html` link opens the source: the committed matrices point at the
+    // published page, an absolute URL that is not re-encoded (`https://` keeps its colon).
+    let s = Scratch::new("page-absolute");
+    repo(&s);
+    let inputs = Inputs {
+        diagram: diagram(vec![component("pump", "Pump", &["src/a.rs"], 0)]),
+        satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
+        trace: trace(&claims()),
+    };
+    let paths = inputs.write(&s);
+    let url = "https://autox-my.github.io/req/architecture.html";
+    let out = convert_with_page(&s, &paths, &["--page", url]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let cell = row_of(&matrix(&s), "REQ-0001")[2].clone();
+    assert!(
+        cell.contains(&format!("[Pump]({url}#focus=pump) (holds)")),
+        "{cell}"
+    );
+    // A relative path keeps being encoded, a parenthesis and a space included (they would end the link).
+    fs::remove_dir_all(s.path("out")).expect("clears");
+    let out = convert_with_page(&s, &paths, &["--page", "../a (b).html"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let cell = row_of(&matrix(&s), "REQ-0001")[2].clone();
+    assert!(
+        cell.contains("[Pump](../a%20%28b%29.html#focus=pump) (holds)"),
+        "{cell}"
+    );
+}
+
+#[test]
+fn a_page_that_is_not_https_or_has_a_fragment_is_refused_naming_the_option() {
+    for page in [
+        "http://autox-my.github.io/req/architecture.html",
+        "javascript:alert(1)",
+        "file:///etc/passwd",
+        "https://autox-my.github.io/req/architecture.html#focus=x",
+        "https://",
+        "//autox-my.github.io/req/architecture.html",
+    ] {
+        let s = Scratch::new("page-refused");
+        repo(&s);
+        let paths = full_inputs().write(&s);
+        let out = convert_with_page(&s, &paths, &["--page", page]);
+        assert_eq!(out.code, 2, "{page}: {}", out.all());
+        assert!(out.stderr.contains("--page"), "{page}: {}", out.stderr);
+        assert!(!s.path("out").exists(), "{page}: nothing is written");
+    }
+}
+
+#[test]
+fn brackets_and_backslashes_in_a_label_are_escaped_as_link_text() {
+    let s = Scratch::new("page-brackets");
+    repo(&s);
+    let inputs = Inputs {
+        diagram: diagram(vec![component("pump", "Read] [Write\\x", &["src/a.rs"], 0)]),
+        satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
+        trace: trace(&claims()),
+    };
+    let paths = inputs.write(&s);
+    let out = convert_with_page(&s, &paths, &["--page", "../architecture.html"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let cell = row_of(&matrix(&s), "REQ-0001")[2].clone();
+    assert!(
+        cell.contains("[Read\\] \\[Write\\\\x](../architecture.html#focus=pump) (holds)"),
+        "{cell}"
+    );
+}
+
+#[test]
 fn without_a_page_a_component_is_plain_text_nothing_is_guessed() {
     let s = Scratch::new("no-page");
     repo(&s);

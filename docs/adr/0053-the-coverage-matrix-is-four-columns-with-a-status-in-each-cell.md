@@ -108,10 +108,14 @@ This decision is wrong if any of these is observed:
   test asked`. The unreached-claims list that followed the old grid is gone from the file (the rows say `no design element`;
   the overlay's card of the same name is unchanged), and the overlay JSON is byte-for-byte what it was.
 - **Links (decision 6), after review 1.** A **component** is linked to its node on the architecture page when the converter is
-  given `--page <path>` (the page as the matrix reaches it; no default is guessed, so without it a component is plain text):
-  `<path>#focus=<component id>`, the fragment archify's viewer (`7e45f36`, `syncFocusFromHash`, which reads `focus=<node id>`
+  given `--page <page>` (the page the matrix links to; no default is guessed, so without it a component is plain text):
+  `<page>#focus=<component id>`, the fragment archify's viewer (`7e45f36`, `syncFocusFromHash`, which reads `focus=<node id>`
   from `location.hash`) focuses a node by, so the link opens the page with the part selected. `build_architecture.py` passes
-  `../architecture.html` for the overview matrix and `../architecture-detail.html` for the detail. A **file** is linked to the
+  the published page's absolute URL, `https://autox-my.github.io/req/architecture.html` for the overview matrix and
+  `…/architecture-detail.html` for the detail (one constant, the URL the README uses): the matrix is read on github.com, where
+  a relative link to an `.html` file opens its source and `#focus=` does nothing. `--page` takes an absolute `https://` URL
+  as given (a space, a parenthesis, `<`, `>` or a quote is percent-encoded, a fragment of its own or any other scheme is
+  exit 2) or a relative path, percent-encoded. A label's backslash and brackets are escaped as link text. A **file** is linked to the
   file at `meta.repository.revision` **with no line anchor**, when the diagram's repository is on GitHub and pinned (otherwise
   the path alone): a link's `line` comes from `req satisfy` over the working tree, while the URL pins a revision, so after a
   line moves a committed `#L<n>` would point at the wrong line of the pinned file. A claim is linked to its file relative to
@@ -122,9 +126,9 @@ This decision is wrong if any of these is observed:
   with nothing written. Elements are matched by local name, so a report that declares a default namespace is read as
   `req gate --test-report` reads it. A DTD is refused only when the document really declares one (a `DOCTYPE` or an `ENTITY`
   declaration, found by the XML parser, not by searching the text), so `<!DOCTYPE …>` written inside a comment or a CDATA
-  section is not a refusal. **What still differs from `src/junit.rs`:** the converter uses the standard library's XML
-  parser, so it also accepts a *prefixed* element name (`<j:testsuites>`), which the gate's hand-written reader treats as an
-  unknown root, (a prefix declared in the document); this reader
+  section is not a refusal. **What still differs from `src/junit.rs`:** the converter
+  uses the standard library's XML parser, so it also accepts an element name with a namespace prefix declared in the document
+  (`<j:testsuites xmlns:j="urn:junit">`), which the gate's hand-written reader refuses as an unknown root; this reader only
   feeds a matrix a human reads, never a gate verdict, and the gate stays the judge of a report. Without the flag the report is never opened, so a committed matrix cannot move when a report does
   (*Falsification* 3).
 - **`--matrix-dir <dir>`** (optional, default the root) is the directory, relative to the root, the matrix will be read from,

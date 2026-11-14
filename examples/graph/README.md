@@ -168,10 +168,11 @@ ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
   `req gate --test-report` reads): `(passed)`, `(failed)`, `(skipped)` or `(not found)` after each id. An outcome depends on a
   run, not on the repository, so a run with a report is not committed, and the converter never opens a report you did not name;
   an unreadable or malformed report is exit `2` naming it. **`--matrix-dir <dir>`** (optional; relative to `--root`, default
-  the root) is the directory the matrix will be read from, so its claim links are right there. **`--page <path>`** (optional) is
-  the page the diagram is rendered to as the matrix reaches it (`../architecture.html`): each component then links to
-  `<path>#focus=<component id>`, which archify's viewer opens with that part selected; without it no page is guessed and a
-  component is plain text. The report is read by element local name (a default namespace is accepted); a `DOCTYPE` or `ENTITY`
+  the root) is the directory the matrix will be read from, so its claim links are right there. **`--page <page>`** (optional) is
+  the page the diagram is rendered to: each component then links to `<page>#focus=<component id>`, which archify's viewer
+  opens with that part selected. Give an absolute `https://` URL (used as given; a fragment of its own or another scheme is
+  exit `2`) for a matrix read on GitHub, where a relative link to an `.html` file opens its source; a relative path
+  (`../architecture.html`) is percent-encoded. Without it no page is guessed and a component is plain text. The report is read by element local name (a default namespace is accepted); a `DOCTYPE` or `ENTITY`
   declaration is refused, text that only looks like one inside a comment or CDATA section is not.
 - **`--repo-root`** is archify's: a diagram that cites `sources` is verified against the committed bytes at its pinned
   revision, in a checkout whose `origin` matches the diagram's `meta.repository.url`. Without it archify refuses the page.

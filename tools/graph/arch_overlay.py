@@ -19,10 +19,13 @@ Inputs, all read-only:
   --matrix-dir <dir>
                   the directory, relative to the root, the matrix will be read from (default: the root itself); the claim links
                   are written relative to it.
-  --page <path>   the architecture page this diagram is rendered to, as the matrix will reach it (a relative URL such as
-                  `../architecture.html`): each component in the matrix then links to its node there, `<path>#focus=<component
-                  id>`, the fragment archify's viewer focuses a node by (7e45f36, `syncFocusFromHash`). Without it a component
-                  is plain text: no page is guessed.
+  --page <path>   the architecture page this diagram is rendered to, as the matrix will reach it: each component in the matrix
+                  then links to its node there, `<page>#focus=<component id>`, the fragment archify's viewer focuses a node by
+                  (7e45f36, `syncFocusFromHash`). Either an absolute `https://` URL, used as given (only a space, a parenthesis,
+                  `<`, `>` or a quote in it is percent-encoded, as it would end the link; it may not carry a fragment of its own;
+                  any other scheme is refused), or a relative path such as `../architecture.html`, percent-encoded. A matrix read
+                  on github.com should name the published page by URL: a relative `.html` link opens the file's source there.
+                  Without the option a component is plain text: no page is guessed.
 
 A component satisfies the union of the claims its cited files declare (ADR 0052 decision 1): a link is found by the
 file path alone, never by the component's id, and a line range in `sources` is ignored. Its status is the worst
@@ -356,6 +359,29 @@ def url_path(path, extra="/"):
     return "".join(char if char in safe else "".join(f"%{byte:02X}" for byte in char.encode("utf-8")) for char in path)
 
 
+def page_target(page):
+    """The page a component links to, for the link's URL part: an absolute `https://` URL as given (only what would end the
+    link is encoded), a relative path percent-encoded. A scheme other than https, an empty host or a fragment of its own is
+    `Refusal`: the converter appends `#focus=<id>` itself."""
+    if page.lower().startswith("https://"):
+        if "#" in page:
+            refuse(f"--page {page!r} carries a fragment of its own: the converter appends `#focus=<component id>`")
+        if not page[len("https://"):].split("/", 1)[0]:
+            refuse(f"--page {page!r} names no host")
+        unsafe = " ()<>\"'\\`"
+        out = []
+        for char in page:
+            if char in unsafe or ord(char) < 0x21 or ord(char) == 0x7F:
+                out.extend(f"%{byte:02X}" for byte in char.encode("utf-8"))
+            else:
+                out.append(char)
+        return "".join(out)
+    head = page.split("/", 1)[0]
+    if page.startswith("//") or ":" in head:
+        refuse(f"--page {page!r} is neither an absolute `https://` URL nor a relative path: only https is linked")
+    return url_path(page)
+
+
 def github_blob(diagram):
     """`https://github.com/<owner>/<repo>/blob/<revision>` for a diagram whose repository is on GitHub and pinned; else None
     (a file is then named without a link, never pointed at a revision that is not there)."""
@@ -369,6 +395,11 @@ def github_blob(diagram):
     if url.endswith(".git"):
         url = url[: -len(".git")]
     return f"{url}/blob/{url_path(revision)}"
+
+
+def link_text(text):
+    """`text` as the text of a Markdown link inside a table cell: a backslash and a bracket escaped, then as any cell text."""
+    return cell_label(text.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]"))
 
 
 def satisfied_by(claim, states, links_by_element, blob, page):
@@ -390,7 +421,7 @@ def satisfied_by(claim, states, links_by_element, blob, page):
             files.append(f"[{name}]({blob}/{url_path(path)})" if blob else name)
         label = cell_label(state["component"]["label"])
         if page is not None:
-            label = f"[{label}]({url_path(page)}#focus={url_path(state['component']['id'], extra='')})"
+            label = f"[{link_text(state['component']['label'])}]({page}#focus={url_path(state['component']['id'], extra='')})"
         text = f"{label} ({OUTCOME_TEXT[outcome]})"
         parts.append(text + (": " + ", ".join(files) if files else ""))
     return "<br>".join(parts) or "no design element"
@@ -414,6 +445,7 @@ def verified_by(node, report):
 
 
 def coverage_matrix(nodes, states, links_by_element, blob, matrix_dir, report, page):
+    page = page_target(page) if page is not None else None
     """ADR 0053's matrix, as Markdown: one row per applying claim by id, four columns, a named gap in every empty cell."""
     claims_dir = posixpath.relpath("claims", matrix_dir)
     table = ["| " + " | ".join(HEADER) + " |", "| " + " | ".join(["---"] * len(HEADER)) + " |"]
