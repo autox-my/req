@@ -1321,6 +1321,169 @@ fn links_carry_edges_between_drafts_and_every_other_target_is_counted() {
 }
 
 #[test]
+fn test_cases_are_proposed_from_their_test_need_and_a_failing_case_still_links() {
+    // The demo excerpt has no test need; give it one that names two drafted requirements, and a
+    // JUnit document whose `name` is the test need id (the Sphinx-Test-Reports convention).
+    let mut export = fixture_json(DEMO);
+    needs_mut(&mut export).insert(
+        "FSR_BRAKE_CTRL_02".into(),
+        json!({"type": "fsr", "content": "The brake controller shall fail operational.",
+               "implements": [], "implements_back": [], "links": [], "links_back": []}),
+    );
+    needs_mut(&mut export).insert(
+        "T_SAFE".into(),
+        json!({"type": "test", "specs": ["SYSREQ_BRAKE_01", "FSR_BRAKE_CTRL_02"]}),
+    );
+    let fx = Fixture::with_export("req-needs-tests", &export.to_string());
+    fx.write(
+        "junit.xml",
+        r#"<testsuites><testsuite>
+             <testcase classname="suite::a" name="T_SAFE"/>
+             <testcase classname="suite::b" name="T_SAFE"><failure/></testcase>
+             <testcase classname="suite::c" name="NOT_A_NEED"/>
+           </testsuite></testsuites>"#,
+    );
+
+    let out = import(
+        fx.path(),
+        &plus(
+            base(&DEMO_TYPES),
+            &[
+                "--links",
+                "--tests",
+                "junit.xml",
+                "--test-type",
+                "test",
+                "--test-link",
+                "specs",
+                "--write",
+            ],
+        ),
+    );
+    out.assert_code(0, "the demo excerpt with --tests");
+    let report = parse_report(&out.stdout);
+    let claim_of = |need: &str| {
+        report
+            .drafts
+            .iter()
+            .find(|draft| draft.need == need)
+            .unwrap_or_else(|| panic!("{need} is drafted:\n{}", out.stdout))
+            .claim
+            .clone()
+    };
+    let sysreq = claim_of("SYSREQ_BRAKE_01");
+    let fsr = claim_of("FSR_BRAKE_CTRL_02");
+    let line = out
+        .stdout
+        .lines()
+        .find(|line| line.starts_with("tests: "))
+        .expect("the report has a `tests:` line");
+    assert_eq!(
+        line,
+        format!(
+            "tests: 4 test link(s) on 2 of {} drafted needs; 1 test need(s) (1 with a case, 0 \
+             without); 3 test case(s) (2 passed, 1 failed, 0 skipped, 0 malformed, 1 naming no \
+             test need) in junit.xml",
+            report.drafts.len()
+        )
+    );
+    for claim in [&sysreq, &fsr] {
+        let text = fx.read(&format!("claims/{claim}.yml"));
+        assert!(
+            text.contains("tests:\n  - \"suite::a::T_SAFE\"\n  - \"suite::b::T_SAFE\"\n"),
+            "{claim} carries both cases, including the failing one:\n{text}"
+        );
+    }
+
+    // Without --tests the report and the draft stay as they always were.
+    let plain = Fixture::with_export("req-needs-tests-off", &export.to_string());
+    plain.write(
+        "junit.xml",
+        r#"<testsuites><testsuite><testcase classname="suite::a" name="T_SAFE"/></testsuite></testsuites>"#,
+    );
+    let off = import(plain.path(), &plus(base(&DEMO_TYPES), &["--write"]));
+    off.assert_code(0, "the demo excerpt without --tests");
+    assert!(!off.stdout.contains("tests: "), "{}", off.stdout);
+    assert_eq!(
+        field(&plain.read(&format!("claims/{sysreq}.yml")), "tests:"),
+        None
+    );
+}
+
+#[test]
+fn a_test_type_or_link_field_the_export_lacks_is_named_before_anything_is_read() {
+    let mut export = fixture_json(DEMO);
+    needs_mut(&mut export).insert(
+        "T_SAFE".into(),
+        json!({"type": "test", "specs": ["SYSREQ_BRAKE_01"]}),
+    );
+    let fx = Fixture::with_export("req-needs-test-names", &export.to_string());
+    fx.write(
+        "junit.xml",
+        r#"<testsuites><testsuite><testcase classname="c" name="T_SAFE"/></testsuite></testsuites>"#,
+    );
+
+    let type_typo = import(
+        fx.path(),
+        &plus(
+            base(&DEMO_TYPES),
+            &[
+                "--tests",
+                "junit.xml",
+                "--test-type",
+                "nosuch",
+                "--test-link",
+                "specs",
+            ],
+        ),
+    );
+    type_typo.assert_code(1, "a --test-type the export does not have");
+    assert!(
+        type_typo.stderr.contains("--test-type") && type_typo.stderr.contains("test (1)"),
+        "{}",
+        type_typo.stderr
+    );
+
+    let link_typo = import(
+        fx.path(),
+        &plus(
+            base(&DEMO_TYPES),
+            &[
+                "--tests",
+                "junit.xml",
+                "--test-type",
+                "test",
+                "--test-link",
+                "nosuch",
+            ],
+        ),
+    );
+    link_typo.assert_code(1, "a --test-link no test need carries");
+    assert!(
+        link_typo.stderr.contains("--test-link") && link_typo.stderr.contains("specs"),
+        "{}",
+        link_typo.stderr
+    );
+
+    let missing = import(
+        fx.path(),
+        &plus(
+            base(&DEMO_TYPES),
+            &[
+                "--tests",
+                "absent.xml",
+                "--test-type",
+                "test",
+                "--test-link",
+                "specs",
+            ],
+        ),
+    );
+    missing.assert_code(3, "a report that cannot be read");
+    assert!(missing.stderr.contains("absent.xml"), "{}", missing.stderr);
+}
+
+#[test]
 fn status_tags_safety_security_reqtype_and_links_are_in_no_claim_and_the_report_says_so() {
     let (fx, report, _rows) = end_to_end(SCORE, &SCORE_TYPES);
     let export = fixture_json(SCORE);
@@ -1654,6 +1817,25 @@ fn a_malformed_invocation_is_a_usage_error() {
             plus(base(&["req"]), &["--status", "--write"]),
         ),
         ("an unknown flag", plus(base(&["req"]), &["--subject", "x"])),
+        (
+            "--tests without --test-type",
+            plus(base(&["req"]), &["--tests", "junit.xml"]),
+        ),
+        (
+            "--tests without --test-link",
+            plus(
+                base(&["req"]),
+                &["--tests", "junit.xml", "--test-type", "test"],
+            ),
+        ),
+        (
+            "--test-type without --tests",
+            plus(base(&["req"]), &["--test-type", "test"]),
+        ),
+        (
+            "--test-link without --tests",
+            plus(base(&["req"]), &["--test-link", "specs"]),
+        ),
     ] {
         let out = import(fx.path(), &args);
         out.assert_code(2, what);

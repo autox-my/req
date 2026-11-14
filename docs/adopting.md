@@ -257,6 +257,8 @@ nothing derived, no pin.
 python3 tools/needs_import.py --from needs.json --origin <where the export came from> \
     --type <your requirement type> --type <another> --date YYYY-MM-DD           # dry run
 python3 tools/needs_import.py ...the same arguments... --links --write         # drafts + their typed links
+python3 tools/needs_import.py ...the same arguments... --links --write \
+    --tests junit.xml --test-type test --test-link specs                        # ... + JUnit evidence
 req canon                # exit 0 — the parse each draft derives
 ```
 
@@ -309,6 +311,18 @@ report an unresolved edge), and the report's `links:` line counts each one by re
 `links: <R> relation(s) on <D> of <N> drafted needs (<kind> <n>, …); <T> target(s) not carried (<reason> <n>, …)`.
 The kinds are still a proposal: the source's link vocabulary is kept verbatim, and renaming one (to `refines`,
 or `supersedes`) is a human edit.
+
+**`--tests` carries the JUnit evidence, when a test need names the draft.** An adopter's test
+needs usually already link to the requirements they prove, and Sphinx-Test-Reports writes the
+test need's id as the JUnit `<testcase>` `name`. With `--tests <junit.xml>`, `--test-type <type>`
+(the export's test need type, repeatable) and `--test-link <field>` (the field on a test need that
+names its requirements, e.g. `specs`, repeatable), each case becomes a `classname::name` entry in
+the draft's `tests:`. A case missing `classname` or `name` is counted `malformed`; a case whose
+`name` is not a test need is counted, never guessed at; a test need with no case proposes nothing
+and is counted; and a failing case is still linked — the gate is what reports it. The report gains
+`tests: <P> test link(s) on <C> of <N> drafted needs; <T> test need(s) (<W> with a case, <U>
+without); <C> test case(s) (passed, failed, skipped, malformed, naming no test need) in <report>`.
+A target that is not a draft of this run is counted, not linked to a claim id that does not exist.
 
 `--areas` carries one thing more, the place: a
 need's `docname`, split on `/`, each part made a key (lowercase it, replace each run of characters outside `[a-z0-9]` with `-`, strip `-` from both ends), joined by `/`, becomes the
