@@ -244,6 +244,11 @@ A copy of an architecture diagram on which each component shows the satisfaction
 their outcomes. req writes it; the diagram it copies is never edited, and it stores no link (ADR 0052).
 _Avoid_: annotated diagram (nothing is authored on it), trace graph (that one is claim to claim)
 
+**Coverage matrix**:
+A view with one row per claim and four fixed columns: its source, the claim, what satisfies it and what verifies it,
+each link with its outcome and each missing one named as a gap (ADR 0053).
+_Avoid_: traceability matrix (that names `req trace`'s claim-to-claim edges), claims × components grid
+
 ### Authority
 
 **Authoring**:
