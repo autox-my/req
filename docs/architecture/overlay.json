@@ -1,0 +1,1041 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "req architecture",
+    "output": "docs/architecture.html",
+    "quality_profile": "standard",
+    "subtitle": "each part of req, with the requirements it satisfies · req overlay of diagram revision b0dbee4f670653fdf30f2929e8fe55612fda67bf · rules_v 9 · archify 7e45f36",
+    "repository": {
+      "url": "https://github.com/autox-my/req",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "b0dbee4f670653fdf30f2929e8fe55612fda67bf"
+    }
+  },
+  "components": [
+    {
+      "id": "importers",
+      "type": "frontend",
+      "label": "Importers",
+      "sublabel": "adopt, Needs, ReqIF",
+      "pos": [
+        70,
+        950
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tools/adopt.py",
+          "line": 2,
+          "end_line": 60
+        },
+        {
+          "path": "tools/needs_import.py",
+          "line": 2,
+          "end_line": 60
+        },
+        {
+          "path": "tools/reqif_import.py",
+          "line": 2,
+          "end_line": 60
+        }
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "CLI entry",
+      "sublabel": "one table of commands",
+      "pos": [
+        788,
+        100
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/main.rs",
+          "line": 811,
+          "end_line": 924,
+          "label": "COMMANDS table"
+        },
+        {
+          "path": "src/root.rs",
+          "line": 68,
+          "end_line": 97,
+          "label": "resolve_corpus_root"
+        }
+      ],
+      "tag": "HOLDS · REQ-0040"
+    },
+    {
+      "id": "setup",
+      "type": "frontend",
+      "label": "Setup, self-test",
+      "sublabel": "init, next-id, selftest",
+      "pos": [
+        480,
+        950
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/init.rs",
+          "line": 88,
+          "end_line": 125
+        },
+        {
+          "path": "src/next_id.rs",
+          "line": 121,
+          "end_line": 270
+        },
+        {
+          "path": "src/selftest.rs",
+          "line": 438,
+          "end_line": 494
+        }
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "canonicalizer",
+      "type": "backend",
+      "label": "Canonicalizer",
+      "sublabel": "model, Tier-1 form, loader",
+      "pos": [
+        275,
+        780
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/canon.rs",
+          "line": 1375,
+          "end_line": 2208,
+          "label": "canonicalize_statement to load_claims"
+        },
+        {
+          "path": "src/model.rs",
+          "line": 314,
+          "end_line": 348,
+          "label": "ClaimFile"
+        }
+      ],
+      "tag": "HOLDS · REQ-0001, REQ-0017, +4"
+    },
+    {
+      "id": "direction",
+      "type": "backend",
+      "label": "Direction",
+      "sublabel": "compare: kind of change",
+      "pos": [
+        275,
+        440
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/compare.rs",
+          "line": 173,
+          "end_line": 445
+        }
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "contradict",
+      "type": "backend",
+      "label": "Contradictions",
+      "sublabel": "structural, exact",
+      "pos": [
+        275,
+        610
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/contradict.rs",
+          "line": 197,
+          "end_line": 482
+        }
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "diffs",
+      "type": "backend",
+      "label": "Diff and pin",
+      "sublabel": "meaning between revisions",
+      "pos": [
+        275,
+        270
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/diff.rs",
+          "line": 280,
+          "end_line": 320,
+          "label": "git as a local process"
+        },
+        {
+          "path": "src/pin.rs",
+          "line": 120,
+          "end_line": 160,
+          "label": "pin verify"
+        }
+      ],
+      "tag": "HOLDS · REQ-0034, REQ-0038"
+    },
+    {
+      "id": "propose",
+      "type": "backend",
+      "label": "Propose",
+      "sublabel": "one pair to a provider",
+      "pos": [
+        70,
+        440
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/propose.rs",
+          "line": 22,
+          "end_line": 83
+        }
+      ],
+      "tag": "HOLDS · REQ-0004"
+    },
+    {
+      "id": "select",
+      "type": "backend",
+      "label": "Selectors",
+      "sublabel": "tri-state variants",
+      "pos": [
+        1095,
+        610
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/select.rs",
+          "line": 94,
+          "end_line": 227
+        }
+      ],
+      "tag": "HOLDS · REQ-0003, REQ-0016"
+    },
+    {
+      "id": "views",
+      "type": "backend",
+      "label": "Views",
+      "sublabel": "spec, trace, impact",
+      "pos": [
+        1095,
+        440
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/view.rs",
+          "line": 105,
+          "end_line": 262
+        },
+        {
+          "path": "src/format.rs",
+          "line": 36,
+          "end_line": 89
+        },
+        {
+          "path": "src/impact.rs",
+          "line": 45,
+          "end_line": 106
+        }
+      ],
+      "tag": "HOLDS · REQ-0020, REQ-0036"
+    },
+    {
+      "id": "audit",
+      "type": "backend",
+      "label": "Audit packet",
+      "sublabel": "coverage and provenance",
+      "pos": [
+        1095,
+        270
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/audit.rs",
+          "line": 520,
+          "end_line": 703
+        }
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "gate",
+      "type": "backend",
+      "label": "Release gate",
+      "sublabel": "policies, tri-state",
+      "pos": [
+        685,
+        440
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/gate.rs",
+          "line": 446,
+          "end_line": 597
+        },
+        {
+          "path": "src/sources.rs",
+          "line": 83,
+          "end_line": 131
+        }
+      ],
+      "tag": "HOLDS · REQ-0024, REQ-0025, +2"
+    },
+    {
+      "id": "junit",
+      "type": "backend",
+      "label": "Test report",
+      "sublabel": "nextest JUnit reader",
+      "pos": [
+        480,
+        440
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/junit.rs",
+          "line": 72,
+          "end_line": 240
+        }
+      ],
+      "tag": "HOLDS · REQ-0026"
+    },
+    {
+      "id": "check",
+      "type": "backend",
+      "label": "Repository check",
+      "sublabel": "every variant, folded",
+      "pos": [
+        685,
+        270
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/check.rs",
+          "line": 567,
+          "end_line": 723
+        }
+      ],
+      "tag": "HOLDS · REQ-0037"
+    },
+    {
+      "id": "satisfy",
+      "type": "backend",
+      "label": "Design links",
+      "sublabel": "req-satisfies judged",
+      "pos": [
+        890,
+        440
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/satisfy.rs",
+          "line": 380,
+          "end_line": 639
+        }
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "completeness",
+      "type": "backend",
+      "label": "Completeness",
+      "sublabel": "structural omissions",
+      "pos": [
+        890,
+        270
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/completeness.rs",
+          "line": 397,
+          "end_line": 480
+        }
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "bench",
+      "type": "backend",
+      "label": "Benchmark",
+      "sublabel": "the FMR = 0 gate",
+      "pos": [
+        480,
+        610
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/bench.rs",
+          "line": 320,
+          "end_line": 719
+        }
+      ],
+      "tag": "HOLDS · REQ-0008, REQ-0009, +2"
+    },
+    {
+      "id": "baseline",
+      "type": "security",
+      "label": "Baseline",
+      "sublabel": "manifest and signature",
+      "pos": [
+        1300,
+        270
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/baseline.rs",
+          "line": 118,
+          "end_line": 549
+        }
+      ],
+      "tag": "HOLDS · REQ-0028, REQ-0029, REQ-0030"
+    },
+    {
+      "id": "decision",
+      "type": "security",
+      "label": "Decisions",
+      "sublabel": "hash-chained log",
+      "pos": [
+        1300,
+        440
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/decision.rs",
+          "line": 188,
+          "end_line": 558
+        }
+      ],
+      "tag": "HOLDS · REQ-0002, REQ-0031"
+    },
+    {
+      "id": "claims",
+      "type": "database",
+      "label": "Claims",
+      "sublabel": "claims/ and aliases/",
+      "pos": [
+        275,
+        950
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "claims/REQ-0001.yml",
+          "line": 1,
+          "end_line": 19
+        },
+        {
+          "path": "aliases/subjects.yml",
+          "line": 1,
+          "end_line": 24
+        }
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "reqdir",
+      "type": "database",
+      "label": "Repository lists",
+      "sublabel": ".req/ lists and records",
+      "pos": [
+        890,
+        610
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": ".req/variants",
+          "line": 1,
+          "end_line": 21
+        },
+        {
+          "path": ".req/design",
+          "line": 1,
+          "end_line": 4
+        },
+        {
+          "path": ".req/satisfied",
+          "line": 1,
+          "end_line": 92
+        }
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "corpus",
+      "type": "database",
+      "label": "Benchmark data",
+      "sublabel": "bench/corpus, results",
+      "pos": [
+        480,
+        780
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "bench/corpus/parity.yml",
+          "line": 1,
+          "end_line": 138
+        }
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "baselines",
+      "type": "database",
+      "label": "Baselines",
+      "sublabel": "baselines/ and trust.yml",
+      "pos": [
+        1505,
+        270
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "baselines/trust.yml",
+          "line": 1,
+          "end_line": 44
+        },
+        {
+          "path": "baselines/air-gapped.json",
+          "line": 1,
+          "end_line": 1
+        }
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "decisions",
+      "type": "database",
+      "label": "Decision files",
+      "sublabel": "decisions/DEC-*.yml",
+      "pos": [
+        1300,
+        610
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "decisions/DEC-0001.yml",
+          "line": 1,
+          "end_line": 26
+        }
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "git",
+      "type": "external",
+      "label": "git",
+      "sublabel": "local process",
+      "pos": [
+        275,
+        100
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "minisign",
+      "type": "external",
+      "label": "minisign",
+      "sublabel": "signature verifier",
+      "pos": [
+        1300,
+        100
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "tag": "NO CLAIM"
+    },
+    {
+      "id": "provider",
+      "type": "external",
+      "label": "Provider",
+      "sublabel": "a command, one pair",
+      "pos": [
+        70,
+        100
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "tag": "NO CLAIM"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Meaning and change",
+      "wraps": [
+        "diffs",
+        "propose",
+        "direction",
+        "contradict",
+        "canonicalizer"
+      ],
+      "pad": 20
+    },
+    {
+      "kind": "region",
+      "label": "Verification",
+      "wraps": [
+        "check",
+        "completeness",
+        "gate",
+        "satisfy"
+      ],
+      "pad": 20
+    },
+    {
+      "kind": "region",
+      "label": "Variants and views",
+      "wraps": [
+        "views",
+        "select"
+      ],
+      "pad": 20
+    },
+    {
+      "kind": "region",
+      "label": "Authority",
+      "wraps": [
+        "baseline",
+        "decision"
+      ],
+      "pad": 20
+    }
+  ],
+  "connections": [
+    {
+      "from": "importers",
+      "to": "claims",
+      "label": "drafts, --write",
+      "variant": "dashed"
+    },
+    {
+      "from": "canonicalizer",
+      "to": "claims",
+      "label": "reads claims",
+      "labelAt": [
+        345,
+        858
+      ]
+    },
+    {
+      "from": "contradict",
+      "to": "canonicalizer",
+      "label": "forms_of",
+      "labelAt": [
+        345,
+        688
+      ]
+    },
+    {
+      "from": "views",
+      "to": "canonicalizer",
+      "label": "load_claims",
+      "labelAt": [
+        1071,
+        688
+      ]
+    },
+    {
+      "from": "bench",
+      "to": "direction",
+      "label": "direction gate"
+    },
+    {
+      "from": "bench",
+      "to": "contradict",
+      "label": "contradicts"
+    },
+    {
+      "from": "bench",
+      "to": "corpus",
+      "label": "corpus, results",
+      "labelAt": [
+        550,
+        688
+      ]
+    },
+    {
+      "from": "diffs",
+      "to": "git",
+      "label": "git, read only",
+      "variant": "dashed"
+    },
+    {
+      "from": "diffs",
+      "to": "direction",
+      "label": "compare each pair",
+      "labelAt": [
+        345,
+        348
+      ]
+    },
+    {
+      "from": "diffs",
+      "to": "check",
+      "label": "variants list"
+    },
+    {
+      "from": "propose",
+      "to": "provider",
+      "label": "one pair, stdin",
+      "variant": "dashed"
+    },
+    {
+      "from": "views",
+      "to": "select",
+      "label": "applies",
+      "labelAt": [
+        1172,
+        518
+      ]
+    },
+    {
+      "from": "select",
+      "to": "views",
+      "label": "select command rows"
+    },
+    {
+      "from": "audit",
+      "to": "views",
+      "label": "audit rows",
+      "labelAt": [
+        1165,
+        348
+      ]
+    },
+    {
+      "from": "audit",
+      "to": "baseline",
+      "label": "drift"
+    },
+    {
+      "from": "audit",
+      "to": "completeness",
+      "label": "evaluate"
+    },
+    {
+      "from": "gate",
+      "to": "junit",
+      "label": "load_reports"
+    },
+    {
+      "from": "gate",
+      "to": "contradict",
+      "label": "contradictions policy"
+    },
+    {
+      "from": "gate",
+      "to": "satisfy",
+      "label": "gate_findings",
+      "labelAt": [
+        858,
+        518
+      ]
+    },
+    {
+      "from": "check",
+      "to": "gate",
+      "label": "evaluate_selection",
+      "labelAt": [
+        748,
+        348
+      ]
+    },
+    {
+      "from": "check",
+      "to": "completeness",
+      "label": "omissions step",
+      "labelAt": [
+        858,
+        348
+      ]
+    },
+    {
+      "from": "check",
+      "to": "satisfy",
+      "label": "read_roots"
+    },
+    {
+      "from": "check",
+      "to": "reqdir",
+      "label": "lists"
+    },
+    {
+      "from": "completeness",
+      "to": "views",
+      "label": "rows per release"
+    },
+    {
+      "from": "completeness",
+      "to": "satisfy",
+      "label": "declared_claims",
+      "labelAt": [
+        960,
+        348
+      ]
+    },
+    {
+      "from": "completeness",
+      "to": "baselines",
+      "label": "manifests",
+      "labelAt": [
+        1054,
+        348
+      ]
+    },
+    {
+      "from": "satisfy",
+      "to": "reqdir",
+      "label": "design, satisfied",
+      "labelAt": [
+        967,
+        518
+      ]
+    },
+    {
+      "from": "satisfy",
+      "to": "direction",
+      "label": "since recorded",
+      "labelAt": [
+        866,
+        518
+      ]
+    },
+    {
+      "from": "baseline",
+      "to": "decision",
+      "label": "verify_chain",
+      "labelAt": [
+        1363,
+        348
+      ]
+    },
+    {
+      "from": "decision",
+      "to": "baseline",
+      "label": "judge_signature"
+    },
+    {
+      "from": "baseline",
+      "to": "minisign",
+      "variant": "security"
+    },
+    {
+      "from": "baseline",
+      "to": "baselines",
+      "label": "manifest, trust",
+      "labelAt": [
+        1464,
+        348
+      ]
+    },
+    {
+      "from": "decision",
+      "to": "decisions",
+      "label": "read, write",
+      "labelAt": [
+        1370,
+        518
+      ]
+    },
+    {
+      "from": "setup",
+      "to": "claims",
+      "label": "init writes"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "slate",
+      "title": "Reading the picture",
+      "items": [
+        "Each box is a part of req, drawn from the files it cites; the arrows are calls and reads or writes the code shows",
+        "The status line on a box comes from req satisfy, never from this drawing",
+        "The database-coloured boxes are the files in git that a part reads or writes"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Not drawn",
+      "items": [
+        "src/main.rs dispatches every command to its module from one table: those arrows are left out because each would cross the parts it passes",
+        "A module that only passes a type to another (a canonical form, a row) is not joined by an arrow"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Components by status",
+      "items": [
+        "[HOLDS] CLI entry — REQ-0040",
+        "[HOLDS] Canonicalizer — REQ-0001, REQ-0017, REQ-0018, REQ-0019, REQ-0032, REQ-0033",
+        "[HOLDS] Diff and pin — REQ-0034, REQ-0038",
+        "[HOLDS] Propose — REQ-0004",
+        "[HOLDS] Selectors — REQ-0003, REQ-0016",
+        "[HOLDS] Views — REQ-0020, REQ-0036",
+        "[HOLDS] Release gate — REQ-0024, REQ-0025, REQ-0026, REQ-0027",
+        "[HOLDS] Test report — REQ-0026",
+        "[HOLDS] Repository check — REQ-0037",
+        "[HOLDS] Benchmark — REQ-0008, REQ-0009, REQ-0010, REQ-0035",
+        "[HOLDS] Baseline — REQ-0028, REQ-0029, REQ-0030",
+        "[HOLDS] Decisions — REQ-0002, REQ-0031",
+        "[NO CLAIM] Importers",
+        "[NO CLAIM] Setup, self-test",
+        "[NO CLAIM] Direction",
+        "[NO CLAIM] Contradictions",
+        "[NO CLAIM] Audit packet",
+        "[NO CLAIM] Design links",
+        "[NO CLAIM] Completeness",
+        "[NO CLAIM] Claims",
+        "[NO CLAIM] Repository lists",
+        "[NO CLAIM] Benchmark data",
+        "[NO CLAIM] Baselines",
+        "[NO CLAIM] Decision files",
+        "[NO CLAIM] git",
+        "[NO CLAIM] minisign",
+        "[NO CLAIM] Provider"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Claims no component reaches",
+      "items": [
+        "REQ-0005: The req tool shall require human ratification before any two claims are merged.",
+        "REQ-0006: The req tool shall permit splitting a claim into derived claims without constraint.",
+        "REQ-0007: Authoring shall be friction-free.",
+        "REQ-0012: The req tool shall need no network access for any claim operation when the deployment is configured offline.",
+        "REQ-0013: The req tool shall deliver a non engineer author's edit as a Proposal inside an explicit Working set.",
+        "REQ-0014: The req tool shall produce exactly one commit per ratified logical Decision.",
+        "REQ-0015: The req tool shall not operate a continuous two-way synchronization bridge between a web database and the requirement files.",
+        "REQ-0021: The req tool shall never rewrite a claim or merge two claims automatically.",
+        "REQ-0022: The req tool shall serialize each relation in exactly one claim file.",
+        "REQ-0023: The decision boundary shall be deliberately high-friction, demanding role, meaning, and evidence there.",
+        "REQ-0039: The install script shall refuse a tarball whose hash differs from the pin.",
+        "REQ-0041: The req tool shall report an outcome it cannot establish as UNVERIFIABLE rather than as a pass."
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Cited paths outside every design root",
+      "items": [
+        "tools/adopt.py (cited by Importers)",
+        "tools/needs_import.py (cited by Importers)",
+        "tools/reqif_import.py (cited by Importers)",
+        "claims/REQ-0001.yml (cited by Claims)",
+        "aliases/subjects.yml (cited by Claims)",
+        ".req/variants (cited by Repository lists)",
+        ".req/design (cited by Repository lists)",
+        ".req/satisfied (cited by Repository lists)",
+        "bench/corpus/parity.yml (cited by Benchmark data)",
+        "baselines/trust.yml (cited by Baselines)",
+        "baselines/air-gapped.json (cited by Baselines)",
+        "decisions/DEC-0001.yml (cited by Decision files)"
+      ]
+    }
+  ]
+}

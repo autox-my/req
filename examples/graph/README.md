@@ -163,3 +163,5 @@ ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
   no room for the status (archify would refuse it; the box is `size[0]`, else 120 px) (the reason is printed); `2` refused (a wrong schema, malformed JSON, an unreadable input, a non-empty out-dir), nothing written.
 - Two runs over the same inputs give the same bytes. Like the trace pages, the overlay is not committed and is as current
   as the run that made it. A model never edits it: the status comes from `req satisfy` alone.
+
+The one overlay that is committed is this repository's own architecture, as a worked example: [`docs/architecture/`](../../docs/architecture/) holds the diagram, the generated overlay and matrix, and `tools/graph/build_architecture.py` regenerates and checks them.

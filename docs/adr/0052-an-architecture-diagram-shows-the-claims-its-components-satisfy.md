@@ -185,3 +185,38 @@ Not an edit of the decisions above; decision 7 step 2, the proposal half (`docs/
   records the second after merging (ADR 0040 decision 2); until then the gate is unchanged. The commands are in the pull
   request that carries this note.
 
+
+## Implementation note — 2026-11-14 (O-3: req's architecture on the project's pages)
+
+Not an edit of the decisions above; decision 7 step 3 (`docs/specs/O-3-architecture-page.md`).
+
+- **The files.** `docs/architecture/req.archify.json` is the diagram, drawn by an agent from the source and reviewed like a
+  document (decision 5): 27 components (each citing one to three files with line ranges read, 38 citations; the 14 files that
+  declare a `req-satisfies:` link are each cited by the component that owns them), 34 connections that are calls and reads or
+  writes the code shows, and four boundaries. It pins `meta.repository` at `b0dbee4…`, the revision of PR #79, with web links
+  into `github.com/autox-my/req`. `overlay.json` and `matrix.md` are what `tools/graph/arch_overlay.py` writes from it, from
+  `req satisfy --format json` and from `req trace --format json`; `docs/architecture.html` is archify `7e45f36`'s rendering of
+  `overlay.json`, committed like `docs/overview.html` and served by the Pages site. The README and `docs/index.html` link it.
+- **Regenerate** with one command, then render the page again from the Node side (`examples/graph/README.md`, the
+  `finalize … --quality standard` line, with `--repo-root` at a checkout whose `origin` is the diagram's URL):
+  `python3 tools/graph/build_architecture.py --out docs/architecture`. `--check docs/architecture` is the same run compared:
+  exit 0 current, 1 stale (the file is named) or the converter refused or reported a stale citation, an unknown claim or an
+  overflowing tag (a failure of the page, with its reason), 2 usage, 3 `req` cannot be run. `trace` exits 3 for an undecided
+  edge and still prints the complete document, so the build reads the document, not the exit code.
+- **What the gate checks** (`tests/architecture_page.rs`, in `scripts/check.sh` through nextest): `overlay.json` and `matrix.md`
+  equal what the tool computes now, so a claim whose meaning moved (the overlay would say SUSPECT) or a cited file that was
+  deleted fails the gate; the README quotes the counts the matrix shows; and the page's attributes carry every node's id,
+  label and tag, the subtitle and every source link of `overlay.json`.
+- **The named gap.** archify writes no copy of the diagram document into the page (it is a rendered SVG with `data-node-*`
+  attributes), so the page cannot be compared to `overlay.json` as a document: the test reads back ids, labels, tags, the
+  subtitle and the source links, and nothing about connections, geometry, boundaries or cards. A page rendered from an older
+  overlay that differs only there passes the gate; rendering it again after any change to `overlay.json` is the regenerating
+  author's responsibility, and the gate cannot run archify (no Node, no browser in `check.sh`).
+- **Not drawn, said on the page.** The CLI entry's dispatch to every command (`COMMANDS` in `src/main.rs`) has no arrows: each
+  crossed the parts it passes and archify's `validate` refused the layout (`edge-through-node`); a module that only passes a type to another is not joined
+  either. 12 of the 40 claims have no part (the list is in the matrix), as the O-2 note says.
+- **No image for the README.** archify's PNG and SVG export is a button in the page's viewer; `7e45f36` has no command that
+  exports without a browser session, so there is none, and the README links the page instead.
+- **Run on this repository, 2026-11-14:** archify `validate` and `finalize --quality standard --json` on `overlay.json`: all four
+  gates (validate, deliver, check, browser-check) pass with no diagnostics; `visual-check` passes containment, readability,
+  viewer chrome, themes and captures at 1440×900 and 2048×1320, with route readability left to a human (9 crossings).
