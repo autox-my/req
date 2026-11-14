@@ -21,6 +21,8 @@ against what was signed.
 
 ## Requirements on the architecture
 
+[![req's architecture: each part, with the requirements it satisfies](docs/architecture/req.png)](https://autox-my.github.io/req/architecture.html)
+
 [The architecture page](https://autox-my.github.io/req/architecture.html) draws each part of req and labels it with whether the code
 still satisfies the requirements it was recorded against (`req satisfy`, ADR 0040). It is drawn by hand from the source, and the
 status on every part is computed, never typed. 28 of req's 40 claims are linked to a part, and all 29 claim–part pairs hold; the

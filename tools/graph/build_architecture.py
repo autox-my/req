@@ -18,9 +18,11 @@ the gate cannot check the page itself (the named gap in ADR 0052's note).
 Python standard library only, offline. `req` is taken from `--req`, else PATH, like tools/overview/build.py. The
 corpus is the repository this script lives in (its parent's parent), so a copy of the repository checks itself.
 
-Exit: 0 written / current; 1 stale (the file is named), or the converter refused or reported a stale citation, an
+Exit: 0 written / current; 1 stale (the file is named), or the converter reported a stale citation, an
 unknown claim or a tag that does not fit (its reason is printed): the page cannot be made honestly; 2 usage;
-3 `req` cannot be run, or its output cannot be read (UNVERIFIABLE: nothing was compared).
+3 UNVERIFIABLE, nothing was compared or written: `req` cannot be run, or did not print the complete `req.satisfy/1` and
+`req.trace/1` documents (a schema it was not written against, or a file `req satisfy` could not read), or the converter
+refused its input (a regenerate cannot fix that).
 """
 import json
 import os
@@ -31,6 +33,8 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CONVERTER = os.path.join(ROOT, "tools", "graph", "arch_overlay.py")
+SATISFY_SCHEMA = "req.satisfy/1"
+TRACE_SCHEMA = "req.trace/1"
 DIAGRAM = "req.archify.json"
 GENERATED = ("overlay.json", "matrix.md")
 
@@ -39,40 +43,58 @@ class Unverifiable(Exception):
     """`req` could not be run, or what it printed is not the document the converter reads."""
 
 
-def req_json(binary, *args):
-    """Run `req --root <repo> <args>` and return its stdout document.
+def req_json(binary, schema, *args):
+    """Run `req --root <repo> <args>` and return its stdout document, if it is the complete document `schema` names.
 
-    `satisfy` and `trace` exit non-zero for a verdict (a suspect link, an undecided edge) and still print the
-    complete document; what matters here is that stdout is that document, so only a document that does not
-    parse is unverifiable."""
+    `satisfy` and `trace` exit non-zero for a verdict (a suspect link, an undecided edge) and still print the complete
+    document, so the exit code is not what is judged. What is judged is the document: it must carry `schema`, and a
+    `satisfy` document must list nothing `unreadable` (a file req could not read has no links in it, so the overlay
+    would draw its parts as NO CLAIM). Anything else is unverifiable, naming what req reported."""
     env = {k: v for k, v in os.environ.items() if k != "REQ_ROOT"}
+    command = f"req {' '.join(args)}"
     try:
         done = subprocess.run([binary, "--root", ROOT, *args], capture_output=True, text=True, check=False,
                               stdin=subprocess.DEVNULL, timeout=300, env=env)
     except (OSError, subprocess.TimeoutExpired) as why:
-        raise Unverifiable(f"`req {' '.join(args)}` could not be run: {why}")
+        raise Unverifiable(f"`{command}` could not be run: {why}")
     try:
-        json.loads(done.stdout)
+        document = json.loads(done.stdout)
     except ValueError:
-        raise Unverifiable(f"`req {' '.join(args)}` exited {done.returncode} without a JSON document: "
-                           f"{done.stderr.strip()}")
+        raise Unverifiable(f"`{command}` exited {done.returncode} without a JSON document: {done.stderr.strip()}")
+    if not isinstance(document, dict) or document.get("schema") != schema:
+        found = document.get("schema") if isinstance(document, dict) else type(document).__name__
+        raise Unverifiable(f"`{command}` printed schema {found!r}, not {schema!r} (exit {done.returncode}): "
+                           "this build reads only the schema it was written against")
+    if schema == SATISFY_SCHEMA:
+        unreadable = document.get("unreadable")
+        if not isinstance(unreadable, list):
+            raise Unverifiable(f"`{command}` printed no `unreadable` list (exit {done.returncode})")
+        if unreadable:
+            raise Unverifiable(f"`{command}` reported what it could not read (exit {done.returncode}), so its links "
+                               "are incomplete: " + "; ".join(str(item) for item in unreadable))
     return done.stdout
 
 
 def generate(binary, diagram, into):
     """Write overlay.json and matrix.md for `diagram` into the (new) directory `into`.
 
-    Returns None when written, or the converter's reason when it refused or flagged the page."""
+    Returns None when written, or the reason the page cannot be made honestly (the converter's exit 3: a stale citation,
+    an unknown claim, a tag with no room). A converter that refused its input (exit 2) is Unverifiable: regenerating
+    cannot fix an input it will not read."""
     with tempfile.TemporaryDirectory(prefix="req-architecture-in-") as work:
         satisfy = os.path.join(work, "satisfy.json")
         trace = os.path.join(work, "trace.json")
-        for path, args in ((satisfy, ("satisfy", "--format", "json")), (trace, ("trace", "--format", "json"))):
+        for path, schema, args in ((satisfy, SATISFY_SCHEMA, ("satisfy", "--format", "json")),
+                                   (trace, TRACE_SCHEMA, ("trace", "--format", "json"))):
             with open(path, "w", encoding="utf-8", newline="\n") as handle:
-                handle.write(req_json(binary, *args))
+                handle.write(req_json(binary, schema, *args))
         done = subprocess.run([sys.executable, "-I", CONVERTER, "--root", ROOT, diagram, satisfy, trace, into],
                               capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, timeout=300)
+    said = done.stderr.strip() or done.stdout.strip()
+    if done.returncode == 3:
+        return f"arch_overlay.py exited 3: {said}"
     if done.returncode != 0:
-        return f"arch_overlay.py exited {done.returncode}: {done.stderr.strip() or done.stdout.strip()}"
+        raise Unverifiable(f"arch_overlay.py exited {done.returncode} and wrote nothing: {said}")
     return None
 
 

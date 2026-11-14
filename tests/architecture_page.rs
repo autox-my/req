@@ -212,6 +212,89 @@ fn a_deleted_cited_file_fails_the_check_with_the_stale_reason() {
     );
 }
 
+/// A `req` that cannot read what it judges has not judged it: `req satisfy` exits 3 and lists the file in `unreadable`
+/// while still printing a document whose `links` are missing that file's. Writing or comparing the overlay from it would
+/// draw the parts of that file as NO CLAIM and call the page current.
+#[test]
+fn an_unreadable_source_is_unverifiable_never_current() {
+    use std::os::unix::fs::PermissionsExt;
+    let copy = Copy::new("unreadable");
+    let before = read(&copy.path("docs/architecture/overlay.json"));
+    let audit = copy.path("src/audit.rs");
+    fs::set_permissions(&audit, fs::Permissions::from_mode(0o000)).expect("chmod 000 the copy");
+    assert!(
+        fs::read(&audit).is_err(),
+        "this test needs a user that mode 000 locks out (not root)"
+    );
+    let check = build(&copy.0, &["--check", "docs/architecture"]);
+    assert_eq!(check.code, Some(3), "{}", check.said);
+    assert!(
+        check.said.contains("UNVERIFIABLE") && check.said.contains("src/audit.rs"),
+        "the unreadable file must be named:\n{}",
+        check.said
+    );
+    let out = build(&copy.0, &["--out", "docs/architecture"]);
+    assert_eq!(out.code, Some(3), "{}", out.said);
+    assert_eq!(
+        before,
+        read(&copy.path("docs/architecture/overlay.json")),
+        "an UNVERIFIABLE run must not rewrite the committed overlay"
+    );
+}
+
+/// A `req` that prints another schema is not the tool the converter was written against.
+#[test]
+fn another_schema_is_unverifiable() {
+    use std::os::unix::fs::PermissionsExt;
+    let copy = Copy::new("schema");
+    let stub = copy.path("stub-req");
+    fs::write(
+        &stub,
+        "#!/bin/sh\ncase \"$3\" in\n  satisfy) echo '{\"schema\":\"req.satisfy/2\",\"links\":[],\"unreadable\":[]}' ;;\n  *) echo '{\"schema\":\"req.trace/1\"}' ;;\nesac\nexit 0\n",
+    )
+    .expect("writes a stub req");
+    fs::set_permissions(&stub, fs::Permissions::from_mode(0o755)).expect("chmod +x");
+    let run = build(
+        &copy.0,
+        &[
+            "--req",
+            stub.to_str().expect("utf-8"),
+            "--check",
+            "docs/architecture",
+        ],
+    );
+    assert_eq!(run.code, Some(3), "{}", run.said);
+    assert!(
+        run.said.contains("UNVERIFIABLE") && run.said.contains("req.satisfy/2"),
+        "the schema req reported must be named:\n{}",
+        run.said
+    );
+}
+
+/// The converter refusing an input (exit 2) cannot be fixed by regenerating, so it is not a stale page: it is
+/// UNVERIFIABLE, with the converter's message and no advice to regenerate.
+#[test]
+fn a_refused_input_is_unverifiable_not_stale() {
+    let copy = Copy::new("refused");
+    fs::write(
+        copy.path("docs/architecture/req.archify.json"),
+        "{ not json\n",
+    )
+    .expect("breaks the diagram in the copy");
+    let run = build(&copy.0, &["--check", "docs/architecture"]);
+    assert_eq!(run.code, Some(3), "{}", run.said);
+    assert!(
+        run.said.contains("UNVERIFIABLE") && run.said.contains("req.archify.json"),
+        "the converter's refusal must be reported:\n{}",
+        run.said
+    );
+    assert!(
+        !run.said.contains("regenerate"),
+        "a refused input is not fixed by regenerating:\n{}",
+        run.said
+    );
+}
+
 #[test]
 fn the_check_is_unverifiable_without_req() {
     let interpreter = python3();
@@ -295,6 +378,63 @@ fn the_page_carries_what_the_overlay_says() {
             );
         }
     }
+}
+
+/// archify embeds the evidence it verified as JSON (`archify-source-evidence-data`: the repository, and every node's
+/// sources). That is a document a test can read back, so the page's evidence must equal the overlay's `meta.repository`
+/// and component `sources`: a page rendered before a citation or the pinned revision changed fails here.
+#[test]
+fn the_page_embeds_the_overlays_source_evidence() {
+    let page = read(&root().join("docs/architecture.html"));
+    let opening = "<script id=\"archify-source-evidence-data\" type=\"application/json\">";
+    let start = page
+        .find(opening)
+        .expect("the page embeds its source evidence")
+        + opening.len();
+    let end = start + page[start..].find("</script>").expect("the script closes");
+    let embedded: Value =
+        serde_json::from_str(&page[start..end]).expect("the embedded evidence is JSON");
+    let overlay: Value =
+        serde_json::from_str(&read(&root().join("docs/architecture/overlay.json")))
+            .expect("overlay.json is JSON");
+    assert_eq!(
+        embedded["verified"],
+        Value::Bool(true),
+        "archify verified the citations"
+    );
+    let repository = &overlay["meta"]["repository"];
+    assert_eq!(embedded["repository"]["url"], repository["url"]);
+    assert_eq!(embedded["repository"]["revision"], repository["revision"]);
+    let mut references = 0;
+    let mut cited = 0;
+    for component in overlay["components"].as_array().expect("components") {
+        let id = component["id"].as_str().expect("an id");
+        let Some(sources) = component["sources"].as_array() else {
+            assert!(
+                embedded["nodes"].get(id).is_none(),
+                "the page cites sources for {id}, which the overlay gives none"
+            );
+            continue;
+        };
+        cited += 1;
+        references += sources.len();
+        let shown = embedded["nodes"][id]
+            .as_array()
+            .unwrap_or_else(|| panic!("the page has no sources for {id}: render it again"));
+        assert_eq!(shown.len(), sources.len(), "the sources of {id} differ");
+        for (page_source, source) in shown.iter().zip(sources) {
+            assert_eq!(page_source["path"], source["path"], "{id}");
+            assert_eq!(page_source["line"], source["line"], "{id}");
+            assert_eq!(page_source["endLine"], source["end_line"], "{id}");
+            assert_eq!(page_source.get("label"), source.get("label"), "{id}");
+        }
+    }
+    assert_eq!(
+        embedded["nodes"].as_object().expect("nodes").len(),
+        cited,
+        "the page cites sources for a node the overlay does not"
+    );
+    assert_eq!(embedded["referenceCount"], Value::from(references));
 }
 
 /// The page is committed, standalone and offline: no script or stylesheet is fetched, and no path of the machine that
