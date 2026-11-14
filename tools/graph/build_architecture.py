@@ -26,8 +26,11 @@ The drift demonstration (ADR 0052 decision 7, step 4, unit O-6) is a second gene
 `docs/architecture/drift/`. `edits.json` there names edits to one of this repository's own claims (a cosmetic re-wording, a
 loosening, a tightening: statement before, statement after, the outcome `req satisfy` is expected to give). Each edit is
 applied to a FRESH TEMPORARY COPY of the corpus, never to this checkout: `req satisfy` and `req trace` run in the copy, and the
-converter writes, for the overview diagram and that copy's output, `<edit-id>/overlay.json`, `<edit-id>/matrix.md` and
-`<edit-id>/satisfy.txt` (the exact text `req satisfy` printed, what an engineer would see). `docs/architecture-drift.html` is
+converter writes, for the overview diagram and that copy's output, `<edit-id>/overlay.json` and `<edit-id>/matrix.md`, and this
+script then prepends the matrix's "made from a temporary copy" line and points the edited claim's link at `../edits.json`;
+`<edit-id>/satisfy.txt` is the exact text `req satisfy` printed, what an engineer would see. A directory or file that no edit
+produces (beside `edits.json` and the README image `req-drift.png`) is STALE: `--drift` writes the set and still exits 1 until
+it is deleted, and `--check-drift` names it. `docs/architecture-drift.html` is
 archify's rendering of the tightening overlay. `--check-drift` regenerates everything and compares; the copies are deleted.
 
 Python standard library only, offline. `req` is taken from `--req`, else PATH, like tools/overview/build.py. The
@@ -352,6 +355,11 @@ def generate_drift(binary, directory, into):
     return "\n".join(reasons) or None
 
 
+# The files the drift directory holds beside the edit directories: the edits (input) and the README image (made by hand from
+# archify's visual-check, ADR 0052's O-6 note). Anything else at the root is stale.
+DRIFT_ROOT_FILES = ("edits.json", "req-drift.png")
+
+
 def drift_orphans(directory, edits):
     """What sits under the drift directory that no edit in edits.json produces, named: an edit renamed or removed leaves its
     directory behind, and a committed directory nobody regenerates would still read as current."""
@@ -359,6 +367,10 @@ def drift_orphans(directory, edits):
     orphans = []
     for entry in sorted(os.listdir(directory)):
         path = os.path.join(directory, entry)
+        if not os.path.isdir(path):
+            if entry not in DRIFT_ROOT_FILES:
+                orphans.append(f"STALE {path} (not a file the drift directory holds: delete it)")
+            continue
         if os.path.isdir(path):
             if entry not in known:
                 orphans.append(f"STALE {path} (edits.json names no edit `{entry}`: delete it)")
@@ -384,13 +396,14 @@ def main_drift(mode, directory, binary):
             if reason is not None:
                 print(f"the demonstration cannot be made honestly: {reason}", file=sys.stderr)
                 return 1
-            for line in drift_orphans(directory, edits):
-                print(f"warning: {line}", file=sys.stderr)
+            orphans = drift_orphans(directory, edits)
             for name in names:
                 os.makedirs(os.path.join(directory, os.path.dirname(name)), exist_ok=True)
                 shutil.copyfile(os.path.join(built, name), os.path.join(directory, name))
                 print(f"wrote {os.path.join(directory, name)}")
-            return 0
+            for line in orphans:
+                print(line, file=sys.stderr)
+            return 1 if orphans else 0
         stale = drift_orphans(directory, edits)
         for name in names:
             shown = os.path.join(directory, name)

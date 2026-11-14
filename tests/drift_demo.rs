@@ -431,7 +431,34 @@ fn a_directory_no_edit_names_is_stale() {
         "the orphan is named:\n{}",
         run.said
     );
+    let run = build(&copy.0, &["--drift", DRIFT], true);
+    assert_eq!(
+        run.code,
+        Some(1),
+        "--drift does not call a tree with an orphan done:\n{}",
+        run.said
+    );
+    assert!(
+        run.said.contains(&format!("STALE {DRIFT}/old-edit")),
+        "{}",
+        run.said
+    );
     fs::remove_dir_all(&orphan).expect("removes the orphan");
+    let root_stray = copy.path(&format!("{DRIFT}/notes.txt"));
+    fs::write(&root_stray, "x").expect("writes a stray file at the root");
+    let run = build(&copy.0, &["--check-drift", DRIFT], true);
+    assert_eq!(
+        run.code,
+        Some(1),
+        "a stray root file is stale:\n{}",
+        run.said
+    );
+    assert!(
+        run.said.contains(&format!("STALE {DRIFT}/notes.txt")),
+        "{}",
+        run.said
+    );
+    fs::remove_file(&root_stray).expect("removes it");
     let stray = copy.path(&format!("{DRIFT}/cosmetic/notes.txt"));
     fs::write(&stray, "x").expect("writes a stray file");
     let run = build(&copy.0, &["--check-drift", DRIFT], true);

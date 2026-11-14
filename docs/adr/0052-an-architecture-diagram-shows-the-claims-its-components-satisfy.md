@@ -279,7 +279,7 @@ Not an edit of the decisions above; decision 7 step 4 (`docs/specs/O-6-drift-dem
   carry) and a **tightening** (`at most 0.20`: SUSPECT, `numeric_tightening`). They were probed with `req satisfy` first. Measured with `req compare` at rules_v 9, `of at most 0.30` against `of no more
   than 0.30` and `of no greater than 0.30`: identical (e4f9b4878326); `of not exceeding 0.30`, and `no greater than 0.30` without the `of`:
   `unrelated` (the first also disagrees with the pin); a comma before `on`: `unclassifiable`; a comma before `at v0`, or `for the
-  parity corpus`: `scope_divergence`. Only the first kind is cosmetic to req; `req satisfy` printed SUSPECT for `unrelated` and `scope_divergence`, which is the
+  parity corpus`: `scope_divergence`. Only the first kind is cosmetic to req; `req satisfy` printed SUSPECT for `unrelated`, `unclassifiable` and `scope_divergence`, which is the
   asymmetric cost of ADR 0007 and not a defect of the demonstration.
   The pin (`pins: value 0.3`) is left as the claim has it: a statement edited on a copy is the copy's own, and `canon` would
   flag the pin there (the statement is the source of truth, never the pin).
