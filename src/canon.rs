@@ -2226,7 +2226,7 @@ pub fn load_registry(root: &std::path::Path) -> Result<Registry, String> {
 /// unit, lints) and each pin's verdict, and it reports: exit 0 whatever it found, 3 when the
 /// corpus cannot be read. The check that gates pins is `req gate` (`pins_hold`).
 pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
-    run_claim_diagnostics_with(root, false)
+    run_claim_diagnostics_with_options(root, false, false)
 }
 
 /// [`run_claim_diagnostics_at`] with the opt-in `--fail-on-flag` (issue #106): the same output on
@@ -2235,6 +2235,25 @@ pub fn run_claim_diagnostics_at(root: &std::path::Path) -> i32 {
 /// release verdict, so a clean run says so and never prints the gate's word `PASS`. A corpus that
 /// cannot be read stays 3 either way.
 pub fn run_claim_diagnostics_with(root: &std::path::Path, fail_on_flag: bool) -> i32 {
+    run_claim_diagnostics_with_options(root, fail_on_flag, false)
+}
+
+/// The diagnostics, plus the opt-in `--by-area` summary (issue #88): a deterministic work list of
+/// claims, structured/unstructured counts and lint counts, grouped by the claim's `area`.
+pub fn run_claim_diagnostics_with_options(
+    root: &std::path::Path,
+    fail_on_flag: bool,
+    by_area: bool,
+) -> i32 {
+    #[derive(Default)]
+    struct AreaStat {
+        claims: usize,
+        structured: usize,
+        unstructured: usize,
+        lints: usize,
+        linted: usize,
+    }
+
     let claims = match load_claims(root) {
         Ok(c) => c,
         Err(e) => {
@@ -2246,6 +2265,8 @@ pub fn run_claim_diagnostics_with(root: &std::path::Path, fail_on_flag: bool) ->
     let (mut unstructured, mut pins, mut pinned_claims, mut flagged, mut linted) =
         (0usize, 0usize, 0usize, 0usize, 0usize);
     let mut flagged_claims: Vec<&str> = Vec::new();
+    let mut areas: std::collections::BTreeMap<Option<String>, AreaStat> =
+        std::collections::BTreeMap::new();
     for loaded in claims.iter() {
         let derived = &loaded.derived;
         let form = &derived.form;
@@ -2253,6 +2274,15 @@ pub fn run_claim_diagnostics_with(root: &std::path::Path, fail_on_flag: bool) ->
         let lints: Vec<&str> = derived.lints.iter().map(|l| l.code.as_str()).collect();
         unstructured += usize::from(derived.unstructured());
         linted += usize::from(!lints.is_empty());
+        let area = areas.entry(loaded.claim.area.clone()).or_default();
+        area.claims += 1;
+        if derived.unstructured() {
+            area.unstructured += 1;
+        } else {
+            area.structured += 1;
+        }
+        area.lints += derived.lints.len();
+        area.linted += usize::from(!derived.lints.is_empty());
         let (modality, subject, operator, value, unit) = if derived.unstructured() {
             (
                 "-".to_string(),
@@ -2331,6 +2361,31 @@ pub fn run_claim_diagnostics_with(root: &std::path::Path, fail_on_flag: bool) ->
          release is `req gate` (pins_hold))",
         claims.len()
     );
+    if by_area {
+        let width = areas
+            .keys()
+            .filter_map(|area| area.as_deref())
+            .map(str::len)
+            .max()
+            .unwrap_or(0)
+            .max("(no area)".len());
+        println!("areas: {}", areas.len());
+        let print = |name: &str, stat: &AreaStat| {
+            println!(
+                "  {name:<width$}  {:>4} claim(s)  {:>4} structured  {:>4} unstructured  \
+                 {:>4} lint(s) on {:>3} claim(s)",
+                stat.claims, stat.structured, stat.unstructured, stat.lints, stat.linted,
+            );
+        };
+        for (area, stat) in areas.iter().filter(|(area, _)| area.is_some()) {
+            if let Some(name) = area {
+                print(name, stat);
+            }
+        }
+        if let Some(stat) = areas.get(&None) {
+            print("(no area)", stat);
+        }
+    }
     if !fail_on_flag {
         return 0;
     }

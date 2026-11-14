@@ -458,7 +458,9 @@ including the tri-state — and `req <command> --help` works before a corpus exi
    claim file (`req.claim/3`, ADR 0022): the parse, the canonical form and the address are computed
    every time the claim is loaded, so there is nothing to fill and nothing to hand-write. `req canon`
    prints, per claim, the derived structure, modality, subject, operator, value, unit and lints, and
-   each pin's verdict.
+   each pin's verdict. `req canon --by-area` appends a deterministic work list: claims,
+   structured/unstructured and lints per `area`, so a large adoption pass starts where the
+   unstructured prose is concentrated.
 2. **Pin what is load-bearing.** `pins:` (any of `modality`, `subject`, `operator`, `value`,
    `unit`) states what the statement must parse to. A pin agrees, or it is a flag — a
    *contradiction* (the parse says something else) or *not carried* (the parse holds no such
