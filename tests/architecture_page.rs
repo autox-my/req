@@ -646,22 +646,25 @@ fn standalone(page: &str) {
 #[test]
 fn the_readme_quotes_the_counts_the_matrix_shows() {
     // The README's counts are the matrices': the overview's for the front page, the detail's for the second sentence.
+    // ADR 0053: a row has four cells (Source | Claim | Satisfied by | Verified by). A claim is linked when its *Satisfied by*
+    // is not the named gap `no design element`; a claim-part pair is one `<part> (holds)` or `<part> (holds (weakened))`.
     let counts = |name: &str| {
         let matrix = read(&root().join("docs/architecture").join(name));
         let mut claims = 0;
         let mut linked = 0;
         let mut holding = 0;
-        for row in matrix.lines().filter(|line| line.starts_with("| REQ-")) {
+        for row in matrix.lines().filter(|line| line.starts_with("| ")) {
+            let cells: Vec<&str> = row.split(" | ").collect();
+            if cells.len() < 4 || !cells[1].starts_with("[REQ-") {
+                continue;
+            }
             claims += 1;
-            let cells: Vec<&str> = row.split('|').skip(2).map(str::trim).collect();
-            let filled: Vec<&&str> = cells.iter().filter(|cell| !cell.is_empty()).collect();
-            if !filled.is_empty() {
+            let satisfied = cells[2];
+            if satisfied != "no design element" {
                 linked += 1;
             }
-            holding += filled
-                .iter()
-                .filter(|cell| cell.starts_with("holds"))
-                .count();
+            holding += satisfied.matches(" (holds)").count()
+                + satisfied.matches(" (holds (weakened))").count();
         }
         (claims, linked, holding)
     };

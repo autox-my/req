@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
 """Overlay the claims a repository's files satisfy onto an archify `architecture` diagram (ADR 0052).
 
-usage: python3 -I tools/graph/arch_overlay.py [--root <dir>] <diagram.json> <satisfy.json> <trace.json> <out-dir>
+usage: python3 -I tools/graph/arch_overlay.py [--root <dir>] [--test-report <junit.xml>] [--matrix-dir <dir>]
+                                              <diagram.json> <satisfy.json> <trace.json> <out-dir>
 
 Inputs, all read-only:
   <diagram.json>  an archify `architecture` file (schema_version 1) drawn from a repository: components cite files in
                   `sources`. A component without `sources` is kept and drawn as no claim.
   <satisfy.json>  `req satisfy --format json` (`req.satisfy/1`): every link `req-satisfies:` declares, with its outcome.
-  <trace.json>    `req trace --format json` (`req.trace/1`): the claims and their statements. The matrix rows are the
-                  claims that do not carry `applies: does_not_apply`.
+  <trace.json>    `req trace --format json` (`req.trace/1`): the claims, their statements, and what the matrix reads of each
+                  (`source`, `evidence`, `tests`; a document without them reads as no source, machine evidence, no test).
+                  The matrix rows are the claims that do not carry `applies: does_not_apply`.
   --root <dir>    the corpus root the cited paths and `.req/design` are read under (default: the current directory).
+  --test-report <junit.xml>
+                  a JUnit report (nextest's subset, `classname::name` ids, ADR 0024): the matrix then also says what each linked
+                  test did (passed, failed, skipped, not found). Without it no outcome is written, so the committed matrix is a
+                  function of the repository alone (ADR 0053 decision 5); a report that cannot be read is exit 2 naming it.
+  --matrix-dir <dir>
+                  the directory, relative to the root, the matrix will be read from (default: the root itself); the claim links
+                  are written relative to it.
 
 A component satisfies the union of the claims its cited files declare (ADR 0052 decision 1): a link is found by the
 file path alone, never by the component's id, and a line range in `sources` is ignored. Its status is the worst
@@ -20,7 +29,10 @@ Writes `<out-dir>/overlay.json` (the diagram, presentation only: ids, order, geo
 author's; the status line is the component's `sublabel`, the line archify draws at every zoom, and the author's own
 `sublabel` moves to the `tag` after any tag the author wrote, so no text is lost; three cards are appended, the claim ids
 are on the status card; the `meta.subtitle` says which revision, which `rules_v` and which archify the page is made from)
-and `<out-dir>/matrix.md` (a claims x components table, then the claims no component reaches).
+and `<out-dir>/matrix.md` (ADR 0053: the coverage matrix, a row per claim and four columns, Source | Claim | Satisfied by |
+Verified by, whatever the number of components; a gap is named in words, never left blank: `no source`, `no design element`,
+`no test`, `<evidence> evidence, no test asked`. *Satisfied by* names each component whose cited files link the claim, with
+its worst outcome for it; the claims no component reaches are on the overlay's card).
 
 The status line is the worst state and how many claims are in it: `HOLDS · 6 claims`, `SUSPECT · 1 of 3 claims`, `STALE`
 (a cited path is missing), `no claim` (no link).
@@ -37,7 +49,9 @@ provenance, recorded here and in `docs/adr/0052-an-architecture-diagram-shows-th
 """
 
 import json
+import posixpath
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 # The archify commit this converter was written against (ADR 0046 decision 7, ADR 0052 decision 8).
@@ -60,6 +74,18 @@ WORD = {
 }
 # stale ranks worst of all; no claim has no rank (it is the absence of a link).
 RANK = {"stale": -1, **{outcome: index for index, outcome in enumerate(OUTCOMES)}, "no_claim": len(OUTCOMES)}
+
+# The word a link's outcome is shown with in the matrix (ADR 0053 decision 1).
+OUTCOME_TEXT = {
+    "unknown_claim": "unknown claim",
+    "orphaned": "orphaned",
+    "suspect": "suspect",
+    "unratified": "unratified",
+    "holds_weakened": "holds (weakened)",
+    "holds": "holds",
+}
+HEADER = ("Source", "Claim", "Satisfied by", "Verified by")
+GITHUB = "https://github.com/"
 
 STATUS_CARD = "Components by status"
 UNREACHED_CARD = "Claims no component reaches"
@@ -199,6 +225,12 @@ def check_trace(document, path):
         for key in ("claim_id", "statement"):
             if not isinstance(node.get(key), str):
                 refuse(f"{where} has no string `{key}`")
+        for key in ("source", "evidence"):
+            if node.get(key) is not None and not isinstance(node[key], str):
+                refuse(f"{where}: `{key}` is neither a string nor null")
+        tests = node.get("tests", [])
+        if not isinstance(tests, list) or not all(isinstance(test, str) for test in tests):
+            refuse(f"{where}: `tests` is not an array of strings")
 
 
 def design_roots(root):
@@ -250,6 +282,138 @@ def cell_label(text):
     return clean(text).replace("|", "\\|")
 
 
+class ReportError(Exception):
+    """A JUnit report this converter will not read; the reason names it."""
+
+
+def read_report(path):
+    """The outcomes a JUnit report holds: {`classname::name`: passed | failed | skipped}.
+
+    Read as `src/junit.rs` reads nextest's subset (ADR 0024), written again here and never copied: the root is `<testsuites>`
+    or `<testsuite>`; a `<testcase>` needs a non-empty `classname` and `name` and is `failed` when it holds a `<failure>` or an
+    `<error>`, `skipped` when it holds a `<skipped>` and no failure, else `passed`; a conflicting duplicate id is refused
+    rather than chosen between, and a DTD is refused. An unreadable or malformed report is `ReportError`."""
+    try:
+        data = Path(path).read_bytes()
+        text = data.decode("utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise ReportError(f"cannot read test report {path}: {error}") from None
+    if "<!DOCTYPE" in text or "<!ENTITY" in text:
+        raise ReportError(f"cannot parse test report {path}: it carries a DTD")
+    try:
+        root = ET.fromstring(data)
+    except (ET.ParseError, ValueError) as error:
+        raise ReportError(f"cannot parse test report {path}: {error}") from None
+    if root.tag not in ("testsuites", "testsuite"):
+        raise ReportError(f"cannot parse test report {path}: unexpected root element <{root.tag}>: expected <testsuites> or <testsuite>")
+    cases = []
+    for child in root:
+        if child.tag == "testcase":
+            cases.append(child)
+        elif root.tag == "testsuites" and child.tag == "testsuite":
+            cases.extend(case for case in child if case.tag == "testcase")
+    outcomes = {}
+    for case in cases:
+        name, classname = case.get("name"), case.get("classname")
+        if name is None or classname is None:
+            raise ReportError(f"cannot parse test report {path}: a <testcase> lacks `name` or `classname`")
+        if not name or not classname:
+            raise ReportError(f"cannot parse test report {path}: a <testcase> has an empty `name` or `classname`: the id is `classname::name`")
+        kinds = {child.tag for child in case}
+        outcome = "failed" if kinds & {"failure", "error"} else "skipped" if "skipped" in kinds else "passed"
+        identity = f"{classname}::{name}"
+        if outcomes.setdefault(identity, outcome) != outcome:
+            raise ReportError(f"cannot parse test report {path}: duplicate test id `{identity}` with conflicting outcomes")
+    return outcomes
+
+
+def cell_text(text):
+    """Text for one Markdown table cell: line breaks fold to a space and a pipe is escaped."""
+    return text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").replace("|", "\\|")
+
+
+def url_path(path):
+    """`path` for a URL, keeping letters, digits and `-._~/` and writing every other byte as `%XX`."""
+    safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~/"
+    return "".join(char if char in safe else "".join(f"%{byte:02X}" for byte in char.encode("utf-8")) for char in path)
+
+
+def github_blob(diagram):
+    """`https://github.com/<owner>/<repo>/blob/<revision>` for a diagram whose repository is on GitHub and pinned; else None
+    (a file is then named without a link, never pointed at a revision that is not there)."""
+    repository = diagram["meta"].get("repository")
+    if not isinstance(repository, dict):
+        return None
+    url, revision = repository.get("url"), repository.get("revision")
+    if not isinstance(url, str) or not isinstance(revision, str) or not revision or not url.startswith(GITHUB):
+        return None
+    url = url.rstrip("/")
+    if url.endswith(".git"):
+        url = url[: -len(".git")]
+    return f"{url}/blob/{url_path(revision)}"
+
+
+def satisfied_by(claim, states, links_by_element, blob):
+    """The *Satisfied by* cell: each component of the diagram whose cited files link `claim`, in diagram order, as
+    `<label> (<worst outcome>)` and the files that carry the link, each once, linked to its line at the pinned revision."""
+    parts = []
+    for state in states:
+        outcome = state["outcomes"].get(claim)
+        if outcome is None:
+            continue
+        files = []
+        for path in state["paths"]:
+            ours = [link for link in links_by_element.get(path, []) if link["claim_id"] == claim]
+            if not ours:
+                continue
+            lines = [link["line"] for link in ours if isinstance(link.get("line"), int) and not isinstance(link.get("line"), bool)]
+            name = f"`{path}`"
+            files.append(f"[{name}]({blob}/{url_path(path)}#L{min(lines)})" if blob and lines else name)
+        text = f"{cell_label(state['component']['label'])} ({OUTCOME_TEXT[outcome]})"
+        parts.append(text + (": " + ", ".join(files) if files else ""))
+    return "<br>".join(parts) or "no design element"
+
+
+def verified_by(node, report):
+    """The *Verified by* cell: the linked tests, with their outcome when a report was given; a gap in words otherwise."""
+    tests = node.get("tests") or []
+    evidence = node.get("evidence") or "machine"
+    if not tests:
+        return "no test" if evidence == "machine" else f"{cell_text(evidence)} evidence, no test asked"
+    listed = []
+    for test in tests:
+        item = cell_text(test)
+        if report is not None:
+            item += f" ({report.get(test, 'not found')})"
+        listed.append(item)
+    noun = "test" if len(tests) == 1 else "tests"
+    text = f"{len(tests)} {noun}: " + ", ".join(listed)
+    return text if evidence == "machine" else f"{text}; {cell_text(evidence)} evidence"
+
+
+def coverage_matrix(nodes, states, links_by_element, blob, matrix_dir, report):
+    """ADR 0053's matrix, as Markdown: one row per applying claim by id, four columns, a named gap in every empty cell."""
+    claims_dir = posixpath.relpath("claims", matrix_dir)
+    table = ["| " + " | ".join(HEADER) + " |", "| " + " | ".join(["---"] * len(HEADER)) + " |"]
+    for node in nodes:
+        claim = node["claim_id"]
+        source = (node.get("source") or "").strip()
+        claim_cell = f"[{claim}]({url_path(claims_dir)}/{url_path(claim)}.yml): {cell_text(clean(node['statement']))}"
+        table.append(
+            "| "
+            + " | ".join(
+                [
+                    cell_text(source) if source else "no source",
+                    claim_cell,
+                    satisfied_by(claim, states, links_by_element, blob),
+                    verified_by(node, report),
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(table) + "\n"
+
+
 def budget(width):
     """Columns archify draws in a box of `width` px at its 6 px floor (the sublabel and the tag share this floor)."""
     return int(((width - 8) * 10) // 36)
@@ -285,7 +449,7 @@ def box_width(component):
     return DEFAULT_WIDTH
 
 
-def overlay(diagram, satisfy, trace, root):
+def overlay(diagram, satisfy, trace, root, report=None, matrix_dir="."):
     """The overlay diagram, the matrix text and the reasons the exit is 3."""
     links = satisfy["links"]
     by_element = {}
@@ -337,11 +501,14 @@ def overlay(diagram, satisfy, trace, root):
 
     rows = []
     seen = set()
+    nodes = []
     for node in trace["nodes"]:
         if node["claim_id"] not in seen and applying(node):
             seen.add(node["claim_id"])
             rows.append((node["claim_id"], clean(node["statement"])))
+            nodes.append(node)
     rows.sort()
+    nodes.sort(key=lambda node: node["claim_id"])
     reached = {claim for state in states for claim in state["claims"]}
     unreached = [(claim, statement) for claim, statement in rows if claim not in reached]
 
@@ -396,19 +563,7 @@ def overlay(diagram, satisfy, trace, root):
     parts.append(f"archify {ARCHIFY_COMMIT}")
     result["meta"]["subtitle"] = " · ".join(parts)
 
-    labels = [cell_label(state["component"]["label"]) for state in states]
-    table = ["| " + " | ".join(["claim"] + labels) + " |", "| " + " | ".join(["---"] * (len(labels) + 1)) + " |"]
-    for claim, _statement in rows:
-        cells = []
-        for state in states:
-            outcome = state["outcomes"].get(claim)
-            cells.append(outcome or "")
-        table.append("| " + " | ".join([claim] + cells) + " |")
-    matrix = "\n".join(table) + "\n\n## Claims no component reaches\n\n"
-    if unreached:
-        matrix += "".join(f"- {claim}: {statement}\n" for claim, statement in unreached)
-    else:
-        matrix += "none\n"
+    matrix = coverage_matrix(nodes, states, by_element, github_blob(diagram), matrix_dir, report)
 
     reasons = []
     for state in states:
@@ -424,27 +579,34 @@ def render(value):
     return json.dumps(value, indent=2, ensure_ascii=False) + "\n"
 
 
+USAGE = (
+    "usage: arch_overlay.py [--root <dir>] [--test-report <junit.xml>] [--matrix-dir <dir>] "
+    "<diagram.json> <satisfy.json> <trace.json> <out-dir>"
+)
+
+
 def parse(argv):
+    """(root, report path or None, matrix dir, the four positionals), or None for a usage error."""
     args = argv[1:]
-    root = Path(".")
-    if args[:1] == ["--root"]:
-        if len(args) < 2:
+    options = {"--root": ".", "--test-report": None, "--matrix-dir": "."}
+    given = set()
+    while args and args[0].startswith("--"):
+        key = args[0]
+        if key not in options or key in given or len(args) < 2 or args[1].startswith("--"):
             return None
-        root, args = Path(args[1]), args[2:]
+        given.add(key)
+        options[key], args = args[1], args[2:]
     if len(args) != 4 or any(arg.startswith("--") for arg in args):
         return None
-    return root, args[0], args[1], args[2], Path(args[3])
+    return Path(options["--root"]), options["--test-report"], options["--matrix-dir"], args[0], args[1], args[2], Path(args[3])
 
 
 def main(argv):
     parsed = parse(argv)
     if parsed is None:
-        print(
-            "usage: arch_overlay.py [--root <dir>] <diagram.json> <satisfy.json> <trace.json> <out-dir>",
-            file=sys.stderr,
-        )
+        print(USAGE, file=sys.stderr)
         return 2
-    root, diagram_path, satisfy_path, trace_path, target = parsed
+    root, report_path, matrix_dir, diagram_path, satisfy_path, trace_path, target = parsed
     try:
         diagram = load(diagram_path, "the diagram")
         satisfy = load(satisfy_path, "the satisfy document")
@@ -452,9 +614,13 @@ def main(argv):
         check_diagram(diagram, diagram_path)
         check_satisfy(satisfy, satisfy_path)
         check_trace(trace, trace_path)
+        try:
+            report = read_report(report_path) if report_path is not None else None
+        except ReportError as error:
+            refuse(str(error))
         if target.exists() and (not target.is_dir() or any(target.iterdir())):
             refuse(f"{target} exists and is not an empty directory: a stale overlay must not mix with a new one")
-        result, matrix, reasons = overlay(diagram, satisfy, trace, root)
+        result, matrix, reasons = overlay(diagram, satisfy, trace, root, report, matrix_dir)
         outputs = {"overlay.json": render(result), "matrix.md": matrix}
     except Refusal as error:
         print(f"refused: {error}", file=sys.stderr)

@@ -1,5 +1,5 @@
 //! `tools/graph/arch_overlay.py` — an archify `architecture` diagram, `req satisfy --format json` and `req trace --format
-//! json` in, an overlay diagram and a claims × components matrix out (ADR 0052 decisions 1–5, unit O-1).
+//! json` in, an overlay diagram and the four-column coverage matrix out (ADR 0052 decisions 1–5, unit O-1; ADR 0053, unit O-5).
 //!
 //! The seam is the script itself, run the way an adopter runs it (`python3 -I tools/graph/arch_overlay.py [--root <dir>]
 //! <diagram.json> <satisfy.json> <trace.json> <out-dir>`), over **hand-written** documents: a diagram, a `req.satisfy/1`
@@ -227,6 +227,10 @@ fn trace(claims: &[(&str, &str, &str)]) -> Value {
                 "address": format!("sha256:{}", "0".repeat(64)),
                 "applies": applies,
                 "superseded_by": [],
+                "area": null,
+                "source": "docs/requirements.md",
+                "evidence": "machine",
+                "tests": [],
             }))
             .collect::<Vec<_>>(),
         "edges": [],
@@ -1179,10 +1183,60 @@ fn a_design_root_with_dot_segments_covers_the_files_under_it_and_a_dot_slash_abs
     );
 }
 
-// ---- the matrix -------------------------------------------------------------------------------
+// ---- the matrix: four columns, a status in each cell (ADR 0053, unit O-5) -----------------------
+
+const HEADER: &str = "| Source | Claim | Satisfied by | Verified by |";
+
+/// One `req.trace/1` node as the coverage matrix reads it: `source`, `evidence` and `tests` after `area` (ADR 0053
+/// decision 4), authored here from the ADR and never captured from a run.
+fn covered(id: &str, statement: &str, source: Value, evidence: Value, tests: &[&str]) -> Value {
+    json!({
+        "claim_id": id,
+        "statement": statement,
+        "modality": "SHALL",
+        "address": format!("sha256:{}", "0".repeat(64)),
+        "applies": "applies",
+        "superseded_by": [],
+        "area": null,
+        "source": source,
+        "evidence": evidence,
+        "tests": tests,
+    })
+}
+
+fn trace_of(nodes: Vec<Value>) -> Value {
+    let mut document = trace(&[]);
+    document["nodes"] = Value::Array(nodes);
+    document
+}
+
+/// The cells of a table row, split on a `|` that is not escaped, trimmed.
+fn cells(line: &str) -> Vec<String> {
+    let mut cells = vec![String::new()];
+    let mut previous = ' ';
+    for ch in line.chars() {
+        if ch == '|' && previous != '\\' {
+            cells.push(String::new());
+        } else {
+            cells.last_mut().expect("a cell").push(ch);
+        }
+        previous = ch;
+    }
+    let inner = &cells[1..cells.len() - 1];
+    inner.iter().map(|cell| cell.trim().to_string()).collect()
+}
+
+/// The row of `claim` in the matrix text: its cells.
+fn row_of(text: &str, claim: &str) -> Vec<String> {
+    let line = text
+        .lines()
+        .find(|line| line.starts_with('|') && line.contains(&format!("[{claim}]")))
+        .unwrap_or_else(|| panic!("no row for {claim}:\n{text}"));
+    cells(line)
+}
 
 #[test]
-fn the_matrix_has_a_row_per_applying_claim_a_column_per_component_and_lists_the_unreached() {
+fn the_matrix_has_four_columns_a_row_per_applying_claim_by_id_and_names_each_claim() {
     let s = Scratch::new("matrix");
     repo(&s);
     let inputs = Inputs {
@@ -1195,84 +1249,558 @@ fn the_matrix_has_a_row_per_applying_claim_a_column_per_component_and_lists_the_
             link("src/b.rs", "REQ-0002", "suspect"),
             link("src/b.rs", "REQ-0001", "holds"),
         ]),
-        trace: trace(&claims()),
+        trace: trace_of(vec![
+            covered(
+                "REQ-0002",
+                "The pump shall log every request.",
+                json!("docs/b.md"),
+                json!("machine"),
+                &[],
+            ),
+            covered(
+                "REQ-0001",
+                "The pump shall report its health.",
+                json!("docs/a.md"),
+                json!("machine"),
+                &[],
+            ),
+            covered(
+                "REQ-0003",
+                "The pump shall encrypt data at rest.",
+                json!("docs/c.md"),
+                json!("machine"),
+                &[],
+            ),
+        ]),
     };
     assert_eq!(run(&s, &inputs).code, 0);
     let text = matrix(&s);
     let lines: Vec<&str> = text.lines().collect();
-    // Columns follow the diagram's order (Zeta, then Alpha); rows are claims by id.
-    assert_eq!(lines[0], "| claim | Zeta | Alpha |", "{text}");
-    assert_eq!(lines[1], "| --- | --- | --- |", "{text}");
-    assert_eq!(lines[2], "| REQ-0001 | holds | holds_weakened |", "{text}");
-    assert_eq!(lines[3], "| REQ-0002 | suspect |  |", "{text}");
-    assert_eq!(lines[4], "| REQ-0003 |  |  |", "{text}");
-    // REQ-0004 does not apply in the selection: no row.
-    assert!(!text.contains("| REQ-0004"), "{text}");
-    // The claim no component reaches is listed, with its statement.
-    let unreached = text
-        .split("## Claims no component reaches")
-        .nth(1)
-        .expect("the list");
-    assert!(unreached.contains("REQ-0003"), "{text}");
+    assert_eq!(lines[0], HEADER, "{text}");
+    assert_eq!(lines[1], "| --- | --- | --- | --- |", "{text}");
+    let ids: Vec<String> = lines[2..]
+        .iter()
+        .filter(|line| line.starts_with('|'))
+        .map(|line| cells(line)[1].clone())
+        .collect();
+    assert_eq!(ids.len(), 3, "{text}");
+    for (id, claim) in ids.iter().zip(["REQ-0001", "REQ-0002", "REQ-0003"]) {
+        assert!(
+            id.starts_with(&format!("[{claim}](claims/{claim}.yml)")),
+            "{id}"
+        );
+    }
+    let first = row_of(&text, "REQ-0001");
+    assert_eq!(first.len(), 4, "{first:?}");
+    assert_eq!(first[0], "docs/a.md", "the source, verbatim");
     assert!(
-        unreached.contains("The pump shall encrypt data at rest."),
+        first[1].ends_with("The pump shall report its health."),
+        "{first:?}"
+    );
+    // Components follow the diagram's order (Zeta, then Alpha); each carries its own outcome.
+    let zeta = first[2]
+        .find("Zeta (holds)")
+        .unwrap_or_else(|| panic!("{first:?}"));
+    let alpha = first[2]
+        .find("Alpha (holds (weakened))")
+        .unwrap_or_else(|| panic!("{first:?}"));
+    assert!(zeta < alpha, "{first:?}");
+    assert!(
+        row_of(&text, "REQ-0002")[2].contains("Zeta (suspect)"),
         "{text}"
     );
-    assert!(
-        !unreached.contains("REQ-0001") && !unreached.contains("REQ-0002"),
-        "{text}"
-    );
-    assert!(text.ends_with('\n'));
-    // The overlay's card says the same.
+    // REQ-0004 is not in this trace; a claim that does not apply is no row (below).
+    assert!(!text.contains("REQ-0004"), "{text}");
+    // The unreached claim is still on the overlay's card.
     let overlay = overlay(&s);
     let items = card(&overlay, UNREACHED_CARD);
     assert_eq!(items.len(), 1, "{items:?}");
     assert!(items[0].contains("REQ-0003"), "{items:?}");
+    assert!(text.ends_with('\n'));
 }
 
 #[test]
-fn a_cell_holds_the_worst_outcome_when_a_component_reaches_a_claim_through_two_files() {
-    let s = Scratch::new("cell-worst");
+fn a_claim_that_does_not_apply_has_no_row_and_the_claim_link_follows_the_matrix_dir() {
+    let s = Scratch::new("applies");
     repo(&s);
     let inputs = Inputs {
-        diagram: diagram(vec![component(
-            "pump",
-            "Pump",
-            &["src/a.rs", "src/b.rs"],
-            0,
-        )]),
-        satisfy: satisfy(vec![
-            link("src/a.rs", "REQ-0001", "holds"),
-            link("src/b.rs", "REQ-0001", "unratified"),
-        ]),
+        diagram: diagram(vec![component("pump", "Pump", &["src/a.rs"], 0)]),
+        satisfy: satisfy(vec![]),
         trace: trace(&claims()),
     };
-    assert_eq!(run(&s, &inputs).code, 0);
-    assert!(
-        matrix(&s).contains("| REQ-0001 | unratified |"),
+    let paths = inputs.write(&s);
+    let out = Command::new(python3())
+        .arg("-I")
+        .arg(script())
+        .arg("--root")
+        .arg(s.repo())
+        .args(["--matrix-dir", "docs/architecture"])
+        .arg(&paths.diagram)
+        .arg(&paths.satisfy)
+        .arg(&paths.trace)
+        .arg(s.path("out"))
+        .output()
+        .expect("runs the converter");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
         "{}",
-        matrix(&s)
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = matrix(&s);
+    assert!(!text.contains("REQ-0004"), "{text}");
+    assert!(
+        row_of(&text, "REQ-0001")[1].starts_with("[REQ-0001](../../claims/REQ-0001.yml)"),
+        "the link is relative to the file the matrix is read from:\n{text}"
     );
 }
 
 #[test]
-fn a_label_with_a_pipe_does_not_break_the_table() {
+fn a_cell_names_the_component_with_the_worst_outcome_of_its_files_and_each_file_once() {
+    // ADR 0052 decision 2's order, per claim and component; ADR 0053 decision 6 links a file to its lines on GitHub.
+    let s = Scratch::new("cell-worst");
+    repo(&s);
+    let mut diagram = diagram(vec![component(
+        "pump",
+        "Pump",
+        &["src/a.rs", "src/b.rs"],
+        0,
+    )]);
+    diagram["meta"]["repository"]["url"] = json!("https://github.com/acme/pump.git");
+    let inputs = Inputs {
+        diagram,
+        satisfy: satisfy(vec![
+            json!({"element": "src/a.rs", "claim_id": "REQ-0001", "outcome": "holds", "line": 7}),
+            json!({"element": "src/b.rs", "claim_id": "REQ-0001", "outcome": "unratified", "line": 3}),
+            json!({"element": "src/b.rs", "claim_id": "REQ-0001", "outcome": "unratified", "line": 9}),
+        ]),
+        trace: trace(&claims()),
+    };
+    assert_eq!(run(&s, &inputs).code, 0);
+    let cell = row_of(&matrix(&s), "REQ-0001")[2].clone();
+    assert!(cell.contains("Pump (unratified)"), "{cell}");
+    assert!(!cell.contains("Pump (holds)"), "{cell}");
+    let base = format!("https://github.com/acme/pump/blob/{REVISION}");
+    assert_eq!(
+        cell.matches("src/a.rs").count(),
+        2,
+        "name and URL, once: {cell}"
+    );
+    assert!(cell.contains(&format!("{base}/src/a.rs#L7")), "{cell}");
+    assert_eq!(cell.matches("src/b.rs").count(), 2, "{cell}");
+    assert!(cell.contains(&format!("{base}/src/b.rs#L3")), "{cell}");
+}
+
+#[test]
+fn a_file_is_named_without_a_link_when_the_repository_is_not_github_or_has_no_revision() {
+    let s = Scratch::new("no-github");
+    repo(&s);
+    let inputs = Inputs {
+        diagram: diagram(vec![component("pump", "Pump", &["src/a.rs"], 0)]),
+        satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
+        trace: trace(&claims()),
+    };
+    assert_eq!(run(&s, &inputs).code, 0);
+    let cell = row_of(&matrix(&s), "REQ-0001")[2].clone();
+    assert!(cell.contains("src/a.rs"), "{cell}");
+    assert!(!cell.contains("http"), "no GitHub URL to point at: {cell}");
+}
+
+#[test]
+fn a_label_and_a_source_with_a_pipe_do_not_break_the_table() {
     let s = Scratch::new("pipe");
     repo(&s);
     let inputs = Inputs {
         diagram: diagram(vec![component("pump", "Read | Write", &["src/a.rs"], 0)]),
         satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
+        trace: trace_of(vec![covered(
+            "REQ-0001",
+            "The pump shall read | write.",
+            json!("spec | section\n4.2"),
+            json!("machine"),
+            &[],
+        )]),
+    };
+    assert_eq!(run(&s, &inputs).code, 0);
+    let text = matrix(&s);
+    let row = row_of(&text, "REQ-0001");
+    assert_eq!(row.len(), 4, "{text}");
+    assert_eq!(
+        row[0], "spec \\| section 4.2",
+        "pipe escaped, newline folded: {row:?}"
+    );
+    assert!(row[2].contains("Read \\| Write (holds)"), "{row:?}");
+    assert!(row[1].contains("read \\| write"), "{row:?}");
+}
+
+// ---- Falsification 5 (ADR 0053): a component is never a column ----------------------------------
+
+#[test]
+fn the_matrix_keeps_four_columns_whatever_the_number_of_components() {
+    let mut widths = Vec::new();
+    for count in [1usize, 5] {
+        let s = Scratch::new(&format!("columns-{count}"));
+        repo(&s);
+        let components: Vec<Value> = (0..count)
+            .map(|index| {
+                component(
+                    &format!("c{index}"),
+                    &format!("Part {index}"),
+                    &["src/a.rs"],
+                    i64::try_from(index).expect("small"),
+                )
+            })
+            .collect();
+        let inputs = Inputs {
+            diagram: diagram(components),
+            satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
+            trace: trace(&claims()),
+        };
+        assert_eq!(run(&s, &inputs).code, 0);
+        let text = matrix(&s);
+        assert_eq!(text.lines().next(), Some(HEADER), "{text}");
+        for line in text.lines().filter(|line| line.starts_with('|')) {
+            widths.push(cells(line).len());
+        }
+        let cell = &row_of(&text, "REQ-0001")[2];
+        assert_eq!(
+            cell.matches("(holds)").count(),
+            count,
+            "every component is named in the one cell: {cell}"
+        );
+    }
+    assert!(widths.iter().all(|width| *width == 4), "{widths:?}");
+}
+
+// ---- Falsification 1 (ADR 0053): a gap is named, never blank ------------------------------------
+
+#[test]
+fn each_gap_is_named_and_no_cell_is_ever_blank() {
+    let s = Scratch::new("gaps");
+    repo(&s);
+    let inputs = Inputs {
+        diagram: diagram(vec![component("pump", "Pump", &["src/a.rs"], 0)]),
+        satisfy: satisfy(vec![link("src/a.rs", "REQ-0005", "holds")]),
+        trace: trace_of(vec![
+            covered("REQ-0001", "Bare.", Value::Null, json!("machine"), &[]),
+            covered("REQ-0002", "Empty source.", json!(""), Value::Null, &[]),
+            covered(
+                "REQ-0003",
+                "Process.",
+                json!("docs/p.md"),
+                json!("process"),
+                &[],
+            ),
+            covered(
+                "REQ-0004",
+                "Tested.",
+                json!("docs/t.md"),
+                json!("machine"),
+                &["suite::one", "suite::two"],
+            ),
+            covered(
+                "REQ-0005",
+                "Linked.",
+                json!("docs/l.md"),
+                json!("machine"),
+                &["suite::three"],
+            ),
+        ]),
+    };
+    assert_eq!(run(&s, &inputs).code, 0);
+    let text = matrix(&s);
+    for line in text.lines().filter(|line| line.starts_with('|')) {
+        for cell in cells(line) {
+            assert!(!cell.is_empty(), "a blank cell in `{line}`:\n{text}");
+        }
+    }
+    let bare = row_of(&text, "REQ-0001");
+    assert_eq!(bare[0], "no source");
+    assert_eq!(bare[2], "no design element");
+    assert_eq!(bare[3], "no test");
+    let empty = row_of(&text, "REQ-0002");
+    assert_eq!(empty[0], "no source", "an empty source is a gap: {empty:?}");
+    assert_eq!(
+        empty[3], "no test",
+        "absent evidence is machine evidence: {empty:?}"
+    );
+    let process = row_of(&text, "REQ-0003");
+    assert_eq!(process[3], "process evidence, no test asked", "{process:?}");
+    let tested = row_of(&text, "REQ-0004");
+    assert_eq!(tested[0], "docs/t.md");
+    assert_eq!(tested[2], "no design element");
+    assert!(tested[3].starts_with("2 tests"), "{tested:?}");
+    assert!(
+        tested[3].contains("suite::one") && tested[3].contains("suite::two"),
+        "{tested:?}"
+    );
+    let linked = row_of(&text, "REQ-0005");
+    assert!(linked[2].starts_with("Pump (holds)"), "{linked:?}");
+    assert!(linked[3].starts_with("1 test"), "{linked:?}");
+}
+
+// ---- Falsification 2 (ADR 0053): a link that is not true is never plain covered ----------------
+
+#[test]
+fn a_suspect_link_shows_suspect_in_satisfied_by_never_plain_covered() {
+    let s = Scratch::new("suspect");
+    repo(&s);
+    let inputs = Inputs {
+        diagram: diagram(vec![
+            component("pump", "Pump", &["src/a.rs"], 0),
+            component("store", "Store", &["src/b.rs"], 1),
+        ]),
+        satisfy: satisfy(vec![
+            link("src/a.rs", "REQ-0001", "suspect"),
+            link("src/b.rs", "REQ-0002", "orphaned"),
+            link("src/a.rs", "REQ-0002", "holds"),
+        ]),
         trace: trace(&claims()),
     };
     assert_eq!(run(&s, &inputs).code, 0);
     let text = matrix(&s);
+    let one = row_of(&text, "REQ-0001")[2].clone();
+    assert!(one.contains("Pump (suspect)"), "{one}");
     assert!(
-        text.lines()
-            .next()
-            .expect("header")
-            .contains("Read \\| Write"),
-        "{text}"
+        !one.contains("holds"),
+        "a suspect link is not covered: {one}"
     );
+    let two = row_of(&text, "REQ-0002")[2].clone();
+    assert!(
+        two.contains("Pump (holds)") && two.contains("Store (orphaned)"),
+        "{two}"
+    );
+}
+
+// ---- test outcomes, only with a report (ADR 0053 decision 5) ------------------------------------
+
+const REPORT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="one">
+    <testcase classname="suite" name="passes"/>
+    <testcase classname="suite" name="fails"><failure message="exit 1"/></testcase>
+    <testcase classname="suite" name="breaks"><error message="exit 9"/></testcase>
+    <testcase classname="suite" name="skips"><skipped message="UNVERIFIABLE"/></testcase>
+  </testsuite>
+  <testsuite name="two">
+    <testcase classname="other" name="a &amp; b"/>
+  </testsuite>
+</testsuites>
+"#;
+
+fn tested_inputs() -> Inputs {
+    Inputs {
+        diagram: diagram(vec![component("pump", "Pump", &["src/a.rs"], 0)]),
+        satisfy: satisfy(vec![link("src/a.rs", "REQ-0001", "holds")]),
+        trace: trace_of(vec![covered(
+            "REQ-0001",
+            "The pump shall report its health.",
+            json!("docs/a.md"),
+            json!("machine"),
+            &[
+                "suite::passes",
+                "suite::fails",
+                "suite::breaks",
+                "suite::skips",
+                "suite::missing",
+                "other::a & b",
+            ],
+        )]),
+    }
+}
+
+/// Run with `--test-report` (and `--root` the miniature repository) into `out_dir`.
+fn convert_with_report(s: &Scratch, paths: &Paths, report: &Path, out_dir: &Path) -> Run {
+    let out = Command::new(python3())
+        .arg("-I")
+        .arg(script())
+        .arg("--root")
+        .arg(s.repo())
+        .arg("--test-report")
+        .arg(report)
+        .arg(&paths.diagram)
+        .arg(&paths.satisfy)
+        .arg(&paths.trace)
+        .arg(out_dir)
+        .current_dir(&s.0)
+        .output()
+        .expect("runs the converter");
+    Run {
+        code: out.status.code().expect("exits"),
+        stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+    }
+}
+
+#[test]
+fn a_report_adds_each_linked_tests_outcome_passed_failed_skipped_or_not_found() {
+    let s = Scratch::new("report");
+    repo(&s);
+    let paths = tested_inputs().write(&s);
+    let report = s.path("junit.xml");
+    fs::write(&report, REPORT).expect("writes the report");
+    let out = convert_with_report(&s, &paths, &report, &s.path("out"));
+    assert_eq!(out.code, 0, "{}", out.all());
+    let cell = row_of(&matrix(&s), "REQ-0001")[3].clone();
+    assert!(cell.starts_with("6 tests"), "{cell}");
+    for expected in [
+        "suite::passes (passed)",
+        "suite::fails (failed)",
+        "suite::breaks (failed)",
+        "suite::skips (skipped)",
+        "suite::missing (not found)",
+        "other::a & b (passed)",
+    ] {
+        assert!(cell.contains(expected), "`{expected}` in {cell}");
+    }
+}
+
+#[test]
+fn without_a_report_no_outcome_is_written() {
+    let s = Scratch::new("no-report");
+    repo(&s);
+    let out = run(&s, &tested_inputs());
+    assert_eq!(out.code, 0, "{}", out.all());
+    let cell = row_of(&matrix(&s), "REQ-0001")[3].clone();
+    assert!(cell.starts_with("6 tests"), "{cell}");
+    assert!(cell.contains("suite::passes"), "{cell}");
+    for word in ["passed", "failed", "skipped", "not found"] {
+        assert!(!cell.contains(word), "an outcome without a report: {cell}");
+    }
+}
+
+#[test]
+fn a_run_without_the_flag_does_not_read_a_report_so_a_changed_report_changes_no_byte() {
+    // Falsification 3 (ADR 0053): the committed matrix is a function of the repository.
+    let s = Scratch::new("report-ignored");
+    repo(&s);
+    let paths = tested_inputs().write(&s);
+    fs::write(s.path("junit.xml"), REPORT).expect("writes");
+    let first = convert(Some(&s.repo()), &paths, &s.path("out-1"), &s.0);
+    fs::write(s.path("junit.xml"), "this is not a report at all").expect("rewrites");
+    let second = convert(Some(&s.repo()), &paths, &s.path("out-2"), &s.0);
+    assert_eq!(
+        (first.code, second.code),
+        (0, 0),
+        "{}{}",
+        first.all(),
+        second.all()
+    );
+    assert_eq!(tree(&s.path("out-1")), tree(&s.path("out-2")));
+}
+
+#[test]
+fn two_runs_with_the_same_report_give_the_same_bytes() {
+    // Falsification 4 (ADR 0053).
+    let s = Scratch::new("report-determinism");
+    repo(&s);
+    let paths = tested_inputs().write(&s);
+    let report = s.path("junit.xml");
+    fs::write(&report, REPORT).expect("writes");
+    let first = convert_with_report(&s, &paths, &report, &s.path("out-1"));
+    let second = convert_with_report(&s, &paths, &report, &s.path("out-2"));
+    assert_eq!((first.code, second.code), (0, 0));
+    assert_eq!(tree(&s.path("out-1")), tree(&s.path("out-2")));
+}
+
+#[test]
+fn a_report_only_changes_the_matrix_never_the_overlay() {
+    let s = Scratch::new("report-overlay");
+    repo(&s);
+    let paths = tested_inputs().write(&s);
+    let report = s.path("junit.xml");
+    fs::write(&report, REPORT).expect("writes");
+    assert_eq!(
+        convert_with_report(&s, &paths, &report, &s.path("with")).code,
+        0
+    );
+    assert_eq!(
+        convert(Some(&s.repo()), &paths, &s.path("without"), &s.0).code,
+        0
+    );
+    let (with, without) = (tree(&s.path("with")), tree(&s.path("without")));
+    assert_eq!(with["overlay.json"], without["overlay.json"]);
+    assert_ne!(with["matrix.md"], without["matrix.md"]);
+}
+
+#[test]
+fn an_unreadable_or_malformed_report_is_exit_2_naming_it_and_writes_nothing() {
+    let cases: [(&str, Option<&str>); 6] = [
+        ("garbage", Some("not xml")),
+        (
+            "wrong root",
+            Some("<report><testcase classname=\"a\" name=\"b\"/></report>"),
+        ),
+        (
+            "empty classname",
+            Some(
+                "<testsuites><testsuite><testcase classname=\"\" name=\"b\"/></testsuite></testsuites>",
+            ),
+        ),
+        (
+            "conflicting duplicate",
+            Some(
+                "<testsuites><testsuite><testcase classname=\"a\" name=\"b\"/><testcase classname=\"a\" name=\"b\"><failure/></testcase></testsuite></testsuites>",
+            ),
+        ),
+        (
+            "a DTD",
+            Some("<!DOCTYPE a [<!ENTITY x \"y\">]><testsuites/>"),
+        ),
+        ("missing file", None),
+    ];
+    for (label, text) in cases {
+        let s = Scratch::new("report-bad");
+        repo(&s);
+        let paths = tested_inputs().write(&s);
+        let report = s.path("junit.xml");
+        if let Some(text) = text {
+            fs::write(&report, text).expect("writes");
+        }
+        let out = convert_with_report(&s, &paths, &report, &s.path("out"));
+        assert_eq!(out.code, 2, "{label}: {}", out.all());
+        assert!(
+            out.stderr.contains("junit.xml"),
+            "{label} names the report: {}",
+            out.stderr
+        );
+        assert!(!s.path("out").exists(), "{label}: nothing is written");
+    }
+}
+
+#[test]
+fn a_report_with_no_test_cases_reads_every_linked_test_as_not_found_and_a_lone_testsuite_root_is_read()
+ {
+    let s = Scratch::new("report-shapes");
+    repo(&s);
+    let paths = tested_inputs().write(&s);
+    let report = s.path("junit.xml");
+    fs::write(&report, "<testsuites/>").expect("writes");
+    assert_eq!(
+        convert_with_report(&s, &paths, &report, &s.path("empty")).code,
+        0
+    );
+    let cell = row_of(
+        &fs::read_to_string(s.path("empty/matrix.md")).expect("reads"),
+        "REQ-0001",
+    )[3]
+    .clone();
+    assert_eq!(cell.matches("(not found)").count(), 6, "{cell}");
+    fs::write(
+        &report,
+        "<testsuite name=\"x\"><testcase classname=\"suite\" name=\"passes\"/></testsuite>",
+    )
+    .expect("writes");
+    assert_eq!(
+        convert_with_report(&s, &paths, &report, &s.path("lone")).code,
+        0
+    );
+    let cell = row_of(
+        &fs::read_to_string(s.path("lone/matrix.md")).expect("reads"),
+        "REQ-0001",
+    )[3]
+    .clone();
+    assert!(cell.contains("suite::passes (passed)"), "{cell}");
 }
 
 // ---- Falsification 1 and 2: determinism, nothing else touched ---------------------------------

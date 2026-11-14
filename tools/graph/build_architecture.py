@@ -7,11 +7,12 @@ overview, `docs/architecture/req-overview.archify.json` (at most 12 components, 
 `req satisfy --format json` and from `req trace --format json` of THIS repository, by `tools/graph/arch_overlay.py`:
 
     docs/architecture/overview-overlay.json   the overview with each component's status line (archify's input)
-    docs/architecture/overview-matrix.md      the claims x components matrix of the overview
+    docs/architecture/overview-matrix.md      the coverage matrix of the overview (ADR 0053)
     docs/architecture/overlay.json            the detail with each component's status line (archify's input)
-    docs/architecture/matrix.md               the claims x components matrix of the detail
+    docs/architecture/matrix.md               the coverage matrix of the detail (ADR 0053)
 
-All four are byte-for-byte what the converter writes and are never hand-edited. `docs/architecture.html` (the overview)
+The matrices are four columns (Source | Claim | Satisfied by | Verified by) and carry no test outcome: this script never
+passes the converter a `--test-report`, so each is a function of the repository (ADR 0053 decision 5). All four are byte-for-byte what the converter writes and are never hand-edited. `docs/architecture.html` (the overview)
 and `docs/architecture-detail.html` are archify's renderings of the two overlays (pinned at 7e45f36); they need Node and
 a browser, so this script never runs archify, and the gate cannot check the pages themselves (the named gap in ADR
 0052's note).
@@ -44,6 +45,8 @@ VIEWS = (
     ("req-overview.archify.json", "overview-overlay.json", "overview-matrix.md"),
     ("req.archify.json", "overlay.json", "matrix.md"),
 )
+# Where the committed matrices are read from, so the converter writes their claim links relative to it.
+MATRIX_DIR = "docs/architecture"
 GENERATED = tuple(name for _, overlay, matrix in VIEWS for name in (overlay, matrix))
 
 
@@ -104,7 +107,7 @@ def generate(binary, directory, into):
             if not os.path.isfile(diagram):
                 raise Unverifiable(f"{diagram} cannot be read: the architect's diagram is not here")
             one = os.path.join(work, "one-" + overlay)
-            done = subprocess.run([sys.executable, "-I", CONVERTER, "--root", ROOT, diagram, satisfy, trace, one],
+            done = subprocess.run([sys.executable, "-I", CONVERTER, "--root", ROOT, "--matrix-dir", MATRIX_DIR, diagram, satisfy, trace, one],
                                   capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, timeout=300)
             said = done.stderr.strip() or done.stdout.strip()
             if done.returncode not in (0, 3):

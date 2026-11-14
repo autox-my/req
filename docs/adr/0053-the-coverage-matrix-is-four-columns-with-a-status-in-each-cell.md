@@ -3,9 +3,9 @@
 Amends ADR 0052 decision 3 (the claims × components matrix). Extends ADR 0046 decision 2 (`req.trace/1` carries its
 nodes) additively. Nothing else is superseded. No rules change, no claim-schema change, no Baseline envelope change.
 
-**Status: proposed.** The owner ratifies it by merging. Asked for by the owner on 2026-11-14, after evaluating a
-"hybrid view" concept (a matrix for overview, a graph for navigation, over one typed graph) and agreeing to adopt its
-matrix half. Date proposed: 2026-11-14.
+**Status: accepted** (ratified by the owner's merge of PR #82, 2026-11-14). Asked for by the owner on 2026-11-14, after
+evaluating a "hybrid view" concept (a matrix for overview, a graph for navigation, over one typed graph) and agreeing to
+adopt its matrix half. Date proposed: 2026-11-14.
 
 ## Context
 
@@ -89,3 +89,30 @@ This decision is wrong if any of these is observed:
 3. a committed matrix changes when only a test report changes (it must be a function of the repository);
 4. two runs over the same inputs give different matrix bytes;
 5. the matrix grows a column when a component is added.
+
+## Implementation note — 2026-11-14 (O-5: the coverage matrix)
+
+- **`req.trace/1` nodes** gain `source`, `evidence` and `tests` after `area` (`src/view.rs`; the `req trace --help` page names
+  them). `source` is the claim's `rationale.source`, `null` when empty. `evidence` is `machine` or `process`: the loader holds
+  the declaration as a value with the default `machine` (ADR 0019), so an absent key and a declared default cannot be told
+  apart and the node never says `null` for it; the converter reads `machine` and an absent field alike. `tests` are the
+  claim's ids in file order, `[]` when none. Text `req trace` and `docs/trace.md` are untouched.
+- **`matrix.md`** (`tools/graph/arch_overlay.py`) is the four-column table of decision 1, one row per claim of `req.trace/1`
+  that does not carry `applies: does_not_apply`, by claim id. *Source* is `source` verbatim (a pipe escaped, a line break
+  folded to a space). *Claim* is the id linked to `claims/<id>.yml`, a colon and the statement. *Satisfied by* is each
+  component whose cited files carry a link to the claim, in diagram order, as `<label> (<outcome>)` (`holds`, `holds
+  (weakened)`, `suspect`, `unratified`, `orphaned`, `unknown claim`: the worst of the component's links for that claim, ADR 0052
+  decision 2's order), then the files that carry the link, each once, linked to the link's line at `meta.repository.revision`
+  when the diagram's repository is on GitHub and pinned (decision 6; otherwise the path alone). *Verified by* is the count and
+  ids of the claim's tests; the gaps are `no source`, `no design element`, `no test` and `<evidence> evidence, no test asked`.
+  The unreached-claims list that followed the old grid is gone from the file (the rows say `no design element`; the overlay's
+  card of the same name is unchanged), and the overlay JSON is byte-for-byte what it was.
+- **`--test-report <junit.xml>`** (optional) reads a JUnit report with the same mapping as `src/junit.rs` (`failure` or
+  `error` is failed, `skipped` is skipped, a bare case is passed, a conflicting duplicate id or a DTD is refused) and appends
+  each linked test's outcome: passed, failed, skipped or not found. An unreadable or malformed report is exit 2 naming it,
+  with nothing written. Without the flag the report is never opened, so a committed matrix cannot move when a report does
+  (*Falsification* 3).
+- **`--matrix-dir <dir>`** (optional, default the root) is the directory, relative to the root, the matrix will be read from,
+  so the claim links are right where the file is committed (`../../claims/…` from `docs/architecture/`). `build_architecture.py`
+  passes `docs/architecture` and never a report; `docs/architecture/matrix.md` and `overview-matrix.md` are regenerated. The
+  README's counts (28, 29 on the detailed page, 12 unreached) are read from the new shape and did not move.

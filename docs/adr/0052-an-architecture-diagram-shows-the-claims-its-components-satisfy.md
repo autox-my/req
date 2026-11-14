@@ -265,3 +265,5 @@ improvements.
   gates pass with no diagnostics; `visual-check` passes at 1440×900 and 2048×1320. The overview reports 0 proper crossings and
   0 resolved crossovers; the detail 3 and 28, as before. The gate's named gap is unchanged: it reads back what a page carries
   as attributes and as embedded source evidence (now for both pages, including each status line), not the picture.
+- **The matrix (ADR 0053, O-5).** Decision 3's claims × components matrix is replaced by the four-column coverage matrix of ADR
+  0053; the overlay JSON, the status line and the cards of this note are unchanged.

@@ -136,7 +136,7 @@ component satisfies the union of the claims the files it cites declare; the diag
 ```sh
 req satisfy --format json > satisfy.json
 req trace --format json > trace.json
-python3 -I tools/graph/arch_overlay.py [--root .] diagram.json satisfy.json trace.json overlay
+python3 -I tools/graph/arch_overlay.py [--root .] [--test-report junit.xml] diagram.json satisfy.json trace.json overlay
 ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
   validate architecture overlay/overlay.json --repo-root . --json
 ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
@@ -157,8 +157,18 @@ ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
   are appended: components by status, claims no component reaches, and cited paths outside every `.req/design` root (the
   satisfy document holds no link for those). The subtitle names the diagram's pinned revision, the `rules_v` and archify
   `7e45f36`, so the page never claims to be current.
-- **`matrix.md`** is a Markdown table: a row per applying claim, a column per component (diagram order, by label), each
-  cell the link's outcome, then the claims no component reaches.
+- **`matrix.md`** is the coverage matrix (ADR 0053): a Markdown table with a row per applying claim, by id, and four columns
+  whatever the number of components: **Source** (the claim's `rationale.source`), **Claim** (its id, linked to its file, and its
+  statement), **Satisfied by** (each component whose cited files link the claim, in diagram order, as `Pump (suspect)`: the
+  worst outcome of its links, then the files that carry them, linked to their lines at the diagram's pinned revision when the
+  repository is on GitHub) and **Verified by** (the claim's tests, by count and id). A gap is named, never blank: `no source`,
+  `no design element`, `no test`, and `process evidence, no test asked` for a claim whose evidence the gate does not ask a test
+  of (ADR 0019). The claims no component reaches are the rows that say `no design element`, and the overlay's card.
+- **`--test-report <junit.xml>`** (optional) adds what each linked test did, from a JUnit report (`classname::name` ids, as
+  `req gate --test-report` reads): `(passed)`, `(failed)`, `(skipped)` or `(not found)` after each id. An outcome depends on a
+  run, not on the repository, so a run with a report is not committed, and the converter never opens a report you did not name;
+  an unreadable or malformed report is exit `2` naming it. **`--matrix-dir <dir>`** (optional; relative to `--root`, default
+  the root) is the directory the matrix will be read from, so its claim links are right there.
 - **`--repo-root`** is archify's: a diagram that cites `sources` is verified against the committed bytes at its pinned
   revision, in a checkout whose `origin` matches the diagram's `meta.repository.url`. Without it archify refuses the page.
 - **Exit:** `0` written; `3` written, but a component is `STALE`, a link names an unknown claim, or a status line or the
