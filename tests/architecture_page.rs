@@ -276,6 +276,38 @@ fn the_overview_has_at_most_twelve_components_and_the_detail_stays_whole() {
     );
 }
 
+/// O-4-fix: "no claim" on a box means none of its cited files declares a link, not that its area has no satisfied
+/// requirement (REQ-0001, area authoring, is drawn under Identity, where src/canon.rs declares it). Each page's reading
+/// card says so, in the sentence the status line needs beside it.
+#[test]
+fn each_reading_card_says_where_a_status_comes_from() {
+    for (_, overlay, _, _) in VIEWS {
+        let overlay_json: Value =
+            serde_json::from_str(&read(&root().join("docs/architecture").join(overlay)))
+                .expect("the overlay is JSON");
+        let card = overlay_json["cards"]
+            .as_array()
+            .expect("cards")
+            .iter()
+            .find(|card| card["title"] == "Reading the picture")
+            .unwrap_or_else(|| panic!("{overlay} has a reading card"));
+        let said = card["items"]
+            .as_array()
+            .expect("items")
+            .iter()
+            .filter_map(Value::as_str)
+            .any(|item| {
+                item.contains("links in the files a box cites")
+                    && item.contains("area")
+                    && item.contains("no claim")
+            });
+        assert!(
+            said,
+            "{overlay}: the reading card must say a status comes from the links in the cited files, not a claim's area: {card}"
+        );
+    }
+}
+
 /// O-4: each page names the other, in a card.
 #[test]
 fn each_page_points_at_the_other() {
@@ -290,15 +322,39 @@ fn each_page_points_at_the_other() {
         detail.contains("architecture.html</li>"),
         "the detailed page must point at the overview page in a card"
     );
+    // The Pages index promises every part, so its one item links both pages, the overview first.
     let index = read(&root().join("docs/index.html"));
-    assert_eq!(
-        index.matches("href=\"architecture.html\"").count(),
-        1,
-        "docs/index.html keeps its one item, the overview"
-    );
+    let overview_link = index
+        .find("href=\"architecture.html\"")
+        .expect("the index links the overview page");
+    let detail_link = index
+        .find("href=\"architecture-detail.html\"")
+        .expect("the index links the detailed page");
     assert!(
-        !index.contains("architecture-detail"),
-        "the index lists the overview only"
+        overview_link < detail_link,
+        "the overview is linked before the detail"
+    );
+    assert_eq!(
+        index.matches("architecture.html\"").count()
+            + index.matches("architecture-detail.html\"").count(),
+        2,
+        "one item, two links"
+    );
+    let item = index
+        .lines()
+        .find(|line| line.contains("href=\"architecture.html\""))
+        .expect("the item");
+    assert!(
+        item.contains("href=\"architecture-detail.html\""),
+        "both links are in the one item: {item}"
+    );
+    let detail: Value =
+        serde_json::from_str(&read(&root().join("docs/architecture/req.archify.json")))
+            .expect("the detail is JSON");
+    let parts = detail["components"].as_array().expect("components").len();
+    assert!(
+        item.contains(&format!("{parts} parts")),
+        "the item names the detailed page's {parts} parts: {item}"
     );
 }
 

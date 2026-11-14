@@ -498,7 +498,8 @@
       "items": [
         "Each box is a part of req, drawn from the files it cites; the arrows are calls and reads or writes the code shows",
         "The line under a box's name is the status req satisfy gives it: the worst state among its linked claims, and how many claims are in it",
-        "The database-coloured boxes are the files in git that a part reads or writes"
+        "The database-coloured boxes are the files in git that a part reads or writes",
+        "Status comes from the links in the files a box cites, never from a claim's area: \"no claim\" means none of this box's files declares a link, and a claim's area need not be the box that carries it"
       ]
     },
     {
