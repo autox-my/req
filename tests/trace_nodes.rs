@@ -99,6 +99,28 @@ impl Scratch {
         fs::write(self.0.join(format!("claims/{id}.yml")), text).expect("writes a claim");
     }
 
+    /// A `req.claim/2` claim with the given source, evidence declaration and `tests:` lines, verbatim (ADR 0053 decision 4).
+    fn claim_covered(&self, id: &str, source: &str, evidence: Option<&str>, tests: &[&str]) {
+        let evidence = evidence.map_or(String::new(), |e| format!("evidence: {e}\n"));
+        let tests = if tests.is_empty() {
+            String::new()
+        } else {
+            let lines: Vec<String> = tests.iter().map(|t| format!("  - \"{t}\"")).collect();
+            format!("tests:\n{}\n", lines.join("\n"))
+        };
+        let text = format!(
+            "schema: req.claim/2\n\
+             claim_id: {id}\n\
+             statement: \"{PLAIN}\"\n\
+             applicability: []\n\
+             relations: []\n\
+             {evidence}{tests}\
+             rationale:\n  source: {source}\n  date: 2026-11-14\n  \
+             rejected_alternatives: []\n  assumptions: []\n"
+        );
+        fs::write(self.0.join(format!("claims/{id}.yml")), text).expect("writes a claim");
+    }
+
     /// `.req/areas`, exactly as written.
     fn areas(&self, text: &str) {
         fs::create_dir_all(self.0.join(".req")).expect("makes .req");
@@ -176,7 +198,7 @@ fn nodes_lists_every_claim_including_one_with_no_relation_sorted_by_claim_id() {
 }
 
 #[test]
-fn a_node_carries_its_seven_fields_in_order() {
+fn a_node_carries_its_ten_fields_in_order() {
     let s = Scratch::new("six-fields");
     three(&s);
     let document = s.document(&[]);
@@ -198,9 +220,12 @@ fn a_node_carries_its_seven_fields_in_order() {
             "applies",
             "area",
             "claim_id",
+            "evidence",
             "modality",
+            "source",
             "statement",
-            "superseded_by"
+            "superseded_by",
+            "tests"
         ]
     );
     assert_eq!(
@@ -281,6 +306,9 @@ fn nodes_sit_between_selection_and_edges_and_a_node_keeps_its_field_order_in_the
         "applies",
         "superseded_by",
         "area",
+        "source",
+        "evidence",
+        "tests",
     ] {
         let next = at(cursor, key);
         assert!(next < edges, "`{key}` is a node field, before `edges`");
@@ -512,5 +540,97 @@ fn trace_help_names_areas() {
     assert!(
         text.contains(".req/areas"),
         "and where it comes from:\n{text}"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// `source`, `evidence`, `tests`: what the coverage matrix needs (ADR 0053 decision 4, unit O-5)
+// ---------------------------------------------------------------------------------------------------------------
+
+#[test]
+fn a_node_carries_the_claims_source_verbatim_its_evidence_and_its_tests_in_file_order() {
+    let s = Scratch::new("coverage-fields");
+    s.claim_covered(
+        "REQ-0001",
+        "\"docs/requirements.md#4.2 (the pump)\"",
+        Some("machine"),
+        &["suite::zeta", "suite::alpha"],
+    );
+    s.claim_covered("REQ-0002", "docs/requirements.md", Some("process"), &[]);
+    let document = s.document(&[]);
+    let first = node(&document, "REQ-0001");
+    assert_eq!(first["source"], "docs/requirements.md#4.2 (the pump)");
+    assert_eq!(first["evidence"], "machine");
+    assert_eq!(
+        first["tests"],
+        serde_json::json!(["suite::zeta", "suite::alpha"]),
+        "the ids are the claim's, in the file's order (not sorted)"
+    );
+    let second = node(&document, "REQ-0002");
+    assert_eq!(second["source"], "docs/requirements.md");
+    assert_eq!(second["evidence"], "process");
+    assert_eq!(second["tests"], serde_json::json!([]), "no tests is `[]`");
+}
+
+#[test]
+fn a_claim_that_declares_no_evidence_and_no_tests_says_machine_and_an_empty_list() {
+    // `evidence:` defaults to machine (ADR 0019); the loader cannot tell an absent key from a declared default, so
+    // the node says the value the gate applies and never `null`.
+    let s = Scratch::new("coverage-defaults");
+    s.claim_covered("REQ-0001", "docs/requirements.md", None, &[]);
+    let document = s.document(&[]);
+    let only = node(&document, "REQ-0001");
+    assert_eq!(only["evidence"], "machine");
+    assert_eq!(only["tests"], serde_json::json!([]));
+}
+
+#[test]
+fn a_claim_with_an_empty_source_says_null() {
+    let s = Scratch::new("coverage-no-source");
+    s.claim_covered("REQ-0001", "\"\"", None, &[]);
+    let document = s.document(&[]);
+    let only = node(&document, "REQ-0001");
+    assert!(
+        only.as_object().is_some_and(|o| o.contains_key("source")),
+        "the key is there, never absent: {only}"
+    );
+    assert_eq!(only["source"], serde_json::Value::Null);
+}
+
+#[test]
+fn text_trace_is_unchanged_by_the_coverage_fields() {
+    let s = Scratch::new("coverage-text");
+    s.claim_covered(
+        "REQ-0001",
+        "docs/requirements.md",
+        Some("machine"),
+        &["suite::a"],
+    );
+    let out = s.req(&["trace"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    for word in ["suite::a", "docs/requirements.md", "machine", "evidence"] {
+        assert!(
+            !out.stdout.contains(word),
+            "text `trace` names no coverage field ({word}):\n{}",
+            out.stdout
+        );
+    }
+}
+
+#[test]
+fn trace_help_names_source_evidence_and_tests() {
+    let out = Command::new(req_bin())
+        .args(["trace", "--help"])
+        .output()
+        .expect("runs req trace --help");
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    for field in ["`source`", "`evidence`", "`tests`"] {
+        assert!(text.contains(field), "the help names {field}:\n{text}");
+    }
+    // `evidence` is the loaded value: a claim that declares none is `machine`, and the help says so plainly.
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        flat.contains("the loaded value, `machine` when the file declares none"),
+        "the help says what `evidence` is when a file declares none:\n{text}"
     );
 }

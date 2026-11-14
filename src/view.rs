@@ -377,6 +377,11 @@ struct NodeDocument<'a> {
     applies: &'static str,
     superseded_by: &'a [String],
     area: Option<&'a str>,
+    /// What the coverage matrix reads (ADR 0053 decision 4): the claim's `rationale.source` (`null` when empty), its
+    /// evidence declaration (an absent one is the default, `machine`) and its `tests:` ids in file order.
+    source: Option<&'a str>,
+    evidence: &'static str,
+    tests: &'a [String],
 }
 
 /// One line of `.req/areas` as `trace`'s document names it (ADR 0051 decision 2, unit A-2): the area's path and the
@@ -463,6 +468,9 @@ pub fn trace_document(
             applies: row.applies.as_str(),
             superseded_by: &row.superseded_by,
             area: row.area.as_deref(),
+            source: Some(row.rationale_source.as_str()).filter(|source| !source.is_empty()),
+            evidence: row.evidence.as_str(),
+            tests: &row.tests,
         })
         .collect();
 

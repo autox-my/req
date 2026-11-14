@@ -7,11 +7,12 @@ overview, `docs/architecture/req-overview.archify.json` (at most 12 components, 
 `req satisfy --format json` and from `req trace --format json` of THIS repository, by `tools/graph/arch_overlay.py`:
 
     docs/architecture/overview-overlay.json   the overview with each component's status line (archify's input)
-    docs/architecture/overview-matrix.md      the claims x components matrix of the overview
+    docs/architecture/overview-matrix.md      the coverage matrix of the overview (ADR 0053)
     docs/architecture/overlay.json            the detail with each component's status line (archify's input)
-    docs/architecture/matrix.md               the claims x components matrix of the detail
+    docs/architecture/matrix.md               the coverage matrix of the detail (ADR 0053)
 
-All four are byte-for-byte what the converter writes and are never hand-edited. `docs/architecture.html` (the overview)
+The matrices are four columns (Source | Claim | Satisfied by | Verified by) and carry no test outcome: this script never
+passes the converter a `--test-report`, so each is a function of the repository (ADR 0053 decision 5). All four are byte-for-byte what the converter writes and are never hand-edited. `docs/architecture.html` (the overview)
 and `docs/architecture-detail.html` are archify's renderings of the two overlays (pinned at 7e45f36); they need Node and
 a browser, so this script never runs archify, and the gate cannot check the pages themselves (the named gap in ADR
 0052's note).
@@ -39,12 +40,18 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 CONVERTER = os.path.join(ROOT, "tools", "graph", "arch_overlay.py")
 SATISFY_SCHEMA = "req.satisfy/1"
 TRACE_SCHEMA = "req.trace/1"
-# (the architect's diagram, the overlay and the matrix made from it), the overview first.
+# Where the pages are published (the URL README.md links). A matrix is read on github.com, where a relative link to an
+# `.html` file opens its source, so each part links to the published page by this absolute URL (ADR 0053 decision 6).
+PAGES_URL = "https://autox-my.github.io/req"
+# (the architect's diagram, the overlay and the matrix made from it, the published page the overlay is rendered to), the
+# overview first.
 VIEWS = (
-    ("req-overview.archify.json", "overview-overlay.json", "overview-matrix.md"),
-    ("req.archify.json", "overlay.json", "matrix.md"),
+    ("req-overview.archify.json", "overview-overlay.json", "overview-matrix.md", f"{PAGES_URL}/architecture.html"),
+    ("req.archify.json", "overlay.json", "matrix.md", f"{PAGES_URL}/architecture-detail.html"),
 )
-GENERATED = tuple(name for _, overlay, matrix in VIEWS for name in (overlay, matrix))
+# Where the committed matrices are read from, so the converter writes their claim links relative to it.
+MATRIX_DIR = "docs/architecture"
+GENERATED = tuple(name for _, overlay, matrix, _ in VIEWS for name in (overlay, matrix))
 
 
 class Unverifiable(Exception):
@@ -99,12 +106,12 @@ def generate(binary, directory, into):
                                    (trace, TRACE_SCHEMA, ("trace", "--format", "json"))):
             with open(path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(req_json(binary, schema, *args))
-        for name, overlay, matrix in VIEWS:
+        for name, overlay, matrix, page in VIEWS:
             diagram = os.path.join(directory, name)
             if not os.path.isfile(diagram):
                 raise Unverifiable(f"{diagram} cannot be read: the architect's diagram is not here")
             one = os.path.join(work, "one-" + overlay)
-            done = subprocess.run([sys.executable, "-I", CONVERTER, "--root", ROOT, diagram, satisfy, trace, one],
+            done = subprocess.run([sys.executable, "-I", CONVERTER, "--root", ROOT, "--matrix-dir", MATRIX_DIR, "--page", page, diagram, satisfy, trace, one],
                                   capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, timeout=300)
             said = done.stderr.strip() or done.stdout.strip()
             if done.returncode not in (0, 3):
@@ -139,7 +146,7 @@ def main(argv):
         print("UNVERIFIABLE: `req` is not on PATH (and no --req was given); the overlay is computed from its "
               "real output and cannot be built or checked without it", file=sys.stderr)
         return 3
-    missing = [os.path.join(directory, name) for name, _, _ in VIEWS if not os.path.isfile(os.path.join(directory, name))]
+    missing = [os.path.join(directory, name) for name, _, _, _ in VIEWS if not os.path.isfile(os.path.join(directory, name))]
     if missing:
         for path in missing:
             print(f"{path} cannot be read: the architect's diagram is not here", file=sys.stderr)
