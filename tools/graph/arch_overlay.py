@@ -361,12 +361,17 @@ def url_path(path, extra="/"):
 
 def page_target(page):
     """The page a component links to, for the link's URL part: an absolute `https://` URL as given (only what would end the
-    link is encoded), a relative path percent-encoded. A scheme other than https, an empty host or a fragment of its own is
-    `Refusal`: the converter appends `#focus=<id>` itself."""
+    link is encoded), a relative path percent-encoded. A scheme other than https, an empty host, an empty page or a fragment of its
+    own (absolute or relative) is `Refusal`: the converter appends `#focus=<id>` itself."""
+    if not page:
+        refuse("--page '' names no page: a component would link to the matrix itself")
+    if "#" in page:
+        refuse(f"--page {page!r} carries a fragment of its own: the converter appends `#focus=<component id>`")
     if page.lower().startswith("https://"):
-        if "#" in page:
-            refuse(f"--page {page!r} carries a fragment of its own: the converter appends `#focus=<component id>`")
-        if not page[len("https://"):].split("/", 1)[0]:
+        authority = page[len("https://"):]
+        for end in "/?":
+            authority = authority.split(end, 1)[0]
+        if not authority:
             refuse(f"--page {page!r} names no host")
         unsafe = " ()<>\"'\\`"
         out = []
@@ -445,8 +450,8 @@ def verified_by(node, report):
 
 
 def coverage_matrix(nodes, states, links_by_element, blob, matrix_dir, report, page):
-    page = page_target(page) if page is not None else None
     """ADR 0053's matrix, as Markdown: one row per applying claim by id, four columns, a named gap in every empty cell."""
+    page = page_target(page) if page is not None else None
     claims_dir = posixpath.relpath("claims", matrix_dir)
     table = ["| " + " | ".join(HEADER) + " |", "| " + " | ".join(["---"] * len(HEADER)) + " |"]
     for node in nodes:

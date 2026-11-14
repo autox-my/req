@@ -1530,7 +1530,11 @@ fn a_page_that_is_not_https_or_has_a_fragment_is_refused_naming_the_option() {
         "file:///etc/passwd",
         "https://autox-my.github.io/req/architecture.html#focus=x",
         "https://",
+        "https://?q=1",
+        "https://#x",
         "//autox-my.github.io/req/architecture.html",
+        "../architecture.html#section",
+        "",
     ] {
         let s = Scratch::new("page-refused");
         repo(&s);
