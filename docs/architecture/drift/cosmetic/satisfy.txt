@@ -1,0 +1,47 @@
+# req satisfy: 30 link(s) declared
+# req satisfy: 14 mention(s) of `req-satisfies:` with no claim id (not links)
+[HOLDS] src/baseline.rs -> REQ-0028
+[HOLDS] src/baseline.rs -> REQ-0029
+[HOLDS] src/baseline.rs -> REQ-0030
+[HOLDS] src/bench.rs -> REQ-0008
+[HOLDS] src/bench.rs -> REQ-0009
+[HOLDS] src/bench.rs -> REQ-0010
+[HOLDS] src/bench.rs -> REQ-0035
+[HOLDS] src/canon.rs -> REQ-0001
+[HOLDS] src/canon.rs -> REQ-0017
+[HOLDS] src/canon.rs -> REQ-0018
+[HOLDS] src/canon.rs -> REQ-0019
+[HOLDS] src/canon.rs -> REQ-0032
+[HOLDS] src/canon.rs -> REQ-0033
+[HOLDS] src/check.rs -> REQ-0037
+[HOLDS] src/decision.rs -> REQ-0002
+[HOLDS] src/decision.rs -> REQ-0031
+[HOLDS] src/diff.rs -> REQ-0034
+[HOLDS] src/gate.rs -> REQ-0024
+[HOLDS] src/gate.rs -> REQ-0025
+[HOLDS] src/gate.rs -> REQ-0026
+[HOLDS] src/gate.rs -> REQ-0027
+[HOLDS] src/junit.rs -> REQ-0026
+[HOLDS] src/main.rs -> REQ-0040
+[HOLDS] src/model.rs -> REQ-0032
+[HOLDS] src/pin.rs -> REQ-0038
+[HOLDS] src/propose.rs -> REQ-0004
+[HOLDS] src/select.rs -> REQ-0003
+[HOLDS] src/select.rs -> REQ-0016
+[HOLDS] src/view.rs -> REQ-0020
+[HOLDS] src/view.rs -> REQ-0036
+[MENTION] src/audit.rs:325: req-satisfies: with no claim id — not a link
+[MENTION] src/completeness.rs:21: req-satisfies: with no claim id — not a link
+[MENTION] src/completeness.rs:245: req-satisfies: with no claim id — not a link
+[MENTION] src/main.rs:471: req-satisfies: with no claim id — not a link
+[MENTION] src/main.rs:573: req-satisfies: with no claim id — not a link
+[MENTION] src/main.rs:606: req-satisfies: with no claim id — not a link
+[MENTION] src/main.rs:607: req-satisfies: with no claim id — not a link
+[MENTION] src/satisfy.rs:4: req-satisfies: with no claim id — not a link
+[MENTION] src/satisfy.rs:19: req-satisfies: with no claim id — not a link
+[MENTION] src/satisfy.rs:47: req-satisfies: with no claim id — not a link
+[MENTION] src/satisfy.rs:250: req-satisfies: with no claim id — not a link
+[MENTION] src/satisfy.rs:260: req-satisfies: with no claim id — not a link
+[MENTION] src/satisfy.rs:280: req-satisfies: with no claim id — not a link
+[MENTION] src/satisfy.rs:559: req-satisfies: with no claim id — not a link
+verdict: PASS — every declared link holds
