@@ -331,11 +331,22 @@ HOLDS box, so a visitor did not see it. The owner chose, on 2026-11-14, a frame 
 - **Measured with archify `7e45f36`, 2026-11-15.** `validate` and `finalize --quality standard` pass on the drift overlay with
   the frame (all four gates, no diagnostics). A single-component `security-group` is accepted, and so is one nested inside an
   author's `region`: the detail overlay with a frame round `canonicalizer` (inside "Meaning and change") passes all four gates.
-  Framing each of the 12 overview boxes on its own: `validate` passes for all 12. **Known limit:** on the dense detail
-  diagram, framing any one of 27 components alone, `validate` refused 14 (`baseline`, `baselines`, `bench`, `check`, `corpus`,
-  `decision`, `diffs`, `gate`, `junit`, `propose`, `satisfy`, `select`, `setup`, `views`) with `clean-flow/edge-through-node`:
-  for `check` the frame's padding leaves a connection 2 px from a neighbouring box (the `completeness` -> `baselines`
-  connection past `audit` and `baseline`). Nesting is not the cause (components in and out of regions fall on both sides). The
-  converter does not predict it; a detail page with such a box needs a placement change by its architect, never by the
-  converter, which changes presentation only. No real box is framed today.
+  Framing each of the 12 overview boxes on its own: `validate` passes for all 12. **Known limit:** at archify's default `pad`
+  (30 px) the dense detail diagram refuses 14 of its 27 boxes framed alone with `clean-flow/edge-through-node`: for `check`
+  the frame's padding leaves the `completeness` -> `baselines` connection 2 px from the `audit` and `baseline` boxes. Nesting
+  is not the cause (boxes in and out of regions fall on both sides).
+- **The `pad` probe (O-7-fix, 2026-11-15).** The schema's optional `boundary.pad` (default 30 px, `layout.boundaryPad` in the
+  renderer, plus 20 px extra at the bottom) was probed with `validate`, each of the 27 detail boxes and each of the 12 overview
+  boxes framed alone with the label `re-check: SUSPECT`. Passing, detail / overview: default 13 / 12; `pad` 0: 18 / 12; 2: 17 / 12;
+  **4: 19 / 12**; 6: 15 / 12; 8: 11 / 12. Beyond the spec: 1: 18; 3: 19; 5: 15; 7: 13; 10: 12; 15: 17; 20: 15; 40: 18 (detail only). No
+  value passes all 39, and the best are 3 and 4 (the same 19), so **every frame the converter adds carries `"pad": 4`** (the
+  author's own boundaries are untouched). `finalize --quality standard` passes all four gates at `pad` 4 on the drift overlay
+  and on the detail overlay with `canonicalizer` framed inside its region. The frame is still clearly visible on the drift
+  picture, only closer to the box. With the longer labels `UNRATIFIED` and `UNKNOWN CLAIM` at `pad` 4 the detail passes 18 of 27
+  (`importers` joins the failures), the overview 12 of 12.
+- **The boxes that still cannot be framed** (detail diagram, `pad` 4, label `re-check: SUSPECT`): `audit`, `decision`, `diffs`, `gate`,
+  `junit`, `propose`, `satisfy`, `select` (8 of 27; `importers` as well for a longer label). If one of them ever turns
+  SUSPECT, UNRATIFIED, ORPHANED, UNKNOWN CLAIM or STALE, the overlay is written and `archify validate` refuses the detail page
+  (`edge-through-node`): its architect has to adjust placement, never the converter, which changes presentation only. The
+  overview and the drift page frame every box. No real box is framed today.
 - **Not checked by the gate:** the page and the picture are not read back (the named gap of the earlier notes).

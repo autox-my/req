@@ -184,7 +184,9 @@ ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
   <STATE>", "wraps": [<its id>]}`), after the author's boundaries and in the diagram's component order; the status card says so
   in one line. `HOLDS`, `HOLDS (weakened)` and `no claim` are not framed, and a diagram whose boxes are all of those gets no
   frame and keeps the boundaries it had. One boundary per box, never one around several: a frame round boxes that are not
-  neighbours would enclose boxes that need nothing. Components, connections and geometry are still the author's.
+  neighbours would enclose boxes that need nothing. Every added frame carries `"pad": 4` (archify's default is 30 px, which makes
+  its `validate` refuse more boxes of a dense diagram, `clean-flow/edge-through-node`; ADR 0052's O-7 notes name the boxes of req's
+  detail diagram that still cannot be framed). Components, connections and geometry are still the author's.
 - Two runs over the same inputs give the same bytes. Like the trace pages, the overlay is not committed and is as current
   as the run that made it. A model never edits it: the status comes from `req satisfy` alone.
 

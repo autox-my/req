@@ -45,7 +45,7 @@ The status line is the worst state and how many claims are in it: `HOLDS · 6 cl
 (a cited path is missing), `no claim` (no link).
 
 A box that needs a human (stale, unknown_claim, orphaned, suspect, unratified) also gets one archify boundary of its own,
-`{"kind": "security-group", "label": "re-check: <STATE>", "wraps": [<its id>]}`, after the author's boundaries and in the
+`{"kind": "security-group", "label": "re-check: <STATE>", "wraps": [<its id>], "pad": 4}`, after the author's boundaries and in the
 diagram's component order, and the status card says so in one line; a diagram whose boxes all hold, or have no claim,
 gets no frame and keeps exactly the boundaries it had (O-7).
 
@@ -104,6 +104,10 @@ GITHUB = "https://github.com/"
 # `holds`, `holds_weakened` and `no_claim` are not here: nothing waits on a person.
 FRAMED = ("stale", "unknown_claim", "orphaned", "suspect", "unratified")
 FRAME_LABEL = "re-check: "
+# archify's `boundary.pad` is 30 px by default, which on the detail diagram leaves a connection 2 px from a neighbouring box
+# for 14 of 27 components (`clean-flow/edge-through-node`). Probed at 7e45f36 over 0..8 (and 10, 15, 20, 40): 4 passes the most
+# (19 of 27 detail boxes, 12 of 12 overview boxes), tied with 3; no value passes all. ADR 0052's O-7 notes name the rest.
+FRAME_PAD = 4
 FRAME_LINE = "A red frame marks a box whose links need a human: SUSPECT, UNRATIFIED, ORPHANED, UNKNOWN CLAIM or STALE."
 
 STATUS_CARD = "Components by status"
@@ -615,7 +619,7 @@ def overlay(diagram, satisfy, trace, root, report=None, matrix_dir=".", page=Non
     # One frame per box that needs a human, after the author's boundaries, in the diagram's component order; a diagram with
     # nothing to frame keeps exactly the boundaries it had (no key is added).
     frames = [
-        {"kind": "security-group", "label": FRAME_LABEL + WORD[state["status"]], "wraps": [state["component"]["id"]]}
+        {"kind": "security-group", "label": FRAME_LABEL + WORD[state["status"]], "wraps": [state["component"]["id"]], "pad": FRAME_PAD}
         for state in states
         if state["status"] in FRAMED
     ]

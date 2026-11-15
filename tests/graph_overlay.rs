@@ -2468,3 +2468,28 @@ fn framing_is_deterministic() {
     );
     assert_eq!(tree(&s.path("out-1")), tree(&s.path("out-2")));
 }
+
+/// O-7-fix: archify's default boundary padding (30 px) leaves a connection 2 px from a neighbouring box on 14 of the 27
+/// boxes of req's detail diagram, so the page cannot be made. Probed with archify `7e45f36` over `pad` 0..8: 4 px passes the
+/// most (19 of 27 detail boxes, 12 of 12 overview boxes), so every frame the converter adds carries `"pad": 4`; the
+/// author's own boundaries keep the pad they wrote (or none).
+#[test]
+fn every_added_frame_carries_the_pad_archify_was_probed_with() {
+    let s = Scratch::new("frame-pad");
+    repo(&s);
+    let mut inputs = framed_inputs(&["suspect", "unratified", "holds"]);
+    inputs.diagram["boundaries"] =
+        json!([{"kind": "region", "label": "prod", "wraps": ["box1", "box2"]}]);
+    let out = run(&s, &inputs);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let all = boundaries(&overlay(&s));
+    assert_eq!(all.len(), 3, "{all:?}");
+    assert!(
+        all[0].get("pad").is_none(),
+        "the author's region keeps no pad: {:?}",
+        all[0]
+    );
+    for frame in &all[1..] {
+        assert_eq!(frame["pad"], json!(4), "{frame}");
+    }
+}
