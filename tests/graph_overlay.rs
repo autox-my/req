@@ -2122,6 +2122,16 @@ fn a_malformed_document_is_exit_2_naming_the_input() {
         "components",
     );
     refused(
+        "boundaries-null",
+        |i, _| i.diagram["boundaries"] = json!(null),
+        "boundaries",
+    );
+    refused(
+        "boundaries-not-array",
+        |i, _| i.diagram["boundaries"] = json!("region"),
+        "boundaries",
+    );
+    refused(
         "sources-not-array",
         |i, _| i.diagram["components"][0]["sources"] = json!("src/a.rs"),
         "sources",

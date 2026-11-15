@@ -209,6 +209,8 @@ def check_diagram(document, path):
                     refuse(f"{where}: a `sources` entry has no string `path`")
     if "cards" in document and not isinstance(document["cards"], list):
         refuse(f"{path}: `cards` is not an array")
+    if "boundaries" in document and not isinstance(document["boundaries"], list):
+        refuse(f"{path}: `boundaries` is not an array (a re-check frame is added to it)")
 
 
 def check_satisfy(document, path):
