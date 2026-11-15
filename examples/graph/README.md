@@ -179,6 +179,12 @@ ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
 - **Exit:** `0` written; `3` written, but a component is `STALE`, a link names an unknown claim, or a status line or the
   author's moved text does not fit its box (archify would refuse it as `component-sublabel-overflow` or
   `component-tag-overflow`; the box is `size[0]`, else 120 px, and holds `(width - 8) / 3.6` columns) (the reason is printed); `2` refused (a wrong schema, malformed JSON, an unreadable input, a non-empty out-dir), nothing written.
+- **A box that needs a human is framed in red.** A component whose status is `SUSPECT`, `UNRATIFIED`, `ORPHANED`,
+  `UNKNOWN CLAIM` or `STALE` also gets one archify boundary of its own (`{"kind": "security-group", "label": "re-check:
+  <STATE>", "wraps": [<its id>]}`), after the author's boundaries and in the diagram's component order; the status card says so
+  in one line. `HOLDS`, `HOLDS (weakened)` and `no claim` are not framed, and a diagram whose boxes are all of those gets no
+  frame and keeps the boundaries it had. One boundary per box, never one around several: a frame round boxes that are not
+  neighbours would enclose boxes that need nothing. Components, connections and geometry are still the author's.
 - Two runs over the same inputs give the same bytes. Like the trace pages, the overlay is not committed and is as current
   as the run that made it. A model never edits it: the status comes from `req satisfy` alone.
 

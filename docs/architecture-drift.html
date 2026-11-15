@@ -5204,7 +5204,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / PLATE 04">
-      <svg viewBox="0 0 970 742" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="standard" data-node-ui="" data-reader-fit="intrinsic-height" data-reader-min-text="7.5" data-reader-primary-text="14">
+      <svg viewBox="0 0 970 762" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="standard" data-node-ui="" data-reader-fit="intrinsic-height" data-reader-min-text="7.5" data-reader-primary-text="14">
         <title id="archify-diagram-title">req drift demo</title>
         <desc id="archify-diagram-description">a demonstration on a copy of the corpus: REQ-0010 is tightened on the copy, the real claims are not changed · req overlay of diagram revision b0dbee4f670653fdf30f2929e8fe55612fda67bf · rules_v 9 · archify 7e45f36</desc>
         <!-- Definitions -->
@@ -5251,7 +5251,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Boundaries (behind everything) -->
-
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="0" data-composition-frame-label="re-check: SUSPECT" x="280" y="580" width="200" height="114" rx="8" class="c-security-group" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
         <g data-graph-role="automatic-crossover" style="--step:0">
@@ -5439,8 +5439,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="fine" x="860" y="496" class="t-backend" font-size="7" text-anchor="middle">gate, check, test report</text>
         </g>
 
-        <g id="node-evidence" data-node-id="evidence" data-node-label="Evidence" tabindex="0" role="button" aria-label="Focus Evidence, SUSPECT · 1 of 4 claims, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="SUSPECT · 1 of 4 claims" data-node-tag="the FMR = 0 benchmark" data-node-context="Architecture component">
-          <title>Evidence · SUSPECT · 1 of 4 claims · Architecture component · the FMR = 0 benchmark</title>
+        <g id="node-evidence" data-node-id="evidence" data-node-label="Evidence" tabindex="0" role="button" aria-label="Focus Evidence, SUSPECT · 1 of 4 claims, re-check: SUSPECT" aria-pressed="false" data-node-kind="backend" data-node-sublabel="SUSPECT · 1 of 4 claims" data-node-tag="the FMR = 0 benchmark" data-node-context="re-check: SUSPECT">
+          <title>Evidence · SUSPECT · 1 of 4 claims · re-check: SUSPECT · the FMR = 0 benchmark</title>
           <rect x="310" y="610" width="140" height="64" rx="8" class="c-mask"/>
           <rect x="310" y="610" width="140" height="64" rx="8" class="c-backend" data-animate="node" style="--step:4" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(316 616) scale(0.6875)">
@@ -5519,30 +5519,33 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
-
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="security-group" data-composition-frame-label="re-check: SUSPECT">
+          <rect data-graph-role="structural-frame-label-mask" x="284" y="590" width="101.8" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="288" y="603" class="t-security" font-size="9" font-weight="600">re-check: SUSPECT</text>
+        </g>
 
         <!-- Legend -->
         <g data-legend="" data-legend-bridge="">
-          <text x="40" y="706" class="t-primary" font-size="12" font-weight="650">Legend</text>
-          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="Frontend" data-legend-x="40" data-legend-baseline="726" data-legend-width="93">
-            <rect x="40" y="717" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
-            <text x="62" y="726" class="t-muted" font-size="10" font-weight="500">Frontend</text>
+          <text x="40" y="726" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="Frontend" data-legend-x="40" data-legend-baseline="746" data-legend-width="93">
+            <rect x="40" y="737" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
+            <text x="62" y="746" class="t-muted" font-size="10" font-weight="500">Frontend</text>
           </g>
-          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Backend" data-legend-x="155" data-legend-baseline="726" data-legend-width="87">
-            <rect x="155" y="717" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
-            <text x="177" y="726" class="t-muted" font-size="10" font-weight="500">Backend</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Backend" data-legend-x="155" data-legend-baseline="746" data-legend-width="87">
+            <rect x="155" y="737" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
+            <text x="177" y="746" class="t-muted" font-size="10" font-weight="500">Backend</text>
           </g>
-          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Database" data-legend-x="264" data-legend-baseline="726" data-legend-width="93">
-            <rect x="264" y="717" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
-            <text x="286" y="726" class="t-muted" font-size="10" font-weight="500">Database</text>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Database" data-legend-x="264" data-legend-baseline="746" data-legend-width="93">
+            <rect x="264" y="737" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
+            <text x="286" y="746" class="t-muted" font-size="10" font-weight="500">Database</text>
           </g>
-          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="Security" data-legend-x="379" data-legend-baseline="726" data-legend-width="93">
-            <rect x="379" y="717" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
-            <text x="401" y="726" class="t-muted" font-size="10" font-weight="500">Security</text>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="Security" data-legend-x="379" data-legend-baseline="746" data-legend-width="93">
+            <rect x="379" y="737" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
+            <text x="401" y="746" class="t-muted" font-size="10" font-weight="500">Security</text>
           </g>
-          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="External" data-legend-x="494" data-legend-baseline="726" data-legend-width="93">
-            <rect x="494" y="717" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
-            <text x="516" y="726" class="t-muted" font-size="10" font-weight="500">External</text>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="External" data-legend-x="494" data-legend-baseline="746" data-legend-width="93">
+            <rect x="494" y="737" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
+            <text x="516" y="746" class="t-muted" font-size="10" font-weight="500">External</text>
           </g>
         </g>
       </svg>
@@ -5778,6 +5781,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <li>[NO CLAIM] Authoring</li>
           <li>[NO CLAIM] Claims</li>
           <li>[NO CLAIM] Repository lists</li>
+          <li>A red frame marks a box whose links need a human: SUSPECT, UNRATIFIED, ORPHANED, UNKNOWN CLAIM or STALE.</li>
         </ul>
       </div>
 

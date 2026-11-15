@@ -536,7 +536,8 @@
         "[NO CLAIM] minisign",
         "[NO CLAIM] Authoring",
         "[NO CLAIM] Claims",
-        "[NO CLAIM] Repository lists"
+        "[NO CLAIM] Repository lists",
+        "A red frame marks a box whose links need a human: SUSPECT, UNRATIFIED, ORPHANED, UNKNOWN CLAIM or STALE."
       ]
     },
     {
@@ -571,6 +572,15 @@
         ".req/variants (cited by Repository lists)",
         ".req/design (cited by Repository lists)",
         ".req/satisfied (cited by Repository lists)"
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "re-check: SUSPECT",
+      "wraps": [
+        "evidence"
       ]
     }
   ]

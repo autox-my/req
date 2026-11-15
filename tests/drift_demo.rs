@@ -734,3 +734,41 @@ fn the_index_links_the_drift_page_in_the_architecture_item() {
         "the link is in the architecture item: {item}"
     );
 }
+
+/// O-7: the box that carries the tightened claim is framed (it needs a human); the two edits that need none draw no frame.
+#[test]
+fn only_the_tightening_overlay_frames_the_box_that_carries_the_claim() {
+    let frames = |edit: &str| -> Vec<Value> {
+        json(&drift_file(edit, "overlay.json"))
+            .get("boundaries")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
+    let overlay = json(&drift_file("tightening", "overlay.json"));
+    let id = overlay["components"]
+        .as_array()
+        .expect("components")
+        .iter()
+        .find(|component| component["label"] == BOX)
+        .unwrap_or_else(|| panic!("a {BOX} box"))["id"]
+        .clone();
+    let tightening = frames("tightening");
+    assert_eq!(tightening.len(), 1, "one frame: {tightening:?}");
+    assert_eq!(tightening[0]["kind"], "security-group");
+    assert_eq!(tightening[0]["wraps"], serde_json::json!([id]));
+    assert!(
+        tightening[0]["label"]
+            .as_str()
+            .expect("a label")
+            .contains("SUSPECT"),
+        "{tightening:?}"
+    );
+    for edit in ["cosmetic", "loosening"] {
+        assert!(
+            frames(edit).is_empty(),
+            "{edit} needs no human: {:?}",
+            frames(edit)
+        );
+    }
+}

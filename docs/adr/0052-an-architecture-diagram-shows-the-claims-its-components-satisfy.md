@@ -310,3 +310,32 @@ Not an edit of the decisions above; decision 7 step 4 (`docs/specs/O-6-drift-dem
   directory are stale and named; each matrix's header line and links as above; no `req` is UNVERIFIABLE; the page carries the tightening overlay's
   subtitle and every node's id, label and status; the README quotes req's words and the generated status for each edit.
   The named gap of this note's step 3 is unchanged: the page's picture is not read back.
+
+## Implementation note — 2026-11-15 (O-7: a box that needs a human is framed in red)
+
+Not an edit of the decisions above; decision 3 (presentation only) and the O-6 note's "archify draws no colour per status"
+(`docs/specs/O-7-recheck-frame.md`). On the drift page the SUSPECT box read `SUSPECT · 1 of 4 claims` in the colour of every
+HOLDS box, so a visitor did not see it. The owner chose, on 2026-11-14, a frame over status colours through an archify fork.
+
+- **The frame.** For every component whose status is `suspect`, `unratified`, `orphaned`, `unknown_claim` or `stale`, the
+  overlay gains one archify boundary `{"kind": "security-group", "label": "re-check: <STATE>", "wraps": [<its id>]}`, appended
+  after the author's boundaries in the diagram's component order. `holds`, `holds_weakened` and `no claim` are not framed:
+  nothing waits on a person. **One boundary per box**, never one round several: a frame round boxes that are not neighbours
+  would enclose boxes that need nothing. Components, connections, their order and geometry are untouched, so this is still
+  presentation only. archify draws a `security-group` red and dashed, with the label on its edge.
+- **The status card** gains one line saying a red frame marks a box whose links need a human, only when a frame is drawn.
+- **The real pages do not change.** Every box of `docs/architecture.html` and `docs/architecture-detail.html` holds or has no
+  claim, so their overlays gain no boundary and no card line (`tests/architecture_page.rs` states it). Only the tightening
+  overlay of the drift demonstration gains a frame (cosmetic and loosening gain none), so `docs/architecture-drift.html` and
+  `req-drift.png` were rendered again.
+- **Measured with archify `7e45f36`, 2026-11-15.** `validate` and `finalize --quality standard` pass on the drift overlay with
+  the frame (all four gates, no diagnostics). A single-component `security-group` is accepted, and so is one nested inside an
+  author's `region`: the detail overlay with a frame round `canonicalizer` (inside "Meaning and change") passes all four gates.
+  Framing each of the 12 overview boxes on its own: `validate` passes for all 12. **Known limit:** on the dense detail
+  diagram, framing any one of 27 components alone, `validate` refused 14 (`baseline`, `baselines`, `bench`, `check`, `corpus`,
+  `decision`, `diffs`, `gate`, `junit`, `propose`, `satisfy`, `select`, `setup`, `views`) with `clean-flow/edge-through-node`:
+  for `check` the frame's padding leaves a connection 2 px from a neighbouring box (the `completeness` -> `baselines`
+  connection past `audit` and `baseline`). Nesting is not the cause (components in and out of regions fall on both sides). The
+  converter does not predict it; a detail page with such a box needs a placement change by its architect, never by the
+  converter, which changes presentation only. No real box is framed today.
+- **Not checked by the gate:** the page and the picture are not read back (the named gap of the earlier notes).

@@ -663,15 +663,18 @@ fn geometry_ids_connections_and_labels_are_unchanged_and_existing_text_is_kept()
     let out = run(&s, &inputs);
     assert_eq!(out.code, 0, "{}", out.all());
     let overlay = overlay(&s);
-    for key in [
-        "schema_version",
-        "diagram_type",
-        "connections",
-        "boundaries",
-        "layout",
-    ] {
+    for key in ["schema_version", "diagram_type", "connections", "layout"] {
         assert_eq!(overlay[key], input[key], "`{key}` is the author's");
     }
+    // O-7: the author's boundaries come first and unchanged; the unratified `store` box is framed after them.
+    assert_eq!(
+        overlay["boundaries"][0], input["boundaries"][0],
+        "the author's boundary is first and unchanged"
+    );
+    assert_eq!(
+        overlay["boundaries"].as_array().expect("boundaries").len(),
+        2
+    );
     let before = input["components"].as_array().expect("components");
     let after = overlay["components"].as_array().expect("components");
     assert_eq!(before.len(), after.len());
@@ -2248,4 +2251,220 @@ fn a_real_doctype_is_still_refused_with_or_without_an_entity() {
         assert!(out.stderr.contains("junit.xml"), "{label}: {}", out.stderr);
         assert!(!s.path("out").exists(), "{label}");
     }
+}
+
+// ---- O-7: a box that needs a human is framed ---------------------------------------------------
+
+/// One component per outcome, each citing its own file, so each box carries exactly one state.
+fn framed_inputs(outcomes: &[&str]) -> Inputs {
+    let files = ["src/a.rs", "src/b.rs", "src/c.rs"];
+    assert!(outcomes.len() <= files.len());
+    let components = outcomes
+        .iter()
+        .enumerate()
+        .map(|(index, _)| {
+            component(
+                &format!("box{index}"),
+                &format!("Box {index}"),
+                &[files[index]],
+                i64::try_from(index).expect("small"),
+            )
+        })
+        .collect();
+    let links = outcomes
+        .iter()
+        .enumerate()
+        .map(|(index, outcome)| link(files[index], "REQ-0001", outcome))
+        .collect();
+    Inputs {
+        diagram: diagram(components),
+        satisfy: satisfy(links),
+        trace: trace(&claims()),
+    }
+}
+
+fn boundaries(overlay: &Value) -> Vec<Value> {
+    overlay
+        .get("boundaries")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_suspect_box_gets_exactly_one_security_group_wrapping_only_it_and_naming_its_state() {
+    let s = Scratch::new("frame-suspect");
+    repo(&s);
+    let out = run(&s, &framed_inputs(&["suspect", "holds"]));
+    assert_eq!(out.code, 0, "{}", out.all());
+    let overlay = overlay(&s);
+    let frames = boundaries(&overlay);
+    assert_eq!(frames.len(), 1, "one frame: {frames:?}");
+    assert_eq!(frames[0]["kind"], "security-group");
+    assert_eq!(frames[0]["wraps"], json!(["box0"]));
+    let label = frames[0]["label"].as_str().expect("a label");
+    assert!(
+        label.contains("SUSPECT") && label.contains("re-check"),
+        "{label}"
+    );
+}
+
+#[test]
+fn each_state_that_needs_a_human_is_framed_with_its_own_word() {
+    for (outcome, word, code) in [
+        ("suspect", "SUSPECT", 0),
+        ("unratified", "UNRATIFIED", 0),
+        ("orphaned", "ORPHANED", 0),
+        ("unknown_claim", "UNKNOWN CLAIM", 3),
+    ] {
+        let s = Scratch::new("frame-each");
+        repo(&s);
+        let out = run(&s, &framed_inputs(&[outcome]));
+        assert_eq!(out.code, code, "{outcome}: {}", out.all());
+        let frames = boundaries(&overlay(&s));
+        assert_eq!(frames.len(), 1, "{outcome}: {frames:?}");
+        assert_eq!(frames[0]["kind"], "security-group", "{outcome}");
+        assert_eq!(frames[0]["wraps"], json!(["box0"]), "{outcome}");
+        assert!(
+            frames[0]["label"].as_str().expect("a label").contains(word),
+            "{outcome}: {frames:?}"
+        );
+    }
+}
+
+#[test]
+fn a_stale_box_is_framed() {
+    let s = Scratch::new("frame-stale");
+    repo(&s);
+    let inputs = Inputs {
+        diagram: diagram(vec![component("gone", "Gone", &["src/removed.rs"], 0)]),
+        satisfy: satisfy(vec![]),
+        trace: trace(&claims()),
+    };
+    let out = run(&s, &inputs);
+    assert_eq!(out.code, 3, "{}", out.all());
+    let frames = boundaries(&overlay(&s));
+    assert_eq!(frames.len(), 1, "{frames:?}");
+    assert_eq!(frames[0]["wraps"], json!(["gone"]));
+    assert!(
+        frames[0]["label"]
+            .as_str()
+            .expect("a label")
+            .contains("STALE")
+    );
+}
+
+#[test]
+fn a_box_that_holds_holds_weakened_or_has_no_claim_is_not_framed() {
+    let s = Scratch::new("frame-none");
+    repo(&s);
+    let mut inputs = framed_inputs(&["holds", "holds_weakened"]);
+    // A third box with no sources: no claim.
+    inputs.diagram["components"]
+        .as_array_mut()
+        .expect("components")
+        .push(component("sketch", "Sketch", &[], 2));
+    let out = run(&s, &inputs);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let overlay = overlay(&s);
+    assert_eq!(status_of(&overlay, "sketch"), "no claim");
+    assert!(
+        boundaries(&overlay).is_empty(),
+        "{:?}",
+        overlay.get("boundaries")
+    );
+    assert!(
+        overlay.get("boundaries").is_none(),
+        "a diagram with nothing to frame gets no `boundaries` key it did not have"
+    );
+    let all = card(&overlay, STATUS_CARD).join("\n");
+    assert!(
+        !all.contains("red frame"),
+        "no frame, no line about one: {all}"
+    );
+}
+
+#[test]
+fn two_suspect_boxes_get_two_frames_one_each() {
+    let s = Scratch::new("frame-two");
+    repo(&s);
+    let out = run(&s, &framed_inputs(&["suspect", "holds", "suspect"]));
+    assert_eq!(out.code, 0, "{}", out.all());
+    let frames = boundaries(&overlay(&s));
+    assert_eq!(frames.len(), 2, "{frames:?}");
+    assert_eq!(frames[0]["wraps"], json!(["box0"]));
+    assert_eq!(frames[1]["wraps"], json!(["box2"]));
+}
+
+#[test]
+fn frames_follow_the_authors_boundaries_in_component_order_and_change_nothing_else() {
+    let s = Scratch::new("frame-order");
+    repo(&s);
+    let mut inputs = framed_inputs(&["unratified", "holds", "suspect"]);
+    inputs.diagram["boundaries"] =
+        json!([{"kind": "region", "label": "prod", "wraps": ["box0", "box1"], "pad": 20}]);
+    inputs.diagram["connections"] = json!([{"from": "box0", "to": "box1", "label": "writes"}]);
+    let input = inputs.diagram.clone();
+    let out = run(&s, &inputs);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let overlay = overlay(&s);
+    let frames = boundaries(&overlay);
+    assert_eq!(frames.len(), 3, "{frames:?}");
+    assert_eq!(
+        frames[0], input["boundaries"][0],
+        "the author's, first, unchanged"
+    );
+    assert_eq!(frames[1]["wraps"], json!(["box0"]), "component order");
+    assert_eq!(frames[2]["wraps"], json!(["box2"]));
+    assert_eq!(overlay["connections"], input["connections"]);
+    let ids = |value: &Value| {
+        value["components"]
+            .as_array()
+            .expect("components")
+            .iter()
+            .map(|c| (c["id"].clone(), c["pos"].clone(), c["size"].clone()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        ids(&overlay),
+        ids(&input),
+        "ids, order and geometry are the author's"
+    );
+}
+
+#[test]
+fn the_status_card_says_a_red_frame_marks_a_box_that_needs_a_human_only_when_one_is_drawn() {
+    let s = Scratch::new("frame-card");
+    repo(&s);
+    let out = run(&s, &framed_inputs(&["suspect"]));
+    assert_eq!(out.code, 0, "{}", out.all());
+    let overlay = overlay(&s);
+    let items = card(&overlay, STATUS_CARD);
+    let said: Vec<_> = items
+        .iter()
+        .filter(|item| item.contains("red frame"))
+        .collect();
+    assert_eq!(said.len(), 1, "exactly one line about the frame: {items:?}");
+    assert!(
+        said[0].contains("needs a human") || said[0].contains("human"),
+        "{}",
+        said[0]
+    );
+}
+
+#[test]
+fn framing_is_deterministic() {
+    let s = Scratch::new("frame-determinism");
+    repo(&s);
+    let paths = framed_inputs(&["suspect", "unratified", "holds"]).write(&s);
+    let first = convert(Some(&s.repo()), &paths, &s.path("out-1"), &s.0);
+    let second = convert(Some(&s.repo()), &paths, &s.path("out-2"), &s.0);
+    assert_eq!(
+        (first.code, second.code),
+        (0, 0),
+        "{}{}",
+        first.all(),
+        second.all()
+    );
+    assert_eq!(tree(&s.path("out-1")), tree(&s.path("out-2")));
 }
