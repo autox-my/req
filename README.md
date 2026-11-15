@@ -33,7 +33,7 @@ part reaches. [Every part, with every arrow](https://autox-my.github.io/req/arch
 
 ### What drift looks like
 
-[![the same diagram after REQ-0010 is tightened on a copy: the Evidence box reads SUSPECT, every other box still holds](docs/architecture/drift/req-drift.png)](https://autox-my.github.io/req/architecture-drift.html)
+[![the same diagram after REQ-0010 is tightened on a copy: the Evidence box reads SUSPECT and is framed in red, every other box still holds](docs/architecture/drift/req-drift.png)](https://autox-my.github.io/req/architecture-drift.html)
 
 A presence check, or a tool that raises an alarm on any edit, cannot tell a re-wording from a change of meaning. req judges a link by the
 *direction* of the claim's change since a human recorded it. [The drift page](https://autox-my.github.io/req/architecture-drift.html) is the
