@@ -3,7 +3,8 @@
 **Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-09, GitHub PR #28); asked for by the owner on
 2026-11-09 (no issue). Date proposed: 2026-11-09. **Amends [ADR 0025](0025-prebuilt-binary-per-pinned-rev.md) §5** (what
 the publishing step writes into a release); nothing else in 0025 changes: the assets, their names, the no-overwrite rule and the
-split of permissions between the two jobs are exactly as before.
+split of permissions between the two jobs are exactly as before. Amended by ADR 0055 (proposed): the previous release is
+the nearest `v*` or `rev-*` tag, and the notes open with the version, the rev and the bump class.
 
 ## Context
 

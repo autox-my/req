@@ -22,7 +22,8 @@ its `req <cmd> --help` page, the adopter's loop is `docs/adopting.md`; this file
 - **Version pins are provenance, not stragglers** (not to be confused with a claim's `pins:`): `rust-toolchain.toml`, `Cargo.lock`, `tools/ocr/package-lock.json`.
   Verify a version at *pin time*; never bump opportunistically. The first two are fingerprint-path pins: any
   bump is a Tier-1 rules bump (bump `RULES_V`, regenerate goldens deliberately, record re-canonicalization
-  candidates, hashing spec §5). The OCR pin is review-process provenance: bump deliberately, verify
+  candidates, hashing spec §5). One exception: req's own package entry in `Cargo.lock`, which a version bump
+  changes and no address, digest or signed manifest reads, is not a rules bump (ADR 0055). The OCR pin is review-process provenance: bump deliberately, verify
   `ocr --version`, state it in the commit — no `RULES_V` bump.
 - **Never change the git identity** or pass `-c user.name=`/`user.email=`: commits are the human's, provenance feeds ADR 0005.
 - **External material is read at named provenance, or as a lead.** A number with a source, a sample size and
