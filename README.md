@@ -1,6 +1,83 @@
 # req
 
-A git-native requirements engine that tells you when a requirement's meaning changed, and in which direction.
+When a requirement's meaning changes, req tells you which parts of your design need a second look, and only those.
+
+**[Live demo](https://fadasr.github.io/req-demo/)** (135 requirements from a public Sphinx-Needs project, put through req) · **[What drift looks like](https://autox-my.github.io/req/drift.html)** (one of req's own requirements, edited three ways)
+
+| Before | After one edit |
+| --- | --- |
+| [![req's architecture diagram before any edit: twelve parts; every part with a linked requirement holds](docs/architecture/drift/req-before.png)](https://autox-my.github.io/req/drift.html) | [![the same diagram after one requirement is tightened: the Evidence box reads SUSPECT and is framed in red, every other part is unchanged](docs/architecture/drift/req-tightening.png)](https://autox-my.github.io/req/drift.html) |
+
+One requirement (REQ-0010) is tightened on a copy of req's own corpus; the part that implements it is framed in red for re-check; nothing else changes.
+
+## Three edits, three verdicts
+
+The same requirement, REQ-0010 (the false-split bound, linked from `src/bench.rs`, drawn in the Evidence box), edited three ways, each on a throw-away copy of the corpus and never on req's own claims. The words are the ones `req satisfy` printed, from [`edits.json`](docs/architecture/drift/edits.json) and each edit's committed output:
+
+| edit, on a copy | `req satisfy` says | what that means | the Evidence box | exact output |
+| --- | --- | --- | --- | --- |
+| **re-word**: `at most 0.30` becomes `no more than 0.30` | `HOLDS` | same meaning fingerprint (`req compare`: identical), so no alarm | HOLDS · 4 claims | [satisfy.txt](docs/architecture/drift/cosmetic/satisfy.txt) |
+| **loosen**: `at most 0.30` becomes `at most 0.40` | `HOLDS (weakened)`, `numeric_loosening` | what met the stronger requirement meets the weaker one, so the link is not re-opened | HOLDS (weakened) · 1 of 4 claims | [satisfy.txt](docs/architecture/drift/loosening/satisfy.txt) |
+| **tighten**: `at most 0.30` becomes `at most 0.20` | `SUSPECT`, `numeric_tightening` | the design may no longer meet it; a human re-checks it, then runs the `req satisfy --record` command req prints | SUSPECT · 1 of 4 claims | [satisfy.txt](docs/architecture/drift/tightening/satisfy.txt) |
+
+A tool that flags every edit would raise the alarm three times; req raises it once, because it judges the *direction* of the change ([ADR 0040](docs/adr/0040-a-design-satisfies-a-claim-at-a-meaning.md)). A re-wording keeps its meaning fingerprint and raises none; an admitted loosening is reported by name and does not re-open the link.
+
+## What SUSPECT means
+
+SUSPECT means the part was recorded against a claim whose meaning has since tightened or changed in another direction. It does not mean the part is wrong; it means a person must re-check it and re-record the link.
+
+## Try it in three commands
+
+```bash
+git clone https://github.com/autox-my/req.git && cd req
+cargo build --release   # from source: the latest published release predates `req.claim/3` and cannot read today's claims
+python3 tools/demo/try_drift.py
+```
+
+The script copies the repository's corpus to a temporary directory, applies the tightening edit from `edits.json` there, runs `req satisfy` there, prints its lines and deletes the copy. It never edits your checkout. The line to look for:
+
+```text
+[SUSPECT] src/bench.rs -> REQ-0010: numeric_tightening since it was recorded — UNVERIFIABLE until a human re-records it (`req satisfy --record src/bench.rs REQ-0010`)
+```
+
+This is a demonstration, not the adopter's loop: to use req on your own requirements, start at `docs/adopting.md`.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A["a requirement is edited"] --> B["its meaning fingerprint is derived again"]
+    B --> C["the direction of the change is classified: same, looser, tighter, or another direction (a polarity flip, a scope change)"]
+    C --> D["each recorded design link is judged by that direction"]
+    D --> E["HOLDS, or HOLDS (weakened)"]
+    D --> F["SUSPECT: framed for a human to re-check"]
+```
+
+A person links a part of the design to a requirement (a `req-satisfies: REQ-0010` line in the source file) and records, with `req satisfy --record`, the statement it was judged against; req never records a link on its own. When the requirement is edited, req derives the meaning of the recorded and the current statement under the same rules and classifies the change. The same meaning holds; a loosening that has been measured to be safe holds (weakened); every other direction is suspect until a human re-records it ([ADR 0040](docs/adr/0040-a-design-satisfies-a-claim-at-a-meaning.md)). The diagram's red frame is the same verdict drawn on the architecture ([ADR 0052](docs/adr/0052-an-architecture-diagram-shows-the-claims-its-components-satisfy.md)).
+
+## Where to look next
+
+[![req's architecture: twelve parts from authoring to a signed Baseline, each with the requirements it satisfies](docs/architecture/req-overview.png)](https://autox-my.github.io/req/architecture.html)
+
+[The architecture page](https://autox-my.github.io/req/architecture.html) draws twelve parts of req and labels each with the worst
+state of the requirements its code was recorded against (`req satisfy`, ADR 0040), and how many claims are in it. It is drawn by
+hand from the source, and the status on every part is computed, never typed. 28 of req's 40 claims are linked to a part, and
+all 28 claim–part pairs hold (29 on the detailed page, which splits the gate from its test-report reader); the [claims × parts matrix](docs/architecture/overview-matrix.md) lists them and the 12 claims no
+part reaches. [Every part, with every arrow](https://autox-my.github.io/req/architecture-detail.html), is the detailed page
+(its [matrix](docs/architecture/matrix.md)). How they are made and what the gate checks of them:
+[ADR 0052](docs/adr/0052-an-architecture-diagram-shows-the-claims-its-components-satisfy.md).
+[The coverage explorer](https://autox-my.github.io/req/explorer.html) follows one claim across its source, the design that satisfies it and
+the tests that verify it, and filters to the claims with a gap; `tools/explorer/build.py` generates it and the gate checks it
+([ADR 0054](docs/adr/0054-an-explorer-page-navigates-the-coverage-graph.md)).
+
+[The drift overview](https://autox-my.github.io/req/architecture-drift.html) is that architecture diagram after the tightening edit above: **made on a throw-away
+copy of the corpus**, never on req's own claims, by `python3 tools/graph/build_architecture.py --drift docs/architecture/drift` from
+[`edits.json`](docs/architecture/drift/edits.json), and checked by the gate. Each directory under [`docs/architecture/drift/`](docs/architecture/drift/) holds
+that edit's `overlay.json`, `matrix.md` and `satisfy.txt`; the real state, every link holding, is [the architecture page](https://autox-my.github.io/req/architecture.html).
+
+## What a claim is
+
+req is a git-native requirements engine that tells you when a requirement's meaning changed, and in which direction.
 
 **Requirements are decisions, not documents.** In req the unit of work is a *claim*: one
 claim per file in git, written in a small, reviewable format. A claim's identity is its
@@ -18,41 +95,6 @@ them, and a human ratifies.
 The spec, the traceability matrix, and the audit packet are compiled views over a signed
 baseline. Nobody edits them by hand; they are regenerated, and their freshness is verified
 against what was signed.
-
-## Requirements on the architecture
-
-[![req's architecture: twelve parts from authoring to a signed Baseline, each with the requirements it satisfies](docs/architecture/req-overview.png)](https://autox-my.github.io/req/architecture.html)
-
-[The architecture page](https://autox-my.github.io/req/architecture.html) draws twelve parts of req and labels each with the worst
-state of the requirements its code was recorded against (`req satisfy`, ADR 0040), and how many claims are in it. It is drawn by
-hand from the source, and the status on every part is computed, never typed. 28 of req's 40 claims are linked to a part, and
-all 28 claim–part pairs hold (29 on the detailed page, which splits the gate from its test-report reader); the [claims × parts matrix](docs/architecture/overview-matrix.md) lists them and the 12 claims no
-part reaches. [Every part, with every arrow](https://autox-my.github.io/req/architecture-detail.html), is the detailed page
-(its [matrix](docs/architecture/matrix.md)). How they are made and what the gate checks of them:
-[ADR 0052](docs/adr/0052-an-architecture-diagram-shows-the-claims-its-components-satisfy.md).
-[The coverage explorer](https://autox-my.github.io/req/explorer.html) follows one claim across its source, the design that satisfies it and
-the tests that verify it, and filters to the claims with a gap; `tools/explorer/build.py` generates it and the gate checks it
-([ADR 0054](docs/adr/0054-an-explorer-page-navigates-the-coverage-graph.md)).
-
-### What drift looks like
-
-[![the same diagram after REQ-0010 is tightened on a copy: the Evidence box reads SUSPECT and is framed in red, every other box still holds](docs/architecture/drift/req-drift.png)](https://autox-my.github.io/req/architecture-drift.html)
-
-A presence check, or a tool that raises an alarm on any edit, cannot tell a re-wording from a change of meaning. req judges a link by the
-*direction* of the claim's change since a human recorded it. [The drift page](https://autox-my.github.io/req/architecture-drift.html) is the
-overview after one edit to REQ-0010 (the false-split bound, linked from `src/bench.rs`, drawn in the Evidence box): **made on a throw-away
-copy of the corpus**, never on req's own claims, by `python3 tools/graph/build_architecture.py --drift docs/architecture/drift` from
-[`edits.json`](docs/architecture/drift/edits.json), and checked by the gate. Three edits, side by side, with req's words for each:
-
-| edit, on a copy | `req satisfy` says | the Evidence box | exact output |
-| --- | --- | --- | --- |
-| **cosmetic**: `at most 0.30` re-worded `no more than 0.30` | `HOLDS`: same meaning fingerprint (`req compare`: identical), so no false alarm | `HOLDS · 4 claims` | [satisfy.txt](docs/architecture/drift/cosmetic/satisfy.txt) |
-| **loosening**: `at most 0.30` becomes `at most 0.40` | `HOLDS (weakened)`, `numeric_loosening`: what met the stronger requirement meets the weaker one | `HOLDS (weakened) · 1 of 4 claims` | [satisfy.txt](docs/architecture/drift/loosening/satisfy.txt) |
-| **tightening**: `at most 0.30` becomes `at most 0.20` | `SUSPECT`, `numeric_tightening`, with the `req satisfy --record` command a human runs once the design is re-checked | `SUSPECT · 1 of 4 claims` | [satisfy.txt](docs/architecture/drift/tightening/satisfy.txt) |
-
-Each directory under [`docs/architecture/drift/`](docs/architecture/drift/) also holds that edit's `overlay.json` and `matrix.md`; the matrix reads
-the edited statement. The page is rendered from the tightening overlay; the real state, every link holding, is
-[the architecture page](https://autox-my.github.io/req/architecture.html).
 
 ## The bet, stated so it can fail
 
@@ -113,10 +155,12 @@ Git-native storage is table stakes, not the moat.
 
 ## Status
 
-- **Tier-1 is built and measured.** `RULES_V 8`, 39 dogfood claims — req's own requirements,
-  written in req's own format — and seven corpus families, including three of real
-  requirements prose from other projects, pinned by commit. Zero false merges on all of them.
-- **Tier-2 is measured and deliberately conservative.** Five providers evaluated against a
+- **Tier-1 is built and measured.** `RULES_V 9`, 40 dogfood claims — req's own requirements,
+  written in req's own format — and nine corpora gated on every commit: the seed parity corpus,
+  four external corpora and four direction gold sets, the last eight built from real requirements
+  prose from other projects, pinned by commit (the pairs direction-v4 adds from PURE by their Zenodo record and its
+  sha-256). Zero false merges on all of them.
+- **Tier-2 is measured and deliberately conservative.** Four providers evaluated against a
   human-labelled sample; one has a usable confidence ordering at a measured floor; the honest
   default is `NoProvider` until a provider survives held-out validation on a grown,
   blind-labelled corpus. The funnel and its instruments are research, kept out of the core in
@@ -133,9 +177,9 @@ Git-native storage is table stakes, not the moat.
 
 ## Install
 
-req is not on crates.io (`publish = false`): you pin a commit, and the commit is the provenance. **Two
-prebuilt releases exist: `rev-ec87808` (Linux x86_64) and `rev-6b74f51` (Linux x86_64 and macOS arm64, Apple
-silicon only)**. There is no Intel Mac build and no native Windows build (on Windows, run the Linux tarball under
+req is not on crates.io (`publish = false`): you pin a commit, and the commit is the provenance. **Three
+prebuilt releases exist: `rev-ec87808` (Linux x86_64), `rev-6b74f51` and `rev-aeaf987` (Linux x86_64 and macOS
+arm64, Apple silicon only)**; all three predate `req.claim/3`, so today's corpus needs a build from source. There is no Intel Mac build and no native Windows build (on Windows, run the Linux tarball under
 WSL2: `docs/adopting.md`, *Windows*). For any other rev, or any other machine, the install is a build from source
 at a rev you choose:
 

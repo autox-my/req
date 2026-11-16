@@ -673,7 +673,7 @@ fn the_readme_quotes_the_counts_the_matrix_shows() {
     let unreached = claims - linked;
     let readme = read(&root().join("README.md"));
     let section = readme
-        .split("## Requirements on the architecture")
+        .split("## Where to look next")
         .nth(1)
         .expect("the README has the section")
         .split("\n## ")
