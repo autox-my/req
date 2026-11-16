@@ -55,12 +55,46 @@ size of a real specification, thousands of claims and, for req itself, 1,404 tes
    (`#focus=<id>`, as ADR 0053 decision 6 does); the architecture and matrix pages link to the explorer.
 6. **Test outcomes stay out of the committed page**, as in ADR 0053 decision 5: the committed explorer is a function of
    the repository. A run given a JUnit report may build an uncommitted explorer with outcomes.
+7. **Plain SVG first; a pinned graph library is the planned fallback, chosen by measurement.** The page draws with plain
+   SVG and hand-written script, so req carries no JavaScript dependency. The positions are computed by the builder, not
+   by a force simulation, so the page stays deterministic whatever draws it. If the measurement in decision 4 fails with
+   plain SVG, the fallback is a graph library **copied into the page** (inline, never from a CDN), **pinned** like the
+   other provenance pins in `AGENTS.md` (verified at pin time, never bumped opportunistically) and fed the builder's
+   positions. The two candidates, compared from the npm registry and unpkg on 2026-11-16 (facts, not yet measured on a
+   req corpus):
+
+   | | cytoscape.js 3.35.0 | sigma.js 4.0.6 (+ graphology 0.26.0) |
+   | --- | --- | --- |
+   | licence | MIT | MIT (both) |
+   | single browser file, no build step | `dist/cytoscape.min.js`, 443 KB | `dist/sigma.min.js`, 394 KB, plus graphology's UMD build, 74 KB |
+   | runtime dependencies | none | `events`, `graphology-utils` (inside the bundle) |
+   | drawing | canvas | WebGL (needs a WebGL-capable browser) |
+   | groups (an area holding its claims) | compound nodes, built in | none: drawn by the page |
+   | layered layout | preset positions; `cytoscape-dagre` 4.1.0 (MIT, one file, 46 KB) if needed | preset positions only; its layouts are force-directed |
+   | strength | rich selectors and styling, groups, edge labels | many thousands of nodes on screen at once |
+
+   **Cytoscape.js is the first fallback**: no build step, no WebGL requirement, and built-in groups match decision 3's
+   areas. **sigma.js** is chosen instead only if the measurement shows the page must draw more nodes at once than canvas
+   can keep responsive, which decision 4's collapse and node limit are meant to avoid. `elkjs`, the other layered
+   layout, is not a candidate: it is licensed `EPL-2.0 OR GPL-3.0-or-later`. Before either library is adopted, a
+   spike renders the 5,000-claim corpus with plain SVG and with the candidate, and its numbers are recorded; adopting
+   one is an amendment to this ADR, naming the version and its digest.
 
 ## Alternatives rejected
 
 - **archify's own focus views.** At most five, fixed in the diagram file, and bounded by archify's measured size limit.
-- **A graph library from a CDN** (Cytoscape, D3, vis). It loads code from the network (REQ-0012) or adds a vendored
-  dependency req would have to pin and review; the layered layout here is simple enough to draw in plain SVG.
+- **A graph library loaded from a CDN.** It loads code from the network (REQ-0012). A copied, pinned library is not
+  rejected: it is decision 7's fallback.
+- **Quarkdown** (`iamgio/quarkdown`, GPL-3.0, Kotlin; GitHub, 2026-11-16). A Markdown typesetting system that compiles one
+  source to a paper, book, slides or static site. It writes documents, not an interactive graph: no focus, filters or
+  graph layout. It also needs a JVM and installs by piping a script into `sudo bash`.
+- **mdxcn** (`shadcn-labs/mdxcn`, MIT; GitHub, 2026-11-16). React components for MDX (callouts, steps, terminals, charts
+  drawn with text glyphs), copied in with the shadcn CLI. Page decoration for a React/MDX site: it would bring npm and
+  React into req and has nothing for drawing a large graph.
+- **StrictDoc** (`strictdoc-project/strictdoc`, Apache-2.0, Python) and **Sphinx-Needs** (`useblocks/sphinx-needs`, MIT,
+  its `needflow` graphs): exporting req's data into a requirements tool's own viewer. Each renders its own data model,
+  so req's status on each link (holds, suspect, by the direction of a change) would be lost in translation, and an
+  adopter would need a second toolchain. Their graph views at a real specification's size were not measured here.
 - **A server or a `req serve` command.** The core has no network surface by design, and a static page is enough.
 - **The concept's demo as is.** Hand-written data and an every-node layout; it shows 22 nodes and would not survive a
   real specification.
@@ -89,4 +123,6 @@ This decision is wrong if any of these is observed:
 3. the page loads anything over the network;
 4. two builds over the same repository give different bytes;
 5. at the measured corpus size the page does not open or a filter does not respond, or it draws more nodes than its
-   limit instead of asking the reader to narrow.
+   limit instead of asking the reader to narrow;
+6. a graph library reaches the page from the network, unpinned, or without the spike's recorded numbers and an amendment
+   naming its version and digest.
