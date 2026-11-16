@@ -2,7 +2,7 @@
 
 Narrows the unjudged half of `rationale_present` (ADR 0023's policy list), and gives ADR 0013's provenance surface
 something to be judged against without adding a surface. No `RULES_V` bump, no claim-schema change, no Baseline format
-change, and **no address moves**: `rationale` sits outside the canonical form and is attested by `rationale_digest`
+change, and **no address moves**: `rationale` sits outside the canonical form and is attested by `rationale_hash`
 (ADR 0013), so editing a source cannot move an address and editing one after signing is already FAIL.
 
 **Status: proposed.** The owner ratifies it by merging the pull request that carries it. Raised from a comparative
@@ -13,7 +13,9 @@ Revised three times after review (PR #66). The first version proposed a `dec:` /
 duplicates a form `docs/claim-format.md` already documents and which **no claim in this corpus uses**, while a
 path-shaped rule covers all 40. The second said "one token", which makes `TBD`, `N/A` and `interview` dangling paths. The
 third left `..` admissible, "file extension" undefined, and the landing sequence short of the fixtures and manifests it
-must change. Date proposed: 2026-11-12; revised 2026-11-13.
+must change. The fourth applied the shape test to the whole token, so an anchored citation (`docs/x.md#L390`) would have
+stopped being judged; the anchor is now split off first, as decision 2 and `src/sources.rs:61` do. Citations re-read on
+`main` at `3294a46`. Date proposed: 2026-11-12; revised 2026-11-13 and 2026-11-16.
 
 ## Context
 
@@ -97,7 +99,8 @@ for existence — reports exactly one dangling reference out of forty: `claims/R
   every place that teaches the old template source: twelve test fixtures that write `source: docs/requirements.md` without
   creating the file (`tests/gate.rs`, `check.rs`, `ci_template.rs`, `gate_counts.rs`, `completeness.rs`, `contradict.rs`,
   `satisfy.rs`, `junit_case.rs`, `supersedes.rs`, `area.rs`, `graph_archify.rs`, `trace_nodes.rs` — several assert a
-  non-FAIL exit), `tools/adopt.py`'s emitted source,
+  non-FAIL exit), the docstring of `tests/adopt.rs:842-844` and
+  `docs/handoffs/adopter-sedia-step-3-bring-your-own-spec.md:47-49` (both describe the old template source),
   `docs/design.md:93` ("line anchors checked"), and `docs/adopting.md:242` ("does not block adopting", which stops being
   true).
 - A fresh corpus created by `req init` is green under the rule, because decision 8 makes its template's source a note.

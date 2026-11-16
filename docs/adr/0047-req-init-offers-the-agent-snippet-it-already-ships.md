@@ -5,20 +5,22 @@ moves, no Baseline change: `init` still writes authored fields only, and nothing
 
 **Status: proposed.** The owner ratifies it by merging the pull request that carries it. Raised from a comparative
 review of an adopter-surface tool (reqord, `f043777`) that persists an agent context directory (`product.yaml`,
-`technical.yaml`, `domain/*.md`). Revised three times after review (PR #66): decision 3 judged a file the scaffold tells
-the adopter to fill; decision 5 shut out a repository that already has an `AGENTS.md`; and the context premise was wrong
-— the rules are **already shipped** in `examples/agents-snippet.md`, not only as prose in `docs/adopting.md`. Date
-proposed: 2026-11-12; revised 2026-11-13.
+`technical.yaml`, `domain/*.md`). Revised four times after review (PR #66): decision 3 judged a file the scaffold tells
+the adopter to fill; decision 5 shut out a repository that already has an `AGENTS.md`; the context premise was wrong
+— the rules are **already shipped** in `examples/agents-snippet.md`, not only as prose in `docs/adopting.md`; and the
+fourth revision stated the mechanics the third left implied (two *additional* files, a read-only `--check`, how the snippet
+ships, a rollback for the append). Citations re-read on `main` at `3294a46`. Date proposed: 2026-11-12; revised
+2026-11-13 and 2026-11-16.
 
 ## Context
 
-`req init` writes exactly three things — `claims/`, `aliases/subjects.yml`, and `claims/README.md` with one claim
-template — with exit **0** created, **1** refused, **2** usage, **3** UNVERIFIABLE, and writes that go through exclusive
+`req init` writes exactly three files — `claims/REQ-0001.yml` (the claim template), `claims/README.md` and
+`aliases/subjects.yml` — with exit **0** created, **1** refused, **2** usage, **3** UNVERIFIABLE, and writes that go through exclusive
 creation so a path planted between the check and the write is never truncated (`src/init.rs:252`).
 
 An adopter's agent therefore gets a corpus and no rules, and has to be told to paste them. **The rules already exist in
 one authored place**: `examples/agents-snippet.md` is "the invariant set from req's own agent rules, cut to what an
-adopter's agent needs", linked from `README.md:178` and `docs/adopting.md:1475`. So this decision is not about inventing
+adopter's agent needs", linked from `README.md:222` and `docs/adopting.md:1512`. So this decision is not about inventing
 agent guidance — it is about the paste. A scaffold that shipped a second copy of those rules would create two homes for
 one rule, against AGENTS.md's own "each rule has one home".
 
@@ -48,7 +50,8 @@ make this a second wiki with a requirements engine attached.
    because that repository has adopted the scaffold and `--check` is the tool from then on. Appending never truncates,
    never rewrites an existing byte, and a symlinked `AGENTS.md` is refused rather than written through — the guarantee
    exclusive creation gives a new file (`src/init.rs:252`), stated for the append path. The append is the **last** write
-   of the run and its length is recorded before it: if any later step fails, the file is truncated back to that length, so
+   of the run, and the file's length is recorded before it: if any later step fails, the file is truncated back to that
+   length, so
    a half-made corpus never carries markers that would make the next `--agent` refuse.
 6. **An existing `CONTEXT.md` is left untouched and the run says so.** It is the adopter's glossary; requiring them to
    delete it before running `init --agent` would be worse than leaving it. `CONTEXT.md` is created only when absent, by
@@ -57,9 +60,8 @@ make this a second wiki with a requirements engine attached.
    answer 1 after every `RULES_V` bump — a red caused by the build moving, not by the adopter. It becomes "the `rules_v`
    your project pins, read from `req --version`". The block reaches the shipped binary the way `selftest`'s known answers
    do, compiled in with `include_str!` (`src/selftest.rs:26`), because a release archives `req` and nothing else
-   (`scripts/build-release.sh:339`, `:346`). `docs/adopting.md:1475` links the snippet and keeps its four prohibitions in
-   prose (`:1473-1481`); this decision does not deduplicate that prose, and
-   restate it.
+   (`scripts/build-release.sh:339`, `:346`). `docs/adopting.md:1512` links the snippet and keeps its four prohibitions in
+   prose (`:1510-1518`); this decision does not deduplicate that prose, and does not restate it.
 8. **Drift of an adopted block is not a policy.** The answer is printed by the check, never folded into `PolicyResult`:
    the fold has exactly three outcomes (ADR 0023), and an advisory fourth for a cosmetic concern would dilute the one
    thing the gate is for.
@@ -76,7 +78,7 @@ make this a second wiki with a requirements engine attached.
   part req will ever look at.
 - Two more tracked files exist in an adopter's repository that req can read but does not own. Nothing in the gate
   depends on them being present, current, or absent.
-- `docs/adopting.md` § *For an agent* and its "exactly three files" line (`:1431`, and the table at `:159`), the
+- `docs/adopting.md` § *For an agent* and its "exactly three files" line (`:1468`, and the table at `:159`), the
   `req init --help` page, and `tests/agent_handoff.rs:71` — which asserts the literal `rules_v 9` that decision 7 removes,
   as its docstring at `:5-7` explains — change in the same commit that lands the flag.
 
