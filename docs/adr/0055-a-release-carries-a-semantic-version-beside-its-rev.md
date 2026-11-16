@@ -50,12 +50,14 @@ Two facts shape the decision:
 4. **The workflow checks what history can decide, and the bump pull request declares the rest.** The facts come from one
    place: `scripts/release-notes.sh` gains a machine-readable output beside the notes, naming the previous release, its
    version, and whether identity `moved`, was `unmoved` or is `unknown`. The workflow reads that output and never computes
-   any of it a second time. The `build` job reads the version from the rev with `git show <rev>:Cargo.toml`. It never
+   any of it a second time; the workflow's own inputs are only the rev's version and the rule that a `rev-*` release
+   counts as 0.1.0. The build job hands the version to the publish job as an output. The `build` job reads the version from the rev with `git show <rev>:Cargo.toml`. It never
    checks the rev out: the workflow and its proofs stay `main`'s, and `scripts/build-release.sh` builds a clean copy of
    the rev itself. The job fails closed, before anything is uploaded:
    - when `<VERSION>` is not greater than the previous release's version (a `rev-*` release counts as 0.1.0);
-   - when identity moved and the number that rose is not the one decision 2 requires (below 1.0, the minor or the major;
-     from 1.0, the major);
+   - when identity moved and the number that rose is not the one decision 2 requires (below 1.0, the minor; from 1.0, the
+     major). A major bump below 1.0 is refused until the ADR that decides 1.0 exists, so the workflow never takes that
+     decision;
    - when identity is `unknown` and only the patch number rose. An unknown is not an unmoved identity, so it never lets a
      patch bump through (AGENTS.md, three-state outcomes). A minor or major bump with an unknown identity is still
      released, and its notes say the comparison was not made, as ADR 0031 decided.
@@ -70,11 +72,13 @@ Two facts shape the decision:
      release's creation metadata). Otherwise the run fails, whether or not a release exists.
    - If the release exists, the run continues only if it is not a draft and holds none of the six asset names. Then a
      publish that died before the upload can be retried. A draft, or an asset already there, fails the run.
-   - If neither exists, the release is created at the rev, as ADR 0029 §4 does today.
+   - If the release does not exist, it is created at the rev, as ADR 0029 §4 does today, for the tag already verified by
+     the first bullet or for a new tag made at the rev.
 
    One commit's tarballs can therefore never land under a tag that names another commit.
 6. **The version bump is its own pull request.** It changes `Cargo.toml`'s `version`, req's own package entry in
-   `Cargo.lock` and the regenerated `docs/sbom.cdx.json`, and nothing else. **req's own entry is not a dependency pin.**
+   `Cargo.lock` and the regenerated `docs/sbom.cdx.json`, and nothing else. To keep it so, no prose document carries the
+   version as a literal (the implementing commit makes those places version-agnostic). **req's own entry is not a dependency pin.**
    The version is compiled into the binary, since `req --version` prints it. But it reaches no address, no Baseline
    manifest and no projection header (the address is computed over the statement's canonical form; the Baseline envelope
    carries `rules_v`, the selection and the claims). The one checked file it moves is the SBOM: its serial is derived
@@ -103,8 +107,9 @@ Two facts shape the decision:
   - `docs/releasing.md` and `docs/adopting.md` § *Install req*;
   - the documents that quote `0.1.0`, including the install note in `README.md`, `CONTRIBUTING.md`, `SECURITY.md`,
     `docs/safety-manual.md` and the comment in `build.rs`.
-- The implementing commit also drops "(proposed)" from the amendment notes in the headers of ADRs 0025, 0029 and 0031.
-- Adopters pinned to a `rev-*` release keep working. A new pin uses the `v<VERSION>` URL.
+- The implementing commit also drops "(proposed)" from the amendment notes in the headers of ADRs 0025, 0029 and 0031,
+  and re-words ADR 0025's "req's `0.1.0` is the same on every commit by design" to "one version covers many commits".
+- Adopters pinned to a `rev-*` release keep working. A pin of a new release uses the `v<VERSION>` URL.
 
 ## Rejected
 

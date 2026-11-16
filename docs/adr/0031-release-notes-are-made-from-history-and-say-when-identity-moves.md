@@ -45,7 +45,7 @@ still verifies. A changelog that lists pull-request titles and buries those thre
 
 - `rev-6b74f51` keeps its old one-line body. The owner may add notes to it by hand; the workflow will not.
 - A rev whose predecessor tag cannot be found, or whose three constants moved file, is reported honestly rather than guessed; a
-  future move of a constant must update the script and its test in the same change, or the notes say "could not be determined".
+  future move of a constant must update the script and its test in the same change, or the notes say "could not be determined" (and, under ADR 0055, a patch release is refused).
 - The macOS tarball (attached by hand today) is not described in the notes: the notes describe the rev, not the asset list.
 
 ## Rejected
