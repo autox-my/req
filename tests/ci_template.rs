@@ -717,6 +717,50 @@ fn the_install_step_is_the_install_scripts_body_verbatim() {
     }
 }
 
+/// ADR 0055 decision 7, in all three copies: the pin table carries the version for the download URL, and the URL is
+/// `v<VERSION>`. The rev and the SHA-256 stay the proof. (The byte-for-byte test above keeps the copies equal to the
+/// script; this one says what the script's new lines are, so a script and three copies that drifted together fail.)
+#[test]
+fn the_install_step_pins_a_version_for_the_url_and_a_rev_for_the_proof() {
+    for (name, copy) in the_three_copies() {
+        let body = the_script_containing(&copy, "SHA256_x86_64_unknown_linux_gnu=");
+        for (needle, why) in [
+            (
+                "VERSION='<placeholder",
+                "the version is a placeholder in the pin table",
+            ),
+            ("REV='<placeholder", "the rev stays in the pin table"),
+            (
+                "url=$base/v$VERSION/$asset",
+                "the download URL names the version",
+            ),
+            (
+                "asset=req-$REV-$target.tar.gz",
+                "the asset keeps the rev in its name",
+            ),
+            (
+                "if [ \"$built\" != \"$REV\" ]",
+                "the `built from` check still compares the rev",
+            ),
+        ] {
+            assert!(
+                body.contains(needle),
+                "{name}: the install step must carry {needle:?} — {why}"
+            );
+        }
+        assert!(
+            !body.contains("rev-$REV/"),
+            "{name}: the download URL is no longer `rev-<REV>` (ADR 0055 decision 7)"
+        );
+        let version_line = body.find("VERSION='<placeholder").unwrap_or(usize::MAX);
+        let rev_line = body.find("REV='<placeholder").unwrap_or(0);
+        assert!(
+            version_line < rev_line,
+            "{name}: the pin table lists VERSION before REV"
+        );
+    }
+}
+
 /// The install step fails the job when the install fails. Every way a red turns green is named:
 /// the step-level switch, the shell's `|| true`, a pipe into `tee` (whose status replaces the
 /// command's), a conditional that skips the step, and a shell that does not stop on error.
@@ -855,6 +899,11 @@ fn the_adoption_doc_leads_with_the_prebuilt_install_and_says_what_it_does_not_do
         "from source",
         "Air-gapped",
         "replaces the SSH key and the toolchain",
+        // ADR 0055: the pin table has a VERSION for the URL, and the page says which release first reads req.claim/3.
+        "VERSION=",
+        "v<VERSION>",
+        "rev-3294a46",
+        "req.claim/3",
     ] {
         at(needle);
     }

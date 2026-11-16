@@ -7,7 +7,7 @@ already states about how req may be relied on, so that a reader deciding whether
 guarantees, their evidence and the limits side by side. Every statement points at the document or test that owns it; where this
 manual and its source disagree, the source is right and this page has a defect.
 
-Version of req described: the `rules_v 9` line (`req --version` says which build you hold). Maintained by one person; `0.1.0`.
+Version of req described: the `rules_v 9` line (`req --version` says which build you hold). Maintained by one person; pre-1.0.
 
 ## 1. What req is for, and what it is not for
 
@@ -100,7 +100,7 @@ falsification of the bet, and the README says so.
   (the bare rev, the Baseline verification, the FMR gate, `req selftest`) with the binary's SHA-256. It is written by the release runner, is not
   signed and is not independent evidence; it does not claim the test suite, the gate, the mutation run or the reproduction check, which are not
   run in that job. Re-run `req selftest` and `req baseline --verify` on the downloaded binary rather than trusting the file.
-- **One maintainer, early software.** Version `0.1.0`; the tool's own development uses AI coding agents under a human owner who merges
+- **One maintainer, early software.** Pre-1.0 (`req --version` prints the version); the tool's own development uses AI coding agents under a human owner who merges
   every change (`AGENTS.md`, *Review* and *SDLC*). An automated review run by hand is an unverified lead, not a verdict
   (`docs/research/review-bakeoff.md`: unaudited, one model).
 

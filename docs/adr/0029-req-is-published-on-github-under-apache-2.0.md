@@ -2,7 +2,7 @@
 
 **Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-08, former Forgejo PR #139); issue #138. Date
 proposed: 2026-11-08. **Amends [ADR 0025](0025-prebuilt-binary-per-pinned-rev.md) §5 and §6** (where the release
-lives and what the install needs); nothing else in 0025 changes. ADRs 0001–0009 are untouched. Amended by ADR 0032 (§4's macOS tarball is built by the workflow) and by ADR 0055 (proposed): §4's release is tagged
+lives and what the install needs); nothing else in 0025 changes. ADRs 0001–0009 are untouched. Amended by ADR 0032 (§4's macOS tarball is built by the workflow) and by ADR 0055: §4's release is tagged
 `v<VERSION>`, and its assets keep `<REV>` in their names; §5's pin also names the version, for the download URL only.
 
 ## Context

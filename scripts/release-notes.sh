@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# scripts/release-notes.sh -- the release notes of one rev of req (ADR 0031, amending ADR 0025 section 5).
+# scripts/release-notes.sh -- the release notes of one rev of req (ADR 0031, amending ADR 0025 section 5; ADR 0055).
 #
-# Usage: scripts/release-notes.sh --rev <rev> --repo <owner/name> --out <file>
+# Usage: scripts/release-notes.sh --rev <rev> --repo <owner/name> --out <file> [--facts <file>]
 #
 # Reads git history only; it builds nothing and calls no network service. It writes, in this order:
-#   1. which release came before (the nearest `rev-*` tag that is an ancestor of the rev) and a compare link;
+#   0. one opening line: the version the rev declares (`git show <rev>:Cargo.toml`), the rev and the bump class
+#      (major, minor, patch, none, lower, `first release`, or `not comparable`), as
+#      `Version 0.2.0 · rev `abc1234` · bump: minor`;
+#   1. which release came before (the nearest release tag strictly before the rev: a `rev-*` tag or a `v<N>.<N>.<N>`
+#      tag; the search starts at `<rev>^`, so a release's own tag is never its predecessor) and a compare link;
 #   2. whether req's *identity* moved since then -- RULES_V (src/canon.rs), the claim schema
 #      (CLAIM_SCHEMA_V, src/canon.rs) and the Baseline envelope (BASELINE_VERSION, src/baseline.rs) --
 #      and what an adopter must do if it did. A value that cannot be read is "could not be determined",
@@ -12,8 +16,18 @@
 #   3. the pull requests merged since, newest first, grouped by their conventional-commit prefix.
 # Every title is treated as hostile text (see `clean`): the notes become the body of a public release.
 #
-# Exit: 0 written; 1 --out already exists (never overwritten); 2 usage, an unresolvable rev, or a
-# repository name outside owner/name. In every non-zero case --out is left as it was.
+# --facts <file> writes, beside the notes, what the release workflow decides on (ADR 0055 decision 4), the one home
+# of these facts: three `key=value` lines, in this order.
+#   previous_tag=      the previous release's tag, or empty for a first release
+#   previous_version=  its version: `0.1.0` for a `rev-*` release; for a `v*` release, the `[package]` version of
+#                      `<tag>:Cargo.toml`, empty when that cannot be read (the check then refuses, fail closed)
+#   identity=          `moved` when RULES_V, the claim schema or the Baseline envelope changed since the previous
+#                      release; `unmoved` when all three could be compared and are equal; `unknown` otherwise (a value
+#                      that cannot be read, or no previous release). A known move outranks an unreadable value.
+# scripts/release-version-check.sh reads that file; the workflow never computes any of it again.
+#
+# Exit: 0 written; 1 --out or --facts already exists (never overwritten); 2 usage, an unresolvable rev, or a
+# repository name outside owner/name. In every non-zero case --out and --facts are left as they were.
 set -euo pipefail
 
 die() { # die <status> <message>
@@ -21,16 +35,18 @@ die() { # die <status> <message>
   exit "$1"
 }
 
-rev_in= repo= out=
+rev_in= repo= out= facts=
 while [ $# -gt 0 ]; do
   case $1 in
     --rev) [ $# -ge 2 ] || die 2 "--rev needs a value"; rev_in=$2; shift 2 ;;
     --repo) [ $# -ge 2 ] || die 2 "--repo needs a value"; repo=$2; shift 2 ;;
     --out) [ $# -ge 2 ] || die 2 "--out needs a value"; out=$2; shift 2 ;;
-    *) die 2 "unknown argument '$1' (usage: --rev <rev> --repo <owner/name> --out <file>)" ;;
+    --facts) [ $# -ge 2 ] || die 2 "--facts needs a value"; facts=$2; shift 2 ;;
+    *) die 2 "unknown argument '$1' (usage: --rev <rev> --repo <owner/name> --out <file> [--facts <file>])" ;;
   esac
 done
-[ -n "$rev_in" ] && [ -n "$repo" ] && [ -n "$out" ] || die 2 "usage: --rev <rev> --repo <owner/name> --out <file>"
+[ -n "$rev_in" ] && [ -n "$repo" ] && [ -n "$out" ] || die 2 "usage: --rev <rev> --repo <owner/name> --out <file> [--facts <file>]"
+[ "$facts" != "$out" ] || die 2 "--facts and --out are the same file"
 
 # The repository name goes into a link, so it is held to GitHub's alphabet and to exactly two parts.
 case $repo in
@@ -49,9 +65,27 @@ full=$(git rev-parse --verify --quiet "${rev_in}^{commit}") || die 2 "cannot res
 short=${full:0:7}
 
 [ ! -e "$out" ] || die 1 "$out already exists: refusing to overwrite it"
+[ -z "$facts" ] || [ ! -e "$facts" ] || die 1 "$facts already exists: refusing to overwrite it"
 
 # --- the previous release -----------------------------------------------------------------------------
-prev=$(git describe --tags --match 'rev-*' --abbrev=0 "${full}^" 2>/dev/null) || prev=
+# The nearest release tag strictly before the rev (the search starts at the rev's parent): `rev-*` (ADR 0025) or a
+# version tag `v<N>.<N>.<N>` (ADR 0055). A tag that merely starts with `v` is not a release.
+prev=$(git describe --tags --match 'rev-*' --match 'v[0-9]*.[0-9]*.[0-9]*' --abbrev=0 "${full}^" 2>/dev/null) || prev=
+
+# --- the versions: the one reader and the one classifier are scripts/release-version-check.sh ---------------------
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+version=$(bash "$here/release-version-check.sh" read "$full" 2>/dev/null) || version=
+prev_version=
+if [ -n "$prev" ]; then
+  case $prev in
+    rev-*) prev_version=0.1.0 ;; # every release before the first version tag printed 0.1.0 (ADR 0055 decision 8)
+    *) prev_version=$(bash "$here/release-version-check.sh" read "$prev" 2>/dev/null) || prev_version= ;;
+  esac
+  bump=$(bash "$here/release-version-check.sh" classify "$prev_version" "$version")
+else
+  bump='first release'
+fi
+identity=unknown
 
 # --- the three constants, at a commit; empty when they cannot be read --------------------------------
 const_at() { # const_at <commit> <file> <NAME>
@@ -74,9 +108,11 @@ clean() { # clean <title> -> one line, no control bytes, no HTML, no live link, 
 }
 
 tmp=$(mktemp "${out}.XXXXXX") || die 2 "cannot create a file next to $out"
-trap 'rm -f "$tmp"' EXIT
+ftmp=
+trap 'rm -f "$tmp"; [ -z "$ftmp" ] || rm -f "$ftmp"' EXIT
 
 {
+  printf 'Version %s · rev `%s` · bump: %s\n\n' "${version:-unknown}" "$short" "$bump"
   printf 'Prebuilt req for the pinned rev `%s` (ADR 0025). Pin the `.sha256` of the tarball in your own repository.\n\n' "$short"
   printf '## Identity\n\n'
 
@@ -85,7 +121,7 @@ trap 'rm -f "$tmp"' EXIT
   n_env=$(const_at "$full" src/baseline.rs BASELINE_VERSION)
 
   if [ -z "$prev" ]; then
-    printf 'First release: no earlier `rev-*` tag is an ancestor of this rev, so nothing is compared and no history is listed.\n\n'
+    printf 'First release: no earlier release tag (`rev-*` or `v<version>`) is an ancestor of this rev, so nothing is compared and no history is listed.\n\n'
     printf 'This rev: rules_v %s, claim schema req.claim/%s, baseline envelope %s.\n' \
       "${n_rules:-?}" "${n_schema:-?}" "${n_env:-?}"
   else
@@ -118,6 +154,11 @@ trap 'rm -f "$tmp"' EXIT
     if [ "$changed" -eq 0 ] && [ "$unknown" -eq 0 ]; then
       printf 'No identity change: rules_v, the claim schema and the Baseline envelope are unchanged from `%s` (rules_v %s, req.claim/%s, envelope %s).\n' \
         "$prev" "$n_rules" "$n_schema" "$n_env"
+    fi
+    # What the release workflow decides on (ADR 0055): a known move outranks a value that could not be read.
+    if [ "$changed" -eq 1 ]; then identity=moved
+    elif [ "$unknown" -eq 1 ]; then identity=unknown
+    else identity=unmoved
     fi
 
     # --- merged since ----------------------------------------------------------------------------
@@ -161,7 +202,16 @@ trap 'rm -f "$tmp"' EXIT
   fi
 } >"$tmp"
 
-# Publish the finished file; a name that appeared meanwhile is still never replaced.
+# Publish the finished files; a name that appeared meanwhile is still never replaced. The facts go first, so a
+# failure to publish the notes can take them back and leave neither behind.
+if [ -n "$facts" ]; then
+  ftmp=$(mktemp "${facts}.XXXXXX") || die 2 "cannot create a file next to $facts"
+  printf 'previous_tag=%s\nprevious_version=%s\nidentity=%s\n' "$prev" "$prev_version" "$identity" >"$ftmp"
+  if ! ln "$ftmp" "$facts" 2>/dev/null; then
+    die 1 "$facts already exists: refusing to overwrite it"
+  fi
+fi
 if ! ln "$tmp" "$out" 2>/dev/null; then
+  [ -z "$facts" ] || rm -f "$facts"
   die 1 "$out already exists: refusing to overwrite it"
 fi

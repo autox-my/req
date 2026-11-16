@@ -9,10 +9,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      # The install (ADR 0025): a prebuilt, checksummed binary, pinned in THIS file. Edit the three
-      # pin lines at the top of the script below -- the rev and the SHA-256 of each target's tarball;
-      # take them from the `.sha256` assets of the release the first time, and this file is the
-      # authority from then on. The release is public, so the install needs no credential. The `env:`
+      # The install (ADR 0025): a prebuilt, checksummed binary, pinned in THIS file. Edit the four
+      # pin lines at the top of the script below -- the version and the rev of the release and the SHA-256
+      # of each target's tarball; take them from the release `v<VERSION>` and its `.sha256` assets the first
+      # time, and this file is the authority from then on (the version names the download, the rev and the
+      # hash prove it). The release is public, so the install needs no credential. The `env:`
       # line below matters only to a private fork or mirror, which sets the `REQ_RELEASE_TOKEN` secret to
       # a token that can read its release (an unset secret is an empty value, and then no
       # Authorization header is sent). A refusal (wrong hash, unknown rev, wrong binary) fails this
@@ -21,6 +22,7 @@ jobs:
         env:
           REQ_RELEASE_TOKEN: ${{ secrets.REQ_RELEASE_TOKEN }}
         run: |
+          VERSION='<placeholder: the version of the release you pin, e.g. 0.2.0 -- the tag is v<VERSION>; fill in after the first release>'
           REV='<placeholder: the rev of the release you pin, e.g. abc1234 -- fill in after the first release>'
           SHA256_x86_64_unknown_linux_gnu='<placeholder: 64 hex digits from the release asset req-REV-x86_64-unknown-linux-gnu.tar.gz.sha256>'
           SHA256_aarch64_apple_darwin='<placeholder: 64 hex digits from the release asset req-REV-aarch64-apple-darwin.tar.gz.sha256>'
@@ -50,6 +52,14 @@ jobs:
           esac
 
           # A placeholder, a typo or an empty pin is a refusal before any request is made.
+          # VERSION is plain MAJOR.MINOR.PATCH (no v, no pre-release, no leading zero), as REV is bare hex: it reaches the URL.
+          version_re='^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$'
+          case $VERSION in
+            '' | *[!0-9.]*) fail "the pin table has no usable VERSION (plain MAJOR.MINOR.PATCH, e.g. 0.2.0); fill it in from the release's tag v<VERSION>" ;;
+          esac
+          if ! [[ $VERSION =~ $version_re ]]; then
+            fail "the pin table has no usable VERSION (plain MAJOR.MINOR.PATCH, e.g. 0.2.0); fill it in from the release's tag v<VERSION>"
+          fi
           case $REV in
             '' | *[!0-9a-f]*) fail "the pin table has no usable REV (a bare lower-case hex SHA of 7 to 40 digits); fill it in from the release" ;;
           esac
@@ -89,7 +99,7 @@ jobs:
           base=${install_base:-https://github.com/autox-my/req/releases/download}
           proto=${install_proto:-=https}
           asset=req-$REV-$target.tar.gz
-          url=$base/rev-$REV/$asset
+          url=$base/v$VERSION/$asset
 
           # The header exists only when a token was given (a public release needs none). It is built by the
           # shell builtin `printf` and read by curl from stdin: the token is never in an argument list (`ps`),
@@ -107,7 +117,7 @@ jobs:
               fail "HTTP $code for $url: the host refused the request; if the release is private, check that REQ_RELEASE_TOKEN is valid and can read it, otherwise unset REQ_RELEASE_TOKEN"
               ;;
             404)
-              fail "HTTP 404 for $url: there is no release rev-$REV for $target, or (for a private fork) the token cannot see it; check REV and REQ_RELEASE_TOKEN"
+              fail "HTTP 404 for $url: there is no release v$VERSION for $target, or (for a private fork) the token cannot see it; check VERSION, REV and REQ_RELEASE_TOKEN"
               ;;
             *)
               fail "HTTP $code (curl exit $status) for $url"

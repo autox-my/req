@@ -9,7 +9,7 @@ entry only. Both say so in this commit. The commit stays the identity:
 `built from`, the pinned rev and the pinned SHA-256 are unchanged, and nothing here moves an address. No `RULES_V` bump, no
 claim-schema change, no Baseline envelope change.
 
-**Status: proposed.** The owner ratifies it by merging the pull request that carries it. Asked for by the owner on
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-16, PR #96). Asked for by the owner on
 2026-11-16, after the fourth release (`rev-3294a46`): "`--version` always shows 0.1.0 … we should also use the versioning
 like other people." Date proposed: 2026-11-16; revised three times the same day after review (PR #96).
 

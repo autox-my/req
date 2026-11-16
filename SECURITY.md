@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-req is pre-release (`0.1.0`). Only the tip of `main` is supported; there are no backported fixes.
+req is pre-release (below 1.0; `req --version` prints its version). Only the tip of `main` is supported; there are no backported fixes.
 
 ## Reporting a vulnerability
 
