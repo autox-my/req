@@ -6,7 +6,7 @@ When a requirement's meaning changes, req tells you which parts of your design n
 
 | Before | After one edit |
 | --- | --- |
-| [![req's architecture diagram before any edit: twelve parts, every one holding](docs/architecture/drift/req-before.png)](https://autox-my.github.io/req/drift.html) | [![the same diagram after one requirement is tightened: the Evidence box reads SUSPECT and is framed in red, every other part is unchanged](docs/architecture/drift/req-tightening.png)](https://autox-my.github.io/req/drift.html) |
+| [![req's architecture diagram before any edit: twelve parts; every part with a linked requirement holds](docs/architecture/drift/req-before.png)](https://autox-my.github.io/req/drift.html) | [![the same diagram after one requirement is tightened: the Evidence box reads SUSPECT and is framed in red, every other part is unchanged](docs/architecture/drift/req-tightening.png)](https://autox-my.github.io/req/drift.html) |
 
 One requirement (REQ-0010) is tightened on a copy of req's own corpus; the part that implements it is framed in red for re-check; nothing else changes.
 
@@ -155,10 +155,11 @@ Git-native storage is table stakes, not the moat.
 
 ## Status
 
-- **Tier-1 is built and measured.** `RULES_V 8`, 39 dogfood claims — req's own requirements,
-  written in req's own format — and seven corpus families, including three of real
-  requirements prose from other projects, pinned by commit. Zero false merges on all of them.
-- **Tier-2 is measured and deliberately conservative.** Five providers evaluated against a
+- **Tier-1 is built and measured.** `RULES_V 9`, 40 dogfood claims — req's own requirements,
+  written in req's own format — and nine corpora gated on every commit: the seed parity corpus,
+  four external corpora and four direction gold sets, the last eight built from real requirements
+  prose from other projects, pinned by commit. Zero false merges on all of them.
+- **Tier-2 is measured and deliberately conservative.** Four providers evaluated against a
   human-labelled sample; one has a usable confidence ordering at a measured floor; the honest
   default is `NoProvider` until a provider survives held-out validation on a grown,
   blind-labelled corpus. The funnel and its instruments are research, kept out of the core in
