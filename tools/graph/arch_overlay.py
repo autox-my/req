@@ -44,6 +44,11 @@ its worst outcome for it; the claims no component reaches are on the overlay's c
 The status line is the worst state and how many claims are in it: `HOLDS · 6 claims`, `SUSPECT · 1 of 3 claims`, `STALE`
 (a cited path is missing), `no claim` (no link).
 
+A box that needs a human (stale, unknown_claim, orphaned, suspect, unratified) also gets one archify boundary of its own,
+`{"kind": "security-group", "label": "re-check: <STATE>", "wraps": [<its id>], "pad": 4}`, after the author's boundaries and in the
+diagram's component order, and the status card says so in one line; a diagram whose boxes all hold, or have no claim,
+gets no frame and keeps exactly the boundaries it had (O-7).
+
 Exit: 0 written; 3 written, but a component is stale, a link names an unknown claim, or a status line or an author's text
 does not fit its box (archify would refuse the overlay: component-sublabel-overflow, component-tag-overflow); the reason
 is printed and the text is written whole; 2 refused (a wrong
@@ -94,6 +99,16 @@ OUTCOME_TEXT = {
 }
 HEADER = ("Source", "Claim", "Satisfied by", "Verified by")
 GITHUB = "https://github.com/"
+
+# O-7: a box in one of these states needs a human, so archify draws a frame (a one-box `security-group`, red) around it.
+# `holds`, `holds_weakened` and `no_claim` are not here: nothing waits on a person.
+FRAMED = ("stale", "unknown_claim", "orphaned", "suspect", "unratified")
+FRAME_LABEL = "re-check: "
+# archify's `boundary.pad` is 30 px by default, which on the detail diagram leaves a connection 2 px from a neighbouring box
+# for 14 of 27 components (`clean-flow/edge-through-node`). Probed at 7e45f36 over 0..8 (and 10, 15, 20, 40): 4 passes the most
+# (19 of 27 detail boxes, 12 of 12 overview boxes), tied with 3; no value passes all. ADR 0052's O-7 notes name the rest.
+FRAME_PAD = 4
+FRAME_LINE = "A red frame marks a box whose links need a human: SUSPECT, UNRATIFIED, ORPHANED, UNKNOWN CLAIM or STALE."
 
 STATUS_CARD = "Components by status"
 UNREACHED_CARD = "Claims no component reaches"
@@ -194,6 +209,8 @@ def check_diagram(document, path):
                     refuse(f"{where}: a `sources` entry has no string `path`")
     if "cards" in document and not isinstance(document["cards"], list):
         refuse(f"{path}: `cards` is not an array")
+    if "boundaries" in document and not isinstance(document["boundaries"], list):
+        refuse(f"{path}: `boundaries` is not an array (a re-check frame is added to it)")
 
 
 def check_satisfy(document, path):
@@ -600,6 +617,17 @@ def overlay(diagram, satisfy, trace, root, report=None, matrix_dir=".", page=Non
             component["tag"] = moved
         else:
             component.pop("tag", None)
+
+    # One frame per box that needs a human, after the author's boundaries, in the diagram's component order; a diagram with
+    # nothing to frame keeps exactly the boundaries it had (no key is added).
+    frames = [
+        {"kind": "security-group", "label": FRAME_LABEL + WORD[state["status"]], "wraps": [state["component"]["id"]], "pad": FRAME_PAD}
+        for state in states
+        if state["status"] in FRAMED
+    ]
+    if frames:
+        result["boundaries"] = result.get("boundaries", []) + frames
+        status_items.append(FRAME_LINE)
 
     cards = result.setdefault("cards", [])
     cards.append({"dot": "violet", "title": STATUS_CARD, "items": status_items or ["none"]})

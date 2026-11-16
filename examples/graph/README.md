@@ -179,9 +179,21 @@ ARCHIFY_UPDATE_CHECK_DISABLED=1 node ../archify/archify/bin/archify.mjs \
 - **Exit:** `0` written; `3` written, but a component is `STALE`, a link names an unknown claim, or a status line or the
   author's moved text does not fit its box (archify would refuse it as `component-sublabel-overflow` or
   `component-tag-overflow`; the box is `size[0]`, else 120 px, and holds `(width - 8) / 3.6` columns) (the reason is printed); `2` refused (a wrong schema, malformed JSON, an unreadable input, a non-empty out-dir), nothing written.
+- **A box that needs a human is framed in red.** A component whose status is `SUSPECT`, `UNRATIFIED`, `ORPHANED`,
+  `UNKNOWN CLAIM` or `STALE` also gets one archify boundary of its own (`{"kind": "security-group", "label": "re-check:
+  <STATE>", "wraps": [<its id>]}`), after the author's boundaries and in the diagram's component order; the status card says so
+  in one line. `HOLDS`, `HOLDS (weakened)` and `no claim` are not framed, and a diagram whose boxes are all of those gets no
+  frame and keeps the boundaries it had. One boundary per box, never one around several: a frame round boxes that are not
+  neighbours would enclose boxes that need nothing. Every added frame carries `"pad": 4` (archify's default is 30 px, which makes
+  its `validate` refuse more boxes of a dense diagram, `clean-flow/edge-through-node`; ADR 0052's O-7 notes name the boxes of req's
+  detail diagram that still cannot be framed). Components, connections and geometry are still the author's.
 - Two runs over the same inputs give the same bytes. Like the trace pages, the overlay is not committed and is as current
   as the run that made it. A model never edits it: the status comes from `req satisfy` alone.
 
 The overlays that are committed are this repository's own architecture, as a worked example: [`docs/architecture/`](../../docs/architecture/) holds two diagrams (an overview of at most twelve components, the front page, and the detail), the generated overlay and matrix of each, and `tools/graph/build_architecture.py` regenerates and checks all four files.
 
 [`docs/architecture/drift/`](../../docs/architecture/drift/) is the worked example of drift: three edits to one claim, each made on a copy of the corpus, with the overlay, matrix and `req satisfy` output they give (`build_architecture.py --drift`).
+
+[`docs/explorer.html`](../../docs/explorer.html) is the interactive explorer of the same graph (source, claim, design, tests; focus, filters, *gaps only*): `python3 tools/explorer/build.py --out docs/explorer.html` regenerates it from `req trace` and `req satisfy`, and `--check` is in the gate (ADR 0054).
+
+[`docs/drift.html`](../../docs/drift.html) is the guided page that shows what drift does (the same three edits, three steps each: before, the change, what req says): `python3 tools/demo/drift_page.py --out docs/drift.html` regenerates it from the committed drift output and `req compare`, and `--check` is in the gate (unit P-2).

@@ -14,12 +14,12 @@ a build of the revision that introduced it.
 
 req is deliberately not published to crates.io (`publish = false`), so **the rev is the provenance**: you pin a
 commit, never a version number. Two ways honour that: a **prebuilt, checksummed binary** for the
-rev (below; two releases exist so far) and a **build from source** at the rev ([From source](#from-source)).
+rev (below; three releases exist so far) and a **build from source** at the rev ([From source](#from-source)).
 
-> **Status: two releases exist.** `rev-ec87808` (Linux x86_64 only) and `rev-6b74f51` (Linux x86_64 and macOS arm64,
-> Apple silicon only; no Intel Mac, no native Windows: see [Windows](#windows)). For any other rev or machine use
-> [From source](#from-source). Both Linux tarballs were built on a runner whose libc is glibc 2.43 (each `.build-info`
-> says so); read that line before you rely on one on an older distribution. The macOS tarball of `rev-6b74f51` was built on the
+> **Status: three releases exist.** `rev-ec87808` (Linux x86_64 only), `rev-6b74f51` and `rev-aeaf987` (Linux x86_64
+> and macOS arm64, Apple silicon only; no Intel Mac, no native Windows: see [Windows](#windows)). For any other rev or
+> machine use [From source](#from-source); all three predate `req.claim/3`. All three Linux tarballs were built on a runner
+> whose libc is glibc 2.43 (each `.build-info` says so); read that line before you rely on one on an older distribution. The macOS tarball of `rev-6b74f51` was built on the
 > owner's machine, not on a runner; from the next release the workflow builds it (ADR 0032, `docs/releasing.md`). `install-req.sh` was run against `rev-ec87808` on GitHub-hosted
 > Ubuntu 22.04 (glibc 2.35), 24.04 and the latest image (2026-11-09): the right pin installed, `req --version` said
 > `built from ec87808`, and `req init` and `req canon` exited 0; a wrong pin was refused with nothing installed (seen
@@ -487,7 +487,10 @@ including the tri-state — and `req <command> --help` works before a corpus exi
    claim file (`req.claim/3`, ADR 0022): the parse, the canonical form and the address are computed
    every time the claim is loaded, so there is nothing to fill and nothing to hand-write. `req canon`
    prints, per claim, the derived structure, modality, subject, operator, value, unit and lints, and
-   each pin's verdict.
+   each pin's verdict. `req canon --by-area` appends a deterministic work list: claims,
+   structured/unstructured and lints per `area`, in the reading order and under the labels of
+   `.req/areas` when it exists, so a large adoption pass starts where the unstructured prose is
+   concentrated.
 2. **Pin what is load-bearing.** `pins:` (any of `modality`, `subject`, `operator`, `value`,
    `unit`) states what the statement must parse to. A pin agrees, or it is a flag — a
    *contradiction* (the parse says something else) or *not carried* (the parse holds no such
@@ -497,7 +500,7 @@ including the tri-state — and `req <command> --help` works before a corpus exi
 3. **Values are canonical SI.** `within 200 ms` parses to `value "0.2"`, `unit s`: pin the exact
    decimal string the parser derives, not the units the prose used. `unit: ms` is a contradiction,
    and `"0.30"` is not a canonical decimal (`"0.3"` is), so it cannot be pinned.
-4. **`req canon` fails on a flag only if you ask.** It reports (it exits 3 only when the corpus cannot be read); `req canon --fail-on-flag` is the opt-in that exits 1 on a flagged pin, for the time before every claim has a linked test. The check that gates a release is `req gate`:
+4. **`req canon` fails on a flag only if you ask.** It reports (it exits 3 only when the corpus cannot be read, or, with `--by-area`, `.req/areas`); `req canon --fail-on-flag` is the opt-in that exits 1 on a flagged pin, for the time before every claim has a linked test. The check that gates a release is `req gate`:
    the loop in one sentence is edit → `req canon` to see the parse → `req gate`. A claim's
    `applicability:` list is part of its address (since rules v5), so editing it moves the address
    exactly as editing the statement does.

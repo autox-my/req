@@ -673,7 +673,7 @@ fn the_readme_quotes_the_counts_the_matrix_shows() {
     let unreached = claims - linked;
     let readme = read(&root().join("README.md"));
     let section = readme
-        .split("## Requirements on the architecture")
+        .split("## Where to look next")
         .nth(1)
         .expect("the README has the section")
         .split("\n## ")
@@ -739,5 +739,30 @@ fn each_matrix_links_its_parts_to_the_page_that_draws_them() {
                 "{page} draws no node `{id}`"
             );
         }
+    }
+}
+
+/// O-7: every box of the real pages holds or has no claim, so the overlays carry no frame the diagrams did not draw.
+#[test]
+fn the_real_overlays_add_no_boundary() {
+    for (diagram, overlay, _, _) in VIEWS {
+        let read_json = |name: &str| -> Value {
+            serde_json::from_str(&read(&root().join("docs/architecture").join(name))).expect("JSON")
+        };
+        let before = read_json(diagram);
+        let after = read_json(overlay);
+        assert_eq!(
+            before.get("boundaries"),
+            after.get("boundaries"),
+            "{overlay}: a box that needs a human would be framed; the real pages have none"
+        );
+        let security_groups = after
+            .get("boundaries")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|boundary| boundary["kind"] == "security-group")
+            .count();
+        assert_eq!(security_groups, 0, "{overlay}");
     }
 }

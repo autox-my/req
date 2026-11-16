@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>req coverage explorer</title>
+<style>
+:root {
+  --bg: #fafaf8; --fg: #1d1f21; --muted: #565b63; --panel: #ffffff; --line: #c4c8ce; --focus: #1b55c4;
+  --src-bg: #f3ecfa; --src-bd: #7a49b8; --claim-bg: #e8f0fe; --claim-bd: #2f67d0; --area-bg: #dfe6f3;
+  --des-bg: #e5f4ea; --des-bd: #217a4a; --tst-bg: #fdf1dc; --tst-bd: #a9680f;
+  --gap-bg: #fdeae7; --gap-bd: #b3261e; --ask-bg: #eef0f2; --ask-bd: #6b7078;
+  --ok: #1a7a3a; --weak: #8a6a00; --bad: #b3261e; --idle: #6b7078; --dim: 0.2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171b; --fg: #e6e8eb; --muted: #a2a8b0; --panel: #1d2026; --line: #3b4048; --focus: #7aa7ff;
+    --src-bg: #2a2236; --src-bd: #a98ae0; --claim-bg: #1f2b44; --claim-bd: #7aa7ff; --area-bg: #28324a;
+    --des-bg: #1c2f26; --des-bd: #5fcb8b; --tst-bg: #35291a; --tst-bd: #e0a85a;
+    --gap-bg: #3a2020; --gap-bd: #ff8a80; --ask-bg: #272b31; --ask-bd: #9aa1ab;
+    --ok: #5fcb8b; --weak: #e2c25a; --bad: #ff8a80; --idle: #9aa1ab; --dim: 0.28;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--focus); }
+header, main, footer { max-width: 1760px; margin: 0 auto; padding: 0 16px; }
+header { max-width: 1760px; }
+h1 { font-size: 1.5rem; margin: 20px 0 4px; }
+.lede { margin: 4px 0; color: var(--muted); max-width: 70ch; }
+.meta { margin: 6px 0 0; font-size: 0.9rem; color: var(--muted); }
+code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace; }
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 16px; align-items: end;
+  margin: 14px 0 8px; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.controls label, .controls legend { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 2px; padding: 0; }
+.controls input[type=search], .controls select { width: 100%; min-height: 36px; font: inherit; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.checks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.checks label { display: inline-flex; align-items: center; gap: 6px; font-size: 0.95rem; color: var(--fg); margin: 0; min-height: 32px; }
+button { font: inherit; min-height: 36px; padding: 4px 12px; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; cursor: pointer; }
+button:hover { border-color: var(--focus); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.status { margin: 6px 0; min-height: 1.5em; font-size: 0.95rem; }
+.status.limit { padding: 8px 12px; border: 1px solid var(--weak); border-radius: 6px; background: var(--panel); }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 24px; }
+@media (min-width: 1100px) { .layout { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; } }
+.stage { overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; max-height: 78vh; }
+svg { display: block; }
+.colhead { font: 600 12px system-ui, sans-serif; fill: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.n { cursor: pointer; }
+.n rect { stroke-width: 1.5; }
+.n .t1 { font: 600 12px system-ui, -apple-system, sans-serif; fill: var(--fg); }
+.n .t2 { font: 10.5px system-ui, -apple-system, sans-serif; fill: var(--muted); }
+.n-source rect { fill: var(--src-bg); stroke: var(--src-bd); }
+.n-claim rect { fill: var(--claim-bg); stroke: var(--claim-bd); }
+.n-area rect { fill: var(--area-bg); stroke: var(--claim-bd); }
+.n-design rect { fill: var(--des-bg); stroke: var(--des-bd); }
+.n-tests rect { fill: var(--tst-bg); stroke: var(--tst-bd); }
+.n-gap rect { fill: var(--gap-bg); stroke: var(--gap-bd); stroke-dasharray: 5 3; }
+.n-gap .t1 { fill: var(--gap-bd); }
+.n-ask rect { fill: var(--ask-bg); stroke: var(--ask-bd); stroke-dasharray: 2 3; }
+.n-na rect { stroke-dasharray: 2 3; }
+.n:focus-visible rect, .n.focus rect { stroke: var(--focus); stroke-width: 3; }
+.n:focus-visible { outline: none; }
+.ext { font: 600 13px system-ui, sans-serif; fill: var(--focus); text-decoration: none; }
+.e { fill: none; stroke-width: 1.4; }
+.e-source { stroke: var(--src-bd); }
+.e-ver { stroke: var(--tst-bd); stroke-width: 1.2; }
+.e-sat { stroke: var(--idle); stroke-width: 1.8; }
+.o-holds { stroke: var(--ok); }
+.o-holds_weakened { stroke: var(--weak); stroke-dasharray: 7 3; }
+.o-suspect { stroke: var(--bad); stroke-dasharray: 3 3; }
+.o-unratified, .o-orphaned { stroke: var(--idle); stroke-dasharray: 2 4; }
+.o-unknown_claim { stroke: var(--bad); stroke-dasharray: 8 2 2 2; }
+.o-other { stroke: var(--idle); stroke-dasharray: 1 3; }
+.elabel { font: 600 10.5px system-ui, sans-serif; fill: var(--fg); paint-order: stroke; stroke: var(--panel); stroke-width: 3.5px; stroke-linejoin: round; }
+.has-focus .n, .has-focus .e, .has-focus .elabel { opacity: var(--dim); }
+.has-focus .hot { opacity: 1; }
+.has-focus .e.hot { stroke-width: 2.6; }
+aside { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font-size: 0.92rem; overflow-wrap: anywhere; }
+aside h2 { font-size: 1rem; margin: 0 0 6px; }
+aside h3 { font-size: 0.82rem; margin: 12px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+aside ul { margin: 0; padding-left: 1.1rem; }
+aside li { margin: 2px 0; }
+aside li button { min-height: 0; padding: 0 4px; border: 0; background: none; color: var(--focus); text-decoration: underline; text-align: left; }
+.scroll { max-height: 220px; overflow: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0 0; padding: 0; list-style: none; font-size: 0.85rem; color: var(--muted); }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.legend svg { width: 34px; height: 8px; }
+.tag { display: inline-block; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; font-size: 0.8rem; }
+footer { padding-bottom: 28px; color: var(--muted); font-size: 0.88rem; }
+@media (max-width: 1099px) {
+  aside { max-height: 42vh; overflow: auto; }
+  .layout.has-focus aside { order: -1; }   /* below the graph a focused chain would be off screen */
+}
+@media (max-width: 640px) {
+  body { font-size: 14px; }
+  h1 { font-size: 1.25rem; }
+  .controls { grid-template-columns: 1fr 1fr; padding: 10px; }
+  .controls .wide { grid-column: 1 / -1; }
+  .stage { max-height: 70vh; }
+}
+@media (prefers-reduced-motion: no-preference) { .n rect { transition: opacity 0.12s; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>req coverage explorer</h1>
+  <p class="lede">One claim, followed across the four layers: where it came from (<em>Source</em>), what it says (<em>Claim</em>), the design that
+  satisfies it (<em>Design</em>) and the tests that verify it (<em>Tests</em>). Read-only; recording a link stays a human act in a
+  terminal (<code>req satisfy --record</code>). <a href="index.html">Back to the overview</a>.</p>
+  <p class="meta" id="selection"></p>
+  <p class="meta" id="counts"></p>
+  <noscript><p class="status limit">This page draws its graph with a script it carries inside itself; it loads nothing from the network. Turn scripts on to read it.</p></noscript>
+</header>
+<main>
+  <form class="controls" id="controls" role="search" aria-label="Filters" onsubmit="return false">
+    <div class="wide">
+      <label for="q">Search by claim id, file path or test id</label>
+      <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="REQ-0028, src/gate.rs, suite::case">
+    </div>
+    <fieldset>
+      <legend>Layers drawn (claims always)</legend>
+      <div class="checks">
+        <label><input type="checkbox" id="l-source" checked> Source</label>
+        <label><input type="checkbox" id="l-design" checked> Design</label>
+        <label><input type="checkbox" id="l-tests" checked> Tests</label>
+      </div>
+    </fieldset>
+    <div>
+      <label for="outcome">Design link outcome</label>
+      <select id="outcome"><option value="">any</option></select>
+    </div>
+    <div>
+      <label for="area">Area</label>
+      <select id="area"><option value="">all areas</option></select>
+    </div>
+    <div class="checks">
+      <label><input type="checkbox" id="gaps"> Gaps only</label>
+    </div>
+    <div>
+      <button type="button" id="reset">Reset the view</button>
+    </div>
+  </form>
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+  <ul class="legend" aria-label="Legend" id="legend"></ul>
+  <div class="layout" id="layout">
+    <div class="stage" id="stage" tabindex="-1">
+      <svg id="graph" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Coverage graph: source, claim, design, tests"></svg>
+    </div>
+    <aside id="detail" aria-live="polite"></aside>
+  </div>
+</main>
+<footer>
+  <p>Generated by <code>tools/explorer/build.py</code> from <code>req trace</code>, <code>req satisfy</code> and the architecture overlays; every node and
+  edge here is one of theirs. Test outcomes are not on this page: they depend on a run, not on the repository.</p>
+</footer>
+<script type="application/json" id="req-explorer-data">__REQ_EXPLORER_DATA__</script>
+<script>
+(function () {
+  'use strict';
+
+  // The most nodes the page draws at once. Past it the reader is asked to narrow, never shown an unreadable graph
+  // (ADR 0054 decision 4). Set by measurement on a 5,000-claim corpus; the measurement is in the ADR's implementation note.
+  var NODE_LIMIT = 2000;
+  var ROW = 40, NODE_H = 34, PAD = 16, HEAD_H = 30;
+  var COLS = { source: 200, claim: 230, design: 230, tests: 180 };   // column widths
+  var GAPS = { source: 36, claim: 96, design: 36 };                    // the space after each column; claim's holds the outcome labels
+  var CHANNEL = NODE_H + 3;                              // the lane between two rows a claim -> tests edge runs along
+
+  var OUTCOMES = {
+    holds: 'holds', holds_weakened: 'holds (weakened)', suspect: 'suspect', unratified: 'unratified',
+    orphaned: 'orphaned', unknown_claim: 'unknown claim'
+  };
+  var KIND_TEXT = { no_source: 'no source', no_design: 'no design element', no_test: 'no test' };
+
+  var data = JSON.parse(document.getElementById('req-explorer-data').textContent);
+
+  // ---- the graph, indexed -------------------------------------------------------------------------------------------
+  var claimById = new Map();
+  var claims = data.claims;
+  claims.forEach(function (c) {
+    c.area_key = c.area || '';
+    c.source = null; c.group = null; c.links = []; c.gaps = [];
+    claimById.set(c.id, c);
+  });
+  var sourceById = new Map();
+  data.sources.forEach(function (s) { s.claims = []; sourceById.set(s.id, s); });
+  data.edges.source_of.forEach(function (e) {
+    var c = claimById.get(e.claim), s = sourceById.get(e.source);
+    c.source = s; s.claims.push(c);
+  });
+  var designById = new Map();
+  data.design.forEach(function (d) { d.links = []; designById.set(d.id, d); });
+  data.edges.satisfied_by.forEach(function (e) {
+    var link = { claim: claimById.get(e.claim), design: designById.get(e.design), outcome: e.outcome, line: e.line };
+    link.claim.links.push(link); link.design.links.push(link);
+  });
+  var groupById = new Map();
+  data.tests.forEach(function (t) {
+    t.claimObj = claimById.get(t.claim); t.claimObj.group = t; groupById.set(t.id, t);
+    t.low = t.ids.join('\n').toLowerCase();
+  });
+  data.gaps.forEach(function (g) { claimById.get(g.claim).gaps = g.kinds; });
+  var notAsked = new Map();
+  data.not_asked.forEach(function (n) { notAsked.set(n.claim, n.evidence); });
+
+  // Areas: the registry's, in its order; then undeclared ones, sorted; then claims with none.
+  var areas = [], areaByKey = new Map();
+  function addArea(key, label) {
+    var a = { key: key, label: label, depth: key === '' ? 0 : key.split('/').length - 1, claims: [] };
+    areas.push(a); areaByKey.set(key, a); return a;
+  }
+  data.areas.forEach(function (a) { addArea(a.path, a.label); });
+  var undeclared = [];
+  claims.forEach(function (c) { if (c.area_key !== '' && !areaByKey.has(c.area_key) && undeclared.indexOf(c.area_key) < 0) undeclared.push(c.area_key); });
+  undeclared.sort().forEach(function (k) { addArea(k, k); });
+  if (claims.some(function (c) { return c.area_key === ''; })) addArea('', 'no area');
+  claims.forEach(function (c) { areaByKey.get(c.area_key).claims.push(c); });
+  areas = areas.filter(function (a) { return a.claims.length > 0 || a.key === ''; });
+  areas.forEach(function (a) {
+    a.gapClaims = a.claims.filter(function (c) { return c.gaps.length > 0; }).length;
+    a.gapCount = { no_design: 0, no_source: 0, no_test: 0 };
+    a.claims.forEach(function (c) { c.gaps.forEach(function (k) { a.gapCount[k]++; }); });
+  });
+  var areaOrder = new Map();
+  areas.forEach(function (a, i) { areaOrder.set(a.key, i); });
+
+  // ---- state --------------------------------------------------------------------------------------------------------
+  var state = { expanded: new Set(), focus: null, layers: { source: true, design: true, tests: true },
+                outcome: '', area: '', gapsOnly: false, q: '' };
+  var el = function (id) { return document.getElementById(id); };
+  var svg = el('graph');
+
+  // ---- helpers ------------------------------------------------------------------------------------------------------
+  function esc(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function clip(text, max) {
+    text = String(text).replace(/\s+/g, ' ');
+    return text.length > max ? text.slice(0, max - 1) + '…' : text;
+  }
+  function clipStart(text, max) { return text.length > max ? '…' + text.slice(text.length - max + 1) : text; }
+  function outcomeText(o) { return Object.prototype.hasOwnProperty.call(OUTCOMES, o) ? OUTCOMES[o] : String(o); }
+  // The class an outcome is drawn with: from a closed list, so a value of the data is never a class name of its own.
+  var OUTCOME_CLASSES = { holds: 1, holds_weakened: 1, suspect: 1, unratified: 1, orphaned: 1, unknown_claim: 1 };
+  function outcomeClass(o) { return 'o-' + (Object.prototype.hasOwnProperty.call(OUTCOME_CLASSES, o) ? o : 'other'); }
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+  function componentUrl(d) {
+    var c = d.component;
+    return c ? data.pages[c.page] + '#focus=' + encodeURIComponent(c.id) : null;
+  }
+  function selectionText() {
+    var keys = Object.keys(data.selection).sort();
+    return keys.length ? keys.map(function (k) { return k + '=' + data.selection[k]; }).join(' ') : 'the default selection (no variant words)';
+  }
+
+  // ---- search and focus ---------------------------------------------------------------------------------------------
+  function searchClaims(q) {
+    q = q.toLowerCase();
+    var found = new Set();
+    claims.forEach(function (c) { if (c.id.toLowerCase().indexOf(q) >= 0) found.add(c); });
+    data.design.forEach(function (d) {
+      if (d.id.toLowerCase().indexOf(q) >= 0) d.links.forEach(function (l) { found.add(l.claim); });
+    });
+    data.tests.forEach(function (t) { if (t.low.indexOf(q) >= 0) found.add(t.claimObj); });
+    return found;
+  }
+  // A node key says its kind: a: area, c: claim, s: source, d: design, t: test group, g: a drawn gap (g:<kind>:<claim id>).
+  function nodeOf(key) {
+    var kind = key.charAt(0), rest = key.slice(2);
+    if (kind === 'c') return claimById.get(rest) || null;
+    if (kind === 's') return sourceById.get(rest) || null;
+    if (kind === 'd') return designById.get(rest) || null;
+    if (kind === 't') return groupById.get(rest) || null;
+    if (kind === 'g') return claimById.get(rest.slice(rest.indexOf(':') + 1)) || null;
+    return null;
+  }
+  // The chain of a focused node: the claims it touches and every node of the other layers on those claims; the focused
+  // node's own layer contributes only itself (a design element does not drag in the other design elements of its claims).
+  function chainOf(key) {
+    var kind = key.charAt(0), node = nodeOf(key), cs = [];
+    if (!node) return null;
+    if (kind === 'c' || kind === 'g') cs = [node];
+    else if (kind === 's') cs = node.claims;
+    else if (kind === 'd') cs = node.links.map(function (l) { return l.claim; });
+    else if (kind === 't') cs = [node.claimObj];
+    var keys = new Set([key]), hotClaims = new Set(cs);
+    cs.forEach(function (c) {
+      keys.add('c:' + c.id);
+      if (kind !== 's' && c.source) keys.add('s:' + c.source.id);
+      if (kind !== 'd') c.links.forEach(function (l) { keys.add('d:' + l.design.id); });
+      if (kind !== 't' && c.group) keys.add('t:' + c.group.id);
+      c.gaps.forEach(function (g) { keys.add('g:' + g + ':' + c.id); });
+      if (notAsked.has(c.id)) keys.add('g:ask:' + c.id);
+    });
+    return { claims: hotClaims, keys: keys, node: node, kind: kind };
+  }
+
+  // ---- the view: what is asked for, then what fits -------------------------------------------------------------------
+  function passes(c) {
+    if (state.area !== '' && c.area_key !== state.area) return false;
+    if (state.gapsOnly && c.gaps.length === 0) return false;
+    if (state.outcome !== '' && !c.links.some(function (l) { return l.outcome === state.outcome; })) return false;
+    return true;
+  }
+  function linksShown(c) {
+    return state.outcome === '' ? c.links : c.links.filter(function (l) { return l.outcome === state.outcome; });
+  }
+  // The nodes one claim brings, given the layers: [source key or null, design keys, tests key] and its placeholders.
+  function needs(c) {
+    var out = [], asked = c.applies === 'applies';   // a claim the selection does not apply is not asked for coverage (ADR 0053)
+    if (state.layers.source) { if (c.source) out.push('s:' + c.source.id); else if (asked) out.push('g:no_source:' + c.id); }
+    if (state.layers.design) {
+      var shown = linksShown(c);
+      if (shown.length === 0 && asked) out.push('g:no_design:' + c.id);
+      shown.forEach(function (l) { out.push('d:' + l.design.id); });
+    }
+    if (state.layers.tests) {
+      if (c.group) out.push('t:' + c.group.id);
+      else if (asked) out.push(notAsked.has(c.id) ? 'g:ask:' + c.id : 'g:no_test:' + c.id);
+    }
+    return out;
+  }
+
+  function view() {
+    var filtering = state.q !== '' || state.gapsOnly || state.outcome !== '' || state.area !== '';
+    var chain = state.focus ? chainOf(state.focus) : null;
+    var candidate = new Set();
+    var matched = null;
+    if (state.q !== '') { matched = searchClaims(state.q); matched.forEach(function (c) { candidate.add(c); }); }
+    else if (filtering) claims.forEach(function (c) { candidate.add(c); });
+    else areas.forEach(function (a) { if (state.expanded.has(a.key)) a.claims.forEach(function (c) { candidate.add(c); }); });
+    if (chain) chain.claims.forEach(function (c) { candidate.add(c); });
+
+    var drawn = 0, total = 0, full = true, totalClaims = 0, drawnClaims = 0;
+    var seenAll = new Set(), seenDrawn = new Set();
+    var plan = [];
+    areas.forEach(function (a) {
+      var inArea = a.claims.filter(function (c) { return candidate.has(c) && passes(c); });
+      if (filtering && inArea.length === 0) return;
+      var entry = { area: a, claims: [], matching: a.claims.filter(passes).length };
+      total += 1;
+      if (full && drawn + 1 > NODE_LIMIT) full = false;
+      if (full) { drawn += 1; plan.push(entry); }
+      inArea.forEach(function (c) {
+        var keys = needs(c), cost = 1, costDrawn = 1;
+        keys.forEach(function (k) { if (k.charAt(0) === 'g' || !seenAll.has(k)) cost += 1; });
+        keys.forEach(function (k) { if (k.charAt(0) === 'g' || !seenDrawn.has(k)) costDrawn += 1; });
+        total += cost; totalClaims += 1;
+        keys.forEach(function (k) { seenAll.add(k); });
+        if (full && drawn + costDrawn > NODE_LIMIT) full = false;
+        if (full) {
+          drawn += costDrawn; drawnClaims += 1;
+          keys.forEach(function (k) { seenDrawn.add(k); });
+          entry.claims.push(c);
+        }
+      });
+    });
+    return { plan: plan, drawn: drawn, total: total, hidden: total - drawn, totalClaims: totalClaims, drawnClaims: drawnClaims,
+             chain: chain, filtering: filtering, matched: matched };
+  }
+
+  // ---- layout and drawing -------------------------------------------------------------------------------------------
+  function render() {
+    var v = view();
+    var cols = [];
+    if (state.layers.source) cols.push('source');
+    cols.push('claim');
+    if (state.layers.design) cols.push('design');
+    if (state.layers.tests) cols.push('tests');
+    var x = {}, cursorX = PAD;
+    cols.forEach(function (name) { x[name] = cursorX; cursorX += COLS[name] + (GAPS[name] || 0); });
+    var width = cursorX - (GAPS[cols[cols.length - 1]] || 0) + PAD;
+
+    var y0 = HEAD_H + 8, cursor = y0;
+    var rows = [];                 // claim-column rows: area headers and claims, with y
+    var claimY = new Map();
+    v.plan.forEach(function (entry) {
+      rows.push({ type: 'area', entry: entry, y: cursor }); cursor += ROW;
+      entry.claims.forEach(function (c) { claimY.set(c, cursor); rows.push({ type: 'claim', claim: c, y: cursor }); cursor += ROW; });
+    });
+
+    // Source and design nodes sit on the claim grid, at the mean row of the claims they connect, never closer than one row.
+    function stack(items) {
+      items.sort(function (a, b) { return a.anchor - b.anchor || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0); });
+      var last = -Infinity;
+      items.forEach(function (it) {
+        var snapped = y0 + Math.round((it.anchor - y0) / ROW) * ROW;
+        it.y = Math.max(snapped, last + ROW); last = it.y;
+      });
+      return last;
+    }
+    var srcItems = new Map(), desItems = new Map(), gapItems = { source: [], design: [], tests: [] };
+    var edgesSource = [], edgesSat = [], edgesVer = [];
+    function bump(map, key, kind, node, y) {
+      var it = map.get(key);
+      if (!it) { it = { key: key, node: node, sum: 0, n: 0 }; map.set(key, it); }
+      it.sum += y; it.n += 1; it.anchor = it.sum / it.n;
+    }
+    rows.forEach(function (row) {
+      if (row.type !== 'claim') return;
+      var c = row.claim, y = row.y;
+      if (state.layers.source) {
+        if (c.source) { bump(srcItems, 's:' + c.source.id, 's', c.source, y); edgesSource.push({ from: 's:' + c.source.id, to: c, y: y }); }
+        else if (c.applies === 'applies') gapItems.source.push({ key: 'g:no_source:' + c.id, claim: c, kind: 'no_source', anchor: y });
+      }
+      if (state.layers.design) {
+        var shown = linksShown(c);
+        if (shown.length === 0 && c.applies === 'applies') gapItems.design.push({ key: 'g:no_design:' + c.id, claim: c, kind: 'no_design', anchor: y });
+        shown.forEach(function (l) { bump(desItems, 'd:' + l.design.id, 'd', l.design, y); edgesSat.push({ link: l, y: y, key: 'd:' + l.design.id }); });
+      }
+    });
+    var placed = { source: [], design: [] };
+    srcItems.forEach(function (it) { placed.source.push(it); });
+    gapItems.source.forEach(function (it) { placed.source.push(it); });
+    desItems.forEach(function (it) { placed.design.push(it); });
+    gapItems.design.forEach(function (it) { placed.design.push(it); });
+    var bottomS = stack(placed.source), bottomD = stack(placed.design);
+    var pos = new Map();
+    placed.source.concat(placed.design).forEach(function (it) { pos.set(it.key, it.y); });
+    var height = Math.max(cursor, bottomS + ROW, bottomD + ROW, y0 + ROW) + 12;
+
+    var hot = v.chain ? v.chain.keys : null;
+    var out = [];
+    function hotClass(key) { return hot && hot.has(key) ? ' hot' : ''; }
+    function edgeHot(a, b) { return hot && hot.has(a) && hot.has(b) ? ' hot' : ''; }
+
+    // Edges first, so a node is never under a line.
+    var edgeParts = [], labelParts = [];
+    edgesSource.forEach(function (e) {
+      var x1 = x.source + COLS.source, y1 = pos.get(e.from) + NODE_H / 2, x2 = x.claim, y2 = e.y + NODE_H / 2, xm = (x1 + x2) / 2;
+      edgeParts.push('<path class="e e-source' + edgeHot(e.from, 'c:' + e.to.id) + '" d="M' + x1 + ' ' + y1 + 'C' + xm + ' ' + y1 + ' ' + xm + ' ' + y2 + ' ' + x2 + ' ' + y2 + '"><title>source of ' + esc(e.to.id) + '</title></path>');
+    });
+    edgesSat.forEach(function (e) {
+      var x1 = x.claim + COLS.claim, y1 = e.y + NODE_H / 2, x2 = x.design, y2 = pos.get(e.key) + NODE_H / 2, xm = (x1 + x2) / 2;
+      var cls = 'e e-sat ' + outcomeClass(e.link.outcome) + edgeHot('c:' + e.link.claim.id, e.key);
+      edgeParts.push('<path class="' + cls + '" d="M' + x1 + ' ' + y1 + 'C' + xm + ' ' + y1 + ' ' + xm + ' ' + y2 + ' ' + x2 + ' ' + y2 + '"><title>' +
+        esc(e.link.claim.id + ' satisfied by ' + e.link.design.id + ': ' + outcomeText(e.link.outcome)) + '</title></path>');
+      labelParts.push('<text class="elabel' + edgeHot('c:' + e.link.claim.id, e.key) + '" x="' + xm + '" y="' + ((y1 + y2) / 2 + 3.5) + '" text-anchor="middle">' + esc(outcomeText(e.link.outcome)) + '</text>');
+    });
+    if (state.layers.tests) {
+      rows.forEach(function (row) {
+        if (row.type !== 'claim' || !row.claim.group) return;
+        var c = row.claim, ch = row.y + CHANNEL, x1 = x.claim + COLS.claim, x2 = x.tests;
+        edgeParts.push('<path class="e e-ver' + edgeHot('c:' + c.id, 't:' + c.group.id) + '" d="M' + x1 + ' ' + (row.y + NODE_H - 6) + 'L' + (x1 + 6) + ' ' + ch + 'L' + (x2 - 6) + ' ' + ch + 'L' + x2 + ' ' + (row.y + NODE_H - 6) + '"><title>' + esc(c.id + ' verified by ' + plural(c.group.ids.length, 'test')) + '</title></path>');
+      });
+    }
+    out.push(edgeParts.join(''), labelParts.join(''));
+
+    // A node of column `col` at row `ny`: two lines of text cut to the column's width (the title carries the whole text).
+    function node(cls, key, col, ny, line1, line2, title, extra, tail) {
+      var w = COLS[col], n1 = Math.floor((w - 20) / 6.4), n2 = Math.floor((w - 14) / 5.5);
+      return '<g class="n ' + cls + hotClass(key) + (state.focus === key ? ' focus' : '') + '" data-k="' + esc(key) + '" tabindex="0" role="button" transform="translate(' + x[col] + ' ' + ny +
+        ')" aria-label="' + esc(title) + '"><title>' + esc(title) + '</title><rect width="' + w + '" height="' + NODE_H + '" rx="6"/><text class="t1" x="8" y="14">' +
+        esc(tail ? clipStart(line1, n1) : clip(line1, n1)) + '</text><text class="t2" x="8" y="28">' + esc(clip(line2, n2)) + '</text>' + (extra || '') + '</g>';
+    }
+    rows.forEach(function (row) {
+      if (row.type === 'area') {
+        var a = row.entry.area;
+        var shown = row.entry.claims.length, of = row.entry.matching;
+        var line2 = (shown > 0 ? shown + ' of ' + plural(a.claims.length, 'claim') : plural(a.claims.length, 'claim')) + ' · ' + (a.gapClaims === 0 ? 'no gaps' : a.gapClaims + ' with a gap');
+        if (v.filtering && of !== a.claims.length) line2 = of + ' of ' + plural(a.claims.length, 'claim') + ' match · ' + a.gapClaims + ' with a gap';
+        var title = a.label + ': ' + plural(a.claims.length, 'claim') + '; ' + a.gapCount.no_design + ' with no design element, ' + a.gapCount.no_source + ' with no source, ' + a.gapCount.no_test + ' with no test. ' +
+          (state.expanded.has(a.key) ? 'Open: Enter collapses it.' : 'Collapsed: Enter opens it.');
+        out.push(node('n-area', 'a:' + a.key, 'claim', row.y, (shown > 0 ? '▾ ' : '▸ ') + a.label, line2, title));
+      } else {
+        var c = row.claim;
+        var na = c.applies !== 'applies';
+        var t = c.id + (c.modality ? ' (' + c.modality + ')' : '') + ': ' + c.statement + (na ? ' [does not apply in this selection]' : '');
+        out.push(node('n-claim' + (na ? ' n-na' : ''), 'c:' + c.id, 'claim', row.y, c.id + (na ? ' · not applying' : ''), c.statement, t));
+      }
+    });
+    placed.source.forEach(function (it) {
+      if (it.node) {
+        var s = it.node;
+        out.push(node('n-source', it.key, 'source', it.y, s.text, plural(s.claims.length, 'claim') + ' from this source', 'Source: ' + s.text + ' (' + plural(s.claims.length, 'claim') + ')'));
+      } else {
+        out.push(node('n-gap', it.key, 'source', it.y, KIND_TEXT.no_source, it.claim.id, it.claim.id + ' has no source'));
+      }
+    });
+    placed.design.forEach(function (it) {
+      if (it.node) {
+        var d = it.node, url = componentUrl(d);
+        var label = d.component ? d.component.label : 'not drawn on the architecture pages';
+        var extra = url ? '<a href="' + esc(url) + '"><text class="ext" x="' + (COLS.design - 20) + '" y="14"><title>Open ' + esc(d.component.label) + ' on the architecture page</title>↗</text></a>' : '';
+        out.push(node('n-design', it.key, 'design', it.y, d.id, label, 'Design element ' + d.id + ' (' + label + '), ' + plural(d.links.length, 'link'), extra, true));
+      } else {
+        out.push(node('n-gap', it.key, 'design', it.y, KIND_TEXT.no_design, it.claim.id, it.claim.id + ' has no design element'));
+      }
+    });
+    if (state.layers.tests) {
+      rows.forEach(function (row) {
+        if (row.type !== 'claim') return;
+        var c = row.claim;
+        if (c.applies !== 'applies' && !c.group) return;
+        if (c.group) {
+          out.push(node('n-tests', 't:' + c.group.id, 'tests', row.y, plural(c.group.ids.length, 'test'), c.group.ids[0], c.id + ' is verified by ' + plural(c.group.ids.length, 'test') + ': ' + c.group.ids.join(', ')));
+        } else if (notAsked.has(c.id)) {
+          out.push(node('n-ask', 'g:ask:' + c.id, 'tests', row.y, 'no test asked', notAsked.get(c.id) + ' evidence', c.id + ' has ' + notAsked.get(c.id) + ' evidence: the gate asks it for no test'));
+        } else {
+          out.push(node('n-gap', 'g:no_test:' + c.id, 'tests', row.y, KIND_TEXT.no_test, c.id, c.id + ' has no test'));
+        }
+      });
+    }
+    var heads = cols.map(function (name) {
+      var label = { source: 'Source', claim: 'Claim', design: 'Design · satisfied by', tests: 'Tests · verified by' }[name];
+      return '<text class="colhead" x="' + x[name] + '" y="' + (HEAD_H - 8) + '">' + label + '</text>';
+    }).join('');
+    svg.setAttribute('class', v.chain ? 'has-focus' : '');
+    svg.setAttribute('width', width);
+    svg.setAttribute('height', height);
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+    svg.innerHTML = heads + out.join('');
+    status(v);
+    detail(v);
+    el('layout').className = 'layout' + (v.chain ? ' has-focus' : '');
+    return v;
+  }
+
+  // ---- text: status, detail, legend ---------------------------------------------------------------------------------
+  function status(v) {
+    var box = el('status'), text, limit = v.hidden > 0;
+    if (v.plan.length === 0 || (v.totalClaims === 0 && v.filtering)) {
+      text = state.q !== '' ? 'Nothing matches “' + state.q + '”.' : 'No claim matches these filters.';
+    } else if (limit) {
+      text = 'Narrow the view to see ' + plural(v.hidden, 'hidden node') + ': the page draws at most ' + NODE_LIMIT + ' nodes at once (' + v.drawn +
+        ' drawn, ' + plural(v.totalClaims - v.drawnClaims, 'claim') + ' not drawn). Use a filter, an area or the search.';
+    } else if (!v.filtering && state.expanded.size === 0 && !v.chain) {
+      text = 'Open an area to see its claims, or search, or use a filter. ' + plural(claims.length, 'claim') + ' are collapsed into ' + plural(areas.length, 'area') + '.';
+    } else {
+      text = 'Drawing ' + plural(v.drawn, 'node') + ' (limit ' + NODE_LIMIT + '), ' + plural(v.drawnClaims, 'claim') + '.' +
+        (v.matched ? ' ' + plural(v.matched.size, 'claim') + ' match “' + state.q + '”.' : '');
+    }
+    box.textContent = text;
+    box.className = 'status' + (limit ? ' limit' : '');
+  }
+
+  function claimItem(c, extra) {
+    return '<li><button type="button" data-focus="c:' + esc(c.id) + '">' + esc(c.id) + '</button> ' + esc(clip(c.statement, 90)) + (extra || '') + '</li>';
+  }
+  function detail(v) {
+    var box = el('detail'), ch = v.chain;
+    if (!ch) {
+      box.innerHTML = '<h2>Focus a node</h2><p>Click a node, or press Enter on it, to follow its chain: the rest dims. Esc clears. A dashed red node is a gap, named, never left out.</p>' +
+        '<p>An area row opens or collapses its claims. <code>#focus=REQ-0001</code> in the address opens the page with a claim focused.</p>';
+      return;
+    }
+    var n = ch.node, kind = ch.kind, h = [];
+    function list(title, items, max) {
+      if (items.length === 0) return;
+      var shown = items.slice(0, max || 60);
+      h.push('<h3>' + esc(title) + ' (' + items.length + ')</h3><ul class="scroll">' + shown.join('') + (items.length > shown.length ? '<li>…and ' + (items.length - shown.length) + ' more</li>' : '') + '</ul>');
+    }
+    var first = kind === 'c' || kind === 'g' ? n : kind === 't' ? n.claimObj : null;
+    if (kind === 'c' || kind === 'g' || kind === 't') {
+      var c = first;
+      h.push('<h2>' + esc(c.id) + '</h2><p>' + esc(c.statement) + '</p><p><span class="tag">' + esc(c.modality || 'claim') + '</span> <span class="tag">' + esc(c.evidence) + ' evidence</span>' +
+        (c.applies !== 'applies' ? ' <span class="tag">does not apply here</span>' : '') + (c.area ? ' <span class="tag">' + esc(c.area) + '</span>' : '') + '</p>');
+      h.push('<h3>Source</h3><p>' + (c.source ? esc(c.source.text) : 'no source') + '</p>');
+      list('Satisfied by', c.links.map(function (l) {
+        var u = componentUrl(l.design);
+        return '<li><button type="button" data-focus="d:' + esc(l.design.id) + '">' + esc(l.design.id) + '</button> ' + esc(outcomeText(l.outcome)) +
+          (l.design.component ? ' · ' + (u ? '<a href="' + esc(u) + '">' + esc(l.design.component.label) + '</a>' : esc(l.design.component.label)) : '') + '</li>';
+      }));
+      if (c.links.length === 0) h.push('<h3>Satisfied by</h3><p>no design element</p>');
+      if (c.group) list('Verified by', c.group.ids.map(function (t) { return '<li>' + esc(t) + '</li>'; }), 80);
+      else h.push('<h3>Verified by</h3><p>' + (notAsked.has(c.id) ? esc(notAsked.get(c.id)) + ' evidence, no test asked' : 'no test') + '</p>');
+    } else if (kind === 's') {
+      h.push('<h2>Source</h2><p>' + esc(n.text) + '</p>');
+      list('Claims from this source', n.claims.map(function (c) { return claimItem(c); }));
+    } else if (kind === 'd') {
+      var u2 = componentUrl(n);
+      h.push('<h2>' + esc(n.id) + '</h2><p>' + (n.component ? 'Component: <a href="' + esc(u2) + '">' + esc(n.component.label) + '</a> on the architecture page.' : 'Not drawn on the architecture pages.') + '</p>');
+      list('Claims it is satisfied for', n.links.map(function (l) { return claimItem(l.claim, ' <span class="tag">' + esc(outcomeText(l.outcome)) + '</span>'); }));
+    }
+    h.push('<p><button type="button" id="clear-focus">Clear focus</button></p>');
+    box.innerHTML = h.join('');
+  }
+
+  function legend() {
+    var items = [['o-holds', 'holds'], ['o-holds_weakened', 'holds (weakened)'], ['o-suspect', 'suspect'], ['o-unratified', 'unratified / orphaned']];
+    el('legend').innerHTML = items.map(function (it) {
+      return '<li><svg viewBox="0 0 34 8" aria-hidden="true"><path class="e e-sat ' + it[0] + '" d="M0 4H34"/></svg>' + esc(it[1]) + '</li>';
+    }).join('') + '<li>dashed red node: a gap, named</li>';
+  }
+
+  // ---- controls -----------------------------------------------------------------------------------------------------
+  function syncHash() {
+    try {
+      var raw = state.focus ? state.focus.slice(2) : '';
+      history.replaceState(null, '', raw ? '#focus=' + encodeURIComponent(raw) : location.pathname + location.search);
+    } catch (e) { /* a file: page may refuse; the view still works */ }
+  }
+  function keyFromHash() {
+    var m = /(?:^|[#&])focus=([^&]*)/.exec(location.hash || '');
+    if (!m) return null;
+    var raw;
+    try { raw = decodeURIComponent(m[1]); } catch (e) { return null; }
+    if (claimById.has(raw)) return 'c:' + raw;
+    if (designById.has(raw)) return 'd:' + raw;
+    if (sourceById.has(raw)) return 's:' + raw;
+    if (groupById.has(raw)) return 't:' + raw;
+    return null;
+  }
+  function focusOn(key, keepKeys) {
+    if (key && key.charAt(0) === 'a') { toggleArea(key.slice(2)); return; }
+    if (key && key.charAt(0) === 'g') key = 'c:' + key.slice(key.lastIndexOf(':') + 1);
+    state.focus = state.focus === key ? null : key;
+    syncHash();
+    render();
+    if (keepKeys && state.focus) { var again = svg.querySelector('[data-k="' + CSS.escape(state.focus) + '"]'); if (again) again.focus({ preventScroll: true }); }
+  }
+  function toggleArea(key, keepKeys) {
+    if (state.expanded.has(key)) state.expanded.delete(key); else state.expanded.add(key);
+    render();
+    if (keepKeys) { var again = svg.querySelector('[data-k="a:' + CSS.escape(key) + '"]'); if (again) again.focus({ preventScroll: true }); }
+  }
+  function clearFocus() { if (state.focus) { state.focus = null; syncHash(); render(); } }
+  function readControls() {
+    state.q = el('q').value.trim();
+    state.layers.source = el('l-source').checked;
+    state.layers.design = el('l-design').checked;
+    state.layers.tests = el('l-tests').checked;
+    state.outcome = el('outcome').value;
+    state.area = el('area').value;
+    state.gapsOnly = el('gaps').checked;
+  }
+  function reset() {
+    el('q').value = ''; el('l-source').checked = el('l-design').checked = el('l-tests').checked = true;
+    el('outcome').value = ''; el('area').value = ''; el('gaps').checked = false;
+    state.expanded = new Set(); state.focus = null; readControls(); syncHash(); render();
+  }
+
+  function init() {
+    el('selection').textContent = 'Selection: ' + selectionText() + ' (the first line of .req/variants, the one docs/trace.md is made with). One selection is shown; variants are not switched here.';
+    var gapClaims = data.gaps.length, links = data.edges.satisfied_by.length;
+    el('counts').textContent = plural(claims.length, 'claim') + ' in ' + plural(areas.length, 'area') + ' · ' + plural(data.sources.length, 'source') + ' · ' +
+      plural(data.design.length, 'design element') + ' with ' + plural(links, 'satisfied-by link') + ' · ' + plural(data.tests.length, 'claim') + ' with tests · ' +
+      plural(gapClaims, 'claim') + ' with a gap' + (data.dangling_links.length ? ' · ' + plural(data.dangling_links.length, 'link') + ' name a claim this selection does not hold (not drawn)' : '') + '.';
+    var outcomes = []; data.edges.satisfied_by.forEach(function (e) { if (outcomes.indexOf(e.outcome) < 0) outcomes.push(e.outcome); });
+    outcomes.sort().forEach(function (o) { var opt = document.createElement('option'); opt.value = o; opt.textContent = outcomeText(o); el('outcome').appendChild(opt); });
+    areas.forEach(function (a) { var opt = document.createElement('option'); opt.value = a.key; opt.textContent = new Array(a.depth + 1).join('— ') + a.label; el('area').appendChild(opt); });
+    legend();
+    var fromHash = keyFromHash();
+    if (fromHash) state.focus = fromHash;
+    readControls();
+    render();
+    requestAnimationFrame(function () { performance.mark('req-explorer-first-draw'); });
+  }
+
+  var controls = el('controls');
+  el('q').addEventListener('input', function () { readControls(); render(); });
+  controls.addEventListener('change', function (e) { if (e.target.id !== 'q') { readControls(); render(); } });
+  el('q').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      var found = state.q !== '' ? searchClaims(state.q) : null;
+      if (found && found.size === 1) focusOn('c:' + Array.from(found)[0].id);
+    } else if (e.key === 'Escape') { clearFocus(); }
+  });
+  el('reset').addEventListener('click', reset);
+  svg.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('a')) return;
+    var g = e.target.closest ? e.target.closest('[data-k]') : null;
+    if (g) focusOn(g.getAttribute('data-k'), false); else clearFocus();
+  });
+  svg.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { clearFocus(); return; }
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.target.closest && e.target.closest('a')) return;
+    var g = e.target.closest ? e.target.closest('[data-k]') : null;
+    if (!g) return;
+    e.preventDefault();
+    var key = g.getAttribute('data-k');
+    if (key.charAt(0) === 'a') toggleArea(key.slice(2), true); else focusOn(key, true);
+  });
+  el('detail').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if (!b) return;
+    if (b.id === 'clear-focus') { clearFocus(); return; }
+    var key = b.getAttribute('data-focus');
+    if (key) { state.focus = key; syncHash(); render(); }
+  });
+  window.addEventListener('hashchange', function () {
+    var k = keyFromHash(); if (k && k !== state.focus) { state.focus = k; render(); }
+  });
+  init();
+})();
+</script>
+</body>
+</html>

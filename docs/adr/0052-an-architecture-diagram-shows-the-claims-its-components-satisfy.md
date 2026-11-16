@@ -292,7 +292,7 @@ Not an edit of the decisions above; decision 7 step 4 (`docs/specs/O-6-drift-dem
   `tools/graph/arch_overlay.py` on the overview diagram, which is read, never written. The diagram handed to the converter
   is the architect's with a title, a subtitle and one card added (a demonstration, on a copy, the statement before and
   after, req's own line for the edited link); components, connections and geometry are untouched. It writes
-  `<edit-id>/overlay.json`, `matrix.md` and `satisfy.txt` (the exact `req satisfy` text). The copies are deleted. Each `matrix.md` opens with one line saying it is made from a temporary copy with that edit applied;
+  `<edit-id>/overlay.json`, `matrix.md` and `satisfy.txt` (the `req satisfy` text less its `[MENTION]` lines, which carry source line numbers; the header keeps their count). The copies are deleted. Each `matrix.md` opens with one line saying it is made from a temporary copy with that edit applied;
   its edited claim links to `edits.json` (the committed claim file holds the unedited statement), and only the tightening, the
   edit the page shows, links its parts to `architecture-drift.html`, so no HOLDS row points at the SUSPECT picture. This checkout's
   corpus is never opened for writing.
@@ -310,3 +310,47 @@ Not an edit of the decisions above; decision 7 step 4 (`docs/specs/O-6-drift-dem
   directory are stale and named; each matrix's header line and links as above; no `req` is UNVERIFIABLE; the page carries the tightening overlay's
   subtitle and every node's id, label and status; the README quotes req's words and the generated status for each edit.
   The named gap of this note's step 3 is unchanged: the page's picture is not read back.
+
+## Implementation note — 2026-11-15 (O-7: a box that needs a human is framed in red)
+
+Not an edit of the decisions above; decision 3 (presentation only) and the O-6 note's "archify draws no colour per status"
+(`docs/specs/O-7-recheck-frame.md`). On the drift page the SUSPECT box read `SUSPECT · 1 of 4 claims` in the colour of every
+HOLDS box, so a visitor did not see it. The owner chose, on 2026-11-14, a frame over status colours through an archify fork.
+
+- **The frame.** For every component whose status is `suspect`, `unratified`, `orphaned`, `unknown_claim` or `stale`, the
+  overlay gains one archify boundary `{"kind": "security-group", "label": "re-check: <STATE>", "wraps": [<its id>]}`, appended
+  after the author's boundaries in the diagram's component order. `holds`, `holds_weakened` and `no claim` are not framed:
+  nothing waits on a person. **One boundary per box**, never one round several: a frame round boxes that are not neighbours
+  would enclose boxes that need nothing. Components, connections, their order and geometry are untouched, so this is still
+  presentation only. archify draws a `security-group` red and dashed, with the label on its edge.
+- **The status card** gains one line saying a red frame marks a box whose links need a human, only when a frame is drawn.
+- **The real pages do not change.** Every box of `docs/architecture.html` and `docs/architecture-detail.html` holds or has no
+  claim, so their overlays gain no boundary and no card line (`tests/architecture_page.rs` states it). Only the tightening
+  overlay of the drift demonstration gains a frame (cosmetic and loosening gain none), so `docs/architecture-drift.html` and
+  `req-drift.png` were rendered again.
+- **Measured with archify `7e45f36`, 2026-11-15.** `validate` and `finalize --quality standard` pass on the drift overlay with
+  the frame (all four gates, no diagnostics). A single-component `security-group` is accepted, and so is one nested inside an
+  author's `region`: the detail overlay with a frame round `canonicalizer` (inside "Meaning and change") passes all four gates.
+  Framing each of the 12 overview boxes on its own: `validate` passes for all 12. **Known limit:** at archify's default `pad`
+  (30 px) the dense detail diagram refuses 14 of its 27 boxes framed alone with `clean-flow/edge-through-node`: for `check`
+  the frame's padding leaves the `completeness` -> `baselines` connection 2 px from the `audit` and `baseline` boxes. Nesting
+  is not the cause (boxes in and out of regions fall on both sides).
+- **The `pad` probe (O-7-fix, 2026-11-15).** The schema's optional `boundary.pad` (default 30 px, `layout.boundaryPad` in the
+  renderer, plus 20 px extra at the bottom) was probed with `validate`, each of the 27 detail boxes and each of the 12 overview
+  boxes framed alone with the label `re-check: SUSPECT`. Passing, detail / overview: default 13 / 12; `pad` 0: 18 / 12; 2: 17 / 12;
+  **4: 19 / 12**; 6: 15 / 12; 8: 11 / 12. Beyond the spec: 1: 18; 3: 19; 5: 15; 7: 13; 10: 12; 15: 17; 20: 15; 40: 18 (detail only). No
+  value passes all 39, and the best are 3 and 4 (the same 19), so **every frame the converter adds carries `"pad": 4`** (the
+  author's own boundaries are untouched). `finalize --quality standard` passes all four gates at `pad` 4 on the drift overlay
+  and on the detail overlay with `canonicalizer` framed inside its region. The frame is still clearly visible on the drift
+  picture, only closer to the box. With the longer labels `UNRATIFIED` and `UNKNOWN CLAIM` at `pad` 4 the detail passes 18 of 27
+  (`importers` joins the failures), the overview 12 of 12.
+- **The boxes that still cannot be framed** (detail diagram, `pad` 4, label `re-check: SUSPECT`): `audit`, `decision`, `diffs`, `gate`,
+  `junit`, `propose`, `satisfy`, `select` (8 of 27; `importers` as well for a longer label). If one of them ever turns
+  SUSPECT, UNRATIFIED, ORPHANED, UNKNOWN CLAIM or STALE, the overlay is written and `archify validate` refuses the detail page
+  (`edge-through-node`): its architect has to adjust placement, never the converter, which changes presentation only. The
+  overview and the drift page frame every box. No real box is framed today.
+- **Not checked by the gate:** the page and the picture are not read back (the named gap of the earlier notes).
+
+**2026-11-16 (P-2, presentation only).** The three edits of the O-6 note are told as one guided page, `docs/drift.html`, built by `tools/demo/drift_page.py` from the committed drift output and one `req compare` per edit on a temporary copy (`docs/specs/P-2-drift-page.md`); its three pictures (`docs/architecture/drift/req-before.png`, `req-loosening.png`, `req-tightening.png`) are rendered as `req-drift.png` was but on one authored canvas (`meta.viewBox` 970×762), so they share a pixel size and differ only in the Evidence box and its frame. Each carries a `.png.json` record naming the overlay it was rendered from and the sha-256 of that overlay's bytes and of the picture's; the builder refuses a picture recorded against another edit's overlay and calls one STALE when either hash moved.
+
+**2026-11-16 (P-1, presentation only).** `docs/architecture/drift/req-drift.png`, the older and differently sized tightened picture, was retired for the matched pair `req-before.png` and `req-tightening.png`, which the README now shows side by side; it is deleted and no longer in the builder's allow-list (`docs/specs/P-1-readme.md`).
