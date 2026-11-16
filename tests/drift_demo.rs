@@ -572,6 +572,39 @@ fn a_tightening_that_no_longer_tightens_makes_the_check_stale() {
     );
 }
 
+/// An edit to a source file that moves no link must not make the drift set stale. `req satisfy` names each bare
+/// `req-satisfies:` mention by its file and line, so a committed copy of those lines went stale on any edit above a
+/// mention (PR #89 regenerated three files for a help-text change). The mention count stays; the lines do not.
+#[test]
+fn a_line_inserted_above_a_mention_leaves_the_set_current() {
+    for edit in ["cosmetic", "loosening", "tightening"] {
+        let text = read(&drift_file(edit, "satisfy.txt"));
+        assert!(
+            text.contains(" mention(s) of `req-satisfies:` with no claim id (not links)"),
+            "{edit}: the mention count stays in the header:\n{text}"
+        );
+        assert!(
+            !text.lines().any(|line| line.starts_with("[MENTION]")),
+            "{edit}: no per-mention line (each carries a line number):\n{text}"
+        );
+    }
+    let copy = Copy::new("moved-mention");
+    let main = copy.path("src/main.rs");
+    let text = read(&main);
+    fs::write(
+        &main,
+        format!("// a line that moves every mention below it\n{text}"),
+    )
+    .expect("edits the copy's src/main.rs");
+    let run = build(&copy.0, &["--check-drift", DRIFT], true);
+    assert_eq!(
+        run.code,
+        Some(0),
+        "a line inserted in src/main.rs moves no link, so the set is current:\n{}",
+        run.said
+    );
+}
+
 /// A committed `satisfy.txt` is compared, not trusted: say HOLDS where req says SUSPECT and the check is stale.
 #[test]
 fn a_hand_edited_satisfy_text_is_stale() {

@@ -30,18 +30,4 @@
 [HOLDS] src/select.rs -> REQ-0016
 [HOLDS] src/view.rs -> REQ-0020
 [HOLDS] src/view.rs -> REQ-0036
-[MENTION] src/audit.rs:325: req-satisfies: with no claim id — not a link
-[MENTION] src/completeness.rs:21: req-satisfies: with no claim id — not a link
-[MENTION] src/completeness.rs:245: req-satisfies: with no claim id — not a link
-[MENTION] src/main.rs:471: req-satisfies: with no claim id — not a link
-[MENTION] src/main.rs:573: req-satisfies: with no claim id — not a link
-[MENTION] src/main.rs:606: req-satisfies: with no claim id — not a link
-[MENTION] src/main.rs:607: req-satisfies: with no claim id — not a link
-[MENTION] src/satisfy.rs:4: req-satisfies: with no claim id — not a link
-[MENTION] src/satisfy.rs:19: req-satisfies: with no claim id — not a link
-[MENTION] src/satisfy.rs:47: req-satisfies: with no claim id — not a link
-[MENTION] src/satisfy.rs:250: req-satisfies: with no claim id — not a link
-[MENTION] src/satisfy.rs:260: req-satisfies: with no claim id — not a link
-[MENTION] src/satisfy.rs:280: req-satisfies: with no claim id — not a link
-[MENTION] src/satisfy.rs:559: req-satisfies: with no claim id — not a link
 verdict: PASS — every declared link holds

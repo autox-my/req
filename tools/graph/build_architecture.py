@@ -28,7 +28,9 @@ loosening, a tightening: statement before, statement after, the outcome `req sat
 applied to a FRESH TEMPORARY COPY of the corpus, never to this checkout: `req satisfy` and `req trace` run in the copy, and the
 converter writes, for the overview diagram and that copy's output, `<edit-id>/overlay.json` and `<edit-id>/matrix.md`, and this
 script then prepends the matrix's "made from a temporary copy" line and points the edited claim's link at `../edits.json`;
-`<edit-id>/satisfy.txt` is the exact text `req satisfy` printed, what an engineer would see. A directory or file that no edit
+`<edit-id>/satisfy.txt` is the text `req satisfy` printed, what an engineer would see, less its `[MENTION]` lines: each names a
+bare `req-satisfies:` by file and line, so any edit above one would make the set stale though no link moved (the header line
+keeps the mention count). A directory or file that no edit
 produces (beside `edits.json` and the images `req-before.png`, `req-loosening.png`, `req-tightening.png` and their `.png.json` records) is STALE: `--drift` writes the set and still exits 1 until
 it is deleted, and `--check-drift` names it. `docs/architecture-drift.html` is
 archify's rendering of the tightening overlay. `--check-drift` regenerates everything and compares; the copies are deleted.
@@ -215,6 +217,12 @@ def apply_edit(copy, edit):
     return None
 
 
+def without_mention_lines(text):
+    """`req satisfy`'s text less its `[MENTION]` lines. Each names a bare `req-satisfies:` by file and line, so a committed
+    copy went stale on any edit above a mention, though no link moved; the header keeps the mention count."""
+    return "".join(line for line in text.splitlines(keepends=True) if not line.startswith("[MENTION] "))
+
+
 def run_req(binary, cwd, *args):
     """`req --root . <args>` run in `cwd` (a relative root, so no machine path reaches the output): (code, stdout)."""
     env = {k: v for k, v in os.environ.items() if k != "REQ_ROOT"}
@@ -351,7 +359,7 @@ def generate_drift(binary, directory, into):
                 handle.write(drift_matrix_header(edit, has_page) + "\n\n"
                              + matrix.replace(claim_link, f"[{edit['claim_id']}](../{DRIFT_EDITS})"))
             with open(os.path.join(target, "satisfy.txt"), "w", encoding="utf-8", newline="\n") as handle:
-                handle.write(text)
+                handle.write(without_mention_lines(text))
     return "\n".join(reasons) or None
 
 
