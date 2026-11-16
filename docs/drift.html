@@ -111,7 +111,7 @@
   // The plain sentence under each outcome word: fixed text that agrees with ADR 0040 decision 3. {element} and {claim} are replaced.
   var OUTCOME_TEXT = {
     holds: 'HOLDS. The meaning fingerprint is unchanged: req compares what the sentence means, not how it is worded. So there is no alarm, and nobody is asked to re-check anything.',
-    holds_weakened: 'HOLDS (weakened). The obligation got looser. A loosening carries the link only when its class is one req has measured never to hide a strengthening (numeric loosening is; membership widening is not yet), so this one is not re-opened: what met the stricter bound meets the looser one. It is still reported by name, so nobody can miss that the requirement relaxed.',
+    holds_weakened: 'HOLDS (weakened). The obligation got looser. A loosening carries the link only when its class is one req has measured never to hide a stricter change (a strengthening, a tightening, a polarity flip or a scope change); numeric loosening is such a class, membership widening is not yet, so this one is not re-opened: what met the stricter bound meets the looser one. It is still reported by name, so nobody can miss that the requirement relaxed.',
     suspect: 'SUSPECT. The obligation got stricter, so the design may no longer meet it. A person must re-check it and re-record the link (`req satisfy --record {element} {claim}`).'
   };
   // Under the `req compare` output, when req printed a note: the pin is the claim's own; the copy edited only the statement.
@@ -137,7 +137,7 @@
     return typeof href === 'string' && (href.indexOf('https:') === 0 || /^[a-z0-9_.-]+\.html(#[A-Za-z0-9_=.-]*)?$/i.test(href));
   }
   // What a picture shows, from the overlay's own status line and frames in the data, never typed here.
-  function altText(prefix, label, status, frame, framed) { var others = framed - (frame ? 1 : 0); return prefix + ': ' + label + ' reads ' + status + (frame ? ' and is framed in red' : '') + (others > 0 ? ', ' + others + ' other part(s) framed' : (frame ? '' : ', no part framed')) + '.'; }
+  function altText(prefix, label, status, frame, framed) { var others = framed - (frame ? 1 : 0); return prefix + ': ' + label + ' reads ' + status + (frame ? ' and is framed in red' : '') + (others > 0 ? ', ' + others + (others === 1 ? ' other part framed' : ' other parts framed') : (frame ? '' : ', no part framed')) + '.'; }
   function figure(path, alt, caption) {
     var fig = el('figure');
     if (!picturePath(path)) { return add(fig, el('p', 'muted', 'The picture is not available.')); }

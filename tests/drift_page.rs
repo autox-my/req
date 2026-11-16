@@ -921,8 +921,10 @@ fn the_title_alt_text_sentence_and_noscript_say_only_what_is_so() {
         .expect("the sentence")
         .to_ascii_lowercase();
     for needle in [
-        "never to hide a strengthening",
-        "numeric loosening is",
+        // ADR 0040 decision 5's zero bound: every stricter class, the tightening this page shows among them.
+        "never to hide a stricter change",
+        "a tightening",
+        "numeric loosening is such a class",
         "membership widening is not yet",
         "not re-opened",
     ] {
@@ -1303,5 +1305,48 @@ fn the_landing_page_lists_it_first_and_the_docs_point_at_it() {
     assert!(
         graph.contains("docs/drift.html") && graph.contains("tools/demo/drift_page.py"),
         "examples/graph/README.md names the page and its builder"
+    );
+}
+
+/// Only a `security-group` boundary is a red re-check frame (ADR 0052, O-7). An author's `region` around parts that hold is a
+/// grouping, not a frame: it must not count as "framed", must not change step 1's heading, and must not make the build refuse.
+#[test]
+fn an_authors_region_is_not_a_red_frame() {
+    let copy = Copy::new("region");
+    let overlay_rel = "docs/architecture/overview-overlay.json";
+    let overlay_path = copy.path(overlay_rel);
+    let mut overlay: Value =
+        serde_json::from_str(&read(&overlay_path)).expect("the overlay parses");
+    let ids: Vec<Value> = overlay["components"]
+        .as_array()
+        .expect("components")
+        .iter()
+        .map(|c| c["id"].clone())
+        .collect();
+    overlay["boundaries"] =
+        serde_json::json!([{ "kind": "region", "label": "Everything", "wraps": ids }]);
+    fs::write(
+        &overlay_path,
+        serde_json::to_string_pretty(&overlay).expect("serialises"),
+    )
+    .expect("writes the copy");
+    // The before picture's record follows the edited overlay, so only the frame logic is under test here.
+    let record_path = copy.path("docs/architecture/drift/req-before.png.json");
+    let mut record: Value = serde_json::from_str(&read(&record_path)).expect("the record parses");
+    record["overlay_sha256"] = Value::String(sha256_hex(&overlay_path));
+    fs::write(
+        &record_path,
+        serde_json::to_string_pretty(&record).expect("serialises"),
+    )
+    .expect("writes the copy");
+    let run = build(&copy.0, &["--out", "region.html"]);
+    assert_eq!(run.code, Some(0), "a region is not a frame:\n{}", run.said);
+    let page = read(&copy.path("region.html"));
+    let (data, _, _) = embedded(&page);
+    let before = &data["before"];
+    assert_eq!(before["framed"], 0, "no red frame before: {before}");
+    assert!(
+        page.contains("Before: every linked part holds"),
+        "step 1's heading is unchanged"
     );
 }

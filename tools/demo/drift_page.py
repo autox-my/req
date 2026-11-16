@@ -199,6 +199,9 @@ def overlay_view(path, element):
         statuses = {c["id"]: c["sublabel"] for c in components}
         frames = {}
         for boundary in overlay.get("boundaries", []):
+            # Only the converter's re-check frame is red (ADR 0052, O-7); an author's `region` is a grouping, not a frame.
+            if boundary.get("kind") != "security-group":
+                continue
             for wrapped in boundary.get("wraps", []):
                 frames[wrapped] = boundary["label"]
         cited = [c for c in components if any(s.get("path") == element for s in c.get("sources", []))]
