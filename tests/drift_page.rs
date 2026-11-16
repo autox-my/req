@@ -690,6 +690,264 @@ fn the_pin_note_is_kept_verbatim_and_explained_in_one_plain_sentence() {
     );
 }
 
+/// The overlay each picture is rendered from, written here (never read from a sidecar): the real overview for the before
+/// picture, the edit's own for the other two.
+const PICTURES: [(&str, &str, &str); 3] = [
+    (
+        "req-before.png",
+        "docs/architecture/overview-overlay.json",
+        "before",
+    ),
+    (
+        "req-loosening.png",
+        "docs/architecture/drift/loosening/overlay.json",
+        "loosening",
+    ),
+    (
+        "req-tightening.png",
+        "docs/architecture/drift/tightening/overlay.json",
+        "tightening",
+    ),
+];
+
+fn sha256_hex(path: &Path) -> String {
+    use sha2::{Digest, Sha256};
+    let bytes = fs::read(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// A picture is bound to the overlay it was rendered from: a sidecar beside it names that overlay (the one its edit has), the
+/// sha-256 of the overlay's exact bytes and of the picture's, and the canvas it was rendered on.
+#[test]
+fn each_picture_names_the_overlay_it_was_rendered_from_and_the_hashes_hold() {
+    let drift = root().join("docs/architecture/drift");
+    for (picture, overlay, _) in PICTURES {
+        let sidecar: Value = serde_json::from_str(&read(&drift.join(format!("{picture}.json"))))
+            .unwrap_or_else(|e| panic!("{picture}.json: {e}"));
+        assert_eq!(sidecar["overlay"], overlay, "{picture}: its overlay");
+        assert_eq!(
+            sidecar["overlay_sha256"].as_str().expect("a hash"),
+            sha256_hex(&root().join(overlay)),
+            "{picture}: the overlay's bytes"
+        );
+        assert_eq!(
+            sidecar["png_sha256"].as_str().expect("a hash"),
+            sha256_hex(&drift.join(picture)),
+            "{picture}: the picture's bytes"
+        );
+        assert_eq!(sidecar["viewBox"], serde_json::json!([970, 762]));
+        assert_eq!(sidecar["renderer"], "archify 7e45f36");
+    }
+    // The three overlays are three different files, so a swap cannot satisfy two sidecars at once.
+    let overlays: std::collections::BTreeSet<&str> = PICTURES.iter().map(|p| p.1).collect();
+    assert_eq!(overlays.len(), 3);
+}
+
+fn swap_files(copy: &Copy, a: &str, b: &str) {
+    let (a, b) = (copy.path(a), copy.path(b));
+    let held = fs::read(&a).expect("reads a");
+    fs::write(&a, fs::read(&b).expect("reads b")).expect("writes a");
+    fs::write(&b, held).expect("writes b");
+}
+
+/// Swapping two pictures, or editing an overlay and not rendering again, is never CURRENT; and a picture that names another
+/// edit's overlay is refused. The SUSPECT frame can never sit under "HOLDS (weakened)".
+#[test]
+fn swapping_two_pictures_or_editing_an_overlay_is_not_current() {
+    let drift = "docs/architecture/drift";
+    let loosening = format!("{drift}/req-loosening.png");
+    let tightening = format!("{drift}/req-tightening.png");
+    // The pictures alone: their sidecars still describe the other bytes.
+    let copy = Copy::new("swap-pngs");
+    swap_files(&copy, &loosening, &tightening);
+    let run = build(&copy.0, &["--check", PAGE]);
+    assert_eq!(run.code, Some(1), "{}", run.said);
+    assert!(
+        run.said.contains("STALE") && run.said.contains("req-loosening.png"),
+        "the picture is named:\n{}",
+        run.said
+    );
+    // The pictures with their sidecars: each now names the other edit's overlay.
+    let copy = Copy::new("swap-both");
+    swap_files(&copy, &loosening, &tightening);
+    swap_files(
+        &copy,
+        &format!("{loosening}.json"),
+        &format!("{tightening}.json"),
+    );
+    for mode in ["--check", "--out"] {
+        let target = if mode == "--check" { PAGE } else { "x.html" };
+        let run = build(&copy.0, &[mode, target]);
+        assert_eq!(run.code, Some(3), "{mode}: {}", run.said);
+        assert!(
+            run.said.contains("UNVERIFIABLE")
+                && run.said.contains("req-loosening.png")
+                && run.said.contains("loosening/overlay.json"),
+            "{mode}: the picture and the overlay it should name:\n{}",
+            run.said
+        );
+    }
+    assert!(!copy.path("x.html").exists(), "nothing was written");
+    // An overlay edited (a byte that changes no status) and the picture not rendered again.
+    let copy = Copy::new("overlay-edited");
+    let overlay = copy.path(&format!("{drift}/loosening/overlay.json"));
+    let mut text = read(&overlay);
+    text.push('\n');
+    fs::write(&overlay, text).expect("edits the copy");
+    for mode in ["--check", "--out"] {
+        let target = if mode == "--check" { PAGE } else { "x.html" };
+        let run = build(&copy.0, &[mode, target]);
+        assert_eq!(run.code, Some(1), "{mode}: {}", run.said);
+        assert!(
+            run.said.contains("STALE")
+                && run.said.contains("req-loosening.png")
+                && run.said.contains("loosening/overlay.json"),
+            "{mode}: the picture and its overlay are named:\n{}",
+            run.said
+        );
+    }
+    assert!(!copy.path("x.html").exists(), "nothing was written");
+    // No sidecar: the binding cannot be checked.
+    let copy = Copy::new("no-sidecar");
+    fs::remove_file(copy.path(&format!("{loosening}.json"))).expect("removes");
+    let run = build(&copy.0, &["--check", PAGE]);
+    assert_eq!(run.code, Some(3), "{}", run.said);
+    assert!(
+        run.said.contains("UNVERIFIABLE") && run.said.contains("req-loosening.png.json"),
+        "{}",
+        run.said
+    );
+}
+
+/// The `req compare` block is req's output in the order req printed it: this test runs `req compare` itself, on a copy.
+#[test]
+fn the_compare_block_is_req_s_output_in_req_s_order() {
+    let (data, _, _) = embedded(&read(&root().join(PAGE)));
+    let got = page_edits(&data);
+    let copy = Copy::new("compare");
+    let claim = read(&copy.path(&format!("claims/{CLAIM}.yml")));
+    assert!(claim.contains("at most 0.30"));
+    for (id, replacement) in [
+        ("cosmetic", "no more than 0.30"),
+        ("loosening", "at most 0.40"),
+        ("tightening", "at most 0.20"),
+    ] {
+        fs::write(
+            copy.path("after.yml"),
+            claim.replacen("at most 0.30", replacement, 1),
+        )
+        .expect("writes the edited claim");
+        let output = Command::new(req_bin())
+            .arg("--root")
+            .arg(&copy.0)
+            .args(["compare", &format!("claims/{CLAIM}.yml"), "after.yml"])
+            .current_dir(&copy.0)
+            .env_remove("REQ_ROOT")
+            .output()
+            .expect("runs req compare");
+        assert!(output.status.success(), "{id}");
+        let want: Vec<String> = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(str::to_string)
+            .collect();
+        let shown: Vec<String> = edit(&got, id)["compare"]["output"]
+            .as_array()
+            .expect("the output lines")
+            .iter()
+            .map(|l| l.as_str().expect("a line").to_string())
+            .collect();
+        assert_eq!(shown, want, "{id}: req's lines, in req's order");
+    }
+}
+
+/// The wording the review of PR #93 corrected: what the title claims, what the alt text says, the weakened sentence's
+/// condition, and what the noscript says is committed.
+#[test]
+fn the_title_alt_text_sentence_and_noscript_say_only_what_is_so() {
+    let template = read(&root().join(TEMPLATE));
+    // 5 of the 12 boxes read "no claim", so the picture does not show that every part holds.
+    assert!(
+        !template.contains("every part holds")
+            && template.contains("Before: every linked part holds"),
+        "the title says what the picture shows"
+    );
+    let (data, _, _) = embedded(&read(&root().join(PAGE)));
+    let statuses: Vec<String> = std::iter::once(data["before"]["status_line"].clone())
+        .chain(page_edits(&data).iter().map(|e| e["status_line"].clone()))
+        .map(|v| v.as_str().expect("a status line").to_string())
+        .collect();
+    assert_eq!(
+        statuses,
+        [
+            "HOLDS · 4 claims",
+            "HOLDS · 4 claims",
+            "HOLDS (weakened) · 1 of 4 claims",
+            "SUSPECT · 1 of 4 claims"
+        ]
+    );
+    // The alt text is built from the overlay's status line and frame in the data, never typed in the template.
+    assert_eq!(data["before"]["framed"], 0);
+    for (id, framed) in [("cosmetic", 0), ("loosening", 0), ("tightening", 1)] {
+        assert_eq!(edit(&page_edits(&data), id)["framed"], framed, "{id}");
+    }
+    let alt_lines: Vec<&str> = template
+        .lines()
+        .filter(|l| l.contains("function altText("))
+        .collect();
+    assert_eq!(alt_lines.len(), 1, "one place composes the alt text");
+    for needle in [
+        "status_line",
+        "framed in red",
+        "no part framed",
+        "data.before",
+    ] {
+        assert!(template.contains(needle), "the alt text uses `{needle}`");
+    }
+    for typed in [
+        "HOLDS (weakened) \u{b7}",
+        "SUSPECT \u{b7}",
+        "HOLDS \u{b7} 4",
+    ] {
+        assert!(!template.contains(typed), "a status is typed: {typed}");
+    }
+    // ADR 0040 decisions 3 and 5: a loosening carries the link only in a class req has measured.
+    let weakened = template
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("holds_weakened: '"))
+        .expect("the sentence")
+        .to_ascii_lowercase();
+    for needle in [
+        "never to hide a strengthening",
+        "numeric loosening is",
+        "membership widening is not yet",
+        "not re-opened",
+    ] {
+        assert!(weakened.contains(needle), "the sentence lacks `{needle}`");
+    }
+    // The noscript names what is committed and where the rest comes from.
+    let noscript = template
+        .split("<noscript>")
+        .nth(1)
+        .and_then(|t| t.split("</noscript>").next())
+        .expect("a noscript");
+    for needle in [
+        "satisfy.txt",
+        "overlay.json",
+        "req compare",
+        "tools/demo/drift.html",
+    ] {
+        assert!(noscript.contains(needle), "the noscript lacks `{needle}`");
+    }
+    assert!(
+        !noscript.contains("The same output is committed"),
+        "the noscript no longer says the same output is committed"
+    );
+}
+
 /// The links the page offers, from the data: the explorer on REQ-0010, the real architecture page, the drift page and ADR 0040.
 #[test]
 fn the_links_are_the_explorer_the_architecture_the_drift_page_and_adr_0040() {

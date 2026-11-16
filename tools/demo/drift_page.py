@@ -12,6 +12,9 @@ is computed from committed output and one `req compare` run, and from nothing el
                                            the exact `req satisfy` text for that edit; its line for the edited link is shown
     docs/architecture/drift/<edit>/overlay.json and docs/architecture/overview-overlay.json
                                            the Evidence box's status line and red frame, and whether a diagram changed at all
+    docs/architecture/drift/req-*.png and their `.png.json` records
+                                           the three pictures, each bound to the overlay it was rendered from (a record names
+                                           the overlay and holds the sha-256 of its bytes and of the picture's)
     req compare                            run on the claim and its edited copy, in a TEMPORARY COPY of the corpus, for the
                                            direction word and the two meaning fingerprints
     claims/REQ-0010.yml                    read, never written: the statement every edit starts from
@@ -27,11 +30,13 @@ This script never opens this checkout's claims for writing: the edit is applied 
 The corpus is the repository this script lives in (its parent's parent's parent), so a copy of the repository checks itself.
 Python standard library only, offline. `req` is taken from `--req`, else PATH.
 
-Exit: 0 written / current; 1 stale (the page is named); 2 usage; 3 UNVERIFIABLE, nothing was compared or written: `req` cannot be
+Exit: 0 written / current; 1 stale (the page is named; or a picture no longer matches the overlay it was rendered from, or its
+record: the picture is named, render it again); 2 usage; 3 UNVERIFIABLE, nothing was compared or written: `req` cannot be
 run or did not answer as this build reads, a committed output disagrees with the outcome its edit expects (the edit is named; fix
 the demonstration with `tools/graph/build_architecture.py --drift`, not the page), a picture is missing, or the page cannot be written.
 """
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -67,6 +72,12 @@ SATISFY_LINE = re.compile(r"^\[(?P<outcome>[^\]]+)\] (?P<element>\S+) -> (?P<cla
 COMPARE_LINE = re.compile(r"^(?P<a>\S+) -> (?P<b>\S+): (?P<direction>\S+)")
 FINGERPRINTS = re.compile(r"^\s+(?P<before>[0-9a-f]+) -> (?P<after>[0-9a-f]+)$")
 PNG = b"\x89PNG\r\n\x1a\n"
+PICTURE_SCHEMA = "req.drift-picture/1"
+BEFORE_OVERLAY = "docs/architecture/overview-overlay.json"
+
+
+class Stale(Exception):
+    """A picture no longer matches the overlay it was rendered from, or its own record: render it again (exit 1)."""
 
 
 class Unverifiable(Exception):
@@ -211,6 +222,39 @@ def image_check(relative):
     return relative, (int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big"))
 
 
+def sha256_file(path):
+    try:
+        with open(path, "rb") as handle:
+            return hashlib.sha256(handle.read()).hexdigest()
+    except OSError as why:
+        raise Unverifiable(f"{os.path.relpath(path, ROOT)} cannot be read: {why}")
+
+
+def picture_binding(picture, overlay):
+    """Bind `picture` (a path under docs/) to the overlay it must have been rendered from (a path under the repository).
+
+    A sidecar `<picture>.json` records the overlay it was rendered from, the sha-256 of that overlay's exact bytes and of the
+    picture's. A sidecar that names another overlay is refused (a picture swapped for another edit's, with its record);
+    a picture or an overlay whose bytes are not the recorded ones is STALE (an overlay changed and the picture was not rendered
+    again, or a picture was swapped without its record). Nothing here judges how the picture was made."""
+    named = f"docs/{picture}"
+    record = read_json(os.path.join(DOCS, picture + ".json"), "the picture's record")
+    if not isinstance(record, dict) or record.get("schema") != PICTURE_SCHEMA:
+        raise Unverifiable(f"{named}.json is not a {PICTURE_SCHEMA} record")
+    for key in ("overlay", "overlay_sha256", "png_sha256"):
+        if not isinstance(record.get(key), str):
+            raise Unverifiable(f"{named}.json has no `{key}`")
+    if record["overlay"] != overlay:
+        raise Unverifiable(f"the picture {named} is recorded as rendered from {record['overlay']}, but its edit's overlay is "
+                           f"{overlay}: it belongs to another edit")
+    if sha256_file(os.path.join(DOCS, picture)) != record["png_sha256"]:
+        raise Stale(f"{named} is not the picture recorded in {named}.json (its bytes differ): render it again from {overlay} "
+                    "and record it")
+    if sha256_file(os.path.join(ROOT, overlay)) != record["overlay_sha256"]:
+        raise Stale(f"{named} was rendered from an earlier {overlay} (the overlay's bytes changed): render it again and "
+                    "record it")
+
+
 def claim_pins(claim_text):
     """The claim's `pins:` block as `{key: value}` (quotes dropped), `{}` when it has none. Read for the page, never edited."""
     pins, inside = {}, False
@@ -276,6 +320,7 @@ def compare_edits(binary, edits, claim_id):
             rest = [line for line in lines[1:] if line.startswith(" ") and not FINGERPRINTS.match(line)]
             results[edit["id"]] = {
                 "line": lines[0],
+                "output": lines,
                 "detail": [line.strip() for line in rest if not line.strip().startswith("note: ")],
                 "notes": [line.strip()[len("note: "):] for line in rest if line.strip().startswith("note: ")],
                 "fingerprints": {"before": prints[0].group("before"), "after": prints[0].group("after")},
@@ -293,6 +338,7 @@ def build_data(binary):
     before_all_hold = not overview_frames and all(s == "no claim" or s.startswith("HOLDS · ") for s in overview.values())
     story = []
     before_image, before_size = image_check(BEFORE_IMAGE)
+    picture_binding(before_image, BEFORE_OVERLAY)
     sizes = {before_image: before_size}
     for edit in edits:
         line, label, word = satisfy_line(edit, element, claim_id)
@@ -317,6 +363,7 @@ def build_data(binary):
         if image is not None:
             image, size = image_check(image)
             sizes[image] = size
+            picture_binding(image, f"docs/architecture/drift/{edit['id']}/overlay.json")
         story.append({
             "id": edit["id"],
             "kind": edit["kind"],
@@ -325,13 +372,14 @@ def build_data(binary):
             "before": edit["before"],
             "after": edit["after"],
             "diff": word_diff(edit["before"], edit["after"]),
-            "compare": {k: compare[k] for k in ("line", "detail", "notes", "fingerprints")},
+            "compare": {k: compare[k] for k in ("line", "detail", "notes", "fingerprints", "output")},
             "direction": compare["direction"],
             "outcome": word,
             "outcome_label": label,
             "satisfy_line": line,
             "status_line": status,
             "frame": frame,
+            "framed": len(frames),
             "image": image,
             "diagram_unchanged": unchanged,
         })
@@ -353,6 +401,7 @@ def build_data(binary):
             "image": before_image,
             "status_line": overview[component["id"]],
             "all_hold": before_all_hold,
+            "framed": len(overview_frames),
         },
         "edits": story,
         "links": [
@@ -404,6 +453,9 @@ def main(argv):
         return 3
     try:
         page = render(binary)
+    except Stale as why:
+        print(f"STALE {why}", file=sys.stderr)
+        return 1
     except Unverifiable as why:
         print(f"UNVERIFIABLE: {why}", file=sys.stderr)
         return 3
