@@ -14,12 +14,12 @@ a build of the revision that introduced it.
 
 req is deliberately not published to crates.io (`publish = false`), so **the rev is the provenance**: you pin a
 commit, never a version number. Two ways honour that: a **prebuilt, checksummed binary** for the
-rev (below; two releases exist so far) and a **build from source** at the rev ([From source](#from-source)).
+rev (below; three releases exist so far) and a **build from source** at the rev ([From source](#from-source)).
 
-> **Status: two releases exist.** `rev-ec87808` (Linux x86_64 only) and `rev-6b74f51` (Linux x86_64 and macOS arm64,
-> Apple silicon only; no Intel Mac, no native Windows: see [Windows](#windows)). For any other rev or machine use
-> [From source](#from-source). Both Linux tarballs were built on a runner whose libc is glibc 2.43 (each `.build-info`
-> says so); read that line before you rely on one on an older distribution. The macOS tarball of `rev-6b74f51` was built on the
+> **Status: three releases exist.** `rev-ec87808` (Linux x86_64 only), `rev-6b74f51` and `rev-aeaf987` (Linux x86_64
+> and macOS arm64, Apple silicon only; no Intel Mac, no native Windows: see [Windows](#windows)). For any other rev or
+> machine use [From source](#from-source); all three predate `req.claim/3`. All three Linux tarballs were built on a runner
+> whose libc is glibc 2.43 (each `.build-info` says so); read that line before you rely on one on an older distribution. The macOS tarball of `rev-6b74f51` was built on the
 > owner's machine, not on a runner; from the next release the workflow builds it (ADR 0032, `docs/releasing.md`). `install-req.sh` was run against `rev-ec87808` on GitHub-hosted
 > Ubuntu 22.04 (glibc 2.35), 24.04 and the latest image (2026-11-09): the right pin installed, `req --version` said
 > `built from ec87808`, and `req init` and `req canon` exited 0; a wrong pin was refused with nothing installed (seen
@@ -249,13 +249,16 @@ cannot be read — no `claims/` means run `req init` first.
 If the requirements already live in a Sphinx-Needs project, its export is the source and nothing needs
 retyping. `tools/needs_import.py` (a sibling of `adopt.py`, python3 standard library only, also a
 **starting point to copy and adjust**, not a `req` command; ADR 0027) reads the export and writes the same
-legal drafts: the statement, its provenance, empty `applicability` and `relations`, nothing derived, no pin.
+legal drafts: the statement, its provenance, empty `applicability`, `relations` when `--links` is given, `tests:` when `--tests` is given,
+nothing derived, no pin.
 
 ```bash
 # from the corpus root, with needs_import.py copied into your project
 python3 tools/needs_import.py --from needs.json --origin <where the export came from> \
     --type <your requirement type> --type <another> --date YYYY-MM-DD           # dry run
-python3 tools/needs_import.py ...the same arguments... --write                  # the drafts
+python3 tools/needs_import.py ...the same arguments... --links --write         # drafts + their typed links
+python3 tools/needs_import.py ...the same arguments... --links --write \
+    --tests junit.xml --test-type test --test-link specs                        # ... + JUnit evidence
 req canon                # exit 0 — the parse each draft derives
 ```
 
@@ -288,14 +291,45 @@ a different provenance. Two needs with the same text — the same sentence at tw
 and `req render` shows them with one address: that is for you to read, not for the tool to merge.
 
 **Not carried, and the report says so.** The status, tags, safety and security levels, `reqtype` and every
-other field are not written (a source status is not a ratification; applicability is authored), and
-neither are the typed links: `relations` stays `[]`, because a relation names a claim id that does not
-exist yet and the kind of relation is a judgement. The `not carried` line lists the fields it saw on the
-drafted needs and counts the drafted needs that had typed links, naming the fields. The link types are the
-ones the export declares (`needs_schema`, a field whose `field_type` is `links` or `backlinks`), and the line
-says "declared by needs_schema"; an export without one (an older Sphinx-Needs) is read by inference (a list of
-ids that is `links`, ends in `_back`, or has a `<name>_back` partner field in the file) and the line says
-"inferred". Every other field is listed too, so nothing is hidden. `--areas` carries one thing more, the place: a
+other field are not written (a source status is not a ratification; applicability is authored), and —
+without `--links` — neither are the typed links: `relations` stays `[]`, because a relation names a claim
+id that does not exist yet and the kind of relation is a judgement. The `not carried` line lists the fields it
+saw on the drafted needs and counts the drafted needs that had typed links, naming the fields. The link types
+are the ones the export declares (`needs_schema`, a field whose `field_type` is `links` or `backlinks`), and the
+line says "declared by needs_schema"; an export without one (an older Sphinx-Needs) is read by inference (a list
+of ids that is `links`, ends in `_back`, or has a `<name>_back` partner field in the file) and the line says
+"inferred". Every other field is listed too, so nothing is hidden.
+
+**`--links` carries the typed links, where both ends are drafts of this run.** An edge becomes a `relations:`
+entry whose `type` is the source link field (`derives_from`, `implements`, `links`, …) and whose `to` is the
+claim id the target need became, so `req trace` and `req impact` have a matrix instead of nothing. Only the
+outgoing field is written: the `_back` partner is the same edge derived on the other side, and req stores an
+edge once (REQ-0020). A Sphinx-Needs link filter (`<id>[version==1]`) is stripped; a claim has no version axis,
+so the edge is carried and the filter is not. A target that is not drafted here — another type, a skipped
+need, an id the export does not hold — is not a relation (a claim id that does not exist would make `req trace`
+report an unresolved edge), and the report's `links:` line counts each one by reason rather than dropping it:
+`links: <R> relation(s) on <D> of <N> drafted needs (<kind> <n>, …); <T> target(s) not carried (<reason> <n>, …)`.
+The kinds are still a proposal: the source's link vocabulary is kept verbatim, and renaming one (to `refines`,
+or `supersedes`) is a human edit. One kind is never carried: a source field named `supersedes`. req reads that
+relation as a withdrawal (ADR 0049), so carrying it would take its target out of the spec with nothing said; the
+`links:` line counts it as `supersedes withdraws its target`, and a person authors the withdrawal. A link value
+that is empty or only a filter is counted as `names no need`.
+
+**`--tests` carries the JUnit evidence, when a test need names the draft.** An adopter's test
+needs usually already link to the requirements they prove, and Sphinx-Test-Reports writes the
+test need's id as the JUnit `<testcase>` `name`. With `--tests <junit.xml>`, `--test-type <type>`
+(the export's test need type, repeatable) and `--test-link <field>` (the field on a test need that
+names its requirements, e.g. `specs`, repeatable), each case becomes a `classname::name` entry in
+the draft's `tests:`. A case missing `classname` or `name` is counted `malformed`; a case whose
+`name` is not a test need is counted, never guessed at; a test need with no case proposes nothing
+and is counted; and a failing case is still linked — the gate is what reports it. The report gains
+`tests: <P> test link(s) on <D> of <N> drafted needs; <T> test need(s) (<W> with a case, <U>
+without); <C> test case(s) (<n> passed, <n> failed, <n> skipped, <n> malformed), <M> of them naming
+no test need, in <report>`. A report whose elements carry a namespace is read by local name. A
+`--test-link` field that holds anything but a list of need ids is exit 1, naming the need.
+A target that is not a draft of this run is counted, not linked to a claim id that does not exist.
+
+`--areas` carries one thing more, the place: a
 need's `docname`, split on `/`, each part made a key (lowercase it, replace each run of characters outside `[a-z0-9]` with `-`, strip `-` from both ends), joined by `/`, becomes the
 draft's `area` (ADR 0051). The draft is then `req.claim/3`, with `area:` after `claim_id`, and needs a `req` that
 reports `claim_schema req.claim/3` (exit **3** otherwise); a need with no `docname` stays `req.claim/2` with none.
@@ -458,7 +492,10 @@ including the tri-state — and `req <command> --help` works before a corpus exi
    claim file (`req.claim/3`, ADR 0022): the parse, the canonical form and the address are computed
    every time the claim is loaded, so there is nothing to fill and nothing to hand-write. `req canon`
    prints, per claim, the derived structure, modality, subject, operator, value, unit and lints, and
-   each pin's verdict.
+   each pin's verdict. `req canon --by-area` appends a deterministic work list: claims,
+   structured/unstructured and lints per `area`, in the reading order and under the labels of
+   `.req/areas` when it exists, so a large adoption pass starts where the unstructured prose is
+   concentrated.
 2. **Pin what is load-bearing.** `pins:` (any of `modality`, `subject`, `operator`, `value`,
    `unit`) states what the statement must parse to. A pin agrees, or it is a flag — a
    *contradiction* (the parse says something else) or *not carried* (the parse holds no such
@@ -468,7 +505,7 @@ including the tri-state — and `req <command> --help` works before a corpus exi
 3. **Values are canonical SI.** `within 200 ms` parses to `value "0.2"`, `unit s`: pin the exact
    decimal string the parser derives, not the units the prose used. `unit: ms` is a contradiction,
    and `"0.30"` is not a canonical decimal (`"0.3"` is), so it cannot be pinned.
-4. **`req canon` fails on a flag only if you ask.** It reports (it exits 3 only when the corpus cannot be read); `req canon --fail-on-flag` is the opt-in that exits 1 on a flagged pin, for the time before every claim has a linked test. The check that gates a release is `req gate`:
+4. **`req canon` fails on a flag only if you ask.** It reports (it exits 3 only when the corpus cannot be read, or, with `--by-area`, `.req/areas`); `req canon --fail-on-flag` is the opt-in that exits 1 on a flagged pin, for the time before every claim has a linked test. The check that gates a release is `req gate`:
    the loop in one sentence is edit → `req canon` to see the parse → `req gate`. A claim's
    `applicability:` list is part of its address (since rules v5), so editing it moves the address
    exactly as editing the statement does.

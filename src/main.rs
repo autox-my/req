@@ -185,7 +185,7 @@ denominator). A run that found a defect is 1 even when it was degraded.
 `docs/adopting.md` for the loop.";
 
 const CANON_HELP: &str = "\
-usage: req canon [--fail-on-flag]
+usage: req canon [--fail-on-flag] [--by-area]
 
 Prints, per claim, the parse its `statement` derives — structured or unstructured, modality,
 subject, operator, value, unit, and the lints the canonicalizer raised — and each pin's
@@ -215,9 +215,19 @@ pin is flagged. It looks at every claim, not only the ones a variant applies, so
 behind a selector cannot hide. Its green is not a release verdict: tests, relations and
 decisions were not judged, and `req gate` still decides the release.
 
+`--by-area` appends a deterministic work list after the diagnostics: `areas: <n>` (the areas
+claims name), then one line per area that holds a claim, each with its claim count,
+structured/unstructured split, lint occurrences and the number of claims carrying at least one
+lint. The order is ADR 0051's: the areas `.req/areas` declares, in its line order and under their
+labels; then the areas it does not declare, by path and under their keys; then `(no area)`. A
+malformed `.req/areas` is refused before anything is printed (exit 3); plain `req canon` does not
+read it. It is placement only, so it changes no parse and no address; plain `req canon` output is
+byte-for-byte unchanged.
+
 exit: 0 diagnostics reported — not a pass: it reports, and it never gates; with `--fail-on-flag`,
 0 means no pin is flagged and 1 means at least one is; 3 a registry or claim file that cannot be
-read (or is NOT JUDGED); 2 usage, including `--fill` and `--verify`.
+read (or is NOT JUDGED), including `.req/areas` with `--by-area`; 2 usage, including `--fill` and
+`--verify`.
 
 `docs/adopting.md` for the loop.";
 
@@ -899,27 +909,30 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         name: "canon",
-        run: |args, corpus| match args.first().map(String::as_str) {
-            None => canon::run_claim_diagnostics_at(corpus),
-            // The opt-in (issue #106): same diagnostics, exit 1 on a flagged pin. Exactly this one
-            // argument — every other spelling or combination falls to the usage error below.
-            Some("--fail-on-flag") if args.len() == 1 => {
-                canon::run_claim_diagnostics_with(corpus, true)
+        run: |args, corpus| {
+            let (mut fail_on_flag, mut by_area) = (false, false);
+            for arg in args {
+                match arg.as_str() {
+                    "--fail-on-flag" if !fail_on_flag => fail_on_flag = true,
+                    "--by-area" if !by_area => by_area = true,
+                    // Removed in `req.claim/2` (ADR 0022): there is nothing stored to write or check.
+                    "--fill" | "--verify" => {
+                        eprintln!(
+                            "{}\nusage: req canon [--fail-on-flag] [--by-area]",
+                            canon::FILL_VERIFY_REMOVED
+                        );
+                        return 2;
+                    }
+                    other => {
+                        eprintln!(
+                            "unrecognized or repeated flag: {other}\n\
+                             usage: req canon [--fail-on-flag] [--by-area]"
+                        );
+                        return 2;
+                    }
+                }
             }
-            // Removed in `req.claim/2` (ADR 0022): there is nothing stored to write or check.
-            // A usage error that says why, rather than "unrecognized flag", because a script or
-            // a habit written against `req.claim/1` is the likeliest caller.
-            Some("--fill" | "--verify") => {
-                eprintln!(
-                    "{}\nusage: req canon [--fail-on-flag]",
-                    canon::FILL_VERIFY_REMOVED
-                );
-                2
-            }
-            Some(other) => {
-                eprintln!("unrecognized flag: {other}\nusage: req canon [--fail-on-flag]");
-                2
-            }
+            canon::run_claim_diagnostics_with_options(corpus, fail_on_flag, by_area)
         },
         help: CANON_HELP,
     },

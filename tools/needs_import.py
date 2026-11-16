@@ -4,8 +4,9 @@
 An adopter on Sphinx-Needs already has its requirements as `needs` objects: a stable id, a
 title, a body (`content`), a status and typed links. This script reads the export and writes
 the same legal `req.claim/2` drafts `tools/adopt.py` writes — the statement, its provenance,
-empty `applicability` and `relations`, nothing derived and no pin (ADR 0022). The drafts are
-proposals (ADR 0004); a source status is not a ratification, so no status is carried.
+empty `applicability`, and `relations`/`tests` when `--links`/`--tests` is given; nothing
+derived and no pin (ADR 0022). The drafts are proposals (ADR 0004); a source status is not a
+ratification, so no status is carried.
 
 It is a sibling of `tools/adopt.py`, not a client of it: the corpus reader, the id allocation
 and the claim template are copied, and adopters **copy and adjust** this file (the mapping is
@@ -28,9 +29,13 @@ What it decides, and what it refuses to guess:
              `<origin>` is what the caller passes as `--origin` (the URL or path the export came
              from). A need already drafted from the same origin is refused.
   date       `--date`, required. An export has no trustworthy date, and a date is authored.
-  links      typed links name need ids, and a claim's `relations` name claim ids that do not
-             exist until req allocates them. They are not carried; the report counts the drafted
-             needs that had them and names the fields.
+  links      typed links name need ids. With `--links`, an edge whose target is also drafted in
+             this run becomes a `relations:` entry whose `to` is the claim id req allocated;
+             every other target is counted by reason. Without it they are not carried, and the
+             report counts the drafted needs that had them and names the fields.
+  tests      with `--tests <junit.xml>`, a JUnit case becomes a `tests:` link on the draft whose
+             test need links to it (`--test-type`, `--test-link`). Cases are joined by `name`,
+             named `classname::name`, and counted when they cannot be joined.
   area       opt-in, `--areas` (ADR 0051 decision 2): a need's place is its `docname`. The name is
              split on `/`, each part is made a key (lowercase it; replace each run of characters
              outside [a-z0-9] with one `-`; strip `-` from both ends), and the keys joined by `/`
@@ -51,14 +56,14 @@ The output accounts for every need in the file and ends with one line that must 
 Exit codes, the same three-state discipline as req (ADR 0027 section 7):
 
   0  drafted (dry run, or written with --write)
-  1  a definite problem — nothing drafted, a named type the file does not have, a need
-     already drafted from this origin, or (--areas) a docname part that leaves no key or two
-     names that make one path; nothing was written
+  1  a definite problem — nothing drafted, a named --type/--test-type the file does not have,
+     a --test-link no test need carries, a need already drafted from this origin, or (--areas)
+     a docname part that leaves no key or two names that make one path; nothing was written
   2  usage — a missing or malformed argument, a bad date
-  3  UNVERIFIABLE — the export, the corpus, the subject registry or `req` cannot be read
-     honestly (not JSON, no `versions`, several versions and no `current_version`, a corpus the
-     loader rejects, a `req` judging another claim schema, `--areas` against a `req` that does
-     not report `claim_schema req.claim/3`, an `.req/areas` that is malformed)
+  3  UNVERIFIABLE — the export, a JUnit report, the corpus, the subject registry or `req` cannot
+     be read honestly (not JSON, no `versions`, several versions and no `current_version`, a
+     corpus the loader rejects, a `req` judging another claim schema, `--areas` against a `req`
+     that does not report `claim_schema req.claim/3`, an `.req/areas` that is malformed)
 
 Nothing derived is ever written, and no pin is guessed.
 """
@@ -72,6 +77,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ElementTree
 
 # --- conventions (the whole mapping) ---------------------------------------
 
@@ -130,13 +136,12 @@ schema: {schema}
 claim_id: {claim_id}
 {area_line}statement: {statement}
 applicability: []
-rationale:
+{tests}rationale:
   source: {quoted_source}
   date: {date}
   rejected_alternatives: []
   assumptions: []
-relations: []
-"""
+{relations}"""
 
 HELP_EPILOG = """\
 what is drafted, and what is named instead (no heuristics, no model):
@@ -161,12 +166,46 @@ written), so a second run over the same export does not duplicate; the same file
 --origin is a different provenance and is allowed. A partial overlap is refused too.
 
 not carried, and said so in the report: status, tags, safety, security, reqtype, every other
-field, and the typed links. The link types are the ones the export declares: a field whose
-`versions.<v>.needs_schema.properties.<name>.field_type` is `links` or `backlinks` (the report says
-"declared by needs_schema"). An export with no `needs_schema` (an older Sphinx-Needs) falls back to
-inference, and the report says "inferred": a non-empty list of strings that is `links`, ends in
-`_back`, or has a `<name>_back` partner field somewhere in the file. Every other field is listed
-under "fields", so nothing is hidden; `relations` stays `[]`.
+field, and — without --links — the typed links. The link types are the ones the export declares: a
+field whose `versions.<v>.needs_schema.properties.<name>.field_type` is `links` or `backlinks` (the
+report says "declared by needs_schema"). An export with no `needs_schema` (an older Sphinx-Needs)
+falls back to inference, and the report says "inferred": a non-empty list of strings that is
+`links`, ends in `_back`, or has a `<name>_back` partner field somewhere in the file. Every other
+field is listed under "fields", so nothing is hidden; `relations` stays `[]` unless --links is given.
+
+--links     opt-in: carry the typed links whose target is also drafted in this run as `relations:`
+             edges, so `req trace` and `req impact` work instead of an empty matrix. The relation
+             `type` is the source link field's name (`derives_from`, `implements`, `links`, …) and
+             `to` is the claim id the target need became. Only outgoing fields are carried: the
+             `_back` partner is the same edge derived on the other side, and req stores an edge
+             once (REQ-0020). A Sphinx-Needs link filter (`<id>[version==1]`) is stripped; a claim
+             has no version axis, so the edge is carried and the filter is not. A target that is
+             not drafted here (another type, a skipped need, an id not in the export) cannot be a
+             relation — a claim id that does not exist would make `req trace` report an unresolved
+             edge — so it is counted by reason in the report's `links:` line, never dropped
+             silently. A source field named `supersedes` is never carried: req reads that relation
+             as a withdrawal (ADR 0049), so it is counted as `supersedes withdraws its target` and
+             a person authors it. The report also gains `links: <R> relation(s) on <D> of <N>
+             drafted needs (<kind> <n>, …); <T> target(s) not carried (<reason> <n>, …)`.
+
+--tests     opt-in: carry JUnit test cases as `tests:` links. `<junit.xml>` is resolved against
+             the corpus root, like --from, and may be repeated. Needs `--test-type` (the export's
+             test need type, repeatable) and `--test-link` (the field on a test need that names
+             the requirements it proves, e.g. `specs`, repeatable; it must be a link field, declared
+             by needs_schema or inferred as for --links). Each `<testcase>` is joined
+             to a test need by its `name` — the convention Sphinx-Test-Reports writes — and to
+             its draft by the test need's link target. A case is named `classname::name`, the
+             claim format's test id; a case missing either is counted `malformed`, and a case
+             whose `name` is not a test need is counted, never guessed at. A test need with no
+             case is counted and proposes nothing. A failing case is still linked (the gate is
+             what reports it); the report counts passed, failed and skipped separately. The
+             report gains `tests: <P> test link(s) on <D> of <N> drafted needs; <T> test need(s)
+             (<W> with a case, <U> without); <C> test case(s) (<n> passed, <n> failed, <n>
+             skipped, <n> malformed), <M> of them naming no test need, in <report>; <X> target(s)
+             not carried (<reason> <n>, …)`, the last part only when a test need links to
+             something that is not a draft of this run. Elements are
+             matched by local name, so a namespaced report is read. A --test-link field holding
+             anything but a list of need ids is exit 1 naming the need.
 
 --areas     opt-in: file each draft under an area made from the need's `docname` (ADR 0051).
              The docname is split on `/`; each part becomes a key: lowercase it, replace each run
@@ -204,9 +243,10 @@ dry run is the default; --write writes. The report ends with one line that adds 
 needs mapping that was read.
 
 exit: 0 drafted (dry run, or written) · 1 a definite problem, nothing written (nothing
-drafted, a --type the file does not have, a need already drafted from this origin, or with
---areas a docname part that leaves no key or two names that make one path) · 2 usage · 3 the
-export, the corpus, the subject registry, the area registry or `req` cannot be read.
+drafted, a --type/--test-type the file does not have, a --test-link no test need carries, a need
+already drafted from this origin, or with --areas a docname part that leaves no key or two names
+that make one path) · 2 usage · 3 the export, a JUnit report, the corpus, the subject registry,
+the area registry or `req` cannot be read.
 
 This script is a starting point to COPY and adjust for your project — it is not a req
 subcommand.
@@ -324,6 +364,195 @@ def link_fields_of(need, all_keys, declared=None):
         and (key == "links" or key.endswith("_back") or f"{key}_back" in all_keys)
     )
 
+
+def declared_backlink_fields(export, version):
+    """The link field names `needs_schema` declares as `backlinks`, or frozenset() when it declares
+    none. A backlink is the derived partner of an edge stored on the other need; carrying both
+    would make one link two relations (REQ-0020 stores each edge once), so only outbound fields
+    become `relations:`."""
+    entry = export.get("versions", {}).get(version)
+    schema = entry.get("needs_schema") if isinstance(entry, dict) else None
+    properties = schema.get("properties") if isinstance(schema, dict) else None
+    if not isinstance(properties, dict):
+        return frozenset()
+    return frozenset(
+        name
+        for name, prop in properties.items()
+        if isinstance(prop, dict) and prop.get("field_type") == "backlinks"
+    )
+
+
+def outbound_link_fields(need, all_keys, declared=None, backlinks=frozenset()):
+    """The typed-link fields on `need` that store an edge (not the derived `_back` partner).
+
+    With `needs_schema` the declared `backlinks` are excluded by name. Without one, the inferred
+    rule names a partner by its `_back` suffix, so that suffix is the only signal there is.
+    """
+    return [
+        name
+        for name in link_fields_of(need, all_keys, declared)
+        if name not in backlinks and not (declared is None and name.endswith("_back"))
+    ]
+
+
+def link_target(value):
+    """A link value's target need id, without Sphinx-Needs' link filter.
+
+    Sphinx-Needs writes a filtered link as `<id>[version==1]` (or another filter expression). The
+    need the link names is the part before the first `[`; the filter chooses a version of it, and
+    a claim has no version axis, so the filter is not carried. The edge is.
+    """
+    return value.split("[", 1)[0].strip()
+
+
+# A relation type req reads as a withdrawal (ADR 0049, docs/claim-format.md): carried from a source
+# link field of the same name, it would take its target out of every selection the successor
+# applies in, and nothing in the import would say so. A requirement leaving the spec is the
+# expensive failure, so such an edge is never carried; it is counted, and a person authors it.
+WITHDRAWING_KINDS = frozenset({"supersedes"})
+
+
+def plan_relations(drafts, claim_of, needs, types, all_keys, declared=None, backlinks=frozenset()):
+    """`(relations, kinds, omitted)` for the drafted needs, in draft order.
+
+    `relations[i]` is `[(kind, claim id)]` for draft `i`, where `kind` is the source link field and
+    the claim id is the draft the target need became in this run. Only an edge whose target is
+    also drafted here can become a relation: a relation to a claim id that does not exist would
+    make `req trace` report an unresolved edge. Every other target is counted, by reason, in
+    `omitted` — the reader names what it could not carry instead of dropping it silently.
+    """
+    relations = [[] for _ in drafts]
+    kinds = {}
+    omitted = {}
+    for index, (need_id, need, _statement) in enumerate(drafts):
+        seen = set()
+        for kind in outbound_link_fields(need, all_keys, declared, backlinks):
+            for value in need.get(kind) or []:
+                target = link_target(value)
+                if not target:
+                    reason = "names no need"
+                elif target == need_id:
+                    reason = "self"
+                elif kind in WITHDRAWING_KINDS:
+                    reason = f"{kind} withdraws its target"
+                elif target in claim_of:
+                    edge = (kind, claim_of[target])
+                    if edge in seen:
+                        continue
+                    seen.add(edge)
+                    relations[index].append(edge)
+                    kinds[kind] = kinds.get(kind, 0) + 1
+                    continue
+                elif target not in needs:
+                    reason = "not in the export"
+                else:
+                    target_type = needs[target].get("type")
+                    reason = (
+                        "target type not selected"
+                        if target_type not in types
+                        else "target skipped"
+                    )
+                omitted[reason] = omitted.get(reason, 0) + 1
+    return relations, kinds, omitted
+
+
+# --- JUnit test evidence (--tests) ------------------------------------------------------------
+
+# The outcome classes a JUnit `<testcase>` is reduced to, in report order.
+JUNIT_OUTCOMES = ("passed", "failed", "skipped", "malformed")
+
+
+def local_name(tag):
+    """An element's name without its namespace: `{uri}testcase` and `testcase` are both `testcase`.
+
+    A report written with a default namespace holds its cases all the same; matching the qualified
+    name only would call it empty, which is false.
+    """
+    return tag.rpartition("}")[2] if isinstance(tag, str) else ""
+
+
+def junit_entries(root):
+    """`[(need id, test id, outcome)]` for one parsed JUnit document.
+
+    A `<testcase>` is proposed only when it carries both `name` and `classname`: the claim
+    format's test link is `classname::name`, so a case missing either cannot be named as one.
+    Sphinx-Test-Reports writes the test need's id as `name`, which is how the case is joined back
+    to the export. A missing pair is counted `malformed`, never guessed. `failure` and `error`
+    are both `failed`; a `skipped` element is `skipped`; anything else is `passed`.
+    """
+    entries = []
+    for case in (element for element in root.iter() if local_name(element.tag) == "testcase"):
+        name = case.get("name") or ""
+        classname = case.get("classname") or ""
+        if not name.strip() or not classname.strip():
+            entries.append(("", "", "malformed"))
+            continue
+        children = {local_name(child.tag) for child in case}
+        if "failure" in children or "error" in children:
+            outcome = "failed"
+        elif "skipped" in children:
+            outcome = "skipped"
+        else:
+            outcome = "passed"
+        entries.append((name.strip(), f"{classname.strip()}::{name.strip()}", outcome))
+    return entries
+
+
+def plan_tests(drafts, draft_index, needs, test_types, test_links, cases_by_need):
+    """`(tests, omitted, test_needs, needs_with_cases)` for the drafted needs, in draft order.
+
+    `tests[i]` is the sorted list of `classname::name` ids whose test need links to draft `i`
+    through one of `test_links`. A test need is joined to its cases by the JUnit `name`, which is
+    the test need id in a Sphinx-Test-Reports export; a case whose name is not a test need is
+    counted by the caller and ignored here. A target that is not a draft of this run is counted
+    by reason, never linked to a claim id that does not exist.
+    """
+    tests = [set() for _ in drafts]
+    omitted = {}
+    for test_id, need in needs.items():
+        if need.get("type") not in test_types:
+            continue
+        cases = cases_by_need.get(test_id) or []
+        if not cases:
+            # A test need with no case proposes nothing; its links are not counted as
+            # uncarried targets, because the missing case is already the finding.
+            continue
+        for field in test_links:
+            for value in need.get(field) or []:
+                target = link_target(value)
+                if target in draft_index:
+                    tests[draft_index[target]].update(
+                        test_id_ for test_id_, _outcome in cases
+                    )
+                elif target in needs:
+                    omitted["target not drafted"] = omitted.get("target not drafted", 0) + 1
+                else:
+                    omitted["target not in export"] = (
+                        omitted.get("target not in export", 0) + 1
+                    )
+    test_needs = sum(1 for need in needs.values() if need.get("type") in test_types)
+    needs_with_cases = sum(
+        1
+        for test_id, need in needs.items()
+        if need.get("type") in test_types and cases_by_need.get(test_id)
+    )
+    return [sorted(ids) for ids in tests], omitted, test_needs, needs_with_cases
+
+
+def read_junit(path, label):
+    """The `<testcase>` entries of one JUnit document, with every failure exit 3.
+
+    The document is external input: not XML, an unreadable file or no `<testcase>` at all is
+    Unverifiable, never an empty proposal that looks like a clean run.
+    """
+    try:
+        tree = ElementTree.parse(path)
+    except (OSError, ElementTree.ParseError) as error:
+        raise Unverifiable(f"cannot read the JUnit report {label}: {error}") from error
+    entries = junit_entries(tree.getroot())
+    if not entries:
+        raise Unverifiable(f"the JUnit report {label} holds no <testcase>")
+    return entries
 
 def meaningful(value):
     """Whether a field holds something: not null, empty, or false."""
@@ -557,9 +786,33 @@ def unquote_scalar(value):
     return text.split(" #", 1)[0].rstrip()
 
 
-def render_claim(export, location, statement, source, date, claim_id, schema, area=None):
+def render_relations(relations):
+    """The `relations:` block of a draft: `[]` when there are none, else one mapping per edge."""
+    if not relations:
+        return "relations: []\n"
+    lines = ["relations:\n"]
+    for kind, to in relations:
+        lines.append(f"  - type: {yaml_quote(kind)}\n    to: {yaml_quote(to)}\n")
+    return "".join(lines)
+
+
+def render_tests(test_ids):
+    """The `tests:` block of a draft: nothing when there is no link, else one id per line.
+
+    Absent means "no linked test" in the claim format; an empty list would say the same, but
+    nothing is written so a run without `--tests` keeps the bytes it always wrote.
+    """
+    if not test_ids:
+        return ""
+    return "tests:\n" + "".join(f"  - {yaml_quote(test_id)}\n" for test_id in test_ids)
+
+
+def render_claim(export, location, statement, source, date, claim_id, schema, area=None,
+                 relations=(), tests=()):
     """One draft claim file's exact bytes. An `area` makes the draft `AREA_SCHEMA` with an `area:`
-    line after `claim_id`; with none, `schema` is written and the bytes are what they always were."""
+    line after `claim_id`; with none, `schema` is written. `relations` is `[(kind, claim id)]` and
+    `tests` a list of `classname::name` ids, both empty by default, so a run without `--links` or
+    `--tests` writes the bytes it always wrote."""
     return CLAIM_TEMPLATE.format(
         export=one_line(export),
         location=one_line(location),
@@ -569,6 +822,8 @@ def render_claim(export, location, statement, source, date, claim_id, schema, ar
         statement=yaml_quote(statement),
         quoted_source=yaml_quote(source),
         date=date,
+        relations=render_relations(relations),
+        tests=render_tests(tests),
     )
 
 
@@ -1080,6 +1335,44 @@ def run(args):
             f"  the file has: {have}\n"
             "  there is no default type list: name the types your project uses for requirements"
         )
+    if args.tests:
+        missing_test = [name for name in args.test_type if name not in present]
+        if missing_test:
+            have = ", ".join(f"{name} ({present[name]})" for name in sorted(present)) or "none"
+            raise Problem(
+                f"--test-type names a type {label} does not have: {', '.join(missing_test)}\n"
+                f"  the file has: {have}\n"
+                "  name the type your project uses for test needs"
+            )
+        seen = set()
+        schema_links = declared_link_fields(export, version)
+        project_keys = {key for need in needs.values() for key in need}
+        for test_id, need in needs.items():
+            if need.get("type") not in args.test_type:
+                continue
+            for field in args.test_link:
+                value = need.get(field)
+                if value not in (None, []) and not is_link_value(value):
+                    raise Problem(
+                        f"--test-link {field}: test need {test_id} holds "
+                        f"{type(value).__name__} {json.dumps(value)[:60]}, not a list of need ids\n"
+                        "  a link field holds a list of need ids; name the field your test needs "
+                        "use to point at requirements"
+                    )
+            if schema_links is not None:
+                seen.update(field for field in need if field in schema_links)
+            else:
+                seen.update(link_fields_of(need, project_keys))
+        missing_links = [field for field in args.test_link if field not in seen]
+        if missing_links:
+            have = ", ".join(sorted(seen)) or "none"
+            how_links = "declared by needs_schema" if schema_links is not None else "inferred"
+            raise Problem(
+                f"--test-link names a field no {', '.join(args.test_type)} need carries as a link "
+                f"field: {', '.join(missing_links)}\n"
+                f"  the test needs' link fields ({how_links}): {have}\n"
+                "  name the link field your test needs use to point at requirements"
+            )
 
     drafts, skips, not_selected = sort_needs(needs, args.type, args.status)
     total = len(needs)
@@ -1120,11 +1413,56 @@ def run(args):
         existing = check_registry(req_binary(), corpus.root)
         suffix, added, registry_declared = registry_suffix(existing, wanted)
 
+    all_keys = {key for need in needs.values() for key in need}
+    declared = declared_link_fields(export, version)
+    backlinks = declared_backlink_fields(export, version)
+
     number = next_claim_number(corpus.used)
+    claim_ids = [f"REQ-{number + offset:04d}" for offset, _draft in enumerate(drafts)]
+    claim_of = {need_id: claim_id for (need_id, _need, _statement), claim_id in zip(drafts, claim_ids)}
+    relations, link_kinds, omitted_links = ([[] for _ in drafts], {}, {})
+    if args.links:
+        relations, link_kinds, omitted_links = plan_relations(
+            drafts, claim_of, needs, set(args.type), all_keys, declared, backlinks
+        )
+
+    tests = [[] for _ in drafts]
+    test_plan = None
+    if args.tests:
+        cases_by_need, case_stats, unmatched = {}, {}, 0
+        report_labels = []
+        for value in args.tests:
+            path = pathlib.Path(value).expanduser()
+            if not path.is_absolute():
+                path = corpus.root / path
+            path = pathlib.Path(os.path.normpath(str(path)))
+            report_labels.append(relative(corpus.root, path))
+            for name, test_id, outcome in read_junit(path, report_labels[-1]):
+                case_stats[outcome] = case_stats.get(outcome, 0) + 1
+                if outcome == "malformed":
+                    continue
+                if name in needs and needs[name].get("type") in args.test_type:
+                    cases_by_need.setdefault(name, []).append((test_id, outcome))
+                else:
+                    unmatched += 1
+        draft_index = {need_id: index for index, (need_id, _n, _s) in enumerate(drafts)}
+        tests, omitted_tests, test_needs, needs_with_cases = plan_tests(
+            drafts, draft_index, needs, args.test_type, args.test_link, cases_by_need
+        )
+        test_plan = (
+            report_labels,
+            test_needs,
+            needs_with_cases,
+            sum(len(ids) for ids in tests),
+            sum(1 for ids in tests if ids),
+            case_stats,
+            unmatched,
+            omitted_tests,
+        )
+
     targets, texts = [], []
     for offset, (need_id, need, statement) in enumerate(drafts):
-        claim_id = f"REQ-{number + offset:04d}"
-        targets.append((claim_id, corpus.root / CLAIMS_DIR / f"{claim_id}.yml"))
+        targets.append((claim_ids[offset], corpus.root / CLAIMS_DIR / f"{claim_ids[offset]}.yml"))
         texts.append(
             render_claim(
                 export=label,
@@ -1132,9 +1470,11 @@ def run(args):
                 statement=statement,
                 source=f"{args.origin}#{need_id}",
                 date=args.date,
-                claim_id=claim_id,
+                claim_id=claim_ids[offset],
                 schema=schema,
                 area=placed[offset][1] if placed is not None and placed[offset][0] == "area" else None,
+                relations=relations[offset],
+                tests=tests[offset],
             )
         )
 
@@ -1160,22 +1500,33 @@ def run(args):
                 registry_write.rollback()
             raise
 
-    all_keys = {key for need in needs.values() for key in need}
-    declared = declared_link_fields(export, version)
     fields, link_names, with_links = not_carried(
         [need for _id, need, _s in drafts], all_keys, declared
     )
+    carried_relations = sum(len(edges) for edges in relations)
+    linked_drafts = sum(1 for edges in relations if edges)
+    link_plan = (
+        args.links,
+        carried_relations,
+        linked_drafts,
+        link_kinds,
+        omitted_links,
+        declared is not None,
+    )
     filing = (placed, wanted, added, registry_declared) if args.areas else None
     report(args, corpus, label, version, drafts, skips, targets, written, rules_v,
-           (fields, link_names, with_links, declared is not None), recon, filing, registry_write)
+           (fields, link_names, with_links), recon, filing, registry_write, link_plan, test_plan)
     return 0
 
 
 def report(args, corpus, label, version, drafts, skips, targets, written, rules_v, carried, recon,
-           filing=None, registry_write=None):
+           filing=None, registry_write=None, link_plan=None, test_plan=None):
     """Print what was drafted, what was skipped and why, what was not carried, and what was
     written — ending with the line that adds up."""
-    fields, link_names, with_links, from_schema = carried
+    fields, link_names, with_links = carried
+    links_on, carried_relations, linked_drafts, link_kinds, omitted_links, from_schema = (
+        link_plan if link_plan is not None else (False, 0, 0, {}, {}, False)
+    )
     print(f"export: {label} (version {version})")
     print(f"origin: {args.origin}")
     print(f"date: {args.date} (--date)")
@@ -1192,10 +1543,41 @@ def report(args, corpus, label, version, drafts, skips, targets, written, rules_
     shown = ", ".join(fields) if fields else "none"
     how = "declared by needs_schema" if from_schema else "inferred: no needs_schema"
     carried_links = f" ({', '.join(link_names)}; {how})" if link_names else f" ({how})"
+    outcome = (
+        "carried as `relations` (a backlink field is the derived side of an edge and is not stored)"
+        if links_on
+        else "`relations` stays []"
+    )
     print(
         f"not carried: {shown}; typed links on {with_links} of {len(drafts)} drafted needs"
-        f"{carried_links} — `relations` stays []"
+        f"{carried_links} — {outcome}"
     )
+    if links_on:
+        if carried_relations:
+            text = (
+                f"links: {carried_relations} relation(s) on {linked_drafts} of {len(drafts)} "
+                f"drafted needs ({breakdown(link_kinds)})"
+            )
+        else:
+            text = f"links: 0 relations carried on 0 of {len(drafts)} drafted needs"
+        omitted = sum(omitted_links.values())
+        if omitted:
+            text += f"; {omitted} target(s) not carried ({breakdown(omitted_links)})"
+        print(text)
+    if test_plan is not None:
+        labels, test_needs, with_cases, proposed, proposed_drafts, case_stats, unmatched, omitted_tests = test_plan
+        cases = sum(case_stats.values())
+        line = (
+            f"tests: {proposed} test link(s) on {proposed_drafts} of {len(drafts)} drafted needs; "
+            f"{test_needs} test need(s) ({with_cases} with a case, {test_needs - with_cases} without); "
+            f"{cases} test case(s) ("
+            + ", ".join(f"{case_stats.get(outcome, 0)} {outcome}" for outcome in JUNIT_OUTCOMES)
+            + f"), {unmatched} of them naming no test need, in {', '.join(labels)}"
+        )
+        omitted = sum(omitted_tests.values())
+        if omitted:
+            line += f"; {omitted} target(s) not carried ({breakdown(omitted_tests)})"
+        print(line)
     if filing is not None:
         placed, wanted, added, registry_declared = filing
         for line in area_report_lines(placed, wanted, added, registry_declared, len(drafts)):
@@ -1272,6 +1654,18 @@ def self_check():
         schema="req.claim/2",
     )
     keys = {"derived_from", "derived_from_back", "tags", "links", "links_back", "satisfied_by"}
+    link_schema = {
+        "versions": {
+            "1": {
+                "needs_schema": {
+                    "properties": {
+                        "implements": {"field_type": "links"},
+                        "implements_back": {"field_type": "backlinks"},
+                    }
+                }
+            }
+        }
+    }
     rows = [
         ("select: a named type is selected", judged("Ok.")[0], "draft"),
         (
@@ -1387,6 +1781,97 @@ def self_check():
             "links: no needs_schema declares nothing (None, so the caller infers)",
             declared_link_fields({"versions": {"1": {"needs": {}}}}, "1"),
             None,
+        ),
+        (
+            "links: a declared backlink is not an edge (the edge is stored on the other side)",
+            outbound_link_fields(
+                {"implements": ["A"], "implements_back": ["B"]},
+                {"implements", "implements_back"},
+                frozenset({"implements", "implements_back"}),
+                frozenset({"implements_back"}),
+            ),
+            ["implements"],
+        ),
+        (
+            "links: with no schema the _back suffix is the only signal there is",
+            outbound_link_fields({"links": ["A"], "links_back": ["B"]}, {"links", "links_back"}),
+            ["links"],
+        ),
+        (
+            "links: declared backlinks come from field_type backlinks alone",
+            sorted(declared_backlink_fields(link_schema, "1")),
+            ["implements_back"],
+        ),
+        ("links: a version filter is not part of the target id", link_target("A[version==1]"), "A"),
+        (
+            "links: a target drafted in this run is a relation, every other is counted",
+            plan_relations(
+                [
+                    ("A", {"type": "req", "links": ["B", "X", "C", "B"]}, "a"),
+                    ("B", {"type": "req"}, "b"),
+                ],
+                {"A": "REQ-0001", "B": "REQ-0002"},
+                {"A": {"type": "req"}, "B": {"type": "req"}, "X": {"type": "arch"}, "C": {"type": "req"}},
+                {"req"},
+                {"type", "links"},
+                None,
+            ),
+            (
+                [[("links", "REQ-0002")], []],
+                {"links": 1},
+                {"target skipped": 1, "target type not selected": 1},
+            ),
+        ),
+        (
+            "draft: relations are one mapping per edge, and none is an empty list",
+            (render_relations([]), render_relations([("implements", "REQ-0002")])),
+            ('relations: []\n', 'relations:\n  - type: "implements"\n    to: "REQ-0002"\n'),
+        ),
+        (
+            "draft: no test link writes no `tests:` key, and each id is quoted",
+            (render_tests([]), render_tests(["c::T1", 'q"x'])),
+            ("", 'tests:\n  - "c::T1"\n  - "q\\"x"\n'),
+        ),
+        (
+            "junit: passed, failure, error, skipped and a case missing classname",
+            junit_entries(
+                ElementTree.fromstring(
+                    "<testsuites><testsuite>"
+                    '<testcase classname="c" name="T1"/>'
+                    '<testcase classname="c" name="T1"><failure/></testcase>'
+                    '<testcase classname="c" name="T2"><error/></testcase>'
+                    '<testcase classname="c" name="T3"><skipped/></testcase>'
+                    '<testcase name="T4"/>'
+                    "</testsuite></testsuites>"
+                )
+            ),
+            [
+                ("T1", "c::T1", "passed"),
+                ("T1", "c::T1", "failed"),
+                ("T2", "c::T2", "failed"),
+                ("T3", "c::T3", "skipped"),
+                ("", "", "malformed"),
+            ],
+        ),
+        (
+            "tests: only a drafted target is linked, a case names its test need, and a filter is stripped",
+            plan_tests(
+                [
+                    ("R1", {"type": "req"}, "r1"),
+                    ("R2", {"type": "req"}, "r2"),
+                ],
+                {"R1": 0},
+                {
+                    "R1": {"type": "req"},
+                    "R2": {"type": "req"},
+                    "T1": {"type": "test", "specs": ["R1[version==1]", "R2", "NOPE"]},
+                    "T2": {"type": "test", "specs": ["R1"]},
+                },
+                ["test"],
+                ["specs"],
+                {"T1": [("c::T1", "passed")], "T2": [("c::T2", "failed")]},
+            ),
+            ([["c::T1", "c::T2"], []], {"target not drafted": 1, "target not in export": 1}, 2, 2),
         ),
         (
             "not carried: fields exclude what the draft uses and the typed links",
@@ -1709,6 +2194,22 @@ def parse_args(argv):
         help="file each draft under an area made from its docname, and propose `.req/areas` lines",
     )
     parser.add_argument(
+        "--links", action="store_true",
+        help="carry typed links between drafted needs as `relations:`; count every other target",
+    )
+    parser.add_argument(
+        "--tests", action="append", default=[], type=value_arg, metavar="<junit.xml>",
+        help="carry JUnit test cases as `tests:` links when their test need links to the draft",
+    )
+    parser.add_argument(
+        "--test-type", action="append", default=[], type=named_arg, metavar="<type>",
+        help="with --tests: a need type that is a test (repeatable)",
+    )
+    parser.add_argument(
+        "--test-link", action="append", default=[], type=named_arg, metavar="<field>",
+        help="with --tests: a link field on a test need that names its requirements (repeatable)",
+    )
+    parser.add_argument(
         "--area-depth", type=depth_arg, metavar="<N>",
         help="with --areas: keep only the outermost N parts of each docname (N >= 1)",
     )
@@ -1744,6 +2245,8 @@ def main(argv):
     args = parse_args(argv)
     args.type = list(dict.fromkeys(args.type))
     args.status = list(dict.fromkeys(args.status))
+    args.test_type = list(dict.fromkeys(args.test_type))
+    args.test_link = list(dict.fromkeys(args.test_link))
     if not valid_date(args.date):
         print(
             f"usage: --date must be a calendar date in YYYY-MM-DD form, not {args.date!r}",
@@ -1752,6 +2255,17 @@ def main(argv):
         return 2
     if args.area_depth is not None and not args.areas:
         print("usage: --area-depth belongs to --areas", file=sys.stderr)
+        return 2
+    if args.tests and not args.test_type:
+        print("usage: --tests needs --test-type <type> (the export type that is a test)",
+              file=sys.stderr)
+        return 2
+    if args.tests and not args.test_link:
+        print("usage: --tests needs --test-link <field> (the field on a test need that names "
+              "its requirements)", file=sys.stderr)
+        return 2
+    if not args.tests and (args.test_type or args.test_link):
+        print("usage: --test-type and --test-link belong to --tests", file=sys.stderr)
         return 2
     try:
         return run(args)
