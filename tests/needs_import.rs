@@ -1228,6 +1228,262 @@ fn equal_statements_are_two_drafts_with_one_address() {
 // --- (i) not carried -------------------------------------------------------------------------------------------------------
 
 #[test]
+fn links_carry_edges_between_drafts_and_every_other_target_is_counted() {
+    // The demo excerpt links SYSREQ_BRAKE_01 to FSR_BRAKE_CTRL_02, which is not in it. Add that
+    // target (a draft) and a link to GH_ISSUE_12 (selected, but skipped) so both classes show.
+    let mut export = fixture_json(DEMO);
+    needs_mut(&mut export).insert(
+        "FSR_BRAKE_CTRL_02".into(),
+        json!({"type": "fsr", "content": "The brake controller shall fail operational.",
+               "implements": [], "implements_back": [], "links": [], "links_back": []}),
+    );
+    needs_mut(&mut export)
+        .get_mut("SYSREQ_BRAKE_01")
+        .expect("the linking need")
+        .as_object_mut()
+        .expect("a need is an object")
+        .insert("links".into(), json!(["GH_ISSUE_12", "FSR_BRAKE_CTRL_01"]));
+    let fx = Fixture::with_export("req-needs-links", &export.to_string());
+
+    let out = import(fx.path(), &plus(base(&DEMO_TYPES), &["--links", "--write"]));
+    out.assert_code(0, "the demo excerpt with --links");
+    let report = parse_report(&out.stdout);
+    let claim_of = |need: &str| {
+        report
+            .drafts
+            .iter()
+            .find(|draft| draft.need == need)
+            .unwrap_or_else(|| panic!("{need} is drafted:\n{}", out.stdout))
+            .claim
+            .clone()
+    };
+    let sysreq = claim_of("SYSREQ_BRAKE_01");
+    let fsr = claim_of("FSR_BRAKE_CTRL_02");
+    let target = claim_of("FSR_BRAKE_CTRL_01");
+
+    let line = out
+        .stdout
+        .lines()
+        .find(|line| line.starts_with("links: "))
+        .expect("the report has a `links:` line");
+    assert_eq!(
+        line,
+        format!(
+            "links: 2 relation(s) on 1 of {} drafted needs (implements 1, links 1); \
+             3 target(s) not carried (not in the export 2, target skipped 1)",
+            report.drafts.len()
+        )
+    );
+
+    // The edges are on the outgoing side, and a backlink is not written as a second edge.
+    let text = fx.read(&format!("claims/{sysreq}.yml"));
+    assert!(text.contains(&format!(
+        "relations:\n  - type: \"implements\"\n    to: \"{fsr}\"\n  - type: \"links\"\n    to: \"{target}\"\n"
+    )), "{sysreq} carries both relations:\n{text}");
+    let backlinked = claim_of("FSR_BRAKE_CTRL_01");
+    assert_eq!(
+        field(&fx.read(&format!("claims/{backlinked}.yml")), "relations: "),
+        Some("relations: []"),
+        "a declared backlink is derived by req, never stored a second time"
+    );
+
+    // req reads the edges back.
+    let trace = req(fx.path(), &["trace"]);
+    trace.assert_code(0, "req trace over the drafts");
+    assert!(
+        trace
+            .stdout
+            .contains(&format!("- {sysreq} -implements-> {fsr}")),
+        "trace shows the carried edge:\n{}",
+        trace.stdout
+    );
+    assert!(
+        trace
+            .stdout
+            .contains(&format!("- {sysreq} -links-> {target}")),
+        "trace shows the link edge:\n{}",
+        trace.stdout
+    );
+
+    // Without --links the same run writes `relations: []`, byte for byte what it always wrote.
+    let plain = Fixture::with_export("req-needs-links-off", &export.to_string());
+    let off = import(plain.path(), &plus(base(&DEMO_TYPES), &["--write"]));
+    off.assert_code(0, "the demo excerpt without --links");
+    assert!(
+        !off.stdout.contains("links: "),
+        "a run without --links has no `links:` line:\n{}",
+        off.stdout
+    );
+    assert_eq!(
+        field(&plain.read(&format!("claims/{sysreq}.yml")), "relations: "),
+        Some("relations: []")
+    );
+}
+
+#[test]
+fn test_cases_are_proposed_from_their_test_need_and_a_failing_case_still_links() {
+    // The demo excerpt has no test need; give it one that names two drafted requirements, and a
+    // JUnit document whose `name` is the test need id (the Sphinx-Test-Reports convention).
+    let mut export = fixture_json(DEMO);
+    needs_mut(&mut export).insert(
+        "FSR_BRAKE_CTRL_02".into(),
+        json!({"type": "fsr", "content": "The brake controller shall fail operational.",
+               "implements": [], "implements_back": [], "links": [], "links_back": []}),
+    );
+    needs_mut(&mut export).insert(
+        "T_SAFE".into(),
+        json!({"type": "test", "specs": ["SYSREQ_BRAKE_01", "FSR_BRAKE_CTRL_02"]}),
+    );
+    let fx = Fixture::with_export("req-needs-tests", &export.to_string());
+    fx.write(
+        "junit.xml",
+        r#"<testsuites><testsuite>
+             <testcase classname="suite::a" name="T_SAFE"/>
+             <testcase classname="suite::b" name="T_SAFE"><failure/></testcase>
+             <testcase classname="suite::c" name="NOT_A_NEED"/>
+           </testsuite></testsuites>"#,
+    );
+
+    let out = import(
+        fx.path(),
+        &plus(
+            base(&DEMO_TYPES),
+            &[
+                "--links",
+                "--tests",
+                "junit.xml",
+                "--test-type",
+                "test",
+                "--test-link",
+                "specs",
+                "--write",
+            ],
+        ),
+    );
+    out.assert_code(0, "the demo excerpt with --tests");
+    let report = parse_report(&out.stdout);
+    let claim_of = |need: &str| {
+        report
+            .drafts
+            .iter()
+            .find(|draft| draft.need == need)
+            .unwrap_or_else(|| panic!("{need} is drafted:\n{}", out.stdout))
+            .claim
+            .clone()
+    };
+    let sysreq = claim_of("SYSREQ_BRAKE_01");
+    let fsr = claim_of("FSR_BRAKE_CTRL_02");
+    let line = out
+        .stdout
+        .lines()
+        .find(|line| line.starts_with("tests: "))
+        .expect("the report has a `tests:` line");
+    assert_eq!(
+        line,
+        format!(
+            "tests: 4 test link(s) on 2 of {} drafted needs; 1 test need(s) (1 with a case, 0 \
+             without); 3 test case(s) (2 passed, 1 failed, 0 skipped, 0 malformed), 1 of them \
+             naming no test need, in junit.xml",
+            report.drafts.len()
+        )
+    );
+    for claim in [&sysreq, &fsr] {
+        let text = fx.read(&format!("claims/{claim}.yml"));
+        assert!(
+            text.contains("tests:\n  - \"suite::a::T_SAFE\"\n  - \"suite::b::T_SAFE\"\n"),
+            "{claim} carries both cases, including the failing one:\n{text}"
+        );
+    }
+
+    // Without --tests the report and the draft stay as they always were.
+    let plain = Fixture::with_export("req-needs-tests-off", &export.to_string());
+    plain.write(
+        "junit.xml",
+        r#"<testsuites><testsuite><testcase classname="suite::a" name="T_SAFE"/></testsuite></testsuites>"#,
+    );
+    let off = import(plain.path(), &plus(base(&DEMO_TYPES), &["--write"]));
+    off.assert_code(0, "the demo excerpt without --tests");
+    assert!(!off.stdout.contains("tests: "), "{}", off.stdout);
+    assert_eq!(
+        field(&plain.read(&format!("claims/{sysreq}.yml")), "tests:"),
+        None
+    );
+}
+
+#[test]
+fn a_test_type_or_link_field_the_export_lacks_is_named_before_anything_is_read() {
+    let mut export = fixture_json(DEMO);
+    needs_mut(&mut export).insert(
+        "T_SAFE".into(),
+        json!({"type": "test", "specs": ["SYSREQ_BRAKE_01"]}),
+    );
+    let fx = Fixture::with_export("req-needs-test-names", &export.to_string());
+    fx.write(
+        "junit.xml",
+        r#"<testsuites><testsuite><testcase classname="c" name="T_SAFE"/></testsuite></testsuites>"#,
+    );
+
+    let type_typo = import(
+        fx.path(),
+        &plus(
+            base(&DEMO_TYPES),
+            &[
+                "--tests",
+                "junit.xml",
+                "--test-type",
+                "nosuch",
+                "--test-link",
+                "specs",
+            ],
+        ),
+    );
+    type_typo.assert_code(1, "a --test-type the export does not have");
+    assert!(
+        type_typo.stderr.contains("--test-type") && type_typo.stderr.contains("test (1)"),
+        "{}",
+        type_typo.stderr
+    );
+
+    let link_typo = import(
+        fx.path(),
+        &plus(
+            base(&DEMO_TYPES),
+            &[
+                "--tests",
+                "junit.xml",
+                "--test-type",
+                "test",
+                "--test-link",
+                "nosuch",
+            ],
+        ),
+    );
+    link_typo.assert_code(1, "a --test-link no test need carries");
+    assert!(
+        link_typo.stderr.contains("--test-link") && link_typo.stderr.contains("specs"),
+        "{}",
+        link_typo.stderr
+    );
+
+    let missing = import(
+        fx.path(),
+        &plus(
+            base(&DEMO_TYPES),
+            &[
+                "--tests",
+                "absent.xml",
+                "--test-type",
+                "test",
+                "--test-link",
+                "specs",
+            ],
+        ),
+    );
+    missing.assert_code(3, "a report that cannot be read");
+    assert!(missing.stderr.contains("absent.xml"), "{}", missing.stderr);
+}
+
+#[test]
 fn status_tags_safety_security_reqtype_and_links_are_in_no_claim_and_the_report_says_so() {
     let (fx, report, _rows) = end_to_end(SCORE, &SCORE_TYPES);
     let export = fixture_json(SCORE);
@@ -1561,6 +1817,25 @@ fn a_malformed_invocation_is_a_usage_error() {
             plus(base(&["req"]), &["--status", "--write"]),
         ),
         ("an unknown flag", plus(base(&["req"]), &["--subject", "x"])),
+        (
+            "--tests without --test-type",
+            plus(base(&["req"]), &["--tests", "junit.xml"]),
+        ),
+        (
+            "--tests without --test-link",
+            plus(
+                base(&["req"]),
+                &["--tests", "junit.xml", "--test-type", "test"],
+            ),
+        ),
+        (
+            "--test-type without --tests",
+            plus(base(&["req"]), &["--test-type", "test"]),
+        ),
+        (
+            "--test-link without --tests",
+            plus(base(&["req"]), &["--test-link", "specs"]),
+        ),
     ] {
         let out = import(fx.path(), &args);
         out.assert_code(2, what);
@@ -2596,4 +2871,249 @@ fn the_self_check_holds_the_key_rule() {
         out.stdout
     );
     assert!(out.stdout.contains("0 failure(s)"), "{}", out.stdout);
+}
+
+// --- Takeover of PR #86, review 1 (autox-my) ------------------------------------------------------
+
+/// The export with `supersedes` declared as a link field (and its backlink partner), as a project
+/// whose Sphinx-Needs config names such a link type would export it.
+fn with_supersedes_link_type(export: &mut Value) {
+    let current = export["current_version"]
+        .as_str()
+        .expect("current_version")
+        .to_string();
+    let properties = export["versions"][current.as_str()]["needs_schema"]["properties"]
+        .as_object_mut()
+        .expect("a needs_schema with properties");
+    properties.insert(
+        "supersedes".into(),
+        json!({"type": "array", "items": {"type": "string"}, "field_type": "links", "default": []}),
+    );
+    properties.insert(
+        "supersedes_back".into(),
+        json!({"type": "array", "items": {"type": "string"}, "field_type": "backlinks", "default": []}),
+    );
+}
+
+/// req reads a `supersedes` relation as a withdrawal (ADR 0049): carried, it would take its target
+/// out of every selection the successor applies in, and nothing in the run would say so. A
+/// requirement leaving the spec is the expensive failure (AGENTS.md), so the field is counted as
+/// not carried, by a reason that says why, and the person authors the withdrawal by hand.
+#[test]
+fn a_source_supersedes_field_is_never_carried_because_it_would_withdraw_its_target() {
+    let mut export = fixture_json(DEMO);
+    with_supersedes_link_type(&mut export);
+    needs_mut(&mut export).insert(
+        "FSR_BRAKE_CTRL_02".into(),
+        json!({"type": "fsr", "content": "The brake controller shall fail operational.",
+               "implements": [], "implements_back": [], "links": [], "links_back": []}),
+    );
+    needs_mut(&mut export)
+        .get_mut("SYSREQ_BRAKE_01")
+        .expect("the linking need")
+        .as_object_mut()
+        .expect("a need is an object")
+        .insert("supersedes".into(), json!(["FSR_BRAKE_CTRL_02"]));
+    let fx = Fixture::with_export("req-needs-supersedes", &export.to_string());
+
+    let out = import(fx.path(), &plus(base(&DEMO_TYPES), &["--links", "--write"]));
+    out.assert_code(0, "a supersedes link field with --links");
+    let line = report_line(&out, "links: ");
+    assert!(
+        line.contains("supersedes withdraws its target 1"),
+        "the supersedes edge is counted as not carried, saying why:\n{line}"
+    );
+    assert!(
+        !line.contains("(implements 1, supersedes 1)") && !line.contains("supersedes 1,"),
+        "supersedes is not among the carried kinds:\n{line}"
+    );
+    let report = parse_report(&out.stdout);
+    let sysreq = &report
+        .drafts
+        .iter()
+        .find(|draft| draft.need == "SYSREQ_BRAKE_01")
+        .expect("SYSREQ_BRAKE_01 is drafted")
+        .claim;
+    let text = fx.read(&format!("claims/{sysreq}.yml"));
+    assert!(
+        !text.contains("type: \"supersedes\""),
+        "no supersedes relation is written:\n{text}"
+    );
+    assert!(
+        text.contains("type: \"implements\""),
+        "the other edge is still carried:\n{text}"
+    );
+    let render = req(fx.path(), &["render"]);
+    assert!(
+        !render.stdout.contains("superseded by"),
+        "nothing is withdrawn by the import:\n{}",
+        render.stdout
+    );
+}
+
+/// A link value that is empty, or only a filter, names no need; it is not the need naming itself.
+#[test]
+fn a_link_value_that_names_no_need_is_counted_as_such_not_as_self() {
+    let mut export = fixture_json(DEMO);
+    needs_mut(&mut export)
+        .get_mut("SYSREQ_BRAKE_01")
+        .expect("the linking need")
+        .as_object_mut()
+        .expect("a need is an object")
+        .insert(
+            "links".into(),
+            json!(["SYSREQ_BRAKE_01", "[version==1]", ""]),
+        );
+    let fx = Fixture::with_export("req-needs-no-need", &export.to_string());
+    let out = import(fx.path(), &plus(base(&DEMO_TYPES), &["--links"]));
+    out.assert_code(0, "empty and filter-only link values");
+    let line = report_line(&out, "links: ");
+    assert!(
+        line.contains("names no need 2") && line.contains("self 1"),
+        "two values name no need, one names the need itself:\n{line}"
+    );
+}
+
+/// A JUnit report whose elements carry a default namespace holds its cases all the same: the
+/// element is matched on its local name, and so are `failure` and `skipped`.
+#[test]
+fn a_namespaced_junit_report_is_read_by_local_name() {
+    let mut export = fixture_json(DEMO);
+    needs_mut(&mut export).insert(
+        "T_SAFE".into(),
+        json!({"type": "test", "specs": ["SYSREQ_BRAKE_01"]}),
+    );
+    let fx = Fixture::with_export("req-needs-junit-ns", &export.to_string());
+    fx.write(
+        "junit.xml",
+        r#"<testsuites xmlns="http://example.com/junit"><testsuite>
+             <testcase classname="suite::a" name="T_SAFE"/>
+             <testcase classname="suite::b" name="T_SAFE"><failure/></testcase>
+             <testcase classname="suite::c" name="T_SAFE"><skipped/></testcase>
+           </testsuite></testsuites>"#,
+    );
+    let out = import(
+        fx.path(),
+        &plus(
+            base(&DEMO_TYPES),
+            &[
+                "--tests",
+                "junit.xml",
+                "--test-type",
+                "test",
+                "--test-link",
+                "specs",
+            ],
+        ),
+    );
+    out.assert_code(0, "a namespaced JUnit report");
+    let line = report_line(&out, "tests: ");
+    assert!(
+        line.contains("3 test case(s) (1 passed, 1 failed, 1 skipped, 0 malformed)"),
+        "all three cases are read, each with its outcome:\n{line}"
+    );
+}
+
+/// `--test-link` must name a field whose values are link lists. A number crashed the reader with
+/// a traceback; a string was iterated by character and linked nothing, exit 0. Both are a named
+/// problem, exit 1, before anything is written.
+#[test]
+fn a_test_link_field_that_is_not_a_list_of_ids_is_a_named_problem() {
+    for (value, shape) in [
+        (json!(5), "a number"),
+        (json!("SYSREQ_BRAKE_01"), "a string"),
+    ] {
+        let mut export = fixture_json(DEMO);
+        needs_mut(&mut export).insert("T_SAFE".into(), json!({"type": "test", "specs": value}));
+        let fx = Fixture::with_export("req-needs-test-link-shape", &export.to_string());
+        fx.write(
+            "junit.xml",
+            r#"<testsuites><testsuite><testcase classname="c" name="T_SAFE"/></testsuite></testsuites>"#,
+        );
+        let before = fs::read_dir(fx.path().join("claims"))
+            .expect("lists claims")
+            .count();
+        let out = import(
+            fx.path(),
+            &plus(
+                base(&DEMO_TYPES),
+                &[
+                    "--tests",
+                    "junit.xml",
+                    "--test-type",
+                    "test",
+                    "--test-link",
+                    "specs",
+                    "--write",
+                ],
+            ),
+        );
+        out.assert_code(1, shape);
+        assert!(
+            !out.stderr.contains("Traceback"),
+            "{shape}: a named problem, never a traceback:\n{}",
+            out.stderr
+        );
+        assert!(
+            out.stderr.contains("T_SAFE") && out.stderr.contains("specs"),
+            "{shape}: the problem names the need and the field:\n{}",
+            out.stderr
+        );
+        assert_eq!(
+            fs::read_dir(fx.path().join("claims"))
+                .expect("lists claims")
+                .count(),
+            before,
+            "{shape}: nothing is written"
+        );
+    }
+}
+
+/// `--test-link` must name a link field — declared by `needs_schema`, or inferred. A field the
+/// test need holds but the schema does not declare as a link is refused, and the refusal says
+/// which link fields there are and how they were found, not that the field is absent.
+#[test]
+fn a_test_link_field_the_schema_does_not_declare_is_refused_saying_why() {
+    let mut export = fixture_json(DEMO);
+    let current = export["current_version"]
+        .as_str()
+        .expect("current_version")
+        .to_string();
+    let properties = export["versions"][current.as_str()]["needs_schema"]["properties"]
+        .as_object_mut()
+        .expect("a needs_schema with properties");
+    properties.remove("specs");
+    properties.remove("specs_back");
+    needs_mut(&mut export).insert(
+        "T_SAFE".into(),
+        json!({"type": "test", "specs": ["SYSREQ_BRAKE_01"]}),
+    );
+    let fx = Fixture::with_export("req-needs-test-link-undeclared", &export.to_string());
+    fx.write(
+        "junit.xml",
+        r#"<testsuites><testsuite><testcase classname="c" name="T_SAFE"/></testsuite></testsuites>"#,
+    );
+    let out = import(
+        fx.path(),
+        &plus(
+            base(&DEMO_TYPES),
+            &[
+                "--tests",
+                "junit.xml",
+                "--test-type",
+                "test",
+                "--test-link",
+                "specs",
+            ],
+        ),
+    );
+    out.assert_code(1, "an undeclared --test-link field");
+    assert!(
+        out.stderr.contains("carries as a link field: specs")
+            && out
+                .stderr
+                .contains("link fields (declared by needs_schema)"),
+        "the refusal says the field is not a declared link field:\n{}",
+        out.stderr
+    );
 }
