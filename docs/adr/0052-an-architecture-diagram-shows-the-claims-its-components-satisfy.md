@@ -350,3 +350,5 @@ HOLDS box, so a visitor did not see it. The owner chose, on 2026-11-14, a frame 
   (`edge-through-node`): its architect has to adjust placement, never the converter, which changes presentation only. The
   overview and the drift page frame every box. No real box is framed today.
 - **Not checked by the gate:** the page and the picture are not read back (the named gap of the earlier notes).
+
+**2026-11-16 (P-2, presentation only).** The three edits of the O-6 note are told as one guided page, `docs/drift.html`, built by `tools/demo/drift_page.py` from the committed drift output and one `req compare` per edit on a temporary copy (`docs/specs/P-2-drift-page.md`); the loosening's picture is `docs/architecture/drift/req-loosening.png`, rendered as `req-drift.png` was.
