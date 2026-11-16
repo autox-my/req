@@ -52,7 +52,7 @@ survive:
    written), so re-running over the same export does not duplicate and a future drift check can join on the
    id. The source's status, tags, safety, security and `reqtype` are **not carried** (a source status is not a
    ratification, ADR 0004, and applicability is authored): the report names the fields seen and not carried.
-5. **Links are not carried, and the report says how many.** `relations` stays `[]`; the report counts the
+5. **Links are not carried, and the report says how many** (amended 2026-11-16: unless `--links` is given; see the note at the end). `relations` stays `[]`; the report counts the
    drafted needs that had typed links and names the link fields. Turning them into relations needs the
    allocated ids and a human's judgement of the relation kind; it is a separate step if it is wanted at all.
 6. **The date is never invented.** `--date` is required (the retrieval date); a `needs.json` has no
@@ -96,3 +96,11 @@ project, ReqIF/CSV/Excel readers, and a `req import` command are not decided her
 - **Carrying `status` as ratification.** `valid` in Sphinx-Needs is not a signed Decision (ADR 0005).
 
 *2026-11-13 (task I-1):* `--areas` files each draft under an area made from the need's `docname`; see ADR 0051, note *task I-1*.
+
+*2026-11-16 (PR #86):* decisions 1 and 5 are amended for two opt-in flags; a run without them is unchanged, byte for byte.
+With `--links`, an edge whose target is also drafted in the same run becomes a `relations:` entry whose `type` is the source
+link field's name and whose `to` is the claim id the target became; every other target is counted by reason. The kind is
+still a proposal: decision 5's "a human's judgement of the relation kind" is now an edit of a carried edge, not the
+authoring of a missing one. A source field named `supersedes` is never carried: req reads that relation as a withdrawal
+(ADR 0049), so carrying it would take its target out of the spec with nothing said; it is counted, and a person authors it.
+With `--tests`, the JUnit cases joined to a test need that links to a draft become that draft's `tests:`.

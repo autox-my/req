@@ -183,8 +183,10 @@ field is listed under "fields", so nothing is hidden; `relations` stays `[]` unl
              not drafted here (another type, a skipped need, an id not in the export) cannot be a
              relation — a claim id that does not exist would make `req trace` report an unresolved
              edge — so it is counted by reason in the report's `links:` line, never dropped
-             silently. The report also gains `links: <R> relation(s) on <D> of <N> drafted needs
-             (<kind> <n>, …); <T> target(s) not carried (<reason> <n>, …)`.
+             silently. A source field named `supersedes` is never carried: req reads that relation
+             as a withdrawal (ADR 0049), so it is counted as `supersedes withdraws its target` and
+             a person authors it. The report also gains `links: <R> relation(s) on <D> of <N>
+             drafted needs (<kind> <n>, …); <T> target(s) not carried (<reason> <n>, …)`.
 
 --tests     opt-in: carry JUnit test cases as `tests:` links. `<junit.xml>` is resolved against
              the corpus root, like --from, and may be repeated. Needs `--test-type` (the export's
@@ -196,8 +198,11 @@ field is listed under "fields", so nothing is hidden; `relations` stays `[]` unl
              whose `name` is not a test need is counted, never guessed at. A test need with no
              case is counted and proposes nothing. A failing case is still linked (the gate is
              what reports it); the report counts passed, failed and skipped separately. The
-             report gains `tests: <P> test link(s) on <C> of <N> drafted needs; <T> test need(s)
-             (<W> with a case, <U> without); <C> test case(s) (…) in <report>`.
+             report gains `tests: <P> test link(s) on <D> of <N> drafted needs; <T> test need(s)
+             (<W> with a case, <U> without); <C> test case(s) (<n> passed, <n> failed, <n>
+             skipped, <n> malformed), <M> of them naming no test need, in <report>`. Elements are
+             matched by local name, so a namespaced report is read. A --test-link field holding
+             anything but a list of need ids is exit 1 naming the need.
 
 --areas     opt-in: file each draft under an area made from the need's `docname` (ADR 0051).
              The docname is split on `/`; each part becomes a key: lowercase it, replace each run
@@ -397,6 +402,13 @@ def link_target(value):
     return value.split("[", 1)[0].strip()
 
 
+# A relation type req reads as a withdrawal (ADR 0049, docs/claim-format.md): carried from a source
+# link field of the same name, it would take its target out of every selection the successor
+# applies in, and nothing in the import would say so. A requirement leaving the spec is the
+# expensive failure, so such an edge is never carried; it is counted, and a person authors it.
+WITHDRAWING_KINDS = frozenset({"supersedes"})
+
+
 def plan_relations(drafts, claim_of, needs, types, all_keys, declared=None, backlinks=frozenset()):
     """`(relations, kinds, omitted)` for the drafted needs, in draft order.
 
@@ -414,8 +426,12 @@ def plan_relations(drafts, claim_of, needs, types, all_keys, declared=None, back
         for kind in outbound_link_fields(need, all_keys, declared, backlinks):
             for value in need.get(kind) or []:
                 target = link_target(value)
-                if not target or target == need_id:
+                if not target:
+                    reason = "names no need"
+                elif target == need_id:
                     reason = "self"
+                elif kind in WITHDRAWING_KINDS:
+                    reason = f"{kind} withdraws its target"
                 elif target in claim_of:
                     edge = (kind, claim_of[target])
                     if edge in seen:
@@ -443,6 +459,15 @@ def plan_relations(drafts, claim_of, needs, types, all_keys, declared=None, back
 JUNIT_OUTCOMES = ("passed", "failed", "skipped", "malformed")
 
 
+def local_name(tag):
+    """An element's name without its namespace: `{uri}testcase` and `testcase` are both `testcase`.
+
+    A report written with a default namespace holds its cases all the same; matching the qualified
+    name only would call it empty, which is false.
+    """
+    return tag.rpartition("}")[2] if isinstance(tag, str) else ""
+
+
 def junit_entries(root):
     """`[(need id, test id, outcome)]` for one parsed JUnit document.
 
@@ -453,15 +478,16 @@ def junit_entries(root):
     are both `failed`; a `skipped` element is `skipped`; anything else is `passed`.
     """
     entries = []
-    for case in root.iter("testcase"):
+    for case in (element for element in root.iter() if local_name(element.tag) == "testcase"):
         name = case.get("name") or ""
         classname = case.get("classname") or ""
         if not name.strip() or not classname.strip():
             entries.append(("", "", "malformed"))
             continue
-        if case.find("failure") is not None or case.find("error") is not None:
+        children = {local_name(child.tag) for child in case}
+        if "failure" in children or "error" in children:
             outcome = "failed"
-        elif case.find("skipped") is not None:
+        elif "skipped" in children:
             outcome = "skipped"
         else:
             outcome = "passed"
@@ -1318,9 +1344,18 @@ def run(args):
         seen = set()
         schema_links = declared_link_fields(export, version)
         project_keys = {key for need in needs.values() for key in need}
-        for need in needs.values():
+        for test_id, need in needs.items():
             if need.get("type") not in args.test_type:
                 continue
+            for field in args.test_link:
+                value = need.get(field)
+                if value not in (None, []) and not is_link_value(value):
+                    raise Problem(
+                        f"--test-link {field}: test need {test_id} holds "
+                        f"{type(value).__name__} {json.dumps(value)[:60]}, not a list of need ids\n"
+                        "  a link field holds a list of need ids; name the field your test needs "
+                        "use to point at requirements"
+                    )
             if schema_links is not None:
                 seen.update(field for field in need if field in schema_links)
             else:
@@ -1504,7 +1539,11 @@ def report(args, corpus, label, version, drafts, skips, targets, written, rules_
     shown = ", ".join(fields) if fields else "none"
     how = "declared by needs_schema" if from_schema else "inferred: no needs_schema"
     carried_links = f" ({', '.join(link_names)}; {how})" if link_names else f" ({how})"
-    outcome = "carried as `relations`" if links_on else "`relations` stays []"
+    outcome = (
+        "carried as `relations` (a backlink field is the derived side of an edge and is not stored)"
+        if links_on
+        else "`relations` stays []"
+    )
     print(
         f"not carried: {shown}; typed links on {with_links} of {len(drafts)} drafted needs"
         f"{carried_links} — {outcome}"
@@ -1527,10 +1566,9 @@ def report(args, corpus, label, version, drafts, skips, targets, written, rules_
         line = (
             f"tests: {proposed} test link(s) on {proposed_drafts} of {len(drafts)} drafted needs; "
             f"{test_needs} test need(s) ({with_cases} with a case, {test_needs - with_cases} without); "
-            f"{cases} test case(s) ({case_stats.get('passed', 0)} passed, "
-            f"{case_stats.get('failed', 0)} failed, {case_stats.get('skipped', 0)} skipped, "
-            f"{case_stats.get('malformed', 0)} malformed, {unmatched} naming no test need) "
-            f"in {', '.join(labels)}"
+            f"{cases} test case(s) ("
+            + ", ".join(f"{case_stats.get(outcome, 0)} {outcome}" for outcome in JUNIT_OUTCOMES)
+            + f"), {unmatched} of them naming no test need, in {', '.join(labels)}"
         )
         omitted = sum(omitted_tests.values())
         if omitted:

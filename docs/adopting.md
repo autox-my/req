@@ -249,7 +249,7 @@ cannot be read — no `claims/` means run `req init` first.
 If the requirements already live in a Sphinx-Needs project, its export is the source and nothing needs
 retyping. `tools/needs_import.py` (a sibling of `adopt.py`, python3 standard library only, also a
 **starting point to copy and adjust**, not a `req` command; ADR 0027) reads the export and writes the same
-legal drafts: the statement, its provenance, empty `applicability`, and `relations` when `--links` is given,
+legal drafts: the statement, its provenance, empty `applicability`, `relations` when `--links` is given, `tests:` when `--tests` is given,
 nothing derived, no pin.
 
 ```bash
@@ -310,7 +310,10 @@ need, an id the export does not hold — is not a relation (a claim id that does
 report an unresolved edge), and the report's `links:` line counts each one by reason rather than dropping it:
 `links: <R> relation(s) on <D> of <N> drafted needs (<kind> <n>, …); <T> target(s) not carried (<reason> <n>, …)`.
 The kinds are still a proposal: the source's link vocabulary is kept verbatim, and renaming one (to `refines`,
-or `supersedes`) is a human edit.
+or `supersedes`) is a human edit. One kind is never carried: a source field named `supersedes`. req reads that
+relation as a withdrawal (ADR 0049), so carrying it would take its target out of the spec with nothing said; the
+`links:` line counts it as `supersedes withdraws its target`, and a person authors the withdrawal. A link value
+that is empty or only a filter is counted as `names no need`.
 
 **`--tests` carries the JUnit evidence, when a test need names the draft.** An adopter's test
 needs usually already link to the requirements they prove, and Sphinx-Test-Reports writes the
@@ -320,8 +323,10 @@ names its requirements, e.g. `specs`, repeatable), each case becomes a `classnam
 the draft's `tests:`. A case missing `classname` or `name` is counted `malformed`; a case whose
 `name` is not a test need is counted, never guessed at; a test need with no case proposes nothing
 and is counted; and a failing case is still linked — the gate is what reports it. The report gains
-`tests: <P> test link(s) on <C> of <N> drafted needs; <T> test need(s) (<W> with a case, <U>
-without); <C> test case(s) (passed, failed, skipped, malformed, naming no test need) in <report>`.
+`tests: <P> test link(s) on <D> of <N> drafted needs; <T> test need(s) (<W> with a case, <U>
+without); <C> test case(s) (<n> passed, <n> failed, <n> skipped, <n> malformed), <M> of them naming
+no test need, in <report>`. A report whose elements carry a namespace is read by local name. A
+`--test-link` field that holds anything but a list of need ids is exit 1, naming the need.
 A target that is not a draft of this run is counted, not linked to a claim id that does not exist.
 
 `--areas` carries one thing more, the place: a
