@@ -47,7 +47,7 @@ This is a demonstration, not the adopter's loop: to use req on your own requirem
 ```mermaid
 flowchart LR
     A["a requirement is edited"] --> B["its meaning fingerprint is derived again"]
-    B --> C["the direction of the change is classified: same, looser or tighter"]
+    B --> C["the direction of the change is classified: same, looser, tighter, or another direction (a polarity flip, a scope change)"]
     C --> D["each recorded design link is judged by that direction"]
     D --> E["HOLDS, or HOLDS (weakened)"]
     D --> F["SUSPECT: framed for a human to re-check"]
@@ -158,7 +158,8 @@ Git-native storage is table stakes, not the moat.
 - **Tier-1 is built and measured.** `RULES_V 9`, 40 dogfood claims — req's own requirements,
   written in req's own format — and nine corpora gated on every commit: the seed parity corpus,
   four external corpora and four direction gold sets, the last eight built from real requirements
-  prose from other projects, pinned by commit. Zero false merges on all of them.
+  prose from other projects, pinned by commit (the pairs direction-v4 adds from PURE by their Zenodo record and its
+  sha-256). Zero false merges on all of them.
 - **Tier-2 is measured and deliberately conservative.** Four providers evaluated against a
   human-labelled sample; one has a usable confidence ordering at a measured floor; the honest
   default is `NoProvider` until a provider survives held-out validation on a grown,
@@ -176,9 +177,9 @@ Git-native storage is table stakes, not the moat.
 
 ## Install
 
-req is not on crates.io (`publish = false`): you pin a commit, and the commit is the provenance. **Two
-prebuilt releases exist: `rev-ec87808` (Linux x86_64) and `rev-6b74f51` (Linux x86_64 and macOS arm64, Apple
-silicon only)**. There is no Intel Mac build and no native Windows build (on Windows, run the Linux tarball under
+req is not on crates.io (`publish = false`): you pin a commit, and the commit is the provenance. **Three
+prebuilt releases exist: `rev-ec87808` (Linux x86_64), `rev-6b74f51` and `rev-aeaf987` (Linux x86_64 and macOS
+arm64, Apple silicon only)**; all three predate `req.claim/3`, so today's corpus needs a build from source. There is no Intel Mac build and no native Windows build (on Windows, run the Linux tarball under
 WSL2: `docs/adopting.md`, *Windows*). For any other rev, or any other machine, the install is a build from source
 at a rev you choose:
 
