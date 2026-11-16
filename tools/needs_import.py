@@ -191,7 +191,8 @@ field is listed under "fields", so nothing is hidden; `relations` stays `[]` unl
 --tests     opt-in: carry JUnit test cases as `tests:` links. `<junit.xml>` is resolved against
              the corpus root, like --from, and may be repeated. Needs `--test-type` (the export's
              test need type, repeatable) and `--test-link` (the field on a test need that names
-             the requirements it proves, e.g. `specs`, repeatable). Each `<testcase>` is joined
+             the requirements it proves, e.g. `specs`, repeatable; it must be a link field, declared
+             by needs_schema or inferred as for --links). Each `<testcase>` is joined
              to a test need by its `name` — the convention Sphinx-Test-Reports writes — and to
              its draft by the test need's link target. A case is named `classname::name`, the
              claim format's test id; a case missing either is counted `malformed`, and a case
@@ -200,7 +201,9 @@ field is listed under "fields", so nothing is hidden; `relations` stays `[]` unl
              what reports it); the report counts passed, failed and skipped separately. The
              report gains `tests: <P> test link(s) on <D> of <N> drafted needs; <T> test need(s)
              (<W> with a case, <U> without); <C> test case(s) (<n> passed, <n> failed, <n>
-             skipped, <n> malformed), <M> of them naming no test need, in <report>`. Elements are
+             skipped, <n> malformed), <M> of them naming no test need, in <report>; <X> target(s)
+             not carried (<reason> <n>, …)`, the last part only when a test need links to
+             something that is not a draft of this run. Elements are
              matched by local name, so a namespaced report is read. A --test-link field holding
              anything but a list of need ids is exit 1 naming the need.
 
@@ -1363,10 +1366,11 @@ def run(args):
         missing_links = [field for field in args.test_link if field not in seen]
         if missing_links:
             have = ", ".join(sorted(seen)) or "none"
+            how_links = "declared by needs_schema" if schema_links is not None else "inferred"
             raise Problem(
-                f"--test-link names a field no {', '.join(args.test_type)} need carries: "
-                f"{', '.join(missing_links)}\n"
-                f"  the test needs carry: {have}\n"
+                f"--test-link names a field no {', '.join(args.test_type)} need carries as a link "
+                f"field: {', '.join(missing_links)}\n"
+                f"  the test needs' link fields ({how_links}): {have}\n"
                 "  name the link field your test needs use to point at requirements"
             )
 

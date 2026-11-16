@@ -3068,3 +3068,52 @@ fn a_test_link_field_that_is_not_a_list_of_ids_is_a_named_problem() {
         );
     }
 }
+
+/// `--test-link` must name a link field — declared by `needs_schema`, or inferred. A field the
+/// test need holds but the schema does not declare as a link is refused, and the refusal says
+/// which link fields there are and how they were found, not that the field is absent.
+#[test]
+fn a_test_link_field_the_schema_does_not_declare_is_refused_saying_why() {
+    let mut export = fixture_json(DEMO);
+    let current = export["current_version"]
+        .as_str()
+        .expect("current_version")
+        .to_string();
+    let properties = export["versions"][current.as_str()]["needs_schema"]["properties"]
+        .as_object_mut()
+        .expect("a needs_schema with properties");
+    properties.remove("specs");
+    properties.remove("specs_back");
+    needs_mut(&mut export).insert(
+        "T_SAFE".into(),
+        json!({"type": "test", "specs": ["SYSREQ_BRAKE_01"]}),
+    );
+    let fx = Fixture::with_export("req-needs-test-link-undeclared", &export.to_string());
+    fx.write(
+        "junit.xml",
+        r#"<testsuites><testsuite><testcase classname="c" name="T_SAFE"/></testsuite></testsuites>"#,
+    );
+    let out = import(
+        fx.path(),
+        &plus(
+            base(&DEMO_TYPES),
+            &[
+                "--tests",
+                "junit.xml",
+                "--test-type",
+                "test",
+                "--test-link",
+                "specs",
+            ],
+        ),
+    );
+    out.assert_code(1, "an undeclared --test-link field");
+    assert!(
+        out.stderr.contains("carries as a link field: specs")
+            && out
+                .stderr
+                .contains("link fields (declared by needs_schema)"),
+        "the refusal says the field is not a declared link field:\n{}",
+        out.stderr
+    );
+}
