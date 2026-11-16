@@ -215,14 +215,19 @@ pin is flagged. It looks at every claim, not only the ones a variant applies, so
 behind a selector cannot hide. Its green is not a release verdict: tests, relations and
 decisions were not judged, and `req gate` still decides the release.
 
-`--by-area` appends a deterministic work list after the diagnostics: one line per `area`, sorted
-by path with `(no area)` last, each with its claim count, structured/unstructured split, lint
-occurrences and the number of claims carrying at least one lint. It is placement only (ADR 0051),
-so it changes no parse and no address; plain `req canon` output is byte-for-byte unchanged.
+`--by-area` appends a deterministic work list after the diagnostics: `areas: <n>` (the areas
+claims name), then one line per area that holds a claim, each with its claim count,
+structured/unstructured split, lint occurrences and the number of claims carrying at least one
+lint. The order is ADR 0051's: the areas `.req/areas` declares, in its line order and under their
+labels; then the areas it does not declare, by path and under their keys; then `(no area)`. A
+malformed `.req/areas` is refused before anything is printed (exit 3); plain `req canon` does not
+read it. It is placement only, so it changes no parse and no address; plain `req canon` output is
+byte-for-byte unchanged.
 
 exit: 0 diagnostics reported — not a pass: it reports, and it never gates; with `--fail-on-flag`,
 0 means no pin is flagged and 1 means at least one is; 3 a registry or claim file that cannot be
-read (or is NOT JUDGED); 2 usage, including `--fill` and `--verify`.
+read (or is NOT JUDGED), including `.req/areas` with `--by-area`; 2 usage, including `--fill` and
+`--verify`.
 
 `docs/adopting.md` for the loop.";
 

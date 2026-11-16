@@ -2254,6 +2254,26 @@ pub fn run_claim_diagnostics_with_options(
         linted: usize,
     }
 
+    // `--by-area` reads `.req/areas` for the reading order and the labels (ADR 0051 decisions 2 and 3). A malformed
+    // or unusable registry is refused before anything is printed, as `trace --format json` refuses it; plain
+    // `canon` never reads it.
+    let registry = if by_area {
+        match crate::view::read_areas(root) {
+            Ok(registry) => registry,
+            Err(errors) => {
+                for error in &errors {
+                    eprintln!("{error}");
+                }
+                eprintln!(
+                    "nothing was printed: a malformed `{}` is refused, never read around",
+                    crate::completeness::AREAS
+                );
+                return 3;
+            }
+        }
+    } else {
+        Vec::new()
+    };
     let claims = match load_claims(root) {
         Ok(c) => c,
         Err(e) => {
@@ -2362,28 +2382,40 @@ pub fn run_claim_diagnostics_with_options(
         claims.len()
     );
     if by_area {
-        let width = areas
-            .keys()
-            .filter_map(|area| area.as_deref())
-            .map(str::len)
+        // The registry's areas in its line order, under their labels; then the areas it does not declare, by path,
+        // under their keys (they have no label); then the claims that name no area. An area with no claim has no row.
+        let mut rows: Vec<(&str, &AreaStat)> = Vec::new();
+        for entry in &registry {
+            if let Some(stat) = areas.get(&Some(entry.path.clone())) {
+                rows.push((entry.label.as_str(), stat));
+            }
+        }
+        for (area, stat) in &areas {
+            if let Some(path) = area.as_deref()
+                && !registry.iter().any(|entry| entry.path == path)
+            {
+                rows.push((path, stat));
+            }
+        }
+        if let Some(stat) = areas.get(&None) {
+            rows.push(("(no area)", stat));
+        }
+        // `{:<width$}` pads by characters, so the width is counted in characters too.
+        let width = rows
+            .iter()
+            .map(|(name, _)| name.chars().count())
             .max()
-            .unwrap_or(0)
-            .max("(no area)".len());
-        println!("areas: {}", areas.len());
-        let print = |name: &str, stat: &AreaStat| {
+            .unwrap_or(0);
+        println!(
+            "areas: {}",
+            areas.keys().filter(|area| area.is_some()).count()
+        );
+        for (name, stat) in rows {
             println!(
                 "  {name:<width$}  {:>4} claim(s)  {:>4} structured  {:>4} unstructured  \
                  {:>4} lint(s) on {:>3} claim(s)",
                 stat.claims, stat.structured, stat.unstructured, stat.lints, stat.linted,
             );
-        };
-        for (area, stat) in areas.iter().filter(|(area, _)| area.is_some()) {
-            if let Some(name) = area {
-                print(name, stat);
-            }
-        }
-        if let Some(stat) = areas.get(&None) {
-            print("(no area)", stat);
         }
     }
     if !fail_on_flag {

@@ -866,7 +866,7 @@ fn json_document(
 /// `.req/areas`, validated, in its line order: `Ok(vec![])` when the file does not exist. A malformed registry is
 /// every bad `<file>:<line>` (one parser, [`parse_areas`], as `req check` reads it); one that exists and cannot be
 /// used as a list is the reason, as `req check` names it.
-fn read_areas(root: &Path) -> Result<Vec<AreaEntry>, Vec<String>> {
+pub(crate) fn read_areas(root: &Path) -> Result<Vec<AreaEntry>, Vec<String>> {
     match read_list(root, AREAS) {
         Listing::Absent => Ok(Vec::new()),
         Listing::Unreadable(reason) => Err(vec![reason]),

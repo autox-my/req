@@ -106,12 +106,18 @@ fn by_area_groups_claims_by_their_authored_area_and_leaves_plain_canon_unchanged
     let out = s.run(&["canon", "--by-area"]);
     assert_eq!(out.status.code(), Some(0));
     let text = stdout(&out);
+    // The summary is appended: every line plain canon printed comes first, byte for byte.
+    assert!(
+        text.starts_with(&stdout(&plain)),
+        "--by-area must only append to plain canon's output:\n{text}"
+    );
     let line = |area: &str| {
         text.lines()
             .find(|line| line.trim_start().starts_with(area))
             .unwrap_or_else(|| panic!("no `{area}` line in:\n{text}"))
     };
-    assert!(text.contains("areas: 3"), "{text}");
+    // Two areas; the claims that name none are a group of their own, not an area.
+    assert!(text.contains("areas: 2"), "{text}");
     assert_eq!(
         line("diagnostics/startup"),
         "  diagnostics/startup     2 claim(s)     1 structured     1 unstructured     1 lint(s) on   1 claim(s)"
@@ -155,4 +161,101 @@ fn by_area_composes_with_fail_on_flag_and_a_repeated_flag_is_usage() {
             String::from_utf8_lossy(&out.stderr)
         );
     }
+}
+
+/// ADR 0051: the registry's line order is the reading order (decision 3), and a reader sees an area's label, never its
+/// key (decision 2). Areas the registry does not declare follow, by path, under their key (they have no label), and
+/// `(no area)` stays last.
+#[test]
+fn by_area_reads_the_registry_for_order_and_labels() {
+    let s = Scratch::new("registry");
+    fs::create_dir_all(s.0.join(".req")).expect("makes .req");
+    fs::write(
+        s.0.join(".req/areas"),
+        "# reading order\ninterfaces/can-bus Bus interfaces\ndiagnostics/startup Start-up (診断)\nempty/area Nothing filed here\n",
+    )
+    .expect("writes the registry");
+    s.claim(
+        "REQ-0002",
+        Some("diagnostics/startup"),
+        "The API shall respond within 200 ms.",
+    );
+    s.claim(
+        "REQ-0003",
+        Some("zeta/extra"),
+        "The bus shall carry 8 bytes.",
+    );
+    s.claim(
+        "REQ-0004",
+        Some("interfaces/can-bus"),
+        "The bus shall carry 8 bytes.",
+    );
+    s.claim(
+        "REQ-0005",
+        Some("alpha/undeclared"),
+        "The bus shall carry 8 bytes.",
+    );
+
+    let out = s.run(&["canon", "--by-area"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = stdout(&out);
+    let summary: Vec<&str> = text
+        .lines()
+        .skip_while(|line| !line.starts_with("areas: "))
+        .collect();
+    assert_eq!(summary.first().copied(), Some("areas: 4"), "{text}");
+    let names: Vec<&str> = summary[1..]
+        .iter()
+        .map(|line| line.trim_start().split("  ").next().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "Bus interfaces",
+            "Start-up (診断)",
+            "alpha/undeclared",
+            "zeta/extra",
+            "(no area)"
+        ],
+        "registry order with labels, then undeclared keys by path, then (no area); an area with no claim is not \
+         listed:\n{text}"
+    );
+    // The name column pads by characters: the longest name here is `alpha/undeclared` (16); `Start-up (診断)` is 13.
+    assert_eq!(
+        summary[2],
+        "  Start-up (診断)        1 claim(s)     1 structured     0 unstructured     0 lint(s) on   0 claim(s)",
+        "{text}"
+    );
+    assert!(
+        !text.contains("diagnostics/startup  "),
+        "a declared area is shown by its label, never its key:\n{text}"
+    );
+}
+
+/// A malformed registry is refused before anything is printed (as `trace --format json` refuses it), and the exit is
+/// canon's 3 for a registry it cannot read. Plain `canon` does not read `.req/areas` and is unaffected.
+#[test]
+fn a_malformed_registry_is_refused_only_with_by_area() {
+    let s = Scratch::new("malformed");
+    fs::create_dir_all(s.0.join(".req")).expect("makes .req");
+    fs::write(s.0.join(".req/areas"), "a A\na twice\n").expect("writes a bad registry");
+    let out = s.run(&["canon", "--by-area"]);
+    assert_eq!(
+        out.status.code(),
+        Some(3),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(stdout(&out), "", "nothing is printed");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(".req/areas:2:"),
+        "names the bad line: {stderr}"
+    );
+    assert_eq!(s.run(&["canon"]).status.code(), Some(0));
 }
