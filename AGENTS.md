@@ -24,7 +24,7 @@ its `req <cmd> --help` page, the adopter's loop is `docs/adopting.md`; this file
   bump is a Tier-1 rules bump (bump `RULES_V`, regenerate goldens deliberately, record re-canonicalization
   candidates, hashing spec §5). One exception: req's own package entry in `Cargo.lock`, which a version bump
   changes, is not a rules bump (ADR 0055). No address, Baseline manifest or projection header reads it; the one checked
-  file it moves is the SBOM, whose serial is the lock file's digest, regenerated in the same bump PR. The OCR pin is review-process provenance: bump deliberately, verify
+  file it moves is the SBOM, whose serial is derived from the lock file's digest, regenerated in the same bump PR. The OCR pin is review-process provenance: bump deliberately, verify
   `ocr --version`, state it in the commit — no `RULES_V` bump.
 - **Never change the git identity** or pass `-c user.name=`/`user.email=`: commits are the human's, provenance feeds ADR 0005.
 - **External material is read at named provenance, or as a lead.** A number with a source, a sample size and
