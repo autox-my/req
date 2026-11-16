@@ -30,6 +30,9 @@ all 28 claim–part pairs hold (29 on the detailed page, which splits the gate f
 part reaches. [Every part, with every arrow](https://autox-my.github.io/req/architecture-detail.html), is the detailed page
 (its [matrix](docs/architecture/matrix.md)). How they are made and what the gate checks of them:
 [ADR 0052](docs/adr/0052-an-architecture-diagram-shows-the-claims-its-components-satisfy.md).
+[The coverage explorer](https://autox-my.github.io/req/explorer.html) follows one claim across its source, the design that satisfies it and
+the tests that verify it, and filters to the claims with a gap; `tools/explorer/build.py` generates it and the gate checks it
+([ADR 0054](docs/adr/0054-an-explorer-page-navigates-the-coverage-graph.md)).
 
 ### What drift looks like
 
