@@ -14,7 +14,7 @@ One requirement (REQ-0010) is tightened on a copy of req's own corpus; the part 
 
 The same requirement, REQ-0010 (the false-split bound, linked from `src/bench.rs`, drawn in the Evidence box), edited three ways, each on a throw-away copy of the corpus and never on req's own claims. The words are the ones `req satisfy` printed, from [`edits.json`](docs/architecture/drift/edits.json) and each edit's committed output:
 
-| edit, on a copy | `req satisfy` says | what that means | the Evidence box | exact output |
+| edit, on a copy | `req satisfy` says | what that means | the Evidence box | full output |
 | --- | --- | --- | --- | --- |
 | **re-word**: `at most 0.30` becomes `no more than 0.30` | `HOLDS` | same meaning fingerprint (`req compare`: identical), so no alarm | HOLDS · 4 claims | [satisfy.txt](docs/architecture/drift/cosmetic/satisfy.txt) |
 | **loosen**: `at most 0.30` becomes `at most 0.40` | `HOLDS (weakened)`, `numeric_loosening` | what met the stronger requirement meets the weaker one, so the link is not re-opened | HOLDS (weakened) · 1 of 4 claims | [satisfy.txt](docs/architecture/drift/loosening/satisfy.txt) |

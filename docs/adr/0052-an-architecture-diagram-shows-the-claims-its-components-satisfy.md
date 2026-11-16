@@ -292,7 +292,7 @@ Not an edit of the decisions above; decision 7 step 4 (`docs/specs/O-6-drift-dem
   `tools/graph/arch_overlay.py` on the overview diagram, which is read, never written. The diagram handed to the converter
   is the architect's with a title, a subtitle and one card added (a demonstration, on a copy, the statement before and
   after, req's own line for the edited link); components, connections and geometry are untouched. It writes
-  `<edit-id>/overlay.json`, `matrix.md` and `satisfy.txt` (the exact `req satisfy` text). The copies are deleted. Each `matrix.md` opens with one line saying it is made from a temporary copy with that edit applied;
+  `<edit-id>/overlay.json`, `matrix.md` and `satisfy.txt` (the `req satisfy` text less its `[MENTION]` lines, which carry source line numbers; the header keeps their count). The copies are deleted. Each `matrix.md` opens with one line saying it is made from a temporary copy with that edit applied;
   its edited claim links to `edits.json` (the committed claim file holds the unedited statement), and only the tightening, the
   edit the page shows, links its parts to `architecture-drift.html`, so no HOLDS row points at the SUSPECT picture. This checkout's
   corpus is never opened for writing.

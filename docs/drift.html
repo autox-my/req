@@ -73,7 +73,7 @@
 <main class="page">
 <h1>What req does when a requirement changes</h1>
 <p class="lede">req links each part of a design to the requirement it was built to meet, and when that requirement&rsquo;s meaning changes it says in which direction, so a person is asked to re-check a link only when the change could break it. Below, one real requirement is edited three ways on a copy: a tool that flagged every edit would raise the alarm on all three, and req raises it on one.</p>
-<noscript><p>This page tells its three stories with a small script. Under <code>docs/architecture/drift/</code> are committed the three edits (<code>edits.json</code>) and, for each, the exact <code>req satisfy</code> output (<code>satisfy.txt</code>) and the architecture overlay (<code>overlay.json</code>), with the three pictures. The <code>req compare</code> lines are produced when the page is built, on a temporary copy, by <code>tools/demo/drift_page.py</code>, and the plain sentences are fixed text in <code>tools/demo/drift.html</code>.</p></noscript>
+<noscript><p>This page tells its three stories with a small script. Under <code>docs/architecture/drift/</code> are committed the three edits (<code>edits.json</code>) and, for each, the <code>req satisfy</code> output (<code>satisfy.txt</code>, less the per-mention lines, which carry source line numbers) and the architecture overlay (<code>overlay.json</code>), with the three pictures. The <code>req compare</code> lines are produced when the page is built, on a temporary copy, by <code>tools/demo/drift_page.py</code>, and the plain sentences are fixed text in <code>tools/demo/drift.html</code>.</p></noscript>
 
 <p class="pick" id="pick">Pick an edit:</p>
 <div class="buttons" id="buttons" role="group" aria-labelledby="pick"></div>

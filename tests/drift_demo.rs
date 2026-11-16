@@ -2,8 +2,8 @@
 //!
 //! `docs/architecture/drift/edits.json` names three edits to one of req's own claims: a cosmetic re-wording, a loosening and
 //! a tightening. `tools/graph/build_architecture.py --drift` applies each to a throw-away COPY of the corpus, runs `req
-//! satisfy` and `req trace` there and converts the overview diagram into an overlay, a matrix and the exact `req satisfy`
-//! text per edit under `docs/architecture/drift/<edit-id>/`. `docs/architecture-drift.html` is archify's rendering of the
+//! satisfy` and `req trace` there and converts the overview diagram into an overlay, a matrix and the `req satisfy`
+//! text per edit (less its per-mention lines) under `docs/architecture/drift/<edit-id>/`. `docs/architecture-drift.html` is archify's rendering of the
 //! tightening overlay. The oracles below are written from the spec and ADR 0040, never from the generated files: an edit
 //! that tightens a bound is SUSPECT, one that relaxes it HOLDS (weakened), a re-wording that keeps the meaning HOLDS.
 
@@ -568,6 +568,39 @@ fn a_tightening_that_no_longer_tightens_makes_the_check_stale() {
         run.said
             .contains(&format!("STALE {DRIFT}/tightening/satisfy.txt")),
         "the stale file must be named:\n{}",
+        run.said
+    );
+}
+
+/// An edit to a source file that moves no link must not make the drift set stale. `req satisfy` names each bare
+/// `req-satisfies:` mention by its file and line, so a committed copy of those lines went stale on any edit above a
+/// mention (PR #89 regenerated three files for a help-text change). The mention count stays; the lines do not.
+#[test]
+fn a_line_inserted_above_a_mention_leaves_the_set_current() {
+    for edit in ["cosmetic", "loosening", "tightening"] {
+        let text = read(&drift_file(edit, "satisfy.txt"));
+        assert!(
+            text.contains(" mention(s) of `req-satisfies:` with no claim id (not links)"),
+            "{edit}: the mention count stays in the header:\n{text}"
+        );
+        assert!(
+            !text.lines().any(|line| line.starts_with("[MENTION]")),
+            "{edit}: no per-mention line (each carries a line number):\n{text}"
+        );
+    }
+    let copy = Copy::new("moved-mention");
+    let main = copy.path("src/main.rs");
+    let text = read(&main);
+    fs::write(
+        &main,
+        format!("// a line that moves every mention below it\n{text}"),
+    )
+    .expect("edits the copy's src/main.rs");
+    let run = build(&copy.0, &["--check-drift", DRIFT], true);
+    assert_eq!(
+        run.code,
+        Some(0),
+        "a line inserted in src/main.rs moves no link, so the set is current:\n{}",
         run.said
     );
 }
