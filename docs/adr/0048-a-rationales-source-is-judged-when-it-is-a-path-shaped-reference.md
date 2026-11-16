@@ -9,7 +9,7 @@ change, and **no address moves**: `rationale` sits outside the canonical form an
 review of an adopter-surface tool (reqord, `f043777`) that records `origin.feedbackIssue` as a number —
 machine-readable and unverifiable — where req records a source it can check but does not.
 
-Revised three times after review (PR #66). The first version proposed a `dec:` / `adr:` / `claim:` prefix grammar, which
+Revised four times after review (PR #66). The first version proposed a `dec:` / `adr:` / `claim:` prefix grammar, which
 duplicates a form `docs/claim-format.md` already documents and which **no claim in this corpus uses**, while a
 path-shaped rule covers all 40. The second said "one token", which makes `TBD`, `N/A` and `interview` dangling paths. The
 third left `..` admissible, "file extension" undefined, and the landing sequence short of the fixtures and manifests it
@@ -99,8 +99,9 @@ for existence — reports exactly one dangling reference out of forty: `claims/R
   every place that teaches the old template source: twelve test fixtures that write `source: docs/requirements.md` without
   creating the file (`tests/gate.rs`, `check.rs`, `ci_template.rs`, `gate_counts.rs`, `completeness.rs`, `contradict.rs`,
   `satisfy.rs`, `junit_case.rs`, `supersedes.rs`, `area.rs`, `graph_archify.rs`, `trace_nodes.rs` — several assert a
-  non-FAIL exit), the docstring of `tests/adopt.rs:842-844` and
-  `docs/handoffs/adopter-sedia-step-3-bring-your-own-spec.md:47-49` (both describe the old template source),
+  non-FAIL exit), and the places that describe the old template source: the comments at `tools/adopt.py:475-476` and
+  `:849-850`, the docstring of `tests/adopt.rs:842-844` and its assertion message at `:863`, and
+  `docs/handoffs/adopter-sedia-step-3-bring-your-own-spec.md:47-49`;
   `docs/design.md:93` ("line anchors checked"), and `docs/adopting.md:242` ("does not block adopting", which stops being
   true).
 - A fresh corpus created by `req init` is green under the rule, because decision 8 makes its template's source a note.

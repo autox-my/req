@@ -78,7 +78,7 @@ make this a second wiki with a requirements engine attached.
   part req will ever look at.
 - Two more tracked files exist in an adopter's repository that req can read but does not own. Nothing in the gate
   depends on them being present, current, or absent.
-- `docs/adopting.md` § *For an agent* and its "exactly three files" line (`:1468`, and the table at `:159`), the
+- `docs/adopting.md` § *For an agent* and its "exactly three files" line (`:1468`, and the table at `:159-165`), the
   `req init --help` page, and `tests/agent_handoff.rs:71` — which asserts the literal `rules_v 9` that decision 7 removes,
   as its docstring at `:5-7` explains — change in the same commit that lands the flag.
 
