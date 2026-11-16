@@ -237,8 +237,12 @@ def render(binary):
 def main(argv):
     mode, target, binary = None, None, None
     args = iter(argv)
+    usage = "usage: build.py [--req <path>] --out <page> | --check <page>"
     for arg in args:
         if arg in ("--out", "--check"):
+            if mode is not None:
+                print(f"{usage} (one mode per run: {mode} is already given, then {arg})", file=sys.stderr)
+                return 2
             mode, target = arg, next(args, None)
         elif arg == "--req":
             binary = next(args, None)
@@ -246,10 +250,10 @@ def main(argv):
             print(__doc__)
             return 0
         else:
-            print(f"usage: build.py [--req <path>] --out <page> | --check <page> (unknown: {arg})", file=sys.stderr)
+            print(f"{usage} (unknown: {arg})", file=sys.stderr)
             return 2
     if mode is None or not target or binary == "":
-        print("usage: build.py [--req <path>] --out <page> | --check <page>", file=sys.stderr)
+        print(usage, file=sys.stderr)
         return 2
     binary = os.path.abspath(binary) if binary else shutil.which("req")
     if binary is None:
@@ -262,8 +266,13 @@ def main(argv):
         print(f"UNVERIFIABLE: {why}", file=sys.stderr)
         return 3
     if mode == "--out":
-        with open(target, "w", encoding="utf-8", newline="") as handle:
-            handle.write(page)
+        try:
+            with open(target, "w", encoding="utf-8", newline="") as handle:
+                handle.write(page)
+        except OSError as why:
+            # Not 1: exit 1 means a page is stale, and nothing was compared here.
+            print(f"UNVERIFIABLE: cannot write {target}: {why}", file=sys.stderr)
+            return 3
         print(f"wrote {target}")
         return 0
     try:

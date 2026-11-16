@@ -4,6 +4,7 @@
 //
 //   node tools/explorer/spike/browser.mjs measure <page.html> [--limit N] [--runs R]    one JSON line per measurement
 //   node tools/explorer/spike/browser.mjs keys <page.html>        Tab through the controls; Enter on a node (real key events)
+//   node tools/explorer/spike/browser.mjs probe <page.html> <js> [--click <data-k>]...   print JSON of <js> after the clicks
 //   node tools/explorer/spike/browser.mjs shot <page.html> <out.png> [--width W] [--height H] [--mobile]
 //        [--hash '#focus=REQ-0001'] [--click <data-k>]... [--dark]
 //
@@ -193,6 +194,16 @@ async function keys(file) {
   } finally { await b.close(); }
 }
 
+async function probe(file, expression, flags) {
+  const b = await launch();
+  try {
+    await open(b, file, flags);
+    await evaluate(b.page, HELPERS);
+    for (const sel of flags.click || []) await evaluate(b.page, `window.__click(${JSON.stringify(sel)})`);
+    console.log(JSON.stringify(await evaluate(b.page, expression)));
+  } finally { await b.close(); }
+}
+
 const [command, file, ...rest] = process.argv.slice(2);
 const flags = { click: [] };
 const positional = [];
@@ -208,6 +219,7 @@ for (let i = 0; i < rest.length; i++) {
   else positional.push(a);
 }
 if (command === 'measure' && file) await measure(path.resolve(file), flags);
+else if (command === 'probe' && file && positional[0]) await probe(path.resolve(file), positional[0], flags);
 else if (command === 'keys' && file) await keys(path.resolve(file));
 else if (command === 'shot' && file && positional[0]) await shot(path.resolve(file), path.resolve(positional[0]), flags);
 else { console.error('usage: browser.mjs measure <page> | shot <page> <out.png> [--width W --height H --mobile --hash H --click K --dark]'); process.exit(2); }

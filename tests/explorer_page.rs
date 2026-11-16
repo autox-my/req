@@ -499,6 +499,8 @@ fn leaks(text: &str) -> Vec<String> {
             found.push(from(text, at, 40));
         }
     }
+    // Whitespace is dropped for the needles, so `new  Worker (` and `import (` are seen as `newworker(` and `import(`.
+    let squeezed: String = lower.chars().filter(|c| !c.is_whitespace()).collect();
     for needle in [
         "@import",
         "fetch(",
@@ -507,9 +509,26 @@ fn leaks(text: &str) -> Vec<String> {
         "eventsource(",
         "sendbeacon",
         "importscripts",
+        "newworker(",
+        "newsharedworker(",
+        "serviceworker",
+        "import(",
+        // A page that frames or embeds another document is a page that loads one.
+        "<iframe",
+        "<frame",
+        "<object",
+        "<embed",
     ] {
-        if lower.contains(needle) {
+        if squeezed.contains(needle) {
             found.push(needle.to_string());
+        }
+    }
+    for (at, _) in lower.match_indices("data=") {
+        let before = lower[..at].chars().next_back().unwrap_or(' ');
+        if !(before == '.' || before.is_ascii_alphanumeric() || before == '_' || before == '-')
+            && remote(&from(text, at + 5, 160))
+        {
+            found.push(from(text, at, 70));
         }
     }
     found
@@ -536,6 +555,22 @@ fn the_page_loads_nothing_over_the_network() {
     assert!(!leaks("<link rel=\"stylesheet\" href=\"//cdn.example.org/x.css\">").is_empty());
     assert!(!leaks("a{background:url(https://example.org/x.png)}").is_empty());
     assert!(leaks("<a href=\"https://example.org/\">x</a>").is_empty());
+    // Nor to the other ways a page reaches out.
+    for sample in [
+        "new Worker('https://cdn.example.org/w.js')",
+        "new  SharedWorker ('w.js')",
+        "navigator.serviceWorker.register('/sw.js')",
+        "import('https://cdn.example.org/m.js')",
+        "import ('./m.js')",
+        "<iframe src=\"https://example.org/\"></iframe>",
+        "<iframe srcdoc=\"x\"></iframe>",
+        "<object data=\"https://example.org/x.swf\"></object>",
+        "<embed src=\"//example.org/x\">",
+        "importScripts('x.js')",
+    ] {
+        assert!(!leaks(sample).is_empty(), "the detector missed: {sample}");
+    }
+    assert!(leaks("an important(thing) and data-k=\"x\"").is_empty());
 }
 
 /// *Falsification* 4, and the template contract: the page is the template with the data inserted, nothing else.
@@ -663,4 +698,477 @@ fn the_landing_page_and_the_readme_link_the_explorer() {
         readme.contains("https://autox-my.github.io/req/explorer.html"),
         "the README must link the published explorer"
     );
+}
+
+// ---- E-1-fix: what review 1 found untested ------------------------------------------------------------------------------
+
+/// Claim ids the selection applies, with a machine-evidence declaration, a source and tests: the ones a gap can be made from.
+fn fully_covered_claims() -> Vec<String> {
+    let mut ids: Vec<String> = trace()["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .filter(|node| {
+            node["applies"] == "applies"
+                && node["evidence"] == "machine"
+                && node["source"].as_str().is_some_and(|s| !s.is_empty())
+                && node["tests"].as_array().is_some_and(|t| !t.is_empty())
+        })
+        .map(|node| node["claim_id"].as_str().expect("an id").to_string())
+        .collect();
+    ids.sort();
+    ids
+}
+
+/// Rewrite one claim file in a copy, line by line.
+fn edit_claim(copy: &Copy, id: &str, edit: impl Fn(&[String]) -> Vec<String>) {
+    let path = copy.path(&format!("claims/{id}.yml"));
+    let lines: Vec<String> = read(&path).lines().map(str::to_string).collect();
+    let edited = edit(&lines);
+    fs::write(&path, edited.join("\n") + "\n").expect("writes the copy's claim");
+}
+
+fn drop_source(lines: &[String], replacement: &str) -> Vec<String> {
+    lines
+        .iter()
+        .map(|line| {
+            if line.starts_with("  source:") {
+                format!("  source: {replacement}")
+            } else {
+                line.clone()
+            }
+        })
+        .collect()
+}
+
+/// `tests:` becomes `tests: []`, or one test id.
+fn set_tests(lines: &[String], only: Option<&str>) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut skipping = false;
+    for line in lines {
+        if skipping && line.starts_with("  - ") {
+            continue;
+        }
+        skipping = false;
+        if line == "tests:" || line == "tests: []" {
+            match only {
+                Some(id) => {
+                    out.push("tests:".to_string());
+                    out.push(format!("  - \"{id}\""));
+                }
+                None => out.push("tests: []".to_string()),
+            }
+            skipping = line == "tests:";
+        } else {
+            out.push(line.clone());
+        }
+    }
+    out
+}
+
+fn set_statement(lines: &[String], text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut skipping = false;
+    for line in lines {
+        if skipping && line.starts_with("  ") {
+            continue;
+        }
+        skipping = false;
+        out.push(line.clone());
+        if line == "statement: >-" {
+            out.push(format!("  {text}"));
+            skipping = true;
+        }
+    }
+    out
+}
+
+fn build_in(copy: &Copy) -> Value {
+    let run = build(&copy.0, &["--out", "built.html"]);
+    assert_eq!(run.code, Some(0), "{}", run.said);
+    embedded(&read(&copy.path("built.html"))).0
+}
+
+fn gap_kinds(data: &Value, claim: &str) -> Option<Vec<String>> {
+    data["gaps"]
+        .as_array()
+        .expect("gaps")
+        .iter()
+        .find(|gap| gap["claim"] == claim)
+        .map(|gap| {
+            gap["kinds"]
+                .as_array()
+                .expect("kinds")
+                .iter()
+                .map(|kind| kind.as_str().expect("a kind").to_string())
+                .collect()
+        })
+}
+
+/// req's own corpus has only `no_design` gaps, so a builder that forgot `no_source` or `no_test` would pass every other test.
+/// A copy where one claim loses its source and another loses its tests has both, and the claims stay nodes (*Falsification* 2).
+#[test]
+fn a_claim_without_a_source_or_without_tests_is_a_gap_entry_in_the_data() {
+    let candidates = fully_covered_claims();
+    assert!(
+        candidates.len() >= 2,
+        "this repository has two fully covered claims"
+    );
+    let (a, b) = (&candidates[0], &candidates[1]);
+    let copy = Copy::new("gaps");
+    edit_claim(&copy, a, |lines| drop_source(lines, "\"\""));
+    edit_claim(&copy, b, |lines| set_tests(lines, None));
+    let data = build_in(&copy);
+
+    let a_kinds =
+        gap_kinds(&data, a).unwrap_or_else(|| panic!("{a} lost its source and has no gap entry"));
+    assert!(
+        a_kinds.contains(&"no_source".to_string()),
+        "{a}: {a_kinds:?}"
+    );
+    assert!(
+        !a_kinds.contains(&"no_test".to_string()),
+        "{a} still has its tests: {a_kinds:?}"
+    );
+    let b_kinds =
+        gap_kinds(&data, b).unwrap_or_else(|| panic!("{b} lost its tests and has no gap entry"));
+    assert!(b_kinds.contains(&"no_test".to_string()), "{b}: {b_kinds:?}");
+    assert!(
+        !b_kinds.contains(&"no_source".to_string()),
+        "{b} still has its source: {b_kinds:?}"
+    );
+
+    // The edges that are gone are gone, and the others stay.
+    let has = |edges: &str, key: &str, claim: &str| {
+        data["edges"][edges]
+            .as_array()
+            .expect("edges")
+            .iter()
+            .any(|edge| edge[key] == claim)
+    };
+    assert!(
+        !has("source_of", "claim", a),
+        "{a} has no source, so no source-of edge"
+    );
+    assert!(has("source_of", "claim", b));
+    assert!(
+        !has("verified_by", "claim", b),
+        "{b} has no test, so no verified-by edge"
+    );
+    assert!(has("verified_by", "claim", a));
+    assert!(
+        data["tests"]
+            .as_array()
+            .expect("tests")
+            .iter()
+            .all(|group| group["claim"] != b.as_str()),
+        "{b} has no test group"
+    );
+    // A machine claim with no test is a gap, never "no test asked".
+    assert!(
+        data["not_asked"]
+            .as_array()
+            .expect("not_asked")
+            .iter()
+            .all(|n| n["claim"] != b.as_str())
+    );
+    // Both are still nodes, which is what *gaps only* draws them from.
+    let claims = ids(&data, "claims");
+    assert!(claims.contains(a) && claims.contains(b));
+
+    // The page script draws each kind of gap by name (browser behaviour is the named gap; this holds the words).
+    let template = read(&root().join(TEMPLATE));
+    for kind in ["no_source", "no_design", "no_test"] {
+        assert!(
+            template.contains(&format!("'g:{kind}:'")),
+            "the template draws a `{kind}` gap node"
+        );
+    }
+    for words in ["no source", "no design element", "no test"] {
+        assert!(
+            template.contains(&format!("'{words}'")),
+            "the template names the gap `{words}`"
+        );
+    }
+}
+
+/// How many `<script>` elements the browser's tokenizer would see: a start tag, then raw text up to the next `</script`.
+fn script_elements(page: &str) -> usize {
+    let lower = page.to_ascii_lowercase();
+    let mut count = 0;
+    let mut at = 0;
+    while let Some(found) = lower[at..].find("<script") {
+        let start = at + found;
+        let next = lower[start + 7..].chars().next().unwrap_or(' ');
+        if next == '>' || next == '/' || next.is_whitespace() {
+            count += 1;
+            at = match lower[start..].find("</script") {
+                Some(end) => start + end + 8,
+                None => return count,
+            };
+        } else {
+            at = start + 7;
+        }
+    }
+    count
+}
+
+/// The data element is data, never markup: a claim that says `</script><script>alert(1)</script>` and `<!--` in its statement,
+/// its source and a test id comes back byte for byte and adds no element to the page.
+#[test]
+fn markup_in_a_claim_stays_data_and_adds_no_element() {
+    let id = fully_covered_claims().remove(0);
+    let statement = "before </script><script>alert(1)</script> middle <!-- after";
+    let source = "src</script><script>alert(2)</script><!--";
+    let test_id = "t</script><script>alert(3)</script>::<!--";
+    let copy = Copy::new("markup");
+    edit_claim(&copy, &id, |lines| {
+        let lines = set_statement(lines, statement);
+        let lines = drop_source(&lines, &format!("\"{source}\""));
+        set_tests(&lines, Some(test_id))
+    });
+    let run = build(&copy.0, &["--out", "built.html"]);
+    assert_eq!(run.code, Some(0), "{}", run.said);
+    let page = read(&copy.path("built.html"));
+    let (data, _, _) = embedded(&page);
+
+    let claim = data["claims"]
+        .as_array()
+        .expect("claims")
+        .iter()
+        .find(|c| c["id"] == id)
+        .expect("the claim");
+    assert_eq!(claim["statement"], statement);
+    assert!(
+        data["sources"]
+            .as_array()
+            .expect("sources")
+            .iter()
+            .any(|s| s["text"] == source),
+        "the source comes back unchanged"
+    );
+    let group = data["tests"]
+        .as_array()
+        .expect("tests")
+        .iter()
+        .find(|g| g["claim"] == id)
+        .expect("a group");
+    assert_eq!(group["ids"], serde_json::json!([test_id]));
+
+    // The page is the template's elements and nothing else, and the data element holds no `<!--` that could open a state
+    // in which `</script>` no longer ends it.
+    let template = read(&root().join(TEMPLATE));
+    assert_eq!(
+        script_elements(&page),
+        script_elements(&template),
+        "a claim added a script element"
+    );
+    assert_eq!(
+        page.matches("<!--").count(),
+        template.matches("<!--").count(),
+        "a `<!--` reached the page"
+    );
+    let start = page.find(OPEN).expect("the data element") + OPEN.len();
+    let end = start + page[start..].find("</script>").expect("it closes");
+    assert!(!page[start..end].contains("<!--"));
+    // The tokenizer used here is not blind: the unescaped payload would be seen as extra elements.
+    assert!(script_elements(&format!("{template}{statement}")) > script_elements(&template));
+}
+
+/// `--out` that cannot write is UNVERIFIABLE with its reason, never a traceback that exits 1 (which means stale); and one
+/// invocation names one mode.
+#[test]
+fn an_unwritable_out_is_exit_3_and_two_modes_are_a_usage_error() {
+    let dir = std::env::temp_dir().join(format!("req-explorer-unwritable-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("makes the dir");
+    let to_dir = build(&root(), &["--out", dir.to_str().expect("a path")]);
+    let missing = dir.join("no").join("such").join("page.html");
+    let to_missing = build(&root(), &["--out", missing.to_str().expect("a path")]);
+    let _ = fs::remove_dir_all(&dir);
+    for run in [&to_dir, &to_missing] {
+        assert_eq!(run.code, Some(3), "{}", run.said);
+        assert!(
+            run.said.contains("UNVERIFIABLE") && run.said.contains("cannot write"),
+            "the reason is named:\n{}",
+            run.said
+        );
+        assert!(!run.said.contains("Traceback"), "{}", run.said);
+    }
+    for args in [
+        ["--out", "a.html", "--check", "b.html"],
+        ["--check", "b.html", "--out", "a.html"],
+        ["--out", "a.html", "--out", "b.html"],
+        ["--check", "a.html", "--check", "b.html"],
+    ] {
+        let run = build(&root(), &args);
+        assert_eq!(run.code, Some(2), "{args:?}: {}", run.said);
+        assert!(run.said.contains("usage"), "{args:?}: {}", run.said);
+    }
+    assert!(!root().join("a.html").exists() && !root().join("b.html").exists());
+}
+
+/// No value of the data reaches the markup unescaped or as a free class name: an outcome is mapped through a closed list.
+#[test]
+fn an_outcome_reaches_the_markup_only_through_a_closed_list() {
+    let template = read(&root().join(TEMPLATE));
+    assert!(
+        template.contains("function outcomeClass("),
+        "the template maps an outcome to a class in one place"
+    );
+    assert!(template.contains("OUTCOME_CLASSES"), "the list is closed");
+    assert!(
+        !template.contains("'o-' + e.link.outcome")
+            && !template.contains("\"o-\" + e.link.outcome"),
+        "a data outcome is concatenated into a class name"
+    );
+    assert_eq!(
+        template.matches("o-' +").count(),
+        1,
+        "one place builds an `o-` class"
+    );
+    // The closed list is the outcomes req satisfy defines (src/satisfy.rs), plus a fixed class for anything else.
+    for outcome in [
+        "holds",
+        "holds_weakened",
+        "suspect",
+        "unratified",
+        "orphaned",
+        "unknown_claim",
+    ] {
+        assert!(
+            template.contains(&format!("{outcome}: ")),
+            "the list names `{outcome}`"
+        );
+    }
+    assert!(
+        template.contains(".o-other"),
+        "an unknown outcome has a fixed class"
+    );
+}
+
+/// ADR 0052's file -> component map, read independently of the builder: the overview's first, else the detail's.
+fn expected_component(path: &str) -> Option<(String, String, &'static str)> {
+    for (page, overlay) in [
+        ("overview", "docs/architecture/overview-overlay.json"),
+        ("detail", "docs/architecture/overlay.json"),
+    ] {
+        let overlay: Value =
+            serde_json::from_str(&read(&root().join(overlay))).expect("an overlay");
+        for component in overlay["components"].as_array().expect("components") {
+            for source in component["sources"].as_array().into_iter().flatten() {
+                if source["path"] == path {
+                    return Some((
+                        component["id"].as_str().expect("id").to_string(),
+                        component["label"].as_str().expect("label").to_string(),
+                        page,
+                    ));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn component_of(node: &Value) -> Option<(String, String, String)> {
+    let component = &node["component"];
+    if component.is_null() {
+        return None;
+    }
+    Some((
+        component["id"].as_str().expect("id").to_string(),
+        component["label"].as_str().expect("label").to_string(),
+        component["page"].as_str().expect("page").to_string(),
+    ))
+}
+
+#[test]
+fn a_design_node_carries_the_component_its_overlay_names_and_links_to_that_page() {
+    let (data, _, _) = embedded(&read(&root().join(PAGE)));
+    assert_eq!(
+        data["pages"],
+        serde_json::json!({
+            "overview": "https://autox-my.github.io/req/architecture.html",
+            "detail": "https://autox-my.github.io/req/architecture-detail.html"
+        }),
+        "a component opens on the published page that draws it"
+    );
+    let mut seen = std::collections::BTreeSet::new();
+    for node in data["design"].as_array().expect("design") {
+        let path = node["id"].as_str().expect("a path");
+        let want = expected_component(path).map(|(id, label, page)| (id, label, page.to_string()));
+        assert_eq!(component_of(node), want, "{path}");
+        seen.insert(want.map(|(_, _, page)| page));
+    }
+    assert!(
+        seen.contains(&Some("overview".to_string())),
+        "a file the overview draws is mapped to it"
+    );
+}
+
+/// This repository's design links all sit on files the overview draws, so the detail's mapping and the unmapped case are made
+/// on a copy: one file only the detail cites gains a link, and a new file no overlay cites does too.
+#[test]
+fn a_detail_only_file_maps_to_the_detail_and_an_uncited_one_is_unmapped() {
+    let copy = Copy::new("uncited");
+    let detail_only = "src/compare.rs";
+    assert_eq!(
+        expected_component(detail_only).map(|(_, _, page)| page),
+        Some("detail"),
+        "the overview does not draw {detail_only}, the detail does"
+    );
+    let existing = read(&copy.path(detail_only));
+    fs::write(
+        copy.path(detail_only),
+        format!("{existing}\n// req-satisfies: REQ-0002\n"),
+    )
+    .expect("adds a link to a detail-only file in the copy");
+    let uncited = "src/zz_uncited_design_element.rs";
+    assert!(expected_component(uncited).is_none());
+    fs::write(copy.path(uncited), "//! req-satisfies: REQ-0001\n")
+        .expect("writes a design file in the copy");
+    let data = build_in(&copy);
+    let node = data["design"]
+        .as_array()
+        .expect("design")
+        .iter()
+        .find(|node| node["id"] == uncited)
+        .expect("the new design element is a node");
+    assert!(
+        node["component"].is_null(),
+        "no overlay cites it, so it is shown unmapped"
+    );
+    assert!(
+        data["edges"]["satisfied_by"]
+            .as_array()
+            .expect("edges")
+            .iter()
+            .any(|edge| edge["design"] == uncited && edge["claim"] == "REQ-0001"),
+        "and it still satisfies its claim"
+    );
+    // The file only the detail draws links to the detail page, with that overlay's component id and label.
+    let detail_node = data["design"]
+        .as_array()
+        .expect("design")
+        .iter()
+        .find(|node| node["id"] == detail_only)
+        .expect("the detail-only file is a node");
+    let (id, label, page) = expected_component(detail_only).expect("the detail names it");
+    assert_eq!(
+        component_of(detail_node),
+        Some((id, label, page.to_string()))
+    );
+    assert_eq!(
+        component_of(detail_node).map(|c| c.2),
+        Some("detail".into())
+    );
+    // The others keep their components.
+    for node in data["design"].as_array().expect("design") {
+        let path = node["id"].as_str().expect("a path");
+        if path != uncited {
+            let want =
+                expected_component(path).map(|(id, label, page)| (id, label, page.to_string()));
+            assert_eq!(component_of(node), want, "{path}");
+        }
+    }
 }

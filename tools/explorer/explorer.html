@@ -76,6 +76,7 @@ svg { display: block; }
 .o-suspect { stroke: var(--bad); stroke-dasharray: 3 3; }
 .o-unratified, .o-orphaned { stroke: var(--idle); stroke-dasharray: 2 4; }
 .o-unknown_claim { stroke: var(--bad); stroke-dasharray: 8 2 2 2; }
+.o-other { stroke: var(--idle); stroke-dasharray: 1 3; }
 .elabel { font: 600 10.5px system-ui, sans-serif; fill: var(--fg); paint-order: stroke; stroke: var(--panel); stroke-width: 3.5px; stroke-linejoin: round; }
 .has-focus .n, .has-focus .e, .has-focus .elabel { opacity: var(--dim); }
 .has-focus .hot { opacity: 1; }
@@ -244,7 +245,10 @@ footer { padding-bottom: 28px; color: var(--muted); font-size: 0.88rem; }
     return text.length > max ? text.slice(0, max - 1) + '…' : text;
   }
   function clipStart(text, max) { return text.length > max ? '…' + text.slice(text.length - max + 1) : text; }
-  function outcomeText(o) { return OUTCOMES[o] || o; }
+  function outcomeText(o) { return Object.prototype.hasOwnProperty.call(OUTCOMES, o) ? OUTCOMES[o] : String(o); }
+  // The class an outcome is drawn with: from a closed list, so a value of the data is never a class name of its own.
+  var OUTCOME_CLASSES = { holds: 1, holds_weakened: 1, suspect: 1, unratified: 1, orphaned: 1, unknown_claim: 1 };
+  function outcomeClass(o) { return 'o-' + (Object.prototype.hasOwnProperty.call(OUTCOME_CLASSES, o) ? o : 'other'); }
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
   function componentUrl(d) {
     var c = d.component;
@@ -434,7 +438,7 @@ footer { padding-bottom: 28px; color: var(--muted); font-size: 0.88rem; }
     });
     edgesSat.forEach(function (e) {
       var x1 = x.claim + COLS.claim, y1 = e.y + NODE_H / 2, x2 = x.design, y2 = pos.get(e.key) + NODE_H / 2, xm = (x1 + x2) / 2;
-      var cls = 'e e-sat o-' + e.link.outcome + edgeHot('c:' + e.link.claim.id, e.key);
+      var cls = 'e e-sat ' + outcomeClass(e.link.outcome) + edgeHot('c:' + e.link.claim.id, e.key);
       edgeParts.push('<path class="' + cls + '" d="M' + x1 + ' ' + y1 + 'C' + xm + ' ' + y1 + ' ' + xm + ' ' + y2 + ' ' + x2 + ' ' + y2 + '"><title>' +
         esc(e.link.claim.id + ' satisfied by ' + e.link.design.id + ': ' + outcomeText(e.link.outcome)) + '</title></path>');
       labelParts.push('<text class="elabel' + edgeHot('c:' + e.link.claim.id, e.key) + '" x="' + xm + '" y="' + ((y1 + y2) / 2 + 3.5) + '" text-anchor="middle">' + esc(outcomeText(e.link.outcome)) + '</text>');
