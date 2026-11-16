@@ -56,9 +56,10 @@ and the regenerated `docs/sbom.cdx.json`, and nothing else; no prose document qu
 2. **Ask the script what it will say.** In a clone with the tags fetched (`git fetch --tags`), on the rev you mean to release:
 
    ```bash
-   bash scripts/release-notes.sh --rev <rev> --repo autox-my/req --out /tmp/notes.md --facts /tmp/facts
-   cat /tmp/facts        # previous_tag, previous_version, identity (moved | unmoved | unknown)
-   bash scripts/release-version-check.sh check --version <NEW> --facts /tmp/facts
+   d=$(mktemp -d)        # the script never overwrites, so each run gets a fresh directory
+   bash scripts/release-notes.sh --rev <rev> --repo autox-my/req --out "$d/notes.md" --facts "$d/facts"
+   cat "$d/facts"        # previous_tag, previous_version, identity (moved | unmoved | unknown)
+   bash scripts/release-version-check.sh check --version <NEW> --facts "$d/facts"
    ```
 
    Exit 0 prints `version=` and `bump=`; exit 1 prints the refusal the workflow would. A `rev-*` release counts as 0.1.0, and a
@@ -106,7 +107,8 @@ and the regenerated `docs/sbom.cdx.json`, and nothing else; no prose document qu
    compare link, **whether identity moved** (`RULES_V`, the claim schema, the Baseline envelope, and what an adopter does if
    one did) and the pull requests merged since, grouped by prefix. A release that already exists keeps its body: the
    workflow never edits one. To preview the notes before you dispatch, run
-   `bash scripts/release-notes.sh --rev <rev> --repo autox-my/req --out /tmp/notes.md` in a clone with the tags fetched.
+   `bash scripts/release-notes.sh --rev <rev> --repo autox-my/req --out "$(mktemp -d)/notes.md"` in a clone with the tags
+   fetched.
 5. The last lines of the log are `released v<VERSION>` and one `pin (<target>): VERSION=… REV=… SHA256=… TARGET=…` line per
    target. Use those: the build job's log also carries the script's own `pin:` line, printed before the upload, which
    after a half-failed upload names a hash that was never published.

@@ -130,6 +130,8 @@ Two facts shape the decision:
 
 This decision is wrong if any of these is observed:
 1. A release whose version says patch while `release-notes.sh` reports identity moved or unknown.
-2. A version-bump commit that changes any `Cargo.lock` entry other than req's own and still passes the gate.
+2. A version-bump pull request that changes any `Cargo.lock` entry other than req's own and is merged as a version bump.
+   The gate does not run this check, because a deliberate dependency bump also changes `Cargo.lock`. The runbook's
+   `release-version-check.sh lock-exception` step and the owner's review of the bump PR are what catch it.
 3. An install that succeeds although the downloaded binary's `built from` differs from the pinned rev.
 4. A version bump that moves an address, a Baseline manifest or a projection header.

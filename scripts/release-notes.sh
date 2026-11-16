@@ -69,8 +69,9 @@ short=${full:0:7}
 
 # --- the previous release -----------------------------------------------------------------------------
 # The nearest release tag strictly before the rev (the search starts at the rev's parent): `rev-*` (ADR 0025) or a
-# version tag `v<N>.<N>.<N>` (ADR 0055). A tag that merely starts with `v` is not a release.
-prev=$(git describe --tags --match 'rev-*' --match 'v[0-9]*.[0-9]*.[0-9]*' --abbrev=0 "${full}^" 2>/dev/null) || prev=
+# version tag `v*` (ADR 0055 decision 3). A `v` tag that is not a plain `v<N>.<N>.<N>` is still found, and its version
+# then cannot be read, so the version check refuses: a stray tag fails closed, never passes as "first release".
+prev=$(git describe --tags --match 'rev-*' --match 'v*' --abbrev=0 "${full}^" 2>/dev/null) || prev=
 
 # --- the versions: the one reader and the one classifier are scripts/release-version-check.sh ---------------------
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
