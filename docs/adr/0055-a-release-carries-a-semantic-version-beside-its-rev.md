@@ -1,22 +1,23 @@
 # 0055. A release carries a semantic version beside its rev
 
-Amends ADR 0025 decision 1 (the release's tag) and decision 5 (a re-dispatch after a failed publish); ADR 0031 decision 2
-(how the previous release is found, and what opens the notes); and AGENTS.md's rule that any `Cargo.lock` change is a
+Amends ADR 0025 decision 1 (the release's tag) and decision 5 (a re-dispatch after a failed publish); ADR 0029 §4 (the
+workflow publishes `v<VERSION>`, not `rev-<REV>`); ADR 0031 decision 2 (how the previous release is found, and what opens
+the notes); and AGENTS.md's rule that any `Cargo.lock` change is a
 Tier-1 rules bump, for req's own package entry only. AGENTS.md says so in this commit. The commit stays the identity:
 `built from`, the pinned rev and the pinned SHA-256 are unchanged, and nothing here moves an address. No `RULES_V` bump, no
 claim-schema change, no Baseline envelope change.
 
 **Status: proposed.** The owner ratifies it by merging the pull request that carries it. Asked for by the owner on
 2026-11-16, after the fourth release (`rev-3294a46`): "`--version` always shows 0.1.0 … we should also use the versioning
-like other people." Date proposed: 2026-11-16; revised the same day after review (PR #96).
+like other people." Date proposed: 2026-11-16; revised twice the same day after review (PR #96).
 
 ## Context
 
 `req --version` prints `req 0.1.0` on its first line, from `Cargo.toml`'s `version`, and nothing has ever changed it. All
 four releases (`rev-ec87808`, `rev-6b74f51`, `rev-aeaf987`, `rev-3294a46`) print 0.1.0. ADR 0025 named releases by commit
 because "semver cannot say which commit a binary is", and that is still true: the `built from <sha>` line is what an
-adopter's install step verifies. But the number on the first line says something false: that nothing has changed since
-the first build. And a release's title is a commit hash, so the list of releases does not tell a fix from a change that
+adopter's install step verifies. But the number on the first line has never moved, so it cannot tell a reader what changed.
+And a release's title is a commit hash, so the list of releases does not tell a fix from a change that
 asks something of the adopter. Only the body says that.
 
 Two facts shape the decision:
@@ -42,24 +43,32 @@ Two facts shape the decision:
 3. **The release is tagged `v<VERSION>`.** The assets keep their names, `req-<REV>-<TARGET>.*`, so the tarball, its checksum
    and its `build-info` still name the commit they were built from (ADR 0025 decision 1). The notes open with the version,
    the rev and the bump class, followed by ADR 0031's sections in its order. The previous release is the nearest tag,
-   `v*` or `rev-*`, that is an ancestor of the rev, so the first `v` release compares against `rev-3294a46`.
-4. **The workflow checks what history can decide, and the bump pull request declares the rest.** The `build` job, which
-   checks out the rev, reads `Cargo.toml` there and fails closed before anything is uploaded:
+   `v*` or `rev-*`, on a commit strictly before the rev (`release-notes.sh` already searches from `<rev>^`), so a release's
+   own tag is never its predecessor, and the first `v` release compares against `rev-3294a46`.
+4. **The workflow checks what history can decide, and the bump pull request declares the rest.** The `build` job reads the
+   version from the rev with `git show <rev>:Cargo.toml`. It never checks the rev out: the workflow and its proofs stay
+   `main`'s, and `scripts/build-release.sh` builds a clean copy of the rev itself. The job fails closed, before anything is
+   uploaded:
    - when `<VERSION>` is not greater than the previous release's version (a `rev-*` release counts as 0.1.0);
-   - when identity moved but only the patch number rose.
+   - when identity moved but only the patch number rose;
+   - when `release-notes.sh` reports that whether identity moved **could not be determined**. An unknown is not an
+     unmoved identity, so it never lets a patch bump through (AGENTS.md, three-state outcomes).
 
    Whether a command, a flag or an exit code changed cannot be read from history by the workflow. The bump pull request
    says which class it is and why, and the owner who merges it is the check. A minor bump with identity unmoved is
    therefore the owner's declaration, not something the workflow verifies.
 5. **A re-dispatch for the same version may finish a release, never replace one.** ADR 0025's rule stands: an existing
-   asset name is refused, never replaced. The publish job carries it over to `v<VERSION>`: if the release exists and holds
-   none of the six asset names, the run continues, so a publish that died before the upload can be retried. If it holds
-   any of them, the run fails, as it does today.
+   asset name is refused, never replaced. The publish job carries it over to `v<VERSION>`. The run continues only if the
+   release exists, is not a draft, points at the same rev as this run (its target commit is the rev being published), and
+   holds none of the six asset names. Then a publish that died before the upload can be retried. Otherwise the run fails:
+   a draft, an asset already there, or a `v<VERSION>` made for another commit. A release made for one commit can never
+   receive another commit's tarballs.
 6. **The version bump is its own pull request.** It changes `Cargo.toml`'s `version`, req's own package entry in
    `Cargo.lock` and the regenerated `docs/sbom.cdx.json`, and nothing else. **req's own entry is not a dependency pin.**
-   The version is compiled into the binary, since `req --version` prints it. But it reaches no address, no digest, no
-   Baseline manifest and no projection header (the address is computed over the statement's canonical form; the Baseline
-   envelope carries `rules_v`, the selection and the claims). So changing it is not a Tier-1 rules bump. A test pins the
+   The version is compiled into the binary, since `req --version` prints it. But it reaches no address, no Baseline
+   manifest and no projection header (the address is computed over the statement's canonical form; the Baseline envelope
+   carries `rules_v`, the selection and the claims). The one checked file it moves is the SBOM, whose serial is the lock
+   file's digest, and that is regenerated in the same pull request. So changing it is not a Tier-1 rules bump. A test pins the
    exception: a version-bump commit whose `Cargo.lock` diff touches any other package fails it. The exception stays one
    entry wide.
 7. **The installer pins the version for the download and the rev and SHA-256 for the proof.** `examples/install-req.sh`
@@ -82,7 +91,7 @@ Two facts shape the decision:
     `v`-prefixed tag is not a release, and `tests/install_req.rs`, which pins the `/rev-<REV>/` path and a pin table of
     exactly three keys;
   - `docs/releasing.md` and `docs/adopting.md` § *Install req*;
-  - the places that quote `0.1.0`: `README.md` (*Status* and install note), `CONTRIBUTING.md`, `SECURITY.md`,
+  - the places that quote `0.1.0`: the install note in `README.md`, `CONTRIBUTING.md`, `SECURITY.md`,
     `docs/safety-manual.md` and the comment in `build.rs`.
 - Adopters pinned to a `rev-*` release keep working. A new pin uses the `v<VERSION>` URL.
 
