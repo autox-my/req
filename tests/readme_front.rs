@@ -338,3 +338,89 @@ fn it_says_nothing_it_cannot_back() {
         "req-drift.png was retired for the matched pair (ADR 0052)"
     );
 }
+
+/// The numbers *Status* gives are the repository's: `RULES_V` is the constant in `src/canon.rs`, the dogfood claims are the
+/// files in `claims/`, and the corpora are the ones `scripts/check.sh` benches (P-1-fix: a stale number is a claim the code
+/// contradicts, AGENTS.md "Docs are claims too").
+#[test]
+fn status_numbers_are_the_repositorys() {
+    let readme = readme();
+    let status = readme
+        .split("\n## Status\n")
+        .nth(1)
+        .expect("a Status section")
+        .split("\n## ")
+        .next()
+        .expect("a body")
+        .replace('\n', " ");
+    let canon = read(&root().join("src/canon.rs"));
+    let rules_v = canon
+        .lines()
+        .find_map(|l| l.strip_prefix("pub const RULES_V: u32 = "))
+        .map(|rest| rest.trim_end_matches(';').to_owned())
+        .expect("src/canon.rs declares RULES_V");
+    assert!(
+        status.contains(&format!("`RULES_V {rules_v}`")),
+        "Status must name RULES_V {rules_v}:\n{status}"
+    );
+    let claims = fs::read_dir(root().join("claims"))
+        .expect("claims/")
+        .filter_map(Result::ok)
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            name.starts_with("REQ-") && name.ends_with(".yml")
+        })
+        .count();
+    assert!(
+        status.contains(&format!("{claims} dogfood claims")),
+        "Status must say {claims} dogfood claims:\n{status}"
+    );
+    // The corpora the gate benches: every `bench bench/corpus/<name>.yml` line of check.sh, plus the seed parity run.
+    let check = read(&root().join("scripts/check.sh"));
+    let gated = check
+        .lines()
+        .filter(|l| {
+            l.trim_start()
+                .starts_with("run cargo run -q -- bench bench/corpus/")
+        })
+        .count()
+        + 1;
+    let words = [
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    ];
+    assert!(
+        status.contains(&format!("{} corpora", words[gated])),
+        "Status must say {} corpora (the gate benches {gated}):\n{status}",
+        words[gated]
+    );
+}
+
+/// The before picture's alt text must not say every part holds: parts with no linked requirement read "no claim".
+#[test]
+fn the_before_pictures_alt_text_is_true_of_the_picture() {
+    let readme = readme();
+    let line = readme
+        .lines()
+        .find(|l| l.contains(BEFORE))
+        .expect("the line with the before picture");
+    let alt = line.split("](").next().expect("alt text").to_lowercase();
+    assert!(
+        !alt.contains("every one holding"),
+        "five of the twelve parts read `no claim`; the alt text must not say every one holds:\n{alt}"
+    );
+    assert!(
+        alt.contains("linked requirement"),
+        "the alt text says what holds: every part with a linked requirement:\n{alt}"
+    );
+}
+
+/// The guided page reserves the pictures' own aspect ratio; a different one stretches them.
+#[test]
+fn the_guided_pages_aspect_ratio_is_the_pictures() {
+    let (width, height) = png_size(BEFORE);
+    let template = read(&root().join("tools/demo/drift.html"));
+    assert!(
+        template.contains(&format!("aspect-ratio: {width} / {height}")),
+        "tools/demo/drift.html must reserve aspect-ratio: {width} / {height}"
+    );
+}
