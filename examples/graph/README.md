@@ -195,3 +195,5 @@ The overlays that are committed are this repository's own architecture, as a wor
 [`docs/architecture/drift/`](../../docs/architecture/drift/) is the worked example of drift: three edits to one claim, each made on a copy of the corpus, with the overlay, matrix and `req satisfy` output they give (`build_architecture.py --drift`).
 
 [`docs/explorer.html`](../../docs/explorer.html) is the interactive explorer of the same graph (source, claim, design, tests; focus, filters, *gaps only*): `python3 tools/explorer/build.py --out docs/explorer.html` regenerates it from `req trace` and `req satisfy`, and `--check` is in the gate (ADR 0054).
+
+[`docs/drift.html`](../../docs/drift.html) is the guided page that shows what drift does (the same three edits, three steps each: before, the change, what req says): `python3 tools/demo/drift_page.py --out docs/drift.html` regenerates it from the committed drift output and `req compare`, and `--check` is in the gate (unit P-2).

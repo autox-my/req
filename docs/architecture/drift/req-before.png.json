@@ -1,0 +1,12 @@
+{
+  "schema": "req.drift-picture/1",
+  "overlay": "docs/architecture/overview-overlay.json",
+  "overlay_sha256": "c46ee32f4e078425387310b070115f45ee82fafb3d3e71b9f86d2daa6fb64652",
+  "png_sha256": "fc0144a695c2de5aa8800febbf06c1f83dbe4187f313fbea7df24daddc55349a",
+  "viewBox": [
+    970,
+    762
+  ],
+  "renderer": "archify 7e45f36",
+  "recipe": "finalize architecture <overlay with meta.viewBox set> --quality standard; visual-check --summary (light 2048x1320); sips -c 1070 1680 --cropOffset 132 182"
+}

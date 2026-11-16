@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What req does when a requirement changes</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fafaf9; --fg: #1c1917; --muted: #57534e; --card: #ffffff; --line: #d6d3d1;
+    --accent: #1d4ed8; --tint: #eff4ff; --mark: #fde68a; --mark-fg: #1c1917; --red: #b91c1c; --code: #f5f5f4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151412; --fg: #f5f5f4; --muted: #a8a29e; --card: #1f1d1b; --line: #3f3b38;
+      --accent: #93c5fd; --tint: #1c2433; --mark: #713f12; --mark-fg: #fef3c7; --red: #f87171; --code: #262321;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, sans-serif; }
+  .page { max-width: 76rem; margin: 0 auto; padding: 1.75rem 16px 3rem; }
+  h1 { font-size: 1.7rem; line-height: 1.2; margin: 0 0 .75rem; }
+  h2 { font-size: 1.1rem; line-height: 1.3; margin: 0 0 .6rem; }
+  p { margin: 0 0 .75rem; }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .lede { font-size: 1.05rem; max-width: 46rem; }
+  .meaning, .links, footer { max-width: 58rem; }
+  .muted { color: var(--muted); }
+  code, pre { font: .875rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  code { background: var(--code); padding: .05rem .3rem; border-radius: 4px; }
+  pre { background: var(--code); margin: .5rem 0 .75rem; padding: .6rem .75rem; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .pick { margin: 1.25rem 0 .5rem; font-weight: 600; }
+  .buttons { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .6rem; margin-bottom: 1.25rem; }
+  .buttons button { font: inherit; color: inherit; text-align: left; background: var(--card); border: 2px solid var(--line); border-radius: 10px; padding: .6rem .8rem; cursor: pointer; display: flex; flex-direction: column; gap: .15rem; }
+  .buttons button:hover { border-color: var(--accent); }
+  .buttons button[aria-pressed="true"] { border-color: var(--accent); background: var(--tint); }
+  .buttons .name { font-weight: 700; }
+  .buttons .what { color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; }
+  ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: .9rem; }
+  /* Every step has one border width and one padding, so a diagram in step 1 and in step 3 is the same size in the same place. */
+  .step { background: var(--card); border: 2px solid var(--line); border-radius: 10px; padding: .9rem 1rem; min-width: 0; }
+  @media (min-width: 64rem) {
+    ol.steps { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "before says" "change says"; align-items: start; }
+    .step-before { grid-area: before; }
+    .step-change { grid-area: change; }
+    .step-says { grid-area: says; }
+  }
+  .step h2 { display: flex; align-items: center; gap: .6rem; }
+  .step .n { flex: none; width: 1.7rem; height: 1.7rem; border-radius: 50%; border: 2px solid var(--fg); display: grid; place-items: center; font-size: .95rem; }
+  .step.o-suspect { border-color: var(--red); }
+  .step.o-suspect .verdict { border-color: var(--red); color: var(--red); }
+  .verdict { display: inline-block; font-weight: 700; border: 2px solid var(--fg); border-radius: 6px; padding: .05rem .5rem; margin-right: .35rem; }
+  figure { margin: .25rem 0 .75rem; }
+  figure img { display: block; width: 100%; height: auto; aspect-ratio: 1680 / 1070; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+  figcaption { color: var(--muted); font-size: .9rem; margin-top: .35rem; }
+  .copy-note { display: inline-block; font-size: .85rem; border: 1px dashed var(--muted); color: var(--muted); border-radius: 6px; padding: .1rem .5rem; margin-bottom: .6rem; }
+  .stmt { display: grid; grid-template-columns: 4.5rem 1fr; gap: .5rem; align-items: baseline; margin: .35rem 0; }
+  .stmt .side { color: var(--muted); font-weight: 600; font-size: .9rem; }
+  mark { background: var(--mark); color: var(--mark-fg); padding: 0 .2rem; border-radius: 3px; font-weight: 700; }
+  .step.o-other { border-style: dashed; }
+  .meaning { margin-top: 1.5rem; padding: .9rem 1rem; border-left: 4px solid var(--red); background: var(--card); border-radius: 0 8px 8px 0; }
+  .links { padding-left: 1.2rem; }
+  .links li { margin: .3rem 0; }
+  footer { margin-top: 1.5rem; color: var(--muted); font-size: .85rem; }
+  @media (max-width: 30rem) {
+    h1 { font-size: 1.4rem; }
+    .stmt { grid-template-columns: 1fr; gap: 0; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+<h1>What req does when a requirement changes</h1>
+<p class="lede">req links each part of a design to the requirement it was built to meet, and when that requirement&rsquo;s meaning changes it says in which direction, so a person is asked to re-check a link only when the change could break it. Below, one real requirement is edited three ways on a copy: a tool that flagged every edit would raise the alarm on all three, and req raises it on one.</p>
+<noscript><p>This page tells its three stories with a small script. Under <code>docs/architecture/drift/</code> are committed the three edits (<code>edits.json</code>) and, for each, the exact <code>req satisfy</code> output (<code>satisfy.txt</code>) and the architecture overlay (<code>overlay.json</code>), with the three pictures. The <code>req compare</code> lines are produced when the page is built, on a temporary copy, by <code>tools/demo/drift_page.py</code>, and the plain sentences are fixed text in <code>tools/demo/drift.html</code>.</p></noscript>
+
+<p class="pick" id="pick">Pick an edit:</p>
+<div class="buttons" id="buttons" role="group" aria-labelledby="pick"></div>
+
+<div id="story" aria-live="polite"></div>
+
+<section class="meaning" aria-labelledby="suspect-h">
+  <h2 id="suspect-h">What SUSPECT means</h2>
+  <p>SUSPECT means the part was recorded against a claim whose meaning has since tightened or changed in another direction.</p>
+  <p>It does not mean the part is wrong; it means a person must re-check it and re-record the link.</p>
+</section>
+
+<h2 style="margin-top:1.5rem">Go further</h2>
+<ul class="links" id="links"></ul>
+
+<footer id="footer"></footer>
+</main>
+
+<script type="application/json" id="req-drift-data">{"before":{"all_hold":true,"framed":0,"image":"architecture/drift/req-before.png","status_line":"HOLDS · 4 claims"},"claim":{"component":{"id":"evidence","label":"Evidence"},"element":"src/bench.rs","id":"REQ-0010","pins":{"operator":"LE","value":"0.3"}},"edits":[{"after":"The benchmark harness should show a false split rate of no more than 0.30 on the parity corpus at v0.","before":"The benchmark harness should show a false split rate of at most 0.30 on the parity corpus at v0.","claim_id":"REQ-0010","compare":{"detail":[],"fingerprints":{"after":"e4f9b4878326","before":"e4f9b4878326"},"line":"REQ-0010 -> REQ-0010: identical","notes":[],"output":["REQ-0010 -> REQ-0010: identical","  e4f9b4878326 -> e4f9b4878326"]},"diagram_unchanged":true,"diff":{"after":[{"c":false,"t":"The benchmark harness should show a false split rate of"},{"c":true,"t":"no more than"},{"c":false,"t":"0.30 on the parity corpus at v0."}],"before":[{"c":false,"t":"The benchmark harness should show a false split rate of"},{"c":true,"t":"at most"},{"c":false,"t":"0.30 on the parity corpus at v0."}]},"direction":"identical","element":"src/bench.rs","frame":null,"framed":0,"id":"cosmetic","image":null,"kind":"re-word","outcome":"holds","outcome_label":"HOLDS","satisfy_line":"[HOLDS] src/bench.rs -> REQ-0010","status_line":"HOLDS · 4 claims"},{"after":"The benchmark harness should show a false split rate of at most 0.40 on the parity corpus at v0.","before":"The benchmark harness should show a false split rate of at most 0.30 on the parity corpus at v0.","claim_id":"REQ-0010","compare":{"detail":["this change permits strictly more than before"],"fingerprints":{"after":"d2c12425f985","before":"e4f9b4878326"},"line":"REQ-0010 -> REQ-0010: numeric_loosening","notes":["a pin disagrees with its claim's parse (0 / 1 flagged) — run `req canon` before trusting the classification"],"output":["REQ-0010 -> REQ-0010: numeric_loosening","  this change permits strictly more than before","  note: a pin disagrees with its claim's parse (0 / 1 flagged) — run `req canon` before trusting the classification","  e4f9b4878326 -> d2c12425f985"]},"diagram_unchanged":false,"diff":{"after":[{"c":false,"t":"The benchmark harness should show a false split rate of at most"},{"c":true,"t":"0.40"},{"c":false,"t":"on the parity corpus at v0."}],"before":[{"c":false,"t":"The benchmark harness should show a false split rate of at most"},{"c":true,"t":"0.30"},{"c":false,"t":"on the parity corpus at v0."}]},"direction":"numeric_loosening","element":"src/bench.rs","frame":null,"framed":0,"id":"loosening","image":"architecture/drift/req-loosening.png","kind":"loosen","outcome":"holds_weakened","outcome_label":"HOLDS (weakened)","satisfy_line":"[HOLDS (weakened)] src/bench.rs -> REQ-0010: numeric_loosening — the requirement loosened; the link is not re-opened","status_line":"HOLDS (weakened) · 1 of 4 claims"},{"after":"The benchmark harness should show a false split rate of at most 0.20 on the parity corpus at v0.","before":"The benchmark harness should show a false split rate of at most 0.30 on the parity corpus at v0.","claim_id":"REQ-0010","compare":{"detail":["this change permits less than before"],"fingerprints":{"after":"89645530ae3c","before":"e4f9b4878326"},"line":"REQ-0010 -> REQ-0010: numeric_tightening","notes":["a pin disagrees with its claim's parse (0 / 1 flagged) — run `req canon` before trusting the classification"],"output":["REQ-0010 -> REQ-0010: numeric_tightening","  this change permits less than before","  note: a pin disagrees with its claim's parse (0 / 1 flagged) — run `req canon` before trusting the classification","  e4f9b4878326 -> 89645530ae3c"]},"diagram_unchanged":false,"diff":{"after":[{"c":false,"t":"The benchmark harness should show a false split rate of at most"},{"c":true,"t":"0.20"},{"c":false,"t":"on the parity corpus at v0."}],"before":[{"c":false,"t":"The benchmark harness should show a false split rate of at most"},{"c":true,"t":"0.30"},{"c":false,"t":"on the parity corpus at v0."}]},"direction":"numeric_tightening","element":"src/bench.rs","frame":"re-check: SUSPECT","framed":1,"id":"tightening","image":"architecture/drift/req-tightening.png","kind":"tighten","outcome":"suspect","outcome_label":"SUSPECT","satisfy_line":"[SUSPECT] src/bench.rs -> REQ-0010: numeric_tightening since it was recorded — UNVERIFIABLE until a human re-records it (`req satisfy --record src/bench.rs REQ-0010`)","status_line":"SUSPECT · 1 of 4 claims"}],"links":[{"href":"explorer.html#focus=REQ-0010","label":"The coverage explorer, focused on REQ-0010"},{"href":"architecture.html","label":"req's own architecture, as it really is"},{"href":"architecture-drift.html","label":"The same architecture with the claim tightened"},{"href":"https://github.com/autox-my/req/blob/main/docs/adr/0040-a-design-satisfies-a-claim-at-a-meaning.md","label":"ADR 0040: a change is judged by its direction"}],"rules_v":9,"schema":"req.drift-page/1"}</script>
+<script>
+(function () {
+  'use strict';
+  var data = JSON.parse(document.getElementById('req-drift-data').textContent);
+
+  // An outcome reaches the markup through this closed list only; anything else gets a fixed class.
+  var OUTCOME_CLASSES = {
+    holds: "o-holds",
+    holds_weakened: "o-holds-weakened",
+    suspect: "o-suspect"
+  };
+  function outcomeClass(word) {
+    return Object.prototype.hasOwnProperty.call(OUTCOME_CLASSES, word) ? OUTCOME_CLASSES[word] : 'o-other';
+  }
+
+  // The plain sentence under each outcome word: fixed text that agrees with ADR 0040 decision 3. {element} and {claim} are replaced.
+  var OUTCOME_TEXT = {
+    holds: 'HOLDS. The meaning fingerprint is unchanged: req compares what the sentence means, not how it is worded. So there is no alarm, and nobody is asked to re-check anything.',
+    holds_weakened: 'HOLDS (weakened). The obligation got looser. A loosening carries the link only when its class is one req has measured never to hide a stricter change (a strengthening, a tightening, a polarity flip or a scope change); numeric loosening is such a class, membership widening is not yet, so this one is not re-opened: what met the stricter bound meets the looser one. It is still reported by name, so nobody can miss that the requirement relaxed.',
+    suspect: 'SUSPECT. The obligation got stricter, so the design may no longer meet it. A person must re-check it and re-record the link (`req satisfy --record {element} {claim}`).'
+  };
+  // Under the `req compare` output, when req printed a note: the pin is the claim's own; the copy edited only the statement.
+  var PIN_NOTE = 'The claim also pins the value {value} (its pins: line). On this copy only the statement was edited, so req points out that the pin no longer matches it; a real author would update or remove the pin.';
+  var KIND_LABELS = { 're-word': 'Re-word it', loosen: 'Loosen it', tighten: 'Tighten it' };
+
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) { node.className = cls; }
+    if (text !== undefined && text !== null) { node.textContent = String(text); }
+    return node;
+  }
+  function add(parent) {
+    for (var i = 1; i < arguments.length; i++) { parent.appendChild(arguments[i]); }
+    return parent;
+  }
+  // A path under docs/ that names a picture: relative, no parent directory, no scheme.
+  function picturePath(path) {
+    return typeof path === 'string' && /^[a-z0-9_\/-]+\.[a-z]{3,4}$/i.test(path) && path.indexOf('..') < 0;
+  }
+  // A link is a page beside this one, or an https address the builder wrote.
+  function safeHref(href) {
+    return typeof href === 'string' && (href.indexOf('https:') === 0 || /^[a-z0-9_.-]+\.html(#[A-Za-z0-9_=.-]*)?$/i.test(href));
+  }
+  // What a picture shows, from the overlay's own status line and frames in the data, never typed here.
+  function altText(prefix, label, status, frame, framed) { var others = framed - (frame ? 1 : 0); return prefix + ': ' + label + ' reads ' + status + (frame ? ' and is framed in red' : '') + (others > 0 ? ', ' + others + (others === 1 ? ' other part framed' : ' other parts framed') : (frame ? '' : ', no part framed')) + '.'; }
+  function figure(path, alt, caption) {
+    var fig = el('figure');
+    if (!picturePath(path)) { return add(fig, el('p', 'muted', 'The picture is not available.')); }
+    var img = document.createElement('img');
+    img.setAttribute('src', path);
+    img.setAttribute('alt', alt);
+    img.setAttribute('loading', 'lazy');
+    var open = el('a');
+    open.setAttribute('href', path);
+    open.setAttribute('aria-label', 'Open the diagram full size: ' + alt);
+    add(open, img);
+    add(fig, open, el('figcaption', null, caption + ' Select the picture to open it full size.'));
+    return fig;
+  }
+  function fill(template, edit) {
+    return template.split('{element}').join(edit.element).split('{claim}').join(edit.claim_id);
+  }
+  // Text with `code` spans: the backtick pairs of a fixed sentence become <code>; nothing is parsed as markup.
+  function withCode(parent, text) {
+    var parts = text.split('`');
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i] === '') { continue; }
+      add(parent, i % 2 === 1 ? el('code', null, parts[i]) : document.createTextNode(parts[i]));
+    }
+    return parent;
+  }
+  function runs(side, runList) {
+    var row = el('div', 'stmt');
+    add(row, el('span', 'side', side));
+    var text = el('span', 'text');
+    runList.forEach(function (run, i) {
+      if (i > 0) { add(text, document.createTextNode(' ')); }
+      add(text, run.c ? el('mark', null, run.t) : document.createTextNode(run.t));
+    });
+    return add(row, text);
+  }
+  function changed(edit, side) {
+    return edit.diff[side].filter(function (run) { return run.c; }).map(function (run) { return run.t; }).join(' ');
+  }
+  function heading(n, title) {
+    return add(el('h2'), el('span', 'n', n), document.createTextNode(title));
+  }
+
+  function stepBefore() {
+    var step = el('li', 'step step-before');
+    var holds = data.before.all_hold;
+    add(step, heading('1', holds ? 'Before: every linked part holds' : 'Before'));
+    add(step, figure(data.before.image, altText('req’s architecture before the edit', data.claim.component.label, data.before.status_line, null, data.before.framed), 'req’s own architecture, drawn from the files it cites.'));
+    var caption = 'The part this demonstration edits is ' + data.claim.component.label + ' (' + data.claim.element + '), which holds the link to ' + data.claim.id + '. It reads ';
+    var p = add(el('p'), document.createTextNode(caption), el('code', null, data.before.status_line), document.createTextNode('.'));
+    if (holds) { add(p, document.createTextNode(' Every part that has a linked claim reads HOLDS, and no part is framed.')); }
+    return add(step, p);
+  }
+
+  function stepChange(edit) {
+    var step = el('li', 'step step-change');
+    add(step, heading('2', 'The change'));
+    add(step, el('span', 'copy-note', 'Applied to a temporary copy of the corpus; req’s own claims are not edited.'));
+    add(step, el('p', 'muted', edit.claim_id + ' says:'));
+    add(step, runs('Before', edit.diff.before), runs('After', edit.diff.after));
+    add(step, el('p', 'muted', 'What req compare says about these two statements:'));
+    // req's own lines, in the order req printed them.
+    add(step, el('pre', null, edit.compare.output.join('\n')));
+    var pin = data.claim.pins && data.claim.pins.value;
+    if (edit.compare.notes.length > 0 && typeof pin === 'string') {
+      add(step, el('p', null, PIN_NOTE.split('{value}').join(pin)));
+    }
+    return step;
+  }
+
+  function stepSays(edit) {
+    var step = el('li', 'step step-says ' + outcomeClass(edit.outcome));
+    add(step, heading('3', 'What req says'));
+    if (edit.image) {
+      var caption = 'The same diagram after the edit: ' + data.claim.component.label + ' now reads “' + edit.status_line + '”.';
+      if (edit.frame) { caption += ' req frames the part in red (“' + edit.frame + '”).'; }
+      add(step, figure(edit.image, altText('req’s architecture after the ' + edit.kind + ' edit', data.claim.component.label, edit.status_line, edit.frame, edit.framed), caption));
+    } else if (edit.diagram_unchanged) {
+      add(step, el('p', 'muted', 'The diagram is identical to the one in step 1: every part reads the same, so it is not shown twice.'));
+    }
+    add(step, el('p', 'muted', 'req satisfy, for the link from ' + edit.element + ' to ' + edit.claim_id + ':'));
+    add(step, el('pre', null, edit.satisfy_line));
+    var text = OUTCOME_TEXT[outcomeClass(edit.outcome) === 'o-other' ? '' : edit.outcome];
+    var says = el('p');
+    if (text) {
+      var cut = text.indexOf('. ') + 1;
+      add(says, el('span', 'verdict', edit.outcome_label), withCode(el('span'), fill(text.slice(cut + 1), edit)));
+    } else {
+      add(says, el('span', 'verdict', edit.outcome_label));
+    }
+    return add(step, says);
+  }
+
+  var story = document.getElementById('story');
+  var buttons = document.getElementById('buttons');
+  var selected = null;
+
+  function show(id) {
+    var edit = data.edits.filter(function (e) { return e.id === id; })[0];
+    if (!edit) { return; }
+    selected = id;
+    Array.prototype.forEach.call(buttons.children, function (button) {
+      button.setAttribute('aria-pressed', button.getAttribute('data-edit') === id ? 'true' : 'false');
+    });
+    var steps = el('ol', 'steps');
+    add(steps, stepBefore(), stepChange(edit), stepSays(edit));
+    story.textContent = '';
+    add(story, steps);
+  }
+
+  data.edits.forEach(function (edit) {
+    var button = el('button');
+    button.setAttribute('type', 'button');
+    button.setAttribute('data-edit', edit.id);
+    button.setAttribute('aria-pressed', 'false');
+    add(button, el('span', 'name', KIND_LABELS[edit.kind] || edit.kind), el('span', 'what', changed(edit, 'before') + ' → ' + changed(edit, 'after')));
+    button.addEventListener('click', function () {
+      show(edit.id);
+      try { history.replaceState(null, '', '#edit=' + edit.id); } catch (ignored) { /* a file or a sandbox: the page still works */ }
+    });
+    add(buttons, button);
+  });
+
+  data.links.forEach(function (link) {
+    if (!safeHref(link.href)) { return; }
+    var anchor = el('a', null, link.label);
+    anchor.setAttribute('href', link.href);
+    add(document.getElementById('links'), add(el('li'), anchor));
+  });
+
+  add(document.getElementById('footer'), document.createTextNode('Made by tools/demo/drift_page.py from the committed output of req satisfy and req compare under docs/architecture/drift/, at rules_v ' + data.rules_v + '. It is regenerated and checked, never hand-edited.'));
+
+  function fromHash() {
+    var found = /^#edit=([a-z]+)$/.exec(location.hash);
+    return found ? found[1] : data.edits[0].id;
+  }
+  window.addEventListener('hashchange', function () { show(fromHash()); });
+  show(fromHash());
+})();
+</script>
+</body>
+</html>

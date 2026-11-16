@@ -528,6 +528,12 @@ fn the_corpus_is_untouched_after_the_build() {
             let (edit, name) = rest.split_once('/').unwrap_or(("", rest));
             !(name == "edits.json"
                 || name == "req-drift.png"
+                || name == "req-loosening.png"
+                || name == "req-before.png"
+                || name == "req-tightening.png"
+                || name == "req-before.png.json"
+                || name == "req-loosening.png.json"
+                || name == "req-tightening.png.json"
                 || EXPECTED.iter().any(|(id, _, _)| *id == edit)
                     && ["overlay.json", "matrix.md", "satisfy.txt"].contains(&name))
         })
