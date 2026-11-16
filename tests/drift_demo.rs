@@ -527,7 +527,6 @@ fn the_corpus_is_untouched_after_the_build() {
             let rest = path.trim_start_matches(DRIFT).trim_start_matches('/');
             let (edit, name) = rest.split_once('/').unwrap_or(("", rest));
             !(name == "edits.json"
-                || name == "req-drift.png"
                 || name == "req-loosening.png"
                 || name == "req-before.png"
                 || name == "req-tightening.png"
@@ -668,17 +667,12 @@ fn the_page_is_the_tightening_overlay_and_says_it_is_a_demonstration() {
 }
 
 /// The README names the three outcomes in req's words, taken from the generated files, and links the page and the three
-/// `satisfy.txt` files; the image is there and small.
+/// `satisfy.txt` files; the image is there and small. (P-1: the table moved from the architecture section to the front of the
+/// README, so the whole README is read; the matched pair `req-before.png` / `req-tightening.png` replaced `req-drift.png`.)
 #[test]
 fn the_readme_shows_the_three_outcomes_in_the_words_req_printed() {
-    let readme = read(&root().join("README.md"));
-    let section = readme
-        .split("## Requirements on the architecture")
-        .nth(1)
-        .expect("the README has the section")
-        .split("\n## ")
-        .next()
-        .expect("a section body");
+    let section = read(&root().join("README.md"));
+    let section = section.as_str();
     assert!(section.contains("What drift looks like"));
     assert!(
         section.contains(PAGE_URL),
@@ -716,10 +710,10 @@ fn the_readme_shows_the_three_outcomes_in_the_words_req_printed() {
         "the README names the direction req gave the tightening"
     );
     assert!(
-        section.contains(&format!("{DRIFT}/req-drift.png")),
-        "the README shows the drift page's image"
+        section.contains(&format!("{DRIFT}/req-tightening.png")),
+        "the README shows the tightened picture"
     );
-    let image = root().join(DRIFT).join("req-drift.png");
+    let image = root().join(DRIFT).join("req-tightening.png");
     let size = fs::metadata(&image)
         .unwrap_or_else(|error| panic!("{} cannot be read: {error}", image.display()))
         .len();
