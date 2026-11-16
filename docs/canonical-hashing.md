@@ -727,7 +727,8 @@ shortlisted candidates only (low thousands), or the design is economically dead.
 - **Toolchain/Unicode pin replaces the interpreter pin** (ADR 0008→0009): MSRV +
   lockfile + the `unicode-normalization` crate revision are part of rules' provenance;
   a bump is a Tier-1 rules bump (candidates needing re-ratification, never a silent
-  rehash).
+  rehash). One exception: req's own package entry in the lockfile, which a version bump changes and no address reads,
+  is not a rules bump (ADR 0055).
 - **WASM target for the porcelain's browser surface**: the same canonicalizer core via
   `wasm-bindgen`, so no second Tier-1 implementation ever gets written for the PM UI.
 - **Stateless and offline**: no model call anywhere in the canonicalizer crate;

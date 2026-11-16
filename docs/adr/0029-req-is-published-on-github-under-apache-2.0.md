@@ -2,7 +2,8 @@
 
 **Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-08, former Forgejo PR #139); issue #138. Date
 proposed: 2026-11-08. **Amends [ADR 0025](0025-prebuilt-binary-per-pinned-rev.md) §5 and §6** (where the release
-lives and what the install needs); nothing else in 0025 changes. ADRs 0001–0009 are untouched.
+lives and what the install needs); nothing else in 0025 changes. ADRs 0001–0009 are untouched. Amended by ADR 0032 (§4's macOS tarball is built by the workflow) and by ADR 0055 (proposed): §4's release is tagged
+`v<VERSION>`, and its assets keep `<REV>` in their names; §5's pin also names the version, for the download URL only.
 
 ## Context
 
@@ -34,7 +35,8 @@ only permissive dependency licences. It found three things that a public reposit
    `GITHUB_TOKEN` (`contents: write` on the publishing job only). **No repository secret is needed.** An asset
    name that already exists on the release is an error, never a replacement (§5 stands: a checksum that has been
    pinned must stay true). The macOS tarball is still built by the owner's machine with the same script and
-   attached by hand.
+   attached by hand (superseded by ADR 0032: the workflow builds it on a `macos-15` runner, and a release has both
+   targets or none).
 5. **The install needs no credential for a public release.** The default download base becomes
    `https://github.com/autox-my/req/releases/download`; a token is sent only when the adopter sets one (a fork
    or mirror that is private). The pin, the SHA-256 check, the `built from <REV>` assertion and the fail-closed

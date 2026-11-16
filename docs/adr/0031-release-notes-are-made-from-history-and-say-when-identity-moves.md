@@ -3,7 +3,9 @@
 **Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-09, GitHub PR #28); asked for by the owner on
 2026-11-09 (no issue). Date proposed: 2026-11-09. **Amends [ADR 0025](0025-prebuilt-binary-per-pinned-rev.md) §5** (what
 the publishing step writes into a release); nothing else in 0025 changes: the assets, their names, the no-overwrite rule and the
-split of permissions between the two jobs are exactly as before.
+split of permissions between the two jobs are exactly as before. Amended by ADR 0055 (proposed): the previous release is
+the nearest `v*` or `rev-*` tag, and the notes open with the version, the rev and the bump class; and, against this ADR's *Rejected* item, a patch bump is
+refused when identity cannot be compared (a minor or major bump is still released, with the sentence that says so).
 
 ## Context
 
@@ -43,7 +45,7 @@ still verifies. A changelog that lists pull-request titles and buries those thre
 
 - `rev-6b74f51` keeps its old one-line body. The owner may add notes to it by hand; the workflow will not.
 - A rev whose predecessor tag cannot be found, or whose three constants moved file, is reported honestly rather than guessed; a
-  future move of a constant must update the script and its test in the same change, or the notes say "could not be determined".
+  future move of a constant must update the script and its test in the same change, or the notes say "could not be determined" (and, under ADR 0055, a patch release is refused).
 - The macOS tarball (attached by hand today) is not described in the notes: the notes describe the rev, not the asset list.
 
 ## Rejected
