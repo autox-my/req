@@ -554,9 +554,10 @@ fn png_size(path: &Path) -> Option<(u32, u32, usize)> {
     Some((word(16), word(20), bytes.len()))
 }
 
-/// Every picture the page names exists and is a PNG; the re-word shows no second copy of the diagram.
+/// Every picture the page names exists and is a PNG; the three share one pixel size, so the diagram sits in the same place in
+/// each (the one changed box is then the only thing that moves); the re-word shows no second copy of the diagram.
 #[test]
-fn the_images_it_references_exist() {
+fn the_images_it_references_exist_and_are_one_size() {
     let page = read(&root().join(PAGE));
     let (data, before, after) = embedded(&page);
     let docs = root().join("docs");
@@ -572,6 +573,12 @@ fn the_images_it_references_exist() {
             named.push(image.to_string());
         }
     }
+    assert_eq!(
+        named.len(),
+        3,
+        "before, loosening and tightening: {named:?}"
+    );
+    let mut sizes = Vec::new();
     for image in &named {
         assert!(
             !image.starts_with('/') && !image.contains("://") && !image.contains(".."),
@@ -584,17 +591,26 @@ fn the_images_it_references_exist() {
             bytes < 600 * 1024,
             "{image} is {bytes} bytes (under ~600 KB)"
         );
+        sizes.push((w, h));
     }
+    assert!(
+        sizes.windows(2).all(|pair| pair[0] == pair[1]),
+        "the three pictures must have identical pixel dimensions (the header is read): {named:?} {sizes:?}"
+    );
     let got = page_edits(&data);
-    assert_eq!(data["before"]["image"], "architecture/req-overview.png");
+    assert_eq!(data["before"]["image"], "architecture/drift/req-before.png");
     assert_eq!(
         edit(&got, "tightening")["image"],
-        "architecture/drift/req-drift.png"
+        "architecture/drift/req-tightening.png"
     );
     assert_eq!(
         edit(&got, "loosening")["image"],
         "architecture/drift/req-loosening.png"
     );
+    // The README's pictures are not the page's: the page no longer shows the tighter overview crop.
+    for image in &named {
+        assert_ne!(image, "architecture/req-overview.png");
+    }
     // The re-word's diagram is the one before, so the page says so instead of showing a duplicate.
     let cosmetic = edit(&got, "cosmetic");
     assert!(cosmetic["image"].is_null(), "no second copy of the diagram");
@@ -609,15 +625,68 @@ fn the_images_it_references_exist() {
             "a picture is named outside the data"
         );
     }
-    // The three pictures differ from each other (the loosening was rendered, not copied).
+    // The three pictures differ from each other (each was rendered, none copied).
     let bytes = |name: &str| fs::read(docs.join(name)).expect("an image");
-    assert_ne!(
-        bytes("architecture/drift/req-loosening.png"),
-        bytes("architecture/drift/req-drift.png")
+    for (a, b) in [
+        (&named[0], &named[1]),
+        (&named[0], &named[2]),
+        (&named[1], &named[2]),
+    ] {
+        assert_ne!(bytes(a), bytes(b), "{a} and {b} are the same bytes");
+    }
+}
+
+/// The step 2 `req compare` output is shown as req printed it, and when it carries a pin note the template adds one plain
+/// sentence under it: the pin is the claim's own, the copy edited only the statement, and a real author would update the pin.
+#[test]
+fn the_pin_note_is_kept_verbatim_and_explained_in_one_plain_sentence() {
+    let (data, _, _) = embedded(&read(&root().join(PAGE)));
+    let got = page_edits(&data);
+    let note = "a pin disagrees with its claim's parse";
+    for id in ["loosening", "tightening"] {
+        let notes = edit(&got, id)["compare"]["notes"]
+            .as_array()
+            .expect("notes");
+        assert_eq!(notes.len(), 1, "{id}: req compare prints one note");
+        let text = notes[0].as_str().expect("a note");
+        assert!(text.starts_with(note), "{id}: req's own words: {text}");
+        assert!(text.contains("run `req canon` before trusting the classification"));
+    }
+    assert!(
+        edit(&got, "cosmetic")["compare"]["notes"]
+            .as_array()
+            .expect("notes")
+            .is_empty(),
+        "a re-word carries no note"
     );
-    assert_ne!(
-        bytes("architecture/drift/req-loosening.png"),
-        bytes("architecture/req-overview.png")
+    // The pin the sentence speaks of is the real claim's, read here from the file, and the build never edits it.
+    let claim = read(&root().join(format!("claims/{CLAIM}.yml")));
+    assert!(
+        claim.contains("pins:\n  value: \"0.3\""),
+        "the claim pins the value 0.3"
+    );
+    assert_eq!(data["claim"]["pins"]["value"], "0.3");
+    let template = read(&root().join(TEMPLATE));
+    let line = template
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("var PIN_NOTE = '"))
+        .expect("the template holds the sentence in one place");
+    let lower = line.to_ascii_lowercase();
+    for needle in [
+        "pins the value {value}",
+        "only the statement was edited",
+        "no longer matches",
+        "update or remove the pin",
+    ] {
+        assert!(
+            lower.contains(needle),
+            "the sentence lacks `{needle}`: {line}"
+        );
+    }
+    assert!(
+        template.contains("compare.notes.length"),
+        "the sentence is keyed on the note's presence"
     );
 }
 

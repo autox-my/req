@@ -51,12 +51,14 @@ OVERVIEW_OVERLAY = os.path.join(ROOT, "docs", "architecture", "overview-overlay.
 DOCS = os.path.join(ROOT, "docs")
 GITHUB_ADR = "https://github.com/autox-my/req/blob/main/docs/adr/"
 # The picture of the diagram before any edit, and one picture per edit that changes it (relative to docs/, where Pages serves
-# them). An edit with no entry changes nothing the diagram shows: the page says so instead of drawing it twice.
-BEFORE_IMAGE = "architecture/req-overview.png"
+# them). An edit with no entry changes nothing the diagram shows: the page says so instead of drawing it twice. The pictures are
+# rendered the same way, on one canvas, so they have one pixel size and the diagram sits in the same place in each (P-2-fix);
+# the build refuses a set that does not.
+BEFORE_IMAGE = "architecture/drift/req-before.png"
 IMAGES = {
     "cosmetic": None,
     "loosening": "architecture/drift/req-loosening.png",
-    "tightening": "architecture/drift/req-drift.png",
+    "tightening": "architecture/drift/req-tightening.png",
 }
 # `req satisfy`'s outcome label -> the word the page keys its sentences and classes by. The page tells three stories, so any
 # other outcome is not one it can tell.
@@ -197,15 +199,30 @@ def overlay_view(path, element):
 
 
 def image_check(relative):
+    """The picture's path and its pixel size (read from the PNG header), or Unverifiable."""
     path = os.path.join(DOCS, relative)
     try:
         with open(path, "rb") as handle:
-            head = handle.read(8)
+            head = handle.read(24)
     except OSError as why:
         raise Unverifiable(f"the picture docs/{relative} cannot be read: {why}")
-    if head != PNG:
+    if head[:8] != PNG or len(head) < 24 or head[12:16] != b"IHDR":
         raise Unverifiable(f"the picture docs/{relative} is not a PNG")
-    return relative
+    return relative, (int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big"))
+
+
+def claim_pins(claim_text):
+    """The claim's `pins:` block as `{key: value}` (quotes dropped), `{}` when it has none. Read for the page, never edited."""
+    pins, inside = {}, False
+    for line in claim_text.split("\n"):
+        if inside:
+            found = re.match(r"^  ([A-Za-z_][\w-]*): (.*)$", line)
+            if not found:
+                break
+            pins[found.group(1)] = found.group(2).strip().strip('"')
+        elif line == "pins:":
+            inside = True
+    return pins
 
 
 def word_diff(before, after):
@@ -275,6 +292,8 @@ def build_data(binary):
     overview, overview_frames, component = overlay_view(OVERVIEW_OVERLAY, element)
     before_all_hold = not overview_frames and all(s == "no claim" or s.startswith("HOLDS · ") for s in overview.values())
     story = []
+    before_image, before_size = image_check(BEFORE_IMAGE)
+    sizes = {before_image: before_size}
     for edit in edits:
         line, label, word = satisfy_line(edit, element, claim_id)
         compare = compares[edit["id"]]
@@ -296,7 +315,8 @@ def build_data(binary):
         if image is None and not unchanged:
             raise Unverifiable(f"edit {edit['id']!r}: the diagram changed but the page has no picture of it")
         if image is not None:
-            image_check(image)
+            image, size = image_check(image)
+            sizes[image] = size
         story.append({
             "id": edit["id"],
             "kind": edit["kind"],
@@ -315,6 +335,9 @@ def build_data(binary):
             "image": image,
             "diagram_unchanged": unchanged,
         })
+    if len(set(sizes.values())) != 1:
+        raise Unverifiable("the pictures must have one pixel size, so the diagram sits in the same place in each: "
+                           + ", ".join(f"docs/{name} is {w}x{h}" for name, (w, h) in sorted(sizes.items())))
     adrs = sorted(name for name in os.listdir(os.path.join(DOCS, "adr")) if name.startswith("0040-") and name.endswith(".md"))
     if len(adrs) != 1:
         raise Unverifiable(f"docs/adr holds {len(adrs)} files for ADR 0040, not one")
@@ -324,9 +347,10 @@ def build_data(binary):
     return {
         "schema": SCHEMA,
         "rules_v": rules_version(binary),
-        "claim": {"id": claim_id, "element": element, "component": component},
+        "claim": {"id": claim_id, "element": element, "component": component,
+                  "pins": claim_pins(read_text(os.path.join(ROOT, "claims", claim_id + ".yml"), "the claim"))},
         "before": {
-            "image": image_check(BEFORE_IMAGE),
+            "image": before_image,
             "status_line": overview[component["id"]],
             "all_hold": before_all_hold,
         },

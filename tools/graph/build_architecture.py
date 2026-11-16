@@ -29,7 +29,7 @@ applied to a FRESH TEMPORARY COPY of the corpus, never to this checkout: `req sa
 converter writes, for the overview diagram and that copy's output, `<edit-id>/overlay.json` and `<edit-id>/matrix.md`, and this
 script then prepends the matrix's "made from a temporary copy" line and points the edited claim's link at `../edits.json`;
 `<edit-id>/satisfy.txt` is the exact text `req satisfy` printed, what an engineer would see. A directory or file that no edit
-produces (beside `edits.json` and the images `req-drift.png` and `req-loosening.png`) is STALE: `--drift` writes the set and still exits 1 until
+produces (beside `edits.json` and the images `req-drift.png`, `req-before.png`, `req-loosening.png` and `req-tightening.png`) is STALE: `--drift` writes the set and still exits 1 until
 it is deleted, and `--check-drift` names it. `docs/architecture-drift.html` is
 archify's rendering of the tightening overlay. `--check-drift` regenerates everything and compares; the copies are deleted.
 
@@ -356,8 +356,9 @@ def generate_drift(binary, directory, into):
 
 
 # The files the drift directory holds beside the edit directories: the edits (input) and the images beside them (`req-drift.png`,
-# the README's, and `req-loosening.png`, the guided page's; made by hand from archify's visual-check, ADR 0052's O-6 and P-2 notes). Anything else at the root is stale.
-DRIFT_ROOT_FILES = ("edits.json", "req-drift.png", "req-loosening.png")
+# the README's; `req-before.png`, `req-loosening.png` and `req-tightening.png`, the guided page's, one pixel size; made by hand from
+# archify's visual-check, ADR 0052's O-6 and P-2 notes). Anything else at the root is stale.
+DRIFT_ROOT_FILES = ("edits.json", "req-drift.png", "req-before.png", "req-loosening.png", "req-tightening.png")
 
 
 def drift_orphans(directory, edits):
