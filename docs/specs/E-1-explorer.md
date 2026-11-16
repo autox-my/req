@@ -1,0 +1,107 @@
+# E-1: the explorer page (ADR 0054)
+
+Task id: `E-1`. Base: the commit that adds this spec, on top of `25f8cde`, where ADR 0054 (PR #91) is merged; the owner
+ratified it on 2026-11-16, with decision 7 (plain SVG first; cytoscape.js, then sigma.js, as the measured fallback).
+
+**Model:** writer `claude-sonnet-5-5`; reviewer `deepseek-v4.1-flash`, read-only.
+
+The contracts are:
+- `docs/adr/0054-an-explorer-page-navigates-the-coverage-graph.md`: every decision and its *Falsification* list;
+- `docs/adr/0053-the-coverage-matrix-is-four-columns-with-a-status-in-each-cell.md` (gaps named, test outcomes out of
+  the committed page) and `docs/adr/0052-…` (the overlays' file → component map, `#focus=<id>` links);
+- `tools/overview/build.py` + `tests/overview.rs` and `tools/graph/build_architecture.py` + `tests/architecture_page.rs`:
+  the generated-and-checked page pattern (`--out` / `--check`, exit 0 / 1 / 2 / 3, `--req <path>` or PATH).
+
+Where this spec and an ADR disagree, the ADR wins; stop and report.
+
+## Order of work: measure first
+
+1. **The spike, before the page is finished.** Write a scratch generator for synthetic corpora of the shape ADR 0050
+   *Context* describes (a tree of claims with derives-from, a refines cross-link on every seventh claim, every tenth
+   standing alone), extended so each claim also has an `area` (about 12 areas at two depths, as A-2 did), a
+   `rationale.source`, two to five `tests:` ids, and a `req-satisfies:` design link on about 70 % of claims (recorded on
+   the copy with `req satisfy --record`). Generate 500, 1,000 and 5,000 claims under `.scratch/` (never committed).
+2. Build the explorer for each with the plain-SVG page and measure in a real headless browser available on this machine
+   (archify's `visual-check` drives one; reuse that browser, do not download one). Record per size: page bytes, time to
+   first draw, and the response time of: expand one area, focus one claim, focus one design node, each filter, *gaps
+   only*, search. Also record the node limit you set (decision 4) and why.
+3. **If plain SVG passes at 5,000 claims** (first draw and every interaction under about 1 s on this machine, and the page
+   never draws more than its limit), continue with plain SVG. **If it does not, stop and report the numbers**: adopting
+   cytoscape.js or sigma.js is an amendment to ADR 0054 (decision 7) the owner ratifies, not part of this unit.
+
+## Deliverables
+
+1. **The builder: `tools/explorer/build.py`.** Python standard library only, offline. `--out <path>` / `--check <path>`,
+   `--req <path>` or PATH, O-3's exit contract. It runs `req trace --format json` with the selection of `.req/variants`
+   line 1 (the one `docs/trace.md` uses; state it on the page), `req satisfy --format json`, and reads the overview and
+   detail overlays' component maps (`docs/architecture/overview-overlay.json`, `overlay.json`: component id, label,
+   `sources[].path`) to label design nodes. It requires the schemas it was written against and an empty
+   `unreadable` (as build_architecture.py does), else exit 3.
+2. **The data: one JSON document embedded verbatim** in `<script type="application/json" id="req-explorer-data">`, with
+   `</` escaped so it cannot close the element. Nodes: sources (grouped by equal text), claims (id, statement, area,
+   evidence), design elements (path, component id and label when mapped, else none), test groups (claim id, test ids).
+   Edges: source-of, satisfied-by (with the link's outcome), verified-by. Gaps as data (claims with no source, no design
+   element, no test, and the non-machine-evidence case, ADR 0053 decision 2). Deterministic: sorted keys and lists,
+   no timestamp, `ensure_ascii=False`. No test outcomes (decision 6).
+3. **The template: `tools/explorer/explorer.html`.** Hand-written HTML, CSS and script, the same bytes for every corpus;
+   the builder only inserts the data document. No network: no external `src`/`href` for scripts, styles, fonts or
+   images, no `fetch`/XHR. Plain SVG. Light and dark themes from `prefers-color-scheme`. It implements ADR 0054 decision
+   3 (four columns, typed edges, outcome on each satisfied-by edge, gaps drawn) and decision 4 (areas collapsed at
+   open, tests grouped per claim, focus, filters by layer / outcome / area, *gaps only*, search by claim id, file path
+   or test id, the node limit with a "narrow to see N hidden" message). A design node links to its component on the
+   architecture page (`https://autox-my.github.io/req/architecture.html#focus=<id>` or the detail page, as O-5 did).
+   Keyboard: Tab reaches every control; Enter on a focused node focuses it. Readable at phone width.
+4. **The page: `docs/explorer.html`**, written by the builder, committed, published by Pages.
+5. **Links in:** `docs/index.html` gains one item for the explorer; the README's *Requirements on the architecture*
+   section gains one sentence linking it. (The matrices are generated by the converter; linking them to the explorer is
+   not part of this unit.)
+
+## Tests first (envelope `red`)
+
+`tests/explorer_page.rs`, in `tests/overview.rs`'s style, with `CARGO_BIN_EXE_req`:
+- `build.py --check docs/explorer.html` exits 0; a hand-edited page exits 1 naming it;
+- the embedded document, parsed from the committed page, has a claim node for every claim `req trace --format json`
+  lists, a satisfied-by edge with the right outcome for every `req satisfy --format json` link, and a gap entry for every
+  claim with no design element, no test or no source (*Falsification* 1, 2), computed independently in the test;
+- the page loads nothing over the network: no `http(s)://` in any `src=`, `<link href=`, `@import`, `url(` or
+  `fetch(`/`XMLHttpRequest` (*Falsification* 3); links in `<a href>` are allowed;
+- two builds give identical bytes (*Falsification* 4); the template file's bytes appear in the page unchanged around the
+  data element;
+- no test outcome appears in the committed data (decision 6);
+- an unreadable design file in a copy makes `--check` exit 3 (as O-3-fix did).
+
+Prove them red at the base.
+
+## Mutation checks (envelope `mutations`)
+
+- Drop one satisfy link from the data → the edge test fails.
+- Leave out the gaps → the gap test fails.
+- Add a CDN `<script src="https://…">` to the template → the network test fails.
+
+## Verification outside the gate (envelope)
+
+- The measurement table from *Order of work* (all three sizes), the node limit and its reason.
+- A screenshot of `docs/explorer.html` at desktop and at phone width, light theme, with one claim focused.
+
+## Verify
+
+Full `scripts/check.sh` with `HOME=<main checkout>/.tools/home`: exit 0, no SKIP, tree clean after the run. Do not set
+`CARGO_TARGET_DIR`. Disk is tight (~20 GiB free): synthetic corpora under `.scratch/`, deleted when measured; one target
+directory.
+
+## Docs, one home each
+
+- ADR 0054: **Status** accepted (ratified by the owner's merge of PR #91, 2026-11-16) and a dated implementation note: the
+  files, how to regenerate, the measurement table, the node limit, the named gap (browser behaviour not in the gate).
+- `examples/graph/README.md`: one line pointing at the explorer and its builder.
+
+## Allowed paths
+
+- `tools/explorer/**` (new), `docs/explorer.html` (new), `tests/explorer_page.rs` (new)
+- `docs/index.html` (its one item), `README.md` (one sentence), `examples/graph/README.md` (one line)
+- `docs/adr/0054-an-explorer-page-navigates-the-coverage-graph.md` (status and note)
+
+Forbidden: `src/**`, `tools/graph/**`, `claims/**`, `.req/**`, `baselines/**`, `decisions/**`, `aliases/**`, `bench/**`,
+`docs/spec.md`, `docs/trace.md`, every existing page and file under `docs/architecture*`, `scripts/check.sh`,
+`Cargo.toml`, `Cargo.lock`, `.github/**`, any archify file, and any third-party JavaScript. If a forbidden file must
+change, stop and report.

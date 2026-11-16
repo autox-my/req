@@ -249,6 +249,11 @@ A view with one row per claim and four fixed columns: its source, the claim, wha
 each link with its outcome and each missing one named as a gap (ADR 0053).
 _Avoid_: traceability matrix (that names `req trace`'s claim-to-claim edges), claims × components grid
 
+**Explorer**:
+A generated, read-only page for following a chain through the coverage graph (source, claim, design element, tests):
+focus on a node, filter by layer, outcome or area, show gaps only. It shows req's documents and nothing else (ADR 0054).
+_Avoid_: graph editor (nothing is authored on it), architecture diagram (that is archify's page)
+
 ### Authority
 
 **Authoring**:
