@@ -33,6 +33,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TEMPLATE = os.path.join(ROOT, "tools", "explorer", "explorer.html")
@@ -266,10 +267,23 @@ def main(argv):
         print(f"UNVERIFIABLE: {why}", file=sys.stderr)
         return 3
     if mode == "--out":
+        # Written beside the target and moved into place, so a short write (a full disk) never leaves a truncated page:
+        # exit 3 means the old page, if any, is untouched.
+        staged = None
         try:
-            with open(target, "w", encoding="utf-8", newline="") as handle:
+            directory = os.path.dirname(os.path.abspath(target))
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="", dir=directory,
+                                             prefix=".explorer-", suffix=".tmp", delete=False) as handle:
+                staged = handle.name
                 handle.write(page)
+            os.replace(staged, target)
+            staged = None
         except OSError as why:
+            if staged is not None:
+                try:
+                    os.unlink(staged)
+                except OSError:
+                    pass
             # Not 1: exit 1 means a page is stale, and nothing was compared here.
             print(f"UNVERIFIABLE: cannot write {target}: {why}", file=sys.stderr)
             return 3

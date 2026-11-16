@@ -550,6 +550,22 @@ fn the_page_loads_nothing_over_the_network() {
         leaked.is_empty(),
         "the template reaches the network: {leaked:?}"
     );
+    // Stricter than the attribute scan, which cannot see a script setting `el.src = 'https://…'`: the template names
+    // no remote address at all. Its one URL is the SVG namespace (an identifier, never fetched); the links a reader
+    // follows (Pages, GitHub) come from the data, which is not code.
+    for template_or_page in [template.clone(), format!("{before}{after}")] {
+        let urls: Vec<&str> = template_or_page
+            .match_indices("http")
+            .map(|(at, _)| &template_or_page[at..])
+            .filter(|rest| rest.starts_with("http://") || rest.starts_with("https://"))
+            .filter(|rest| !rest.starts_with("http://www.w3.org/2000/svg"))
+            .map(|rest| &rest[..rest.len().min(60)])
+            .collect();
+        assert!(
+            urls.is_empty(),
+            "the template names a remote address (only the SVG namespace is allowed): {urls:?}"
+        );
+    }
     // The detector sees what it should: it is not blind to a CDN script.
     assert!(!leaks("<script src=\"https://cdn.example.org/x.js\"></script>").is_empty());
     assert!(!leaks("<link rel=\"stylesheet\" href=\"//cdn.example.org/x.css\">").is_empty());
