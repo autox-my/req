@@ -9,7 +9,7 @@ is computed from committed output and one `req compare` run, and from nothing el
 
     docs/architecture/drift/edits.json     the three edits: statement before and after, the outcome each must give (O-6)
     docs/architecture/drift/<edit>/satisfy.txt
-                                           the exact `req satisfy` text for that edit; its line for the edited link is shown
+                                           the `req satisfy` text for that edit (less its per-mention lines); its line for the edited link is shown
     docs/architecture/drift/<edit>/overlay.json and docs/architecture/overview-overlay.json
                                            the Evidence box's status line and red frame, and whether a diagram changed at all
     docs/architecture/drift/req-*.png and their `.png.json` records

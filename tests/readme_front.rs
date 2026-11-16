@@ -238,7 +238,7 @@ fn each_verdict_in_the_table_is_the_word_req_printed() {
         );
         assert!(
             row.contains(&format!("{DRIFT}/{id}/satisfy.txt")),
-            "{id}: the row links the exact output"
+            "{id}: the row links the full output"
         );
         // The table this row is in: the consecutive `|` lines around it.
         let mut start = at;

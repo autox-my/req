@@ -2,8 +2,8 @@
 //!
 //! `docs/architecture/drift/edits.json` names three edits to one of req's own claims: a cosmetic re-wording, a loosening and
 //! a tightening. `tools/graph/build_architecture.py --drift` applies each to a throw-away COPY of the corpus, runs `req
-//! satisfy` and `req trace` there and converts the overview diagram into an overlay, a matrix and the exact `req satisfy`
-//! text per edit under `docs/architecture/drift/<edit-id>/`. `docs/architecture-drift.html` is archify's rendering of the
+//! satisfy` and `req trace` there and converts the overview diagram into an overlay, a matrix and the `req satisfy`
+//! text per edit (less its per-mention lines) under `docs/architecture/drift/<edit-id>/`. `docs/architecture-drift.html` is archify's rendering of the
 //! tightening overlay. The oracles below are written from the spec and ADR 0040, never from the generated files: an edit
 //! that tightens a bound is SUSPECT, one that relaxes it HOLDS (weakened), a re-wording that keeps the meaning HOLDS.
 
