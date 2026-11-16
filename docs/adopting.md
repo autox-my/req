@@ -471,7 +471,7 @@ including the tri-state — and `req <command> --help` works before a corpus exi
 3. **Values are canonical SI.** `within 200 ms` parses to `value "0.2"`, `unit s`: pin the exact
    decimal string the parser derives, not the units the prose used. `unit: ms` is a contradiction,
    and `"0.30"` is not a canonical decimal (`"0.3"` is), so it cannot be pinned.
-4. **`req canon` fails on a flag only if you ask.** It reports (it exits 3 only when the corpus cannot be read); `req canon --fail-on-flag` is the opt-in that exits 1 on a flagged pin, for the time before every claim has a linked test. The check that gates a release is `req gate`:
+4. **`req canon` fails on a flag only if you ask.** It reports (it exits 3 only when the corpus cannot be read, or, with `--by-area`, `.req/areas`); `req canon --fail-on-flag` is the opt-in that exits 1 on a flagged pin, for the time before every claim has a linked test. The check that gates a release is `req gate`:
    the loop in one sentence is edit → `req canon` to see the parse → `req gate`. A claim's
    `applicability:` list is part of its address (since rules v5), so editing it moves the address
    exactly as editing the statement does.
