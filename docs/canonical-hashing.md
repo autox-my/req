@@ -197,7 +197,7 @@ trap: LE vs LT — ``within`` vs ``in fewer than`` — never collapse.
 
 ### 5.1 Deriving at load, and checking what is load-bearing
 
-Nothing derived is stored in a claim file (`req.claim/2`, ADR 0022): `canon::load_claims`
+Nothing derived is stored in a claim file (since `req.claim/2`, ADR 0022): `canon::load_claims`
 derives each claim's form, canonical bytes and address from its `statement` and authored
 `applicability` every time the corpus is read, so no command writes a `canonical.form` or an
 `address` and none can be stale or hand-written. What an author wants held is stated as a

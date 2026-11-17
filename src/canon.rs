@@ -2081,11 +2081,22 @@ fn looks_like_claim_file(name: &str) -> bool {
 /// the one way two files can share an id — the `.yaml` twin of a `.yml` — is
 /// reported as the duplicate it is rather than as a filename complaint.
 ///
+/// Every per-file problem above is **collected**, not stopped at: the error is one line per
+/// problem, in path order, so a corpus with three broken files names all three. A load that
+/// found any problem returns no claims, so no caller can take a partial corpus for a whole one.
+/// What still stops the load on its own is a problem with no file to name: an unreadable
+/// registry or `claims/` directory, and an empty corpus.
+///
 /// The registry is loaded first (a corpus whose registry cannot be read derives nothing, and is
 /// UNVERIFIABLE), and every claim's [`Derived`] is computed against it.
 pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
     let registry = load_registry(root)?;
     let dir = root.join("claims");
+    // Every per-file problem, keyed by the path it is about: the report is every one of them, in
+    // path order, so an author fixes the corpus in one pass rather than meeting the next problem
+    // after each re-run. A problem that stops the load altogether (an unreadable registry or
+    // directory, an empty corpus) is still returned on its own.
+    let mut problems: Vec<(std::path::PathBuf, String)> = Vec::new();
     let mut candidates: Vec<(std::path::PathBuf, String)> = Vec::new();
     for entry in
         std::fs::read_dir(&dir).map_err(|e| format!("claims dir {}: {e}", dir.display()))?
@@ -2101,19 +2112,23 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
         // be a silent deletion — the entry is not claim-shaped, and the walk does not
         // recurse. A symlink to a directory is the same hole wearing a disguise.
         if file_type.is_dir() || (file_type.is_symlink() && path.is_dir()) {
-            return Err(format!(
+            let message = format!(
                 "{}: `claims/` is flat, one claim per file — a directory here is an \
                  error, not a place a claim can live",
                 path.display()
-            ));
+            );
+            problems.push((path, message));
+            continue;
         }
         let raw_name = entry.file_name();
         let Some(name) = raw_name.to_str() else {
-            return Err(format!(
+            let message = format!(
                 "{}: this entry's name is not valid UTF-8 (shown lossily), so it cannot \
                  be classified as a claim or as a non-claim",
                 path.display()
-            ));
+            );
+            problems.push((path, message));
+            continue;
         };
         if !looks_like_claim_file(name) {
             continue;
@@ -2121,15 +2136,17 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
         // `file_type` comes from the directory read and does not follow symlinks, so
         // this is the contract the message states: a symlinked claim is not a claim.
         if !file_type.is_file() {
-            return Err(format!(
+            let message = format!(
                 "{}: a claim file must be a regular file (a symlink or special file is \
                  not one)",
                 path.display()
-            ));
+            );
+            problems.push((path, message));
+            continue;
         }
         candidates.push((path, name.to_string()));
     }
-    if candidates.is_empty() {
+    if candidates.is_empty() && problems.is_empty() {
         return Err(format!(
             "claims dir {}: no claim files — an empty corpus is indistinguishable \
              from one whose claims all vanished, so it is UNVERIFIABLE, never a pass",
@@ -2140,12 +2157,25 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
 
     let mut loaded: Vec<LoadedClaim> = Vec::new();
     for (path, name) in candidates {
-        let text =
-            std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) => {
+                let message = format!("read {}: {e}", path.display());
+                problems.push((path, message));
+                continue;
+            }
+        };
         // The declared format first, then the removed keys, the strict contract, the pins and
         // the test links — all in `parse_claim`, so every command inherits the checks rather
         // than each one re-deciding whether to look.
-        let claim = parse_claim(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+        let claim = match parse_claim(&text) {
+            Ok(claim) => claim,
+            Err(e) => {
+                let message = format!("{}: {e}", path.display());
+                problems.push((path, message));
+                continue;
+            }
+        };
         let derived = derive(&claim, &registry);
         loaded.push(LoadedClaim {
             path,
@@ -2158,8 +2188,9 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
 
     // Duplicate ids, with the files' content compared: an identical copy is the
     // fully silent case, a divergent rewrite is one that would collapse two
-    // meanings into one address.
+    // meanings into one address. A file reported here is not also reported for its name.
     let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut duplicates: BTreeSet<usize> = BTreeSet::new();
     for (i, loaded_claim) in loaded.iter().enumerate() {
         if let Some(&first) = seen.get(loaded_claim.claim.claim_id.as_str()) {
             let compared = if loaded[first].text == loaded_claim.text {
@@ -2167,17 +2198,26 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
             } else {
                 "content differs"
             };
-            return Err(format!(
-                "duplicate claim_id {}: {} and {} ({compared})",
-                loaded_claim.claim.claim_id,
-                loaded[first].path.display(),
-                loaded_claim.path.display()
+            problems.push((
+                loaded_claim.path.clone(),
+                format!(
+                    "duplicate claim_id {}: {} and {} ({compared})",
+                    loaded_claim.claim.claim_id,
+                    loaded[first].path.display(),
+                    loaded_claim.path.display()
+                ),
             ));
+            duplicates.insert(i);
+            duplicates.insert(first);
+        } else {
+            seen.insert(loaded_claim.claim.claim_id.as_str(), i);
         }
-        seen.insert(loaded_claim.claim.claim_id.as_str(), i);
     }
 
-    for loaded_claim in loaded.iter() {
+    for (i, loaded_claim) in loaded.iter().enumerate() {
+        if duplicates.contains(&i) {
+            continue;
+        }
         let path = &loaded_claim.path;
         // The naming pass and the stem it reports come from one strip: if the suffix
         // and the `<digits>` shape both hold, that IS the stem, and re-deriving it
@@ -2187,20 +2227,35 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
             .strip_suffix(".yml")
             .filter(|s| is_claim_stem(s))
         else {
-            return Err(format!(
-                "{}: not a claim filename — a claim file is `REQ-<digits>.yml` \
-                 (filename = claim_id)",
-                path.display()
+            problems.push((
+                path.clone(),
+                format!(
+                    "{}: not a claim filename — a claim file is `REQ-<digits>.yml` \
+                     (filename = claim_id)",
+                    path.display()
+                ),
             ));
+            continue;
         };
         if stem != loaded_claim.claim.claim_id {
-            return Err(format!(
-                "{}: claim_id {} does not match the filename stem {stem} \
-                 (claim-format.md: filename = claim_id)",
-                path.display(),
-                loaded_claim.claim.claim_id
+            problems.push((
+                path.clone(),
+                format!(
+                    "{}: claim_id {} does not match the filename stem {stem} \
+                     (claim-format.md: filename = claim_id)",
+                    path.display(),
+                    loaded_claim.claim.claim_id
+                ),
             ));
         }
+    }
+    if !problems.is_empty() {
+        // A load that found any problem returns no claims: no caller can take a partial corpus
+        // for a whole one. Stable by path, so the order never depends on how the filesystem
+        // enumerated the directory (a path's own problems keep their pass order).
+        problems.sort_by(|a, b| a.0.cmp(&b.0));
+        let messages: Vec<String> = problems.into_iter().map(|(_, message)| message).collect();
+        return Err(messages.join("\n"));
     }
     // `candidates` was sorted by path before parsing, so `loaded` already is: the
     // order never depends on how the filesystem enumerated the directory.

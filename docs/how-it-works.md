@@ -39,7 +39,7 @@ and exits 0 on a flagged pin; the check that gates a pin is `gate` (`pins_hold`)
 
 ## 2. What is authored, what is derived, what is signed
 
-Nothing derived is stored in a claim file (`req.claim/2`, ADR 0022): the loader computes it every time.
+Nothing derived is stored in a claim file (since `req.claim/2`, ADR 0022): the loader computes it every time.
 
 ```mermaid
 flowchart LR
