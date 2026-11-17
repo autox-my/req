@@ -365,9 +365,11 @@ def generate_drift(binary, directory, into):
 
 # The files the drift directory holds beside the edit directories: the edits (input) and the images beside them (`req-before.png`,
 # `req-loosening.png` and `req-tightening.png`: the guided page's and the README's, one pixel size, each with a `.json` record binding it to the overlay it was rendered from; made by hand from
-# archify's visual-check, ADR 0052's O-6 and P-2 notes). Anything else at the root is stale.
+# archify's visual-check, ADR 0052's O-6 and P-2 notes), and the README's animated replay `req-replay.gif` with its `.json` record (P-3:
+# made by hand by `tools/demo/drift_replay.py` from `edits.json` and the three `satisfy.txt` files). Anything else at the root is stale.
 DRIFT_ROOT_FILES = ("edits.json", "req-before.png", "req-loosening.png", "req-tightening.png",
-                    "req-before.png.json", "req-loosening.png.json", "req-tightening.png.json")
+                    "req-before.png.json", "req-loosening.png.json", "req-tightening.png.json",
+                    "req-replay.gif", "req-replay.gif.json")
 
 
 def drift_orphans(directory, edits):

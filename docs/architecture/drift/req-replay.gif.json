@@ -1,0 +1,25 @@
+{
+  "schema": "req.drift-replay/1",
+  "gif": "docs/architecture/drift/req-replay.gif",
+  "gif_sha256": "26150643ac146e3bb8f15ff90f63c35ac8b7779f460217a91a29a0e61a06f3df",
+  "inputs": {
+    "docs/architecture/drift/cosmetic/overlay.json": "6f8dc663f7eca464c617d1326a3f79a73f68886ea8e21a7aaec95aa3c6e18235",
+    "docs/architecture/drift/cosmetic/satisfy.txt": "b86a3faca2d53c8c5867ce63caf0a7b3b2795bcd0d03274668802c283db7b5f9",
+    "docs/architecture/drift/edits.json": "9922440ce60427a247732fcf85b4d11aa58c1d4fbb4633723277d1f5f4bcda36",
+    "docs/architecture/drift/loosening/overlay.json": "f07826cd7049cdd35c1ce2b2cb3e9e337ea28bd5ef245fde1a25e7a2935e68ba",
+    "docs/architecture/drift/loosening/satisfy.txt": "05e8ed9623ccdc09f4c3f402e3b64fb1b6a80852e00abc75942fc9cead9f0077",
+    "docs/architecture/drift/tightening/overlay.json": "673340a399e54effd8d6d6880289f379cada6986a35dd09b97fe81bb4f9ace84",
+    "docs/architecture/drift/tightening/satisfy.txt": "2b6004be32f25d673503eaa49e74206578ed7337ea77eb9481cf96899555b86d",
+    "docs/architecture/overview-overlay.json": "c46ee32f4e078425387310b070115f45ee82fafb3d3e71b9f86d2daa6fb64652"
+  },
+  "script": "tools/demo/drift_replay.py",
+  "script_sha256": "51cc1fdf2a531ccf44eba7af4c63fea96039dbe3445d6694ee527822bacc654f",
+  "chrome": "Google Chrome 157.0.8103.79",
+  "ffmpeg": "ffmpeg version 9.0.2",
+  "frame_size": [
+    1680,
+    846
+  ],
+  "frame_count": 8,
+  "recipe": "python3 tools/demo/drift_replay.py (one HTML page per state, screenshotted by headless Chrome at 1680x846, assembled by ffmpeg concat + palettegen/paletteuse)"
+}
