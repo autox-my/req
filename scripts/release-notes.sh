@@ -7,8 +7,8 @@
 #   0. one opening line: the version the rev declares (`git show <rev>:Cargo.toml`), the rev and the bump class
 #      (major, minor, patch, none, lower, `first release`, or `not comparable`), as
 #      `Version 0.2.0 · rev `abc1234` · bump: minor`;
-#   1. which release came before (the nearest release tag strictly before the rev: a `rev-*` tag or a `v<N>.<N>.<N>`
-#      tag; the search starts at `<rev>^`, so a release's own tag is never its predecessor) and a compare link;
+#   1. which release came before (the nearest release tag strictly before the rev: a `rev-*` or any `v*` tag, so a
+#      stray `v` tag is found and the version check refuses it; the search starts at `<rev>^`, so a release's own tag is never its predecessor) and a compare link;
 #   2. whether req's *identity* moved since then -- RULES_V (src/canon.rs), the claim schema
 #      (CLAIM_SCHEMA_V, src/canon.rs) and the Baseline envelope (BASELINE_VERSION, src/baseline.rs) --
 #      and what an adopter must do if it did. A value that cannot be read is "could not be determined",

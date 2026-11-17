@@ -810,14 +810,16 @@ fn an_existing_output_file_is_refused_and_left_untouched() {
 }
 
 /// ADR 0055 decision 3 names `v*`, and the check must fail closed. A `v` tag that is not a plain `v<N>.<N>.<N>` (a
-/// stray `v1.0`, a `vendor-snapshot`) is still found as the previous release, with a version that cannot be read, so the
-/// version check refuses (review 1 of PR #97). A narrower pattern would skip it silently and, with no other release
-/// before the rev, call the dispatch a first release and accept any version.
+/// stray `v1.0`, a `vendor-snapshot`) is still found as the previous release, and the version check refuses it by its
+/// name, whatever its `Cargo.toml` says (review 1 of PR #97). A narrower pattern would skip it silently and, with no
+/// other release before the rev, call the dispatch a first release and accept any version.
 #[test]
-fn a_stray_v_tag_is_found_and_leaves_the_previous_version_empty_never_a_first_release() {
+fn a_stray_v_tag_is_found_as_the_previous_release_and_the_version_check_refuses_it() {
     for stray in ["v1.0", "vendor-snapshot"] {
         let w = World::new();
-        w.set(&constants(7, 2, 4));
+        let mut files = constants(7, 2, 4).to_vec();
+        files.push(cargo("0.1.0"));
+        w.set(&files);
         w.commit("a");
         w.tag(stray);
         let head = w.commit("tip");
@@ -826,9 +828,23 @@ fn a_stray_v_tag_is_found_and_leaves_the_previous_version_empty_never_a_first_re
             facts.lines().any(|l| l == format!("previous_tag={stray}")),
             "{stray} is found as the previous release:\n{facts}"
         );
+        let facts_file = w.dir.join("facts-for-check.txt");
+        fs::write(&facts_file, &facts).expect("writes the facts");
+        let check = Command::new("bash")
+            .arg(script().with_file_name("release-version-check.sh"))
+            .args(["check", "--version", "0.2.0", "--facts"])
+            .arg(&facts_file)
+            .output()
+            .expect("runs the version check");
+        assert_ne!(
+            check.status.code(),
+            Some(0),
+            "{stray}: the version check must refuse, never accept it as a predecessor"
+        );
         assert!(
-            facts.lines().any(|l| l == "previous_version="),
-            "{stray}'s version cannot be read, so the check refuses:\n{facts}"
+            String::from_utf8_lossy(&check.stderr).contains(&format!("'{stray}' is neither")),
+            "{stray}: refused by its name:\n{}",
+            String::from_utf8_lossy(&check.stderr)
         );
     }
 }

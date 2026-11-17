@@ -154,7 +154,7 @@ jobs:
           # version that is not greater than the previous release's, a number that did not rise as identity requires,
           # a patch bump when identity is unknown, and a major bump below 1.0. Before anything is built or uploaded.
           if ! out="$(bash scripts/release-version-check.sh check --rev "$REL_FULL" --facts "$RUNNER_TEMP/release-facts/facts")"; then
-            echo "::error::release-version-check.sh refused this release (the reason is the line above): change the version in a pull request, merge it, and dispatch again"
+            echo "::error::release-version-check.sh refused this release (the reason is the line above): change the version in a pull request, merge it, and dispatch again; if the previous release named is a stray v tag (neither rev-<sha> nor v<X.Y.Z>), delete or rename that tag instead"
             exit 1
           fi
           printf '%s\n' "$out"

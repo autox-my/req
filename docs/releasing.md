@@ -103,7 +103,8 @@ and the regenerated `docs/sbom.cdx.json`, and nothing else; no prose document qu
    `….build-info`, `….tar.gz.sha256` and `….tar.gz`, in that order, with `gh release upload`. A release has both targets or none.
    The asset names keep the rev (`req-<REV>-<TARGET>.*`): the commit stays the identity, the version is a name.
    The release body is the notes `scripts/release-notes.sh` wrote in the build job (ADR 0031): the version, the rev and the
-   bump class, the previous release (the nearest `rev-*` or `v<N>.<N>.<N>` tag strictly before the rev) and a
+   bump class, the previous release (the nearest `rev-*` or `v*` tag strictly before the rev; a `v` tag that is not a plain
+   `v<X.Y.Z>` blocks the dispatch until it is deleted or renamed) and a
    compare link, **whether identity moved** (`RULES_V`, the claim schema, the Baseline envelope, and what an adopter does if
    one did) and the pull requests merged since, grouped by prefix. A release that already exists keeps its body: the
    workflow never edits one. To preview the notes before you dispatch, run

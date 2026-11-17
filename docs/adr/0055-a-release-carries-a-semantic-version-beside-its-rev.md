@@ -82,9 +82,10 @@ Two facts shape the decision:
    The version is compiled into the binary, since `req --version` prints it. But it reaches no address, no Baseline
    manifest and no projection header (the address is computed over the statement's canonical form; the Baseline envelope
    carries `rules_v`, the selection and the claims). The one checked file it moves is the SBOM: its serial is derived
-   from the lock file's digest, and it records req's version and package URL. It is regenerated in the same pull request. So changing it is not a Tier-1 rules bump. A test pins the
-   exception: a version-bump commit whose `Cargo.lock` diff touches any other package fails it. The exception stays one
-   entry wide.
+   from the lock file's digest, and it records req's version and package URL. It is regenerated in the same pull request. So changing it is not a Tier-1 rules bump. A check pins the
+   exception: `release-version-check.sh lock-exception` fails when a `Cargo.lock` diff touches any other package. A test
+   proves the check, and the bump PR runs it (falsification 2 says why the gate cannot). The exception stays one entry
+   wide.
 7. **The installer pins the version for the download and the rev and SHA-256 for the proof.** `examples/install-req.sh`
    gains `VERSION` in its pin table, used only to build the download URL (`…/download/v<VERSION>/req-<REV>-<TARGET>.tar.gz`).
    The SHA-256 and `built from <REV>` checks are unchanged, so a moved tag cannot change what is installed.
