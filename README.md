@@ -30,7 +30,7 @@ SUSPECT means the part was recorded against a claim whose meaning has since tigh
 
 ```bash
 git clone https://github.com/autox-my/req.git && cd req
-cargo build --release   # from source: the latest published release predates `req.claim/3` and cannot read today's claims
+cargo build --release   # from source, today's `main`; the prebuilt `rev-3294a46` is the first release that reads `req.claim/3` (see Install)
 python3 tools/demo/try_drift.py
 ```
 
@@ -177,9 +177,11 @@ Git-native storage is table stakes, not the moat.
 
 ## Install
 
-req is not on crates.io (`publish = false`): you pin a commit, and the commit is the provenance. **Three
-prebuilt releases exist: `rev-ec87808` (Linux x86_64), `rev-6b74f51` and `rev-aeaf987` (Linux x86_64 and macOS
-arm64, Apple silicon only)**; all three predate `req.claim/3`, so today's corpus needs a build from source. There is no Intel Mac build and no native Windows build (on Windows, run the Linux tarball under
+req is not on crates.io (`publish = false`): you pin a commit, and the commit is the provenance. A release also carries a
+semantic version and is tagged `v<VERSION>` (ADR 0055); the version names it, the commit proves it. **Four prebuilt
+releases exist, all tagged `rev-<REV>`: `rev-ec87808` (Linux x86_64), `rev-6b74f51` and `rev-aeaf987` (Linux x86_64 and
+macOS arm64, Apple silicon only), which predate `req.claim/3`, and `rev-3294a46` (both targets), the first release that
+reads `req.claim/3`**; none is today's `main`, so a command added since is not in them. There is no Intel Mac build and no native Windows build (on Windows, run the Linux tarball under
 WSL2: `docs/adopting.md`, *Windows*). For any other rev, or any other machine, the install is a build from source
 at a rev you choose:
 
@@ -188,7 +190,7 @@ cargo install --git https://github.com/autox-my/req.git --rev <REV> --locked req
 ```
 
 `docs/adopting.md` (*Install req*) explains the pin, the prebuilt-binary path,
-and the air-gapped route. req is early (`0.1.0`), maintained by one person, and its claims are bounded as
+and the air-gapped route. req is early, maintained by one person, and its claims are bounded as
 stated under *Status*.
 
 ## Development

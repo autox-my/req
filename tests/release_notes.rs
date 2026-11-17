@@ -5,14 +5,19 @@
 //! independent of the script: the headings, the arrows and the wording below come from the ADR,
 //! and the expected PR lines are typed here, never read back from the script's output.
 //!
-//! What the notes must do, in the order the ADR states it: say what the previous release is (the
-//! nearest `rev-*` tag that is an ancestor, and nothing else), say whether req's identity moved
+//! What the notes must do, in the order the ADR states it: open with the version, the rev and the bump class
+//! (ADR 0055), say what the previous release is (the nearest `rev-*` or `v<N>…` tag strictly before the rev,
+//! and nothing else), say whether req's identity moved
 //! (`RULES_V`, the claim schema, the Baseline envelope) and what an adopter must then do, list the
 //! pull requests merged since, grouped by their conventional-commit prefix, and treat every title
 //! as hostile text. A value it cannot read is "could not be determined", never "unchanged".
 //!
-//! Exit contract: 0 written; 1 `--out` exists (never overwritten); 2 usage, an unresolvable rev, a
-//! repository name outside `owner/name`. In every non-zero case `--out` is left untouched.
+//! Beside the notes, `--facts <file>` writes `key=value` lines for the release workflow (ADR 0055 decision 4):
+//! the previous release's tag, its version (a `rev-*` release counts as 0.1.0; a `v*` release is read from
+//! `<tag>:Cargo.toml`) and identity as `moved`, `unmoved` or `unknown`.
+//!
+//! Exit contract: 0 written; 1 `--out` or `--facts` exists (never overwritten); 2 usage, an unresolvable rev, a
+//! repository name outside `owner/name`. In every non-zero case both files are left as they were.
 #![cfg(unix)]
 
 use std::fs;
@@ -155,6 +160,31 @@ impl World {
         (run, out)
     }
 
+    /// Run with `--facts`, failing the test on a non-zero exit; returns the facts as `key=value` lines.
+    fn facts(&self, rev: &str) -> String {
+        let facts = self.dir.join("facts.txt");
+        let _ = fs::remove_file(&facts);
+        let _ = fs::remove_file(self.dir.join("notes.md"));
+        let run = Command::new("bash")
+            .arg(script())
+            .args(["--rev", rev, "--repo", "owner/name", "--out"])
+            .arg(self.dir.join("notes.md"))
+            .arg("--facts")
+            .arg(&facts)
+            .current_dir(&self.dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .expect("runs the script");
+        assert!(
+            run.status.success(),
+            "exit {:?}: {}",
+            run.status.code(),
+            String::from_utf8_lossy(&run.stderr)
+        );
+        fs::read_to_string(facts).expect("the facts file")
+    }
+
     /// Run and return the notes text, failing the test on a non-zero exit.
     fn text(&self, rev: &str) -> String {
         let (run, out) = self.notes(rev, "owner/name");
@@ -172,6 +202,16 @@ impl Drop for World {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.dir);
     }
+}
+
+/// A `Cargo.toml` whose `[package]` says `version`, with a dependency table that has a `version` of its own first.
+fn cargo(version: &str) -> (&'static str, String) {
+    (
+        "Cargo.toml",
+        format!(
+            "[dependencies.other]\nversion = \"9.9.9\"\n\n[package]\nname = \"req\"\nversion = \"{version}\"\n"
+        ),
+    )
 }
 
 /// A world with a first release tagged, then `rules` etc. at the new rev. Returns (world, new full sha).
@@ -205,12 +245,11 @@ fn the_first_release_says_so_and_lists_nothing() {
 }
 
 #[test]
-fn the_previous_release_is_the_nearest_rev_tag_that_is_an_ancestor() {
+fn the_previous_release_is_the_nearest_release_tag_that_is_an_ancestor() {
     let w = World::new();
     w.set(&constants(6, 2, 4));
     let a = w.commit("a");
     w.tag(&format!("rev-{}", &a[..7]));
-    w.tag("v-not-a-release");
     let b = w.commit("b");
     w.tag(&format!("rev-{}", &b[..7]));
     // A release tag on a side branch is not an ancestor of the rev and must not be picked.
@@ -232,6 +271,121 @@ fn the_previous_release_is_the_nearest_rev_tag_that_is_an_ancestor() {
             &head[..7]
         )),
         "a compare link from the previous tag to this rev: {text}"
+    );
+}
+
+/// ADR 0055 decision 3. Changed from the assertion of ADR 0031, which held that a `v`-prefixed tag is not a release:
+/// a `v<VERSION>` tag is a release now, and the nearest one of either kind is the previous.
+#[test]
+fn a_v_tag_counts_as_a_release_and_the_nearest_of_either_kind_is_the_previous() {
+    let w = World::new();
+    w.set(&constants(7, 2, 4));
+    w.set(&[cargo("0.1.0")]);
+    let a = w.commit("a");
+    w.tag(&format!("rev-{}", &a[..7]));
+    w.set(&[cargo("0.2.0")]);
+    w.commit("b");
+    w.tag("v0.2.0");
+    let head = w.commit("tip");
+    let text = w.text(&head);
+    assert!(
+        text.contains("Previous release: `v0.2.0`"),
+        "a v tag is a release, and the nearer one: {text}"
+    );
+    assert!(
+        text.contains(&format!(
+            "https://github.com/owner/name/compare/v0.2.0...{}",
+            &head[..7]
+        )),
+        "the compare link names the v tag: {text}"
+    );
+    assert!(!text.contains(&format!("rev-{}", &a[..7])), "{text}");
+    // The other way round: a rev tag nearer than a v tag is the previous.
+    let w = World::new();
+    w.set(&constants(7, 2, 4));
+    w.set(&[cargo("0.2.0")]);
+    w.commit("a");
+    w.tag("v0.2.0");
+    let b2 = w.commit("b");
+    w.tag(&format!("rev-{}", &b2[..7]));
+    let head = w.commit("tip");
+    assert!(
+        w.text(&head)
+            .contains(&format!("Previous release: `rev-{}`", &b2[..7])),
+        "{}",
+        w.text(&head)
+    );
+}
+
+#[test]
+fn the_previous_release_is_strictly_before_the_rev_so_a_releases_own_tag_is_never_its_predecessor()
+{
+    let w = World::new();
+    w.set(&constants(7, 2, 4));
+    w.set(&[cargo("0.2.0")]);
+    w.commit("a");
+    w.tag("v0.2.0");
+    w.set(&[cargo("0.3.0")]);
+    let rev = w.commit("the rev being released");
+    // The workflow notes a rev that is already tagged when a dispatch is retried: its own tag must not count.
+    w.tag("v0.3.0");
+    let text = w.text(&rev);
+    assert!(text.contains("Previous release: `v0.2.0`"), "{text}");
+    assert!(!text.contains("Previous release: `v0.3.0`"), "{text}");
+    let facts = w.facts(&rev);
+    assert!(facts.lines().any(|l| l == "previous_tag=v0.2.0"), "{facts}");
+}
+
+#[test]
+fn the_notes_open_with_the_version_the_rev_and_the_bump_class() {
+    for (previous, new, class) in [
+        ("0.1.0", "0.2.0", "minor"),
+        ("0.1.0", "0.1.1", "patch"),
+        ("0.1.0", "1.0.0", "major"),
+        ("0.1.0", "0.1.0", "none"),
+    ] {
+        let w = World::new();
+        w.set(&constants(7, 2, 4));
+        w.set(&[cargo(previous)]);
+        let a = w.commit("a");
+        w.tag(&format!("rev-{}", &a[..7]));
+        w.set(&[cargo(new)]);
+        let head = w.commit("tip");
+        let text = w.text(&head);
+        assert_eq!(
+            text.lines().next(),
+            Some(format!("Version {new} · rev `{}` · bump: {class}", &head[..7]).as_str()),
+            "{previous} -> {new}:\n{text}"
+        );
+        assert!(
+            text.contains("## Identity"),
+            "ADR 0031's sections follow, in their order: {text}"
+        );
+    }
+}
+
+#[test]
+fn the_opening_line_says_when_there_is_nothing_to_compare() {
+    // A first release.
+    let w = World::new();
+    w.set(&constants(7, 2, 4));
+    w.set(&[cargo("0.1.0")]);
+    let head = w.commit("root");
+    assert_eq!(
+        w.text(&head).lines().next(),
+        Some(format!("Version 0.1.0 · rev `{}` · bump: first release", &head[..7]).as_str())
+    );
+    // A rev whose Cargo.toml has no readable version: said, never guessed.
+    let (w, head) = released((7, 2, 4), (7, 2, 4));
+    assert_eq!(
+        w.text(&head).lines().next(),
+        Some(
+            format!(
+                "Version unknown · rev `{}` · bump: not comparable",
+                &head[..7]
+            )
+            .as_str()
+        )
     );
 }
 
@@ -401,6 +555,183 @@ fn a_range_with_no_merge_says_so() {
     );
 }
 
+// --- the facts file (ADR 0055 decision 4) ----------------------------------------------------------------
+
+#[test]
+fn the_facts_name_the_previous_tag_its_version_and_identity_moved() {
+    let (w, head) = released((6, 2, 4), (7, 2, 4));
+    let first = git(
+        &w.dir,
+        &["describe", "--tags", "--abbrev=0", &format!("{head}^")],
+    );
+    assert_eq!(
+        w.facts(&head),
+        format!("previous_tag={first}\nprevious_version=0.1.0\nidentity=moved\n"),
+        "a rev-* release counts as 0.1.0 whatever its files say"
+    );
+}
+
+#[test]
+fn the_facts_say_unmoved_when_nothing_that_decides_identity_moved() {
+    let (w, head) = released((7, 2, 4), (7, 2, 4));
+    assert!(w.facts(&head).lines().any(|l| l == "identity=unmoved"));
+}
+
+#[test]
+fn each_constant_that_moved_makes_identity_moved() {
+    for (old, new, what) in [
+        ((6, 2, 4), (7, 2, 4), "rules_v"),
+        ((7, 2, 4), (7, 3, 4), "the claim schema"),
+        ((7, 2, 4), (7, 2, 5), "the baseline envelope"),
+    ] {
+        let (w, head) = released(old, new);
+        assert!(
+            w.facts(&head).lines().any(|l| l == "identity=moved"),
+            "{what} moved"
+        );
+    }
+}
+
+#[test]
+fn the_facts_say_unknown_when_identity_could_not_be_compared_and_never_unmoved() {
+    let w = World::new();
+    w.set(&[("README.md", "x\n".to_owned())]);
+    let a = w.commit("a");
+    w.tag(&format!("rev-{}", &a[..7]));
+    w.set(&constants(7, 2, 4));
+    let head = w.commit("tip");
+    let facts = w.facts(&head);
+    assert!(facts.lines().any(|l| l == "identity=unknown"), "{facts}");
+    // Each constant on its own: an unreadable one is unknown even when the others are equal.
+    let w = World::new();
+    w.set(&[("src/canon.rs", "pub const RULES_V: u32 = 7;\n".to_owned())]);
+    let a = w.commit("a");
+    w.tag(&format!("rev-{}", &a[..7]));
+    w.set(&constants(7, 2, 4));
+    let head = w.commit("tip");
+    assert!(w.facts(&head).lines().any(|l| l == "identity=unknown"));
+}
+
+#[test]
+fn a_known_move_outranks_an_unreadable_constant() {
+    // rules_v moved, and the envelope could not be read at the previous release: it moved, which asks more of the bump.
+    let w = World::new();
+    w.set(&[(
+        "src/canon.rs",
+        "pub const RULES_V: u32 = 6;\npub const CLAIM_SCHEMA_V: u32 = 2;\n".to_owned(),
+    )]);
+    let a = w.commit("a");
+    w.tag(&format!("rev-{}", &a[..7]));
+    w.set(&constants(7, 2, 4));
+    let head = w.commit("tip");
+    assert!(w.facts(&head).lines().any(|l| l == "identity=moved"));
+}
+
+#[test]
+fn a_v_release_has_its_version_read_from_its_own_cargo_toml() {
+    let w = World::new();
+    w.set(&constants(7, 2, 4));
+    w.set(&[cargo("0.2.0")]);
+    w.commit("a");
+    w.tag("v0.2.0");
+    // The file moves on after the tag; the tag's own copy is the previous release's version.
+    w.set(&[cargo("0.4.0")]);
+    let head = w.commit("tip");
+    assert_eq!(
+        w.facts(&head),
+        "previous_tag=v0.2.0\nprevious_version=0.2.0\nidentity=unmoved\n"
+    );
+}
+
+#[test]
+fn a_rev_release_counts_as_0_1_0_even_when_its_cargo_toml_says_otherwise() {
+    let w = World::new();
+    w.set(&constants(7, 2, 4));
+    w.set(&[cargo("0.7.0")]);
+    let a = w.commit("a");
+    w.tag(&format!("rev-{}", &a[..7]));
+    let head = w.commit("tip");
+    assert!(
+        w.facts(&head)
+            .lines()
+            .any(|l| l == "previous_version=0.1.0"),
+        "{}",
+        w.facts(&head)
+    );
+}
+
+#[test]
+fn a_v_release_whose_version_cannot_be_read_leaves_its_version_empty_for_the_check_to_refuse() {
+    let w = World::new();
+    w.set(&constants(7, 2, 4));
+    w.commit("a");
+    w.tag("v0.2.0");
+    let head = w.commit("tip");
+    let facts = w.facts(&head);
+    assert!(facts.lines().any(|l| l == "previous_tag=v0.2.0"), "{facts}");
+    assert!(facts.lines().any(|l| l == "previous_version="), "{facts}");
+}
+
+#[test]
+fn a_first_release_has_no_previous_and_identity_unknown() {
+    let w = World::new();
+    w.set(&constants(7, 2, 4));
+    let head = w.commit("root");
+    assert_eq!(
+        w.facts(&head),
+        "previous_tag=\nprevious_version=\nidentity=unknown\n"
+    );
+}
+
+#[test]
+fn the_facts_file_is_optional_and_never_overwritten() {
+    let (w, head) = released((7, 2, 4), (7, 2, 4));
+    let (run, _) = w.notes(&head, "owner/name");
+    assert!(run.status.success());
+    assert!(
+        !w.dir.join("facts.txt").exists(),
+        "no --facts, no facts file"
+    );
+    // An existing facts file: exit 1, the facts untouched, and the notes not written either.
+    fs::remove_file(w.dir.join("notes.md")).expect("removes");
+    fs::write(w.dir.join("facts.txt"), "precious").expect("writes");
+    let run = Command::new("bash")
+        .arg(script())
+        .args(["--rev", &head, "--repo", "owner/name", "--out"])
+        .arg(w.dir.join("notes.md"))
+        .arg("--facts")
+        .arg(w.dir.join("facts.txt"))
+        .current_dir(&w.dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .expect("runs the script");
+    assert_eq!(
+        run.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(w.dir.join("facts.txt")).expect("reads"),
+        "precious"
+    );
+    assert!(!w.dir.join("notes.md").exists(), "nothing half-written");
+    // A usage error writes no facts either.
+    fs::remove_file(w.dir.join("facts.txt")).expect("removes");
+    let run = Command::new("bash")
+        .arg(script())
+        .args(["--rev", &head, "--repo", "not-a-repo-name", "--out"])
+        .arg(w.dir.join("notes.md"))
+        .arg("--facts")
+        .arg(w.dir.join("facts.txt"))
+        .current_dir(&w.dir)
+        .output()
+        .expect("runs the script");
+    assert_eq!(run.status.code(), Some(2));
+    assert!(!w.dir.join("facts.txt").exists());
+}
+
 #[test]
 fn a_title_is_treated_as_hostile_text() {
     let w = World::new();
@@ -476,4 +807,44 @@ fn an_existing_output_file_is_refused_and_left_untouched() {
         String::from_utf8_lossy(&run.stderr)
     );
     assert_eq!(fs::read_to_string(out).expect("reads"), "precious");
+}
+
+/// ADR 0055 decision 3 names `v*`, and the check must fail closed. A `v` tag that is not a plain `v<N>.<N>.<N>` (a
+/// stray `v1.0`, a `vendor-snapshot`) is still found as the previous release, and the version check refuses it by its
+/// name, whatever its `Cargo.toml` says (review 1 of PR #97). A narrower pattern would skip it silently and, with no
+/// other release before the rev, call the dispatch a first release and accept any version.
+#[test]
+fn a_stray_v_tag_is_found_as_the_previous_release_and_the_version_check_refuses_it() {
+    for stray in ["v1.0", "vendor-snapshot"] {
+        let w = World::new();
+        let mut files = constants(7, 2, 4).to_vec();
+        files.push(cargo("0.1.0"));
+        w.set(&files);
+        w.commit("a");
+        w.tag(stray);
+        let head = w.commit("tip");
+        let facts = w.facts(&head);
+        assert!(
+            facts.lines().any(|l| l == format!("previous_tag={stray}")),
+            "{stray} is found as the previous release:\n{facts}"
+        );
+        let facts_file = w.dir.join("facts-for-check.txt");
+        fs::write(&facts_file, &facts).expect("writes the facts");
+        let check = Command::new("bash")
+            .arg(script().with_file_name("release-version-check.sh"))
+            .args(["check", "--version", "0.2.0", "--facts"])
+            .arg(&facts_file)
+            .output()
+            .expect("runs the version check");
+        assert_ne!(
+            check.status.code(),
+            Some(0),
+            "{stray}: the version check must refuse, never accept it as a predecessor"
+        );
+        assert!(
+            String::from_utf8_lossy(&check.stderr).contains(&format!("'{stray}' is neither")),
+            "{stray}: refused by its name:\n{}",
+            String::from_utf8_lossy(&check.stderr)
+        );
+    }
 }

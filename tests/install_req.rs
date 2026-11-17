@@ -32,6 +32,8 @@ const SCRIPT: &str = "examples/install-req.sh";
 
 /// The rev the fixtures pin: a bare short SHA, the shape `built from` prints for a clean build.
 const REV: &str = "abc1234";
+/// The version the fixtures pin (ADR 0055 decision 7): it names the release the tarball is downloaded from, nothing else.
+const VERSION: &str = "0.2.0";
 /// The target the `uname` shim reports, so the test is the same on a Linux runner and on macOS.
 const TARGET: &str = "x86_64-unknown-linux-gnu";
 const TOKEN: &str = "tok_SECRET_9f3a1c77d2";
@@ -287,8 +289,10 @@ fn public_host(routes: Vec<(String, Vec<u8>)>) -> Server {
     }))
 }
 
+/// ADR 0055 decision 7 (changed from ADR 0025's `/rev-<REV>/`): the release directory is `v<VERSION>`, the asset
+/// keeps the rev in its name, so the tarball still says which commit it was built from.
 fn asset_path(rev: &str) -> String {
-    format!("/rev-{rev}/req-{rev}-{TARGET}.tar.gz")
+    format!("/v{VERSION}/req-{rev}-{TARGET}.tar.gz")
 }
 
 // ---------------------------------------------------------------------------
@@ -316,16 +320,22 @@ impl Drop for Scratch {
     }
 }
 
-/// The shipped script with its three pin-table lines replaced — the only edit an adopter makes.
+/// The shipped script with its pin-table lines replaced (the fixtures' `VERSION`) — the only edit an adopter makes.
 fn script_with_pins(rev: &str, linux: &str, darwin: &str) -> String {
+    script_with_all_pins(VERSION, rev, linux, darwin)
+}
+
+/// The same with the version too: ADR 0055 decision 7 makes the pin table four lines, `VERSION=` first.
+fn script_with_all_pins(version: &str, rev: &str, linux: &str, darwin: &str) -> String {
     let source = std::fs::read_to_string(repo_root().join(SCRIPT))
         .unwrap_or_else(|error| panic!("{SCRIPT} must exist and be readable: {error}"));
     let mut left = [
+        "VERSION=",
         "REV=",
         "SHA256_x86_64_unknown_linux_gnu=",
         "SHA256_aarch64_apple_darwin=",
     ];
-    let values = [rev, linux, darwin];
+    let values = [version, rev, linux, darwin];
     let mut out = String::new();
     for line in source.lines() {
         let mut replaced = false;
@@ -344,7 +354,7 @@ fn script_with_pins(rev: &str, linux: &str, darwin: &str) -> String {
     }
     assert!(
         left.iter().all(|key| key.is_empty()),
-        "{SCRIPT} must open with the pin table: REV=, SHA256_x86_64_unknown_linux_gnu=, \
+        "{SCRIPT} must open with the pin table: VERSION=, REV=, SHA256_x86_64_unknown_linux_gnu=, \
          SHA256_aarch64_apple_darwin= (one line each)"
     );
     out
@@ -680,8 +690,8 @@ fn c_an_unknown_rev_is_a_404_and_a_non_zero_exit() {
     failed(&outcome, "a rev with no release");
     assert!(outcome.stderr.contains("HTTP 404"), "{}", outcome.text());
     assert!(
-        outcome.stderr.contains(&format!("rev-{REV}")),
-        "the refusal names the release it looked for:\n{}",
+        outcome.stderr.contains(&format!("v{VERSION}")),
+        "the refusal names the release it looked for (changed from `rev-{REV}`, ADR 0055):\n{}",
         outcome.text()
     );
     assert_nothing_installed(&run.install_dir(), "a 404");
@@ -1148,6 +1158,59 @@ fn k_a_malformed_pin_is_refused_not_downloaded() {
     }
 }
 
+#[test]
+fn k_a_malformed_version_is_refused_before_any_request() {
+    // ADR 0055 decision 7: the version builds the download URL, so it is held to plain MAJOR.MINOR.PATCH like the rev
+    // is held to hex, and refused before a request is made.
+    for (version, what) in [
+        ("", "an empty VERSION"),
+        ("latest", "a word"),
+        ("0.2", "two parts"),
+        ("0.2.0.1", "four parts"),
+        ("v0.2.0", "a v prefix"),
+        ("0.2.0-rc1", "a pre-release"),
+        ("0.2.0+build", "build metadata"),
+        ("01.2.3", "a leading zero"),
+        ("0.2.x", "a letter"),
+        ("0.2.0/../../x", "a path"),
+        ("0.2.0?x=1", "a query"),
+        ("99999999999999999999.0.0", "a huge number"),
+    ] {
+        let scratch = Scratch::new(&format!("bad-version-{}", what.len()));
+        let (server, hash) = serving_good(REV);
+        let mut run = Run::new(&scratch, &server, &hash);
+        run.script = script_with_all_pins(version, REV, &hash, &"0".repeat(64));
+        let outcome = run.go();
+        failed(&outcome, what);
+        assert!(
+            outcome.stderr.contains("VERSION") && outcome.stderr.contains("pin table"),
+            "{what}: the refusal names VERSION and the pin table:\n{}",
+            outcome.text()
+        );
+        assert!(
+            server.requests().is_empty(),
+            "{what}: nothing is downloaded"
+        );
+        assert_nothing_installed(&run.install_dir(), what);
+    }
+}
+
+#[test]
+fn k_the_download_url_names_the_version_and_the_asset_names_the_rev() {
+    let scratch = Scratch::new("url");
+    let (server, hash) = serving_good(REV);
+    let run = Run::new(&scratch, &server, &hash);
+    let outcome = run.go();
+    assert_eq!(outcome.code, Some(0), "{}", outcome.text());
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    assert_eq!(
+        requests[0].path,
+        format!("/v{VERSION}/req-{REV}-{TARGET}.tar.gz"),
+        "…/download/v<VERSION>/req-<REV>-<TARGET>.tar.gz"
+    );
+}
+
 /// Every tool the script needs besides the SHA-256 one and the `uname` shim (and `cat`, which the
 /// fixture's stub `req` uses to print its version).
 const BASE_TOOLS: [&str; 13] = [
@@ -1224,7 +1287,9 @@ fn l_the_shipped_script_opens_with_the_pin_table_and_pins_its_transport() {
     let lines: Vec<&str> = source.lines().collect();
     assert_eq!(lines[0], "#!/usr/bin/env bash", "a bash script");
     let head: Vec<&str> = lines.iter().take(8).copied().collect();
+    // Four keys (changed from three, ADR 0055 decision 7): the version names the download, the rev and the hashes prove it.
     for key in [
+        "VERSION=",
         "REV=",
         "SHA256_x86_64_unknown_linux_gnu=",
         "SHA256_aarch64_apple_darwin=",

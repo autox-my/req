@@ -13,12 +13,20 @@ a build of the revision that introduced it.
 ## Install req
 
 req is deliberately not published to crates.io (`publish = false`), so **the rev is the provenance**: you pin a
-commit, never a version number. Two ways honour that: a **prebuilt, checksummed binary** for the
-rev (below; three releases exist so far) and a **build from source** at the rev ([From source](#from-source)).
+commit. A release also has a semantic version and is tagged `v<VERSION>` (ADR 0055), which names it for a reader and
+builds the download URL; it is never the proof. Two ways honour the pin: a **prebuilt, checksummed binary** for the
+rev (below; four releases exist so far) and a **build from source** at the rev ([From source](#from-source)).
 
-> **Status: three releases exist.** `rev-ec87808` (Linux x86_64 only), `rev-6b74f51` and `rev-aeaf987` (Linux x86_64
-> and macOS arm64, Apple silicon only; no Intel Mac, no native Windows: see [Windows](#windows)). For any other rev or
-> machine use [From source](#from-source); all three predate `req.claim/3`. All three Linux tarballs were built on a runner
+> **Status: four releases exist, all tagged `rev-<REV>`; no `v<VERSION>` release exists yet** (ADR 0055 decision 8
+> names 0.2.0 as the first). `rev-ec87808` (Linux x86_64 only), `rev-6b74f51` and `rev-aeaf987` (Linux x86_64
+> and macOS arm64, Apple silicon only; no Intel Mac, no native Windows: see [Windows](#windows)) predate `req.claim/3`;
+> for those use [From source](#from-source) if your corpus is at that schema. **`rev-3294a46` is the first release
+> that reads `req.claim/3`**, the schema `req init` writes, so the prebuilt path works for a corpus at that schema
+> without a toolchain: it holds both targets, built by the release workflow's own jobs (dispatched 2026-11-16). It is
+> not today's `main`: `req --version`'s `built from` says which commit a binary is, and a command added after that
+> rev is not in it. A `rev-*` release is downloaded from `rev-<REV>`, so take `examples/install-req.sh` from the
+> checkout at that rev (its pin table has no `VERSION`); the script on `main` downloads `v<VERSION>` releases only.
+> All three older Linux tarballs were built on a runner
 > whose libc is glibc 2.43 (each `.build-info` says so); read that line before you rely on one on an older distribution. The macOS tarball of `rev-6b74f51` was built on the
 > owner's machine, not on a runner; from the next release the workflow builds it (ADR 0032, `docs/releasing.md`). `install-req.sh` was run against `rev-ec87808` on GitHub-hosted
 > Ubuntu 22.04 (glibc 2.35), 24.04 and the latest image (2026-11-09): the right pin installed, `req --version` said
@@ -29,12 +37,13 @@ rev (below; three releases exist so far) and a **build from source** at the rev 
 > server, not yet against GitHub. It was run once against `rev-6b74f51`'s macOS tarball, on one macOS arm64 machine
 > (macOS 27.2, 2026-11-09, anonymous download, a clean environment): the pin installed, and `req --version` said
 > `built from 6b74f51` and `rules_v 7`. That rev's Linux tarball was checked against its `.sha256` but has not been
-> installed through the script, and the macOS binary has not been run on a second Mac.
+> installed through the script, and the macOS binary has not been run on a second Mac. The `v<VERSION>` form of the
+> script is tested against a local server only, not yet against GitHub.
 
 ### Prebuilt
 
 `examples/install-req.sh` (copy it out of req's checkout at the rev you pin) downloads the release
-`rev-<REV>` for your machine, verifies the tarball against a SHA-256 *you* pin, and installs nothing
+`v<VERSION>` for your machine, verifies the tarball against a SHA-256 *you* pin, and installs nothing
 that is not that rev. It needs `curl`, `tar` and a SHA-256 tool (`sha256sum` or `shasum`); a release
 is public (<https://github.com/autox-my/req/releases>) and needs no credential. The targets are `x86_64-unknown-linux-gnu` (Linux
 x86_64; the release's `.build-info` states the glibc it was built against) and `aarch64-apple-darwin`
@@ -48,16 +57,23 @@ bash install-req.sh
 `REQ_RELEASE_BASE`'s default host is its own to change; the `Authorization` header is sent **only** when
 that variable is set and non-empty.)
 
-Its first three lines are the **pin table**, the only thing you edit:
+Its first four lines are the **pin table**, the only thing you edit:
 
 ```bash
+VERSION=<version of the release, MAJOR.MINOR.PATCH>
 REV=<rev>
 SHA256_x86_64_unknown_linux_gnu=<64 hex digits>
 SHA256_aarch64_apple_darwin=<64 hex digits>
 ```
 
+`VERSION` is the release's tag without the `v`, and it builds the download URL
+(`…/download/v<VERSION>/req-<REV>-<TARGET>.tar.gz`) and nothing else. The proof is unchanged: the SHA-256 you pin and
+the `built from <REV>` line the installed binary prints, so a tag that moved could not change what is installed. The
+asset names keep the rev, so the tarball still says which commit it was built from.
+
 The file ships with **placeholders** in the table, and a placeholder, an empty pin or a malformed one
-is a refusal before any request is made. Take the values from the release's `.sha256` assets the first
+(a `VERSION` that is not plain `MAJOR.MINOR.PATCH` included) is a refusal before any request is made. Take the values from
+the release `v<VERSION>` and its `.sha256` assets the first
 time — **trust on first use of the maintainer's release**, stated as such — and from then on the pin
 in your repository is the authority: the install never reads the release's own checksum, because a
 checksum fetched from the place that could be tampered with proves transfer, never authenticity.
@@ -68,7 +84,7 @@ with `built from` equal to `REV`; only then does it install `req` (mode 0755) in
 `${REQ_INSTALL_DIR:-$HOME/.local/bin}` and print the two lines that decide the binary, `rules_v` and
 `built from`. Every refusal is a non-zero exit naming its cause — an unsupported platform, a missing
 pin, a download that is not HTTP 2xx (curl first retries a transient 408, 429 or 5xx up to three times on the same
-URL; an unknown rev is a 404, final; a wrong token on a private fork is a 401
+URL; an unknown release is a 404, final; a wrong token on a private fork is a 401
 or a 404), a hash that differs from the pin, an archive that is not exactly `req`, a
 binary that does not run, a `built from` that is not `REV` — and there is **no automatic fallback**
 to the source install: falling back on a mismatch would hide the very event the check exists to
@@ -907,10 +923,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      # The install (ADR 0025): a prebuilt, checksummed binary, pinned in THIS file. Edit the three
-      # pin lines at the top of the script below -- the rev and the SHA-256 of each target's tarball;
-      # take them from the `.sha256` assets of the release the first time, and this file is the
-      # authority from then on. The release is public, so the install needs no credential. The `env:`
+      # The install (ADR 0025): a prebuilt, checksummed binary, pinned in THIS file. Edit the four
+      # pin lines at the top of the script below -- the version and the rev of the release and the SHA-256
+      # of each target's tarball; take them from the release `v<VERSION>` and its `.sha256` assets the first
+      # time, and this file is the authority from then on (the version names the download, the rev and the
+      # hash prove it). The release is public, so the install needs no credential. The `env:`
       # line below matters only to a private fork or mirror, which sets the `REQ_RELEASE_TOKEN` secret to
       # a token that can read its release (an unset secret is an empty value, and then no
       # Authorization header is sent). A refusal (wrong hash, unknown rev, wrong binary) fails this
@@ -919,6 +936,7 @@ jobs:
         env:
           REQ_RELEASE_TOKEN: ${{ secrets.REQ_RELEASE_TOKEN }}
         run: |
+          VERSION='<placeholder: the version of the release you pin, e.g. 0.2.0 -- the tag is v<VERSION>; fill in after the first release>'
           REV='<placeholder: the rev of the release you pin, e.g. abc1234 -- fill in after the first release>'
           SHA256_x86_64_unknown_linux_gnu='<placeholder: 64 hex digits from the release asset req-REV-x86_64-unknown-linux-gnu.tar.gz.sha256>'
           SHA256_aarch64_apple_darwin='<placeholder: 64 hex digits from the release asset req-REV-aarch64-apple-darwin.tar.gz.sha256>'
@@ -948,6 +966,14 @@ jobs:
           esac
 
           # A placeholder, a typo or an empty pin is a refusal before any request is made.
+          # VERSION is plain MAJOR.MINOR.PATCH (no v, no pre-release, no leading zero), as REV is bare hex: it reaches the URL.
+          version_re='^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$'
+          case $VERSION in
+            '' | *[!0-9.]*) fail "the pin table has no usable VERSION (plain MAJOR.MINOR.PATCH, e.g. 0.2.0); fill it in from the release's tag v<VERSION>" ;;
+          esac
+          if ! [[ $VERSION =~ $version_re ]]; then
+            fail "the pin table has no usable VERSION (plain MAJOR.MINOR.PATCH, e.g. 0.2.0); fill it in from the release's tag v<VERSION>"
+          fi
           case $REV in
             '' | *[!0-9a-f]*) fail "the pin table has no usable REV (a bare lower-case hex SHA of 7 to 40 digits); fill it in from the release" ;;
           esac
@@ -987,7 +1013,7 @@ jobs:
           base=${install_base:-https://github.com/autox-my/req/releases/download}
           proto=${install_proto:-=https}
           asset=req-$REV-$target.tar.gz
-          url=$base/rev-$REV/$asset
+          url=$base/v$VERSION/$asset
 
           # The header exists only when a token was given (a public release needs none). It is built by the
           # shell builtin `printf` and read by curl from stdin: the token is never in an argument list (`ps`),
@@ -1005,7 +1031,7 @@ jobs:
               fail "HTTP $code for $url: the host refused the request; if the release is private, check that REQ_RELEASE_TOKEN is valid and can read it, otherwise unset REQ_RELEASE_TOKEN"
               ;;
             404)
-              fail "HTTP 404 for $url: there is no release rev-$REV for $target, or (for a private fork) the token cannot see it; check REV and REQ_RELEASE_TOKEN"
+              fail "HTTP 404 for $url: there is no release v$VERSION for $target, or (for a private fork) the token cannot see it; check VERSION, REV and REQ_RELEASE_TOKEN"
               ;;
             *)
               fail "HTTP $code (curl exit $status) for $url"

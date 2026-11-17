@@ -9,7 +9,7 @@ entry only. Both say so in this commit. The commit stays the identity:
 `built from`, the pinned rev and the pinned SHA-256 are unchanged, and nothing here moves an address. No `RULES_V` bump, no
 claim-schema change, no Baseline envelope change.
 
-**Status: proposed.** The owner ratifies it by merging the pull request that carries it. Asked for by the owner on
+**Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-16, PR #96). Asked for by the owner on
 2026-11-16, after the fourth release (`rev-3294a46`): "`--version` always shows 0.1.0 … we should also use the versioning
 like other people." Date proposed: 2026-11-16; revised three times the same day after review (PR #96).
 
@@ -82,9 +82,10 @@ Two facts shape the decision:
    The version is compiled into the binary, since `req --version` prints it. But it reaches no address, no Baseline
    manifest and no projection header (the address is computed over the statement's canonical form; the Baseline envelope
    carries `rules_v`, the selection and the claims). The one checked file it moves is the SBOM: its serial is derived
-   from the lock file's digest, and it records req's version and package URL. It is regenerated in the same pull request. So changing it is not a Tier-1 rules bump. A test pins the
-   exception: a version-bump commit whose `Cargo.lock` diff touches any other package fails it. The exception stays one
-   entry wide.
+   from the lock file's digest, and it records req's version and package URL. It is regenerated in the same pull request. So changing it is not a Tier-1 rules bump. A check pins the
+   exception: `release-version-check.sh lock-exception` fails when a `Cargo.lock` diff touches any other package. A test
+   proves the check, and the bump PR runs it (falsification 2 says why the gate cannot). The exception stays one entry
+   wide.
 7. **The installer pins the version for the download and the rev and SHA-256 for the proof.** `examples/install-req.sh`
    gains `VERSION` in its pin table, used only to build the download URL (`…/download/v<VERSION>/req-<REV>-<TARGET>.tar.gz`).
    The SHA-256 and `built from <REV>` checks are unchanged, so a moved tag cannot change what is installed.
@@ -130,6 +131,8 @@ Two facts shape the decision:
 
 This decision is wrong if any of these is observed:
 1. A release whose version says patch while `release-notes.sh` reports identity moved or unknown.
-2. A version-bump commit that changes any `Cargo.lock` entry other than req's own and still passes the gate.
+2. A version-bump pull request that changes any `Cargo.lock` entry other than req's own and is merged as a version bump.
+   The gate does not run this check, because a deliberate dependency bump also changes `Cargo.lock`. The runbook's
+   `release-version-check.sh lock-exception` step and the owner's review of the bump PR are what catch it.
 3. An install that succeeds although the downloaded binary's `built from` differs from the pinned rev.
 4. A version bump that moves an address, a Baseline manifest or a projection header.

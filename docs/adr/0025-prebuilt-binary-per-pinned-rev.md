@@ -1,6 +1,6 @@
 # 0025. A prebuilt, checksummed binary per pinned rev; the install downloads and fails closed
 
-Amended by ADR 0029 §4–§5, ADR 0031 (the release notes), ADR 0032 (the macOS build) and ADR 0035 (the build is reproducible on one builder; the *Consequences* line "We do not claim reproducible builds" no longer holds for releases made after it) and ADR 0037 (the `build-info` asset is no longer "informational only": it records the proofs the build ran, as self-attestation), and ADR 0055 (proposed: a release is tagged `v<VERSION>`, a semantic version beside the rev; the assets keep `<REV>` in their names; the adopter's pin also names the version, for the download URL only; a re-dispatch may finish a release made for the same rev).
+Amended by ADR 0029 §4–§5, ADR 0031 (the release notes), ADR 0032 (the macOS build) and ADR 0035 (the build is reproducible on one builder; the *Consequences* line "We do not claim reproducible builds" no longer holds for releases made after it) and ADR 0037 (the `build-info` asset is no longer "informational only": it records the proofs the build ran, as self-attestation), and ADR 0055 (a release is tagged `v<VERSION>`, a semantic version beside the rev; the assets keep `<REV>` in their names; the adopter's pin also names the version, for the download URL only; a re-dispatch may finish a release made for the same rev).
 
 **Status: accepted** — ratified by the owner's merge of the pull request that carries it (2026-11-05, former Forgejo PR #116); issue #65
 (opened from the Sedia evaluation). Date proposed: 2026-11-05. **Adds an install path; removes none.**
@@ -90,8 +90,8 @@ engine's claim operations stay offline (REQ-0012), the Baseline is still signed 
 ## Rejected
 
 - **Publish to npm, PyPI or crates.io.** Rejected for #65, not forever: it needs a licence and a visibility
-  decision for a private, unlicensed repository, a unique version per publish (req's `0.1.0` is the same on every
-  commit by design), and a name (`req` is taken on npm and PyPI). A package wrapper over these same tarballs is the
+  decision for a private, unlicensed repository, a unique version per publish (one version covers many commits, by
+  design), and a name (`req` is taken on npm and PyPI). A package wrapper over these same tarballs is the
   natural later step when the TypeScript porcelain of ADR 0009 arrives; it would be its own ADR.
 - **Fall back to the source build when the download fails.** See §4.
 - **Read the checksum from the release in CI.** See §3.

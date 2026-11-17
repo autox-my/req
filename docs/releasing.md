@@ -1,22 +1,35 @@
 # Releasing a prebuilt req
 
 The owner's runbook for [ADR 0025](adr/0025-prebuilt-binary-per-pinned-rev.md), amended by
-[ADR 0029](adr/0029-req-is-published-on-github-under-apache-2.0.md) §4–§5: one release per pinned rev, with a
-checksummed tarball per supported target, on GitHub (<https://github.com/autox-my/req/releases>). The adopter's
+[ADR 0029](adr/0029-req-is-published-on-github-under-apache-2.0.md) §4–§5 and
+[ADR 0055](adr/0055-a-release-carries-a-semantic-version-beside-its-rev.md): one release per version, tagged `v<VERSION>`,
+for one pinned rev, with a checksummed tarball per supported target, on GitHub (<https://github.com/autox-my/req/releases>). The adopter's
 side is `examples/install-req.sh` and [`docs/adopting.md`](adopting.md) § *Install req*; this page is the side that
 cuts the release. Nothing here changes req: the binary gains no command and no network client, and nothing is
 released until a person asks.
 
-**Status.** `.github/workflows/release.yml` has been dispatched twice, on 2026-11-09: for `ec87808`
+**Status.** Four releases exist: `rev-ec87808`, `rev-6b74f51`, `rev-aeaf987` and `rev-3294a46`.
+`.github/workflows/release.yml` was dispatched on 2026-11-09 for `ec87808`
 (<https://github.com/autox-my/req/actions/runs/42568766890>) and for `6b74f51`
-(<https://github.com/autox-my/req/actions/runs/42622634900>). Both runs succeeded, and each release holds the three
-Linux assets (the tarball's SHA-256 matches the `.sha256` asset). `rev-6b74f51` also holds the three macOS assets, built
-with `scripts/build-release.sh` on the owner's machine and attached with the upload script of the macOS path below (its
-first use). `examples/install-req.sh` was run against `rev-ec87808` on Ubuntu 22.04, 24.04 and latest runners (the floor
-note below) and against `rev-6b74f51`'s macOS tarball on one macOS arm64 machine. Not yet exercised: the
-no-overwrite refusal (a second dispatch for the same rev), a macOS binary on a second machine, and the workflow's own
-macOS job and release notes (ADRs 0031 and 0032: their first real run is the next dispatch, which is also why the
-publishing script is run against a fake `gh` in `tests/release_publish.rs`). Intel Mac and Windows
+(<https://github.com/autox-my/req/actions/runs/42622634900>), and on 2026-11-16 for `3294a46`. The
+first two each hold the three Linux assets (the tarball's SHA-256 matches the `.sha256` asset); `rev-6b74f51` also holds the three
+macOS assets, built with `scripts/build-release.sh` on the owner's machine and attached with the upload script of the macOS
+path below (its first use). The **2026-11-16 dispatch of `rev-3294a46` was the first real run of the workflow's own macOS job and
+of the generated release notes** (ADRs 0031 and 0032). A **duplicate dispatch for the same rev** the same day exercised the
+no-overwrite refusal: the publish job refused, and the release was left unchanged (run 43868208448,
+<https://github.com/autox-my/req/actions/runs/43868208448>). A first dispatch can also **sit queued for about half an hour**
+before a runner takes it; wait, and do not dispatch again. `examples/install-req.sh` was run against `rev-ec87808` on Ubuntu 22.04, 24.04
+and latest runners (the floor note below) and against `rev-6b74f51`'s macOS tarball on one macOS arm64 machine.
+
+All four releases are tagged `rev-<REV>`. ADR 0055 (accepted 2026-11-16) changes the next one: it is tagged `v<VERSION>`, with
+the version read from the rev's `Cargo.toml`, and the workflow refuses a version that does not follow from the previous
+release. **That path has been run only against a fake `gh` and fixtures** (`tests/release_publish.rs`,
+`tests/release_version.rs`), never against GitHub: no `v<VERSION>` release exists yet, and the pull request that
+implements it does not bump the version, so a dispatch at that commit fails closed at the version check (0.1.0 is not greater than
+the 0.1.0 that `rev-3294a46` counts as). The one call that touches GitHub was tried read-only on 2026-11-17: `gh api repos/autox-my/req/commits/<tag> --jq .sha`
+answered the commit of an existing tag (`rev-3294a46`) and HTTP 422 "No commit found for SHA" for an absent one, which is what the
+publish job's lookup expects. Not yet exercised on GitHub: a macOS binary on a second machine and finishing a release whose
+publish died before the upload. Intel Mac and Windows
 are not built; a Windows adopter runs the Linux tarball under WSL2 (`docs/adopting.md`, *Windows*). `tests/release_workflow.rs` pins the workflow's text and shape (the trigger, the
 permissions, the no-overwrite rule). The workflow fails closed, so a misconfiguration is a red run, never a
 half-published release you cannot tell from a good one.
@@ -29,6 +42,40 @@ checksums stay true, so there is no reason to make more of them than there are p
 inside the build script uses the trust anchor of the commit it builds (ADR 0010), and a commit off `main`
 could carry its own key.
 
+## Bump the version
+
+A release carries the version its rev declares in `Cargo.toml` (ADR 0055), so the version changes in a pull request of its own,
+merged **before** the dispatch. That pull request changes `Cargo.toml`'s `version`, req's own package entry in `Cargo.lock`
+and the regenerated `docs/sbom.cdx.json`, and nothing else; no prose document quotes the number, so none needs editing.
+
+1. **Pick the class** (ADR 0055 decision 2). While the major number is 0, a **minor** bump when identity moved (`RULES_V`,
+   the claim schema or the Baseline envelope) or a command, a flag or an exit code was added or changed; a **patch** bump
+   for anything else. A major bump below 1.0 is refused by the workflow until the ADR that decides 1.0 exists. The class is
+   your declaration for a changed command, flag or exit code: history cannot show that, so the pull request body says which
+   class and why, and the owner who merges it is the check.
+2. **Ask the script what it will say.** In a clone with the tags fetched (`git fetch --tags`), on the rev you mean to release:
+
+   ```bash
+   d=$(mktemp -d)        # the script never overwrites, so each run gets a fresh directory
+   bash scripts/release-notes.sh --rev <rev> --repo autox-my/req --out "$d/notes.md" --facts "$d/facts"
+   cat "$d/facts"        # previous_tag, previous_version, identity (moved | unmoved | unknown)
+   bash scripts/release-version-check.sh check --version <NEW> --facts "$d/facts"
+   ```
+
+   Exit 0 prints `version=` and `bump=`; exit 1 prints the refusal the workflow would. A `rev-*` release counts as 0.1.0, and a
+   `v*` release's version is read from its own `Cargo.toml`. Identity `unknown` (a value that could not be read) never lets a
+   patch bump through.
+3. **Make the change,** edit `Cargo.toml`, run `cargo build` so `Cargo.lock` follows, then `python3 tools/sbom.py --out
+   docs/sbom.cdx.json`. Before you push, check the lock exception (ADR 0055 decision 6): a version bump touches req's own
+   entry and no other, so it is not a rules bump.
+
+   ```bash
+   git show origin/main:Cargo.lock > /tmp/main.lock
+   bash scripts/release-version-check.sh lock-exception /tmp/main.lock Cargo.lock   # exit 0, or the entry that differs
+   ```
+
+4. Run `scripts/check.sh` in full, open the pull request, and merge it. The rev to release is then on `main` with that version.
+
 ## Dispatch `release.yml`: Linux and macOS together
 
 1. Nothing to provision. The workflow publishes with its own `GITHUB_TOKEN`; no repository secret exists or is
@@ -36,7 +83,11 @@ could carry its own key.
 2. Actions, *Release*, *Run workflow*, **from `main`**, input `rev` = the commit (a SHA or a ref on `main`).
    The workflow and `scripts/build-release.sh` come from the dispatched ref; the rev is built from a clean
    copy of itself.
-3. The **build** job (`contents: read`, it runs the rev's code) checks the runner (C linker, `minisign`,
+3. The **build** job (`contents: read`, it runs the rev's code) first writes the release notes and, beside them, the facts of the
+   previous release, then **reads the version from the rev with `git show <rev>:Cargo.toml`** (it never checks the rev out)
+   and judges it with `scripts/release-version-check.sh`: it fails, before anything is built or uploaded and naming the
+   reason, when the version is not greater than the previous release's, when identity moved and the required number did
+   not rise, when identity is `unknown` and only the patch rose, or for a major bump below 1.0. Then it checks the runner (C linker, `minisign`,
    `rustup` with the toolchain the rev pins), runs `scripts/build-release.sh --rev <full sha> --out …`, then
    `scripts/reproduce.sh --rev <full sha> --against <the tarball it just wrote>` (ADR 0035: a binary the runner cannot
    derive again from the rev fails the job, and nothing is published), and hands the three assets to the next job as an
@@ -44,17 +95,30 @@ could carry its own key.
    Apple-silicon runner) takes the SHA the Linux job resolved, re-checks that it is on `main`, and runs the same
    script for `aarch64-apple-darwin`; its three assets travel as a second artifact (ADR 0032).
 4. The **publish** job (`contents: write`, the only job that holds the token, and it checks out and runs none
-   of the rev's code) re-checks the assets of **both** targets, refuses unless all six names are free, creates the
-   release `rev-<REV>` if it is absent and uploads, Linux then macOS, each target's `….build-info`, `….tar.gz.sha256`
-   and `….tar.gz`, in that order, with `gh release upload`. A release has both targets or none.
-   The release body is the notes `scripts/release-notes.sh` wrote in the build job (ADR 0031): the previous release and a
+   of the rev's code) re-checks the assets of **both** targets and the version the build job handed over, and binds the tag
+   `v<VERSION>` to the rev on every path: if that tag exists it must point at the rev being published (its commit, read with
+   `gh api`), or the run fails. An existing release is finished only if it is not a draft and holds none of the six asset
+   names (a publish that died before the upload can be retried); a draft, or an asset already there, fails the run. A new
+   release is created at the rev. Then it refuses unless all six names are free and uploads, Linux then macOS, each target's
+   `….build-info`, `….tar.gz.sha256` and `….tar.gz`, in that order, with `gh release upload`. A release has both targets or none.
+   The asset names keep the rev (`req-<REV>-<TARGET>.*`): the commit stays the identity, the version is a name.
+   The release body is the notes `scripts/release-notes.sh` wrote in the build job (ADR 0031): the version, the rev and the
+   bump class, the previous release (the nearest `rev-*` or `v*` tag strictly before the rev; a `v` tag that is not a plain
+   `v<X.Y.Z>` blocks the dispatch until it is deleted or renamed) and a
    compare link, **whether identity moved** (`RULES_V`, the claim schema, the Baseline envelope, and what an adopter does if
    one did) and the pull requests merged since, grouped by prefix. A release that already exists keeps its body: the
    workflow never edits one. To preview the notes before you dispatch, run
-   `bash scripts/release-notes.sh --rev <rev> --repo autox-my/req --out /tmp/notes.md` in a clone with the tags fetched.
-5. The last lines of the log are `released rev-<REV>` and one `pin (<target>): REV=… SHA256=… TARGET=…` line per
+   `bash scripts/release-notes.sh --rev <rev> --repo autox-my/req --out "$(mktemp -d)/notes.md"` in a clone with the tags
+   fetched.
+5. The last lines of the log are `released v<VERSION>` and one `pin (<target>): VERSION=… REV=… SHA256=… TARGET=…` line per
    target. Use those: the build job's log also carries the script's own `pin:` line, printed before the upload, which
    after a half-failed upload names a hash that was never published.
+
+**A second dispatch for the same version.** It may finish a release, never replace one (ADR 0055 decision 5). If the first
+publish died before the upload (the release exists, is not a draft and holds none of the six names), dispatch again for the
+same rev: the tag already points at it and the assets are uploaded. If the first run uploaded anything, or the release is a
+draft, or the tag points at another commit, the second run fails and says which; that refusal is the point (the duplicate
+dispatch of `rev-3294a46` was refused this way, with the release unchanged). Never move a tag by hand to make a run pass.
 
 The script refuses to write anything unless the binary says `built from` the bare rev, `req baseline
 --verify baselines/air-gapped.json` prints `[VERIFIED]`, `req bench` passes its FMR gate and `req selftest` passes (exit 1 names
@@ -111,26 +175,28 @@ scripts/build-release.sh --rev <rev> --out "$(mktemp -d)"
 
 It builds in a clean copy, proves the binary exactly as above, writes
 `req-<REV>-aarch64-apple-darwin.{tar.gz,tar.gz.sha256,build-info}` into the directory and prints the `pin:`
-line. Attach the three files to the release `rev-<REV>` with the `gh` CLI (logged in as a person who may write to
-the repository), **refusing a name that already exists**, tarball last:
+line. Attach the three files to the release with the `gh` CLI (logged in as a person who may write to
+the repository), **refusing a name that already exists**, tarball last. The release is `v<VERSION>` for a version tag
+and `rev-<REV>` for the four releases made before ADR 0055; set `TAG` to its name:
 
 ```bash
 set -euo pipefail   # save this as a file and run it with `bash`: a failed upload must stop it, not scroll past
 REPO=autox-my/req
 REV=<REV>; FULL=<full sha>; OUT=<the --out directory>; T=aarch64-apple-darwin
+TAG=<v<VERSION>, or rev-<REV> for a release made before ADR 0055>
 
 # The release for this rev: reuse it if the Linux dispatch made it, create it otherwise.
-gh release view "rev-$REV" --repo "$REPO" >/dev/null 2>&1 ||
-  gh release create "rev-$REV" --repo "$REPO" --target "$FULL" --title "rev-$REV" \
+gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
+  gh release create "$TAG" --repo "$REPO" --target "$FULL" --title "$TAG" \
     --notes "Prebuilt req for the pinned rev $REV (ADR 0025). Pin the .sha256 of the tarball in your own repository."
 
 # Refuse a name that is already there, for all three, before uploading any.
-gh release view "rev-$REV" --repo "$REPO" --json assets --jq '.assets[].name' >"$OUT/.listed"
+gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' >"$OUT/.listed"
 for n in req-$REV-$T.build-info req-$REV-$T.tar.gz.sha256 req-$REV-$T.tar.gz; do
   ! grep -Fxq -- "$n" "$OUT/.listed" || { echo "$n already exists: refusing to replace it" >&2; exit 1; }
 done
 for n in req-$REV-$T.build-info req-$REV-$T.tar.gz.sha256 req-$REV-$T.tar.gz; do
-  gh release upload "rev-$REV" --repo "$REPO" "$OUT/$n" || { echo "uploading $n failed: the release is incomplete" >&2; exit 1; }
+  gh release upload "$TAG" --repo "$REPO" "$OUT/$n" || { echo "uploading $n failed: the release is incomplete" >&2; exit 1; }
   echo "uploaded $n"
 done
 ```
@@ -143,9 +209,11 @@ simply reused, and the macOS names differ from the Linux ones, so the two paths 
 
 ## What to pin in an adopter afterwards
 
-The `pin:` line each path prints: `REV=<REV> SHA256=<hex> TARGET=<target>`. In the adopter's copy of
-`examples/install-req.sh`, `REV=` takes the rev and `SHA256_<target with underscores>=` takes the hash for
-that target. That first copy is trust on first use of the maintainer's release; from then on the pin in the
+The `pin (<target>):` line the workflow prints: `VERSION=<VERSION> REV=<REV> SHA256=<hex> TARGET=<target>` (the script's
+own `pin:` line, which the macOS path prints, has no `VERSION`: it does not know the tag). In the adopter's copy of
+`examples/install-req.sh`, `VERSION=` takes the version (it builds the download URL, `…/download/v<VERSION>/…`, and nothing
+else), `REV=` takes the rev and `SHA256_<target with underscores>=` takes the hash for that target. A release made before
+ADR 0055 is `rev-<REV>`, and its installer is the one at that rev, which has no `VERSION` line. That first copy is trust on first use of the maintainer's release; from then on the pin in the
 adopter's repository is the authority, and the install never reads the release's own `.sha256` asset. Run the
 adopter's job once and check that `req --version` reports `built from <REV>`.
 
@@ -160,6 +228,9 @@ only when that variable is set and non-empty.
   and no `gh release edit`, and `tests/release_workflow.rs` fails if one appears.)
 - **Release a `-dirty`, `unknown` or `-cleanliness-unknown` binary,** or one that does not print `built from`
   followed by the rev it is named for. The script refuses; do not route around it with a hand-made tarball.
+- **Re-point or re-use a version tag.** `v<VERSION>` names one commit's tarballs for good; a version that was released is
+  never released again with other bytes (the workflow fails if the tag points anywhere but the rev). A wrong release is
+  superseded by a higher version.
 - **Release on every merge,** or from a trigger other than a person's dispatch.
 - **Give the job that runs the rev's code a write token.** `contents: write` belongs to the publishing job
   alone; the build job runs the rev's own code and holds `contents: read`.

@@ -19,17 +19,25 @@
 #            never receives it. It runs the rev's code, so it holds no write permission and no secret.
 #   publish  `contents: write`, and ONLY this job. It checks out nothing and runs none of the rev's
 #            code: it takes the three assets as an artifact, re-checks them, creates the release
-#            `rev-<REV>` if it is absent and uploads the assets with the `gh` CLI, authenticated by
-#            this workflow's own GITHUB_TOKEN. **An asset name that already exists on the release is
-#            an error, never a replacement** (no `--clobber`, no delete, no edit): a checksum that has
-#            been pinned in an adopter's repository must stay true. It looks before it writes and
-#            counts afterwards. The tarball goes last, so a visible tarball means the other two are
-#            there; if a run dies before it, nothing is pinnable yet, and docs/releasing.md says what
+#            `v<VERSION>` if it is absent and uploads the assets with the `gh` CLI, authenticated by
+#            this workflow's own GITHUB_TOKEN (ADR 0055: the tag is the version, the asset names keep the rev).
+#            The tag is bound to the rev on every path: a tag that exists must point at the rev being published
+#            (read with `gh api`, the tag's own commit), or the run fails. **An asset name that already exists on
+#            the release is an error, never a replacement** (no `--clobber`, no delete, no edit): a checksum that
+#            has been pinned in an adopter's repository must stay true. A re-dispatch for the same version may
+#            finish a release (it exists, is not a draft and holds none of the six names), never replace one. It
+#            looks before it writes and counts afterwards. The tarball goes last, so a visible tarball means the
+#            other two are there; if a run dies before it, nothing is pinnable yet, and docs/releasing.md says what
 #            to clear.
 #
 # The release notes (ADR 0031) are made in the build job, by main's scripts/release-notes.sh, from git history
 # alone, and travel to the publish job as a second artifact. The publish job only reads that file into
 # `gh release create --notes-file`; it never edits a release, so an existing release keeps the notes it has.
+#
+# The version (ADR 0055) is read from the rev with `git show <rev>:Cargo.toml` by scripts/release-version-check.sh,
+# which never checks the rev out, and is judged against the facts release-notes.sh wrote beside the notes (the
+# previous release, its version, whether identity moved). A refusal fails the build job before anything is built
+# or uploaded. The one thing the publish job receives from that is the version, as the build job's output.
 #
 # No repository secret is configured or read: GITHUB_TOKEN is the one credential, minted per run.
 # No `continue-on-error` and no `|| true` anywhere: a failed step fails the release.
@@ -62,6 +70,7 @@ jobs:
       contents: read
     outputs:
       full: ${{ steps.resolve.outputs.full }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: checkout, with the history the rev is resolved in
         uses: actions/checkout@v4
@@ -127,8 +136,29 @@ jobs:
           fi
           # Reads git history only (tags came with fetch-depth: 0). A failure here fails the release
           # before anything is built: notes that cannot be written are not skipped.
-          mkdir "$RUNNER_TEMP/release-notes"
-          bash scripts/release-notes.sh --rev "$REL_FULL" --repo "$GITHUB_REPOSITORY" --out "$RUNNER_TEMP/release-notes/notes.md"
+          mkdir "$RUNNER_TEMP/release-notes" "$RUNNER_TEMP/release-facts"
+          # The facts (previous release, its version, whether identity moved) go beside the notes, in a directory
+          # that is not uploaded: only the version check reads them.
+          bash scripts/release-notes.sh --rev "$REL_FULL" --repo "$GITHUB_REPOSITORY" --out "$RUNNER_TEMP/release-notes/notes.md" --facts "$RUNNER_TEMP/release-facts/facts"
+
+      - name: the version the rev declares is checked against the previous release
+        id: version
+        run: |
+          set -eu
+          if [ -z "${REL_FULL:-}" ]; then
+            echo "::error::REL_FULL is not set — the runner did not carry $GITHUB_ENV to this step"
+            exit 1
+          fi
+          # ADR 0055 decision 4. The rule lives in scripts/release-version-check.sh (tests/release_version.rs runs it):
+          # it reads the rev's version with `git show <rev>:Cargo.toml`, never a checkout of the rev, and refuses a
+          # version that is not greater than the previous release's, a number that did not rise as identity requires,
+          # a patch bump when identity is unknown, and a major bump below 1.0. Before anything is built or uploaded.
+          if ! out="$(bash scripts/release-version-check.sh check --rev "$REL_FULL" --facts "$RUNNER_TEMP/release-facts/facts")"; then
+            echo "::error::release-version-check.sh refused this release (the reason is the line above): change the version in a pull request, merge it, and dispatch again; if the previous release named is a stray v tag (neither rev-<sha> nor v<X.Y.Z>), delete or rename that tag instead"
+            exit 1
+          fi
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" >> "$GITHUB_OUTPUT"
 
       - name: the C toolchain the build scripts link against
         run: |
@@ -398,11 +428,12 @@ jobs:
           name: release-notes
           path: ${{ runner.temp }}/release-notes
 
-      - name: publish the release rev-REV, refusing to replace any asset
+      - name: publish the release v<VERSION>, refusing to replace any asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           REL_FULL: ${{ needs.build.outputs.full }}
+          REL_VERSION: ${{ needs.build.outputs.version }}
           RELEASE_OUT: ${{ runner.temp }}/release-out
           NOTES_FILE: ${{ runner.temp }}/release-notes/notes.md
         run: |
@@ -426,6 +457,14 @@ jobs:
               exit 1
               ;;
           esac
+          # The version names the tag and reaches an API path, so it is held to plain MAJOR.MINOR.PATCH here too: the
+          # build job's script judged it, and this job takes nothing it handed over on trust (it runs no script).
+          semver_re='^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$'
+          if ! [[ ${REL_VERSION:-} =~ $semver_re ]]; then
+            echo "::error::the build job did not report a usable version (plain MAJOR.MINOR.PATCH)"
+            exit 1
+          fi
+          tag="v$REL_VERSION"
 
           # Both targets, each checked the same way, before the first write. A release has both or none.
           all_names=""
@@ -450,7 +489,6 @@ jobs:
               echo "::error::'$rev' is not 7 to 40 hex digits"
               exit 1
             fi
-            tag="rev-$rev"
             # The tarball goes last: a visible tarball means the other two assets are already there.
             names="req-$rev-$target.build-info req-$rev-$target.tar.gz.sha256 $tarball"
             for name in $names; do
@@ -497,16 +535,37 @@ jobs:
               exit 1
             fi
             all_names="$all_names $names"
-            pin_lines="${pin_lines}pin ($target): REV=$rev SHA256=$sum TARGET=$target"$'\n'
+            pin_lines="${pin_lines}pin ($target): VERSION=$REL_VERSION REV=$rev SHA256=$sum TARGET=$target"$'\n'
           done
 
           work="$(mktemp -d)"
           trap 'rm -rf "$work"' EXIT
 
-          # The release for this rev: look it up, create it only when `gh` says it is absent. Any other
-          # failure to look is a failure, not a reason to create. A draft is refused: an asset uploaded
-          # into a draft is invisible to adopters, which would break "a visible tarball means the other
-          # two are there", and this workflow never edits a release.
+          # The tag is bound to the rev on every path (ADR 0055 decision 5). A version tag does not spell its commit,
+          # so its commit is read from the API (the tag's own commit, never the release's creation metadata) and must
+          # be the rev being published, whether or not a release exists. GitHub answers a ref it does not know with
+          # HTTP 422 "No commit found" (404 for a missing repository); any other failure to look is a failure, not a
+          # reason to create.
+          if tag_sha="$(gh api "repos/$GH_REPO/commits/$tag" --jq .sha 2> "$work/tag.err")"; then
+            if [ "$tag_sha" != "$full" ]; then
+              echo "::error::the tag $tag points at $tag_sha, not at the rev $full; one commit's tarballs never land under a tag that names another commit"
+              exit 1
+            fi
+            echo "the tag $tag exists, at the rev"
+          elif grep -qiE 'no commit found|not found' "$work/tag.err"; then
+            echo "the tag $tag does not exist yet"
+          else
+            echo "::error::looking up the tag $tag failed:"
+            head -c 300 "$work/tag.err" | LC_ALL=C tr -c '[:print:]\n' '?'
+            echo
+            exit 1
+          fi
+
+          # The release for this version: look it up, create it at the rev only when `gh` says it is absent. Any
+          # other failure to look is a failure, not a reason to create. A draft is refused: an asset uploaded into a
+          # draft is invisible to adopters, which would break "a visible tarball means the other two are there", and
+          # this workflow never edits a release. An existing release that is not a draft is finished, never
+          # replaced: the check below refuses it if it already holds any of the six names.
           if gh release view "$tag" --json isDraft --jq .isDraft > "$work/draft" 2> "$work/view.err"; then
             if [ "$(cat "$work/draft")" != false ]; then
               echo "::error::release $tag exists as a draft; publish or delete it by hand first (this workflow never edits a release)"

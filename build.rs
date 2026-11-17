@@ -2,7 +2,7 @@
 //! `req --version` as the `built from` line.
 //!
 //! Why a build script at all: semver cannot answer the question this exists for. Two commits
-//! both carry the crate's `0.1.0`, so a binary that reports only its version cannot say which
+//! both carry the crate's one version, so a binary that reports only its version cannot say which
 //! revision it is — which is how a worktree binary built before its branch's last commit once
 //! produced a confident, detailed and entirely false defect report against green code.
 //!

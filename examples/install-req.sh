@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
+VERSION='<placeholder: the version of the release you pin, e.g. 0.2.0 -- the tag is v<VERSION>; fill in after the first release>'
 REV='<placeholder: the rev of the release you pin, e.g. abc1234 -- fill in after the first release>'
 SHA256_x86_64_unknown_linux_gnu='<placeholder: 64 hex digits from the release asset req-REV-x86_64-unknown-linux-gnu.tar.gz.sha256>'
 SHA256_aarch64_apple_darwin='<placeholder: 64 hex digits from the release asset req-REV-aarch64-apple-darwin.tar.gz.sha256>'
 # >>> not copied into the CI step (this header and the two test-only overrides) >>>
 # examples/install-req.sh -- install a prebuilt, checksummed req (ADR 0025).
 #
-# The three lines above are the pin table, the ONLY thing you edit: the rev you depend on and the
-# SHA-256 of each target's tarball. Take the values from the `.sha256` assets of the release
-# `rev-<REV>` the first time (trust on first use of the maintainer's release); from then on the
-# pin in YOUR repository is the authority, and the release's own checksum is never read. A target
-# you do not install on may keep its placeholder: only the detected target's pin is used.
+# The four lines above are the pin table, the ONLY thing you edit: the version of the release you
+# download (ADR 0055; the release is tagged `v<VERSION>`), the rev you depend on and the SHA-256 of
+# each target's tarball. VERSION builds the download URL and nothing else: the proof is the SHA-256
+# and the `built from <REV>` check below, so a moved tag cannot change what is installed. Take the
+# values from the release `v<VERSION>` and its `.sha256` assets the first time (trust on first use of
+# the maintainer's release); from then on the pin in YOUR repository is the authority, and the
+# release's own checksum is never read. A target you do not install on may keep its placeholder:
+# only the detected target's pin is used. (A release made before ADR 0055 is tagged `rev-<REV>`: take
+# the installer from the checkout at that rev, whose download URL is `rev-<REV>` and whose table has no VERSION.)
 #
 # What it does, in order, and each failure is a non-zero exit that names its cause (never a skip,
 # never a retry by another path): detect the target from `uname -sm` (Linux x86_64, Darwin arm64);
-# download <base>/rev-<REV>/req-<REV>-<TARGET>.tar.gz over https (curl retries a transient server error, 408, 429
+# download <base>/v<VERSION>/req-<REV>-<TARGET>.tar.gz over https (curl retries a transient server error, 408, 429
 # or 5xx, up to three times on that same url; any other status is final; a public release needs no credential:
 # the Authorization header is sent ONLY when REQ_RELEASE_TOKEN is set and non-empty, for a private fork or
 # mirror, and then as a header read from stdin, never as an argument, never printed); verify the tarball
@@ -53,6 +58,14 @@ case $platform in
 esac
 
 # A placeholder, a typo or an empty pin is a refusal before any request is made.
+# VERSION is plain MAJOR.MINOR.PATCH (no v, no pre-release, no leading zero), as REV is bare hex: it reaches the URL.
+version_re='^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$'
+case $VERSION in
+  '' | *[!0-9.]*) fail "the pin table has no usable VERSION (plain MAJOR.MINOR.PATCH, e.g. 0.2.0); fill it in from the release's tag v<VERSION>" ;;
+esac
+if ! [[ $VERSION =~ $version_re ]]; then
+  fail "the pin table has no usable VERSION (plain MAJOR.MINOR.PATCH, e.g. 0.2.0); fill it in from the release's tag v<VERSION>"
+fi
 case $REV in
   '' | *[!0-9a-f]*) fail "the pin table has no usable REV (a bare lower-case hex SHA of 7 to 40 digits); fill it in from the release" ;;
 esac
@@ -92,7 +105,7 @@ trap 'rm -rf "$stage"' EXIT
 base=${install_base:-https://github.com/autox-my/req/releases/download}
 proto=${install_proto:-=https}
 asset=req-$REV-$target.tar.gz
-url=$base/rev-$REV/$asset
+url=$base/v$VERSION/$asset
 
 # The header exists only when a token was given (a public release needs none). It is built by the
 # shell builtin `printf` and read by curl from stdin: the token is never in an argument list (`ps`),
@@ -110,7 +123,7 @@ case $code in
     fail "HTTP $code for $url: the host refused the request; if the release is private, check that REQ_RELEASE_TOKEN is valid and can read it, otherwise unset REQ_RELEASE_TOKEN"
     ;;
   404)
-    fail "HTTP 404 for $url: there is no release rev-$REV for $target, or (for a private fork) the token cannot see it; check REV and REQ_RELEASE_TOKEN"
+    fail "HTTP 404 for $url: there is no release v$VERSION for $target, or (for a private fork) the token cannot see it; check VERSION, REV and REQ_RELEASE_TOKEN"
     ;;
   *)
     fail "HTTP $code (curl exit $status) for $url"

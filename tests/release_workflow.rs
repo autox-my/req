@@ -618,8 +618,8 @@ fn the_upload_cannot_overwrite_an_asset() {
         "gh release delete-asset",
         "gh release edit",
         "gh release create --draft",
-        // raw API access, which could do any of the above under another name
-        "gh api",
+        // raw API access, which could do any of the above under another name. `gh api` is allowed in exactly one
+        // spelling, the read of a tag's commit (ADR 0055 decision 5), pinned in `the_tag_is_the_version_...` below.
         "-X PUT",
         "-X PATCH",
         "-X DELETE",
@@ -644,6 +644,219 @@ fn the_upload_cannot_overwrite_an_asset() {
             spelling,
             "a spelling that deletes or replaces an asset, ends the step green after a failure, or prints the credential",
         );
+    }
+}
+
+/// ADR 0055 decisions 3, 4 and 5, as far as a text can show them (`tests/release_publish.rs` runs the publish script,
+/// `tests/release_version.rs` runs the version check).
+#[test]
+fn the_version_is_checked_in_the_build_job_before_anything_is_built_and_never_by_checking_the_rev_out()
+ {
+    let text = code(RELEASE);
+    let build = job_block(&text, "build");
+    require(
+        RELEASE,
+        &build,
+        "version: ${{ steps.version.outputs.version }}",
+        "the build job hands the version to the publish job as an output",
+    );
+    require(
+        RELEASE,
+        &build,
+        "- name: the version the rev declares is checked against the previous release",
+        "a step of its own, named for what it decides",
+    );
+    require(
+        RELEASE,
+        &build,
+        "id: version",
+        "the step's output is the job's output",
+    );
+    require(
+        RELEASE,
+        &build,
+        "bash scripts/release-version-check.sh check --rev \"$REL_FULL\" --facts",
+        "the comparison is one tested script reading the rev's Cargo.toml from git (AGENTS.md: no check logic in workflow YAML)",
+    );
+    require(
+        RELEASE,
+        &build,
+        "--facts \"$RUNNER_TEMP/release-facts/facts\"",
+        "the facts are release-notes.sh's, read once, never computed a second time in the workflow",
+    );
+    let notes = build.find("scripts/release-notes.sh").unwrap_or(usize::MAX);
+    let check = build
+        .find("scripts/release-version-check.sh")
+        .unwrap_or(usize::MAX);
+    let built = build.find("scripts/build-release.sh").unwrap_or(0);
+    assert!(
+        notes < check && check < built,
+        "{RELEASE}: the facts are written, then the version is judged, then anything is built: a refusal costs no build"
+    );
+    // The refusal is a failed step, and it names the reason (the script's stderr) before the job ends.
+    require(
+        RELEASE,
+        &build,
+        "release-version-check.sh refused this release",
+        "a failed check is a red job that says whose refusal it is",
+    );
+    // Never check the rev out: the workflow and its proofs stay main's.
+    for jobname in ["build", "build-macos"] {
+        let block = job_block(&text, jobname);
+        for spelling in [
+            "git checkout",
+            "git switch",
+            "git restore",
+            "git worktree",
+            "git reset",
+            "ref:",
+        ] {
+            forbid(
+                RELEASE,
+                &block,
+                spelling,
+                "the rev is never checked out here: its version is read with `git show <rev>:Cargo.toml` and scripts/build-release.sh builds a clean copy itself",
+            );
+        }
+    }
+    // The hand-over of the facts to the publish job is the version output alone, not a file or an artifact.
+    forbid(
+        RELEASE,
+        &text,
+        "name: release-facts",
+        "the facts are the build job's; the publishing job receives only the version",
+    );
+}
+
+#[test]
+fn the_tag_is_the_version_and_it_is_bound_to_the_rev_on_every_path() {
+    let text = code(RELEASE);
+    let publish = job_block(&text, "publish");
+    require(
+        RELEASE,
+        &publish,
+        "REL_VERSION: ${{ needs.build.outputs.version }}",
+        "the publish job takes the version from the build job's output",
+    );
+    require(
+        RELEASE,
+        &publish,
+        "- name: publish the release v<VERSION>, refusing to replace any asset",
+        "the step is named for the tag it publishes",
+    );
+    require(
+        RELEASE,
+        &publish,
+        "tag=\"v$REL_VERSION\"",
+        "the tag is v<VERSION>",
+    );
+    forbid(
+        RELEASE,
+        &text,
+        "tag=\"rev-$rev\"",
+        "a release is no longer tagged by its rev (ADR 0055 decision 3)",
+    );
+    // The one `gh api` there is, in the one spelling: a read of the tag's commit.
+    let wanted = "gh api \"repos/$GH_REPO/commits/$tag\" --jq .sha";
+    let mut seen = 0;
+    for line in publish.lines().filter(|l| l.contains("gh api")) {
+        seen += 1;
+        assert!(
+            line.contains(wanted),
+            "{RELEASE}: `gh api` appears only as `{wanted}`, found `{line}`"
+        );
+        for write in [
+            "-X",
+            "--method",
+            "--request",
+            "-f ",
+            "-F ",
+            "--field",
+            "--raw-field",
+            "--input",
+        ] {
+            assert!(
+                !line.contains(write),
+                "{RELEASE}: the API call is a read: `{line}`"
+            );
+        }
+    }
+    assert_eq!(
+        seen, 1,
+        "{RELEASE}: exactly one `gh api` call, the tag's commit"
+    );
+    assert!(
+        !code(RELEASE).replace(&publish, "").contains("gh api"),
+        "{RELEASE}: no other job calls the API"
+    );
+    // The tag check comes before the release is looked up or created, and before the first upload.
+    let tag_check = publish.find(wanted).unwrap_or(usize::MAX);
+    let lookup = publish
+        .find("gh release view \"$tag\" --json isDraft")
+        .unwrap_or(0);
+    let create = publish.find("gh release create").unwrap_or(0);
+    let upload = publish.find("gh release upload \"$tag\"").unwrap_or(0);
+    assert!(
+        tag_check < lookup && lookup < create && create < upload,
+        "{RELEASE}: tag, then release lookup, then creation, then upload"
+    );
+    require(
+        RELEASE,
+        &publish,
+        "gh release create \"$tag\" --target \"$full\"",
+        "a new release is created at the rev",
+    );
+    require(
+        RELEASE,
+        &publish,
+        "echo \"released $tag\"",
+        "the log ends with `released v<VERSION>`",
+    );
+    require(
+        RELEASE,
+        &publish,
+        "pin ($target): VERSION=$REL_VERSION REV=$rev SHA256=$sum TARGET=$target",
+        "the pin line the owner copies carries the version",
+    );
+    // It still checks out no code and runs no script (write_permission_is_the_publishing_jobs_alone).
+    forbid(
+        RELEASE,
+        &publish,
+        "actions/checkout",
+        "the publishing job checks out nothing",
+    );
+}
+
+#[test]
+fn the_runbook_covers_the_version_bump_and_the_version_dispatch() {
+    let text = read(RUNBOOK);
+    for (needle, why) in [
+        (
+            "## Bump the version",
+            "the bump is its own pull request, and the runbook says how",
+        ),
+        (
+            "scripts/release-version-check.sh",
+            "the check the dispatch will make, run before it",
+        ),
+        (
+            "lock-exception",
+            "the Cargo.lock exception a bump commit is held to",
+        ),
+        ("docs/sbom.cdx.json", "the one other file a bump moves"),
+        ("v<VERSION>", "the tag of a release"),
+        (
+            "rev-3294a46",
+            "the first real run of the workflow's own macOS job and release notes",
+        ),
+        (
+            "43868208448",
+            "the duplicate dispatch that exercised the no-overwrite refusal",
+        ),
+        ("half an hour", "a first dispatch can sit queued"),
+        ("VERSION=", "the pin line carries the version"),
+    ] {
+        require(RUNBOOK, &text, needle, why);
     }
 }
 

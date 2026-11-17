@@ -1,6 +1,6 @@
 # Contributing to req
 
-Thank you for looking. req is early (`0.1.0`) and maintained by one person, so the process is small and strict.
+Thank you for looking. req is early (pre-1.0) and maintained by one person, so the process is small and strict.
 
 ## Before you start
 
