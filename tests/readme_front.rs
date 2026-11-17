@@ -1,11 +1,14 @@
 //! The README leads with what req does, not how it does it (unit P-1; ADR 0040, ADR 0052).
 //!
-//! The first screen is a plain sentence, two links to the demonstration, a before-and-after picture pair and a table of three
-//! edits with the verdict req gave each. The mechanism (`claim_id`, canonical meaning, content addresses) is the depth that
+//! The first screen is a row of badges that read real sources, a plain sentence, two links to the demonstration, an animated
+//! replay of the three edits (unit P-3; it replaced the before-and-after picture pair of P-1) and a table of the three edits
+//! with the verdict req gave each. The mechanism (`claim_id`, canonical meaning, content addresses) is the depth that
 //! follows. What a test can hold of that without judging prose: the first paragraph is free of the mechanism's words; the two
-//! hero links are there, in order; the two pictures exist and are the same size; each verdict in the table is the outcome word
-//! in the edit's committed `satisfy.txt` (read here, never typed); the diagram, the quickstart script and the *Status* heading
-//! are still there; the sections come in the order the page promises.
+//! hero links are there, in order; the replay is the first picture, linked to the guided page, and its alt text and caption say
+//! what the files say; the badges point at real targets; each verdict in the table is the outcome word in the edit's committed
+//! `satisfy.txt` (read here, never typed); the NOTE and the Contents are there and resolve; the folds are balanced and hide
+//! neither the honest limits nor the diagram; the diagram, the quickstart script and the *Status* heading are still there;
+//! the sections come in the order the page promises.
 //!
 //! The oracles are read from the committed `docs/architecture/drift/` files or written in this file, never taken from the
 //! README, so a README that drifts from what req printed fails here.
@@ -20,6 +23,9 @@ const DRIFT_URL: &str = "https://autox-my.github.io/req/drift.html";
 const DRIFT: &str = "docs/architecture/drift";
 const BEFORE: &str = "docs/architecture/drift/req-before.png";
 const TIGHTENING: &str = "docs/architecture/drift/req-tightening.png";
+const REPLAY: &str = "docs/architecture/drift/req-replay.gif";
+const HOW_IT_WORKS: &str = "docs/architecture/drift/req-how-it-works.png";
+const REPO: &str = "autox-my/req";
 /// The three outcome words `req satisfy` prints, as ADR 0040 decision 3 names them.
 const OUTCOMES: [&str; 3] = ["HOLDS", "HOLDS (weakened)", "SUSPECT"];
 
@@ -58,7 +64,21 @@ fn paragraphs_after_title(readme: &str) -> Vec<String> {
     if !current.is_empty() {
         out.push(current.join(" "));
     }
+    // P-3: a row of badges sits directly under the title; the first *paragraph* is the sentence after it.
+    if out.first().is_some_and(|p| is_badge_row(p)) {
+        out.remove(0);
+    }
     out
+}
+
+/// A paragraph made only of linked images (`[![alt](shield)](target)`), whose shields are web addresses.
+fn is_badge_row(paragraph: &str) -> bool {
+    let rest = paragraph.replace(' ', "");
+    rest.starts_with("[![")
+        && rest
+            .split("[![")
+            .skip(1)
+            .all(|badge| badge.contains("](https://") && badge.ends_with(')'))
 }
 
 /// Pixel size from a PNG's IHDR chunk, read from the bytes (no image library, so no dependency to trust).
@@ -141,7 +161,10 @@ fn the_two_hero_links_come_first_in_order() {
     let drift = readme
         .find(DRIFT_URL)
         .expect("the README links the guided drift page");
-    let first_image = readme.find("![").expect("the README has a picture");
+    // The badges are images too; the hero links come before the first *picture* (the replay).
+    let first_image = readme
+        .find(&format!("]({REPLAY})"))
+        .expect("the README has the replay");
     assert!(
         demo < drift,
         "the live demo is linked before the guided page"
@@ -168,37 +191,235 @@ fn the_two_hero_links_come_first_in_order() {
     );
 }
 
-/// The picture pair is the matched pair P-2 made: the first two pictures, both there, the same pixel size, each linking the
-/// guided page.
+/// The number of printed outcomes that are `HOLDS` (either kind) and that are `SUSPECT`, read from the committed output.
+fn printed_counts() -> (usize, usize) {
+    let words: Vec<String> = ["cosmetic", "loosening", "tightening"]
+        .iter()
+        .map(|edit| printed_outcome(edit))
+        .collect();
+    (
+        words.iter().filter(|w| w.starts_with("HOLDS")).count(),
+        words.iter().filter(|w| w.as_str() == "SUSPECT").count(),
+    )
+}
+
+/// How many times, as the words the alt text uses (P-3: counts are read from the files, the English is written here).
+fn times(n: usize) -> &'static str {
+    match n {
+        1 => "once",
+        2 => "twice",
+        3 => "three times",
+        _ => panic!("no word for {n} in the alt text"),
+    }
+}
+
+/// P-3 moved this from the matched pair P-2 made (`req-before.png` and `req-tightening.png`, one pixel size, each linking the
+/// guided page): the first picture is now the replay, linked to the guided page, and the pair is no longer on the README.
+/// The pair stays in the repository, because `docs/drift.html` shows it, and stays one size, so the page's aspect ratio holds.
 #[test]
-fn the_before_and_after_pictures_exist_and_are_one_size() {
+fn the_replay_is_the_first_picture_and_the_old_pair_is_off_the_readme() {
     let readme = readme();
-    let images = image_paths(&readme);
+    let images: Vec<String> = image_paths(&readme)
+        .into_iter()
+        .filter(|path| !path.starts_with("https://"))
+        .collect();
     assert_eq!(
         images.first().map(String::as_str),
-        Some(BEFORE),
-        "the first picture is the one before any edit: {images:?}"
+        Some(REPLAY),
+        "the first picture is the replay: {images:?}"
     );
-    assert_eq!(
-        images.get(1).map(String::as_str),
-        Some(TIGHTENING),
-        "the second picture is the tightened one: {images:?}"
+    let line = readme
+        .lines()
+        .find(|l| l.contains(REPLAY))
+        .expect("a line with the replay");
+    assert!(
+        line.trim_end().ends_with(&format!("]({DRIFT_URL})")),
+        "the replay links the guided page:\n{line}"
     );
+    for retired in [BEFORE, TIGHTENING, "| Before | After one edit |"] {
+        assert!(
+            !readme.contains(retired),
+            "the README no longer carries the before/after table (`{retired}`)"
+        );
+    }
+    for picture in [BEFORE, TIGHTENING] {
+        assert!(
+            root().join(picture).is_file(),
+            "{picture} stays: docs/drift.html shows it"
+        );
+    }
     assert_eq!(
         png_size(BEFORE),
         png_size(TIGHTENING),
-        "the two pictures are the same size, so the only difference a reader sees is the one edit"
+        "the two pictures are the same size, so the only difference the guided page shows is the one edit"
     );
-    for picture in [BEFORE, TIGHTENING] {
-        let line = readme
-            .lines()
-            .find(|l| l.contains(picture))
-            .expect("a line with the picture");
+}
+
+/// The replay's alt text says what happens, in words read from the files: three edits (`edits.json`), the verdict word of
+/// each (`satisfy.txt`), the baseline alarming once per edit, req holding twice and marking the Evidence box SUSPECT once.
+#[test]
+fn the_replays_alt_text_says_what_the_files_say() {
+    let readme = readme();
+    let line = readme
+        .lines()
+        .find(|l| l.contains(REPLAY))
+        .expect("the line with the replay");
+    let alt = line
+        .strip_prefix("[![")
+        .and_then(|rest| rest.split("](").next())
+        .expect("the replay is a linked image with alt text");
+    let edits: Value = serde_json::from_str(&read(&root().join(DRIFT).join("edits.json")))
+        .expect("edits.json is JSON");
+    let count = edits["edits"].as_array().expect("edits").len();
+    let (holds, suspect) = printed_counts();
+    assert_eq!(
+        (count, holds, suspect),
+        (3, 2, 1),
+        "the story the alt text tells is three edits, two held, one suspect"
+    );
+    for needed in [
+        "three edits".to_owned(),
+        format!("alarm {}", times(count)),
+        format!("holds {}", times(holds)),
+        format!("{} {}", "SUSPECT", times(suspect)),
+        "Evidence box".to_owned(),
+        "red".to_owned(),
+    ] {
         assert!(
-            line.contains(DRIFT_URL),
-            "{picture} links the guided page:\n{line}"
+            alt.contains(&needed),
+            "the alt text must say `{needed}`:\n{alt}"
         );
     }
+    for edit in ["cosmetic", "loosening", "tightening"] {
+        let word = printed_outcome(edit);
+        assert!(
+            alt.contains(&format!("({word})"))
+                || alt.contains(&format!("{word},"))
+                || alt.contains(&format!("{word} ")),
+            "the alt text must carry the word req printed for {edit} (`{word}`):\n{alt}"
+        );
+    }
+    assert!(
+        alt.contains("(HOLDS (weakened))"),
+        "the loosening's word is `HOLDS (weakened)`, not `HOLDS`:\n{alt}"
+    );
+}
+
+/// One caption line under the replay: a schematic replay, the baseline is generic and not a named tool, req's words are its
+/// committed `req satisfy` output, and the data files are named.
+#[test]
+fn the_replays_caption_says_what_it_is_and_names_its_data() {
+    let readme = readme();
+    let lines: Vec<&str> = readme.lines().collect();
+    let at = lines
+        .iter()
+        .position(|l| l.contains(REPLAY))
+        .expect("the replay line");
+    assert!(
+        lines[at + 1].trim().is_empty(),
+        "a blank line, then the caption"
+    );
+    let caption = lines[at + 2];
+    assert!(
+        !caption.trim().is_empty() && lines[at + 3].trim().is_empty(),
+        "the caption is one line:\n{caption}"
+    );
+    for needed in [
+        "schematic",
+        "generic baseline",
+        "not a named tool",
+        "`req satisfy`",
+        "edits.json",
+        "satisfy.txt",
+        "committed",
+    ] {
+        assert!(
+            caption.contains(needed),
+            "the caption must say `{needed}`:\n{caption}"
+        );
+    }
+}
+
+/// The badges are the row directly under the title, and each reads a real source: the workflow file the CI badge names exists
+/// and is the one that has the `gate` job, the licence is the Apache-2.0 the repository carries, the release badge types no
+/// version (it resolves from GitHub), and the Pages badge is the site `PAGES_URL` names.
+#[test]
+fn the_badges_read_real_sources() {
+    let readme = readme();
+    let row = readme.lines().nth(2).expect("a line under the title");
+    assert!(
+        readme.lines().nth(1) == Some("") && is_badge_row(row),
+        "the badges are the row directly under the title:\n{row}"
+    );
+    let badges: Vec<(&str, &str)> = row
+        .split("[![")
+        .skip(1)
+        .map(|badge| {
+            let (alt, rest) = badge.split_once("](").expect("an alt");
+            let (shield, rest) = rest.split_once(")](").expect("a shield and a target");
+            let target = rest.trim_end().trim_end_matches(')').trim_end();
+            let _ = shield;
+            (alt, target)
+        })
+        .collect();
+    let find = |needle: &str| {
+        row.split("[![")
+            .skip(1)
+            .find(|b| b.contains(needle))
+            .unwrap_or_else(|| panic!("no badge for `{needle}`:\n{row}"))
+    };
+    // CI: the workflow file exists and has the `gate` job.
+    let ci = find("actions/workflow");
+    assert!(
+        ci.contains(&format!("{REPO}/ci.yml")) && ci.contains("branch=main") && ci.contains("gate"),
+        "the CI badge reads `ci.yml` on `main` and is labelled `gate`:\n{ci}"
+    );
+    let workflow = read(&root().join(".github/workflows/ci.yml"));
+    assert!(
+        workflow.lines().any(|l| l == "  gate:"),
+        "ci.yml has the `gate` job the badge names"
+    );
+    assert!(
+        ci.contains(&format!(
+            "https://github.com/{REPO}/actions/workflows/ci.yml"
+        )),
+        "the CI badge links the workflow:\n{ci}"
+    );
+    // The latest release: resolved by the shield, so no version is typed.
+    let release = find("/github/v/release/");
+    assert!(
+        release.contains(&format!("/github/v/release/{REPO}"))
+            && release.contains(&format!("https://github.com/{REPO}/releases/latest")),
+        "the release badge reads the latest release and links it:\n{release}"
+    );
+    assert!(
+        !row.contains("v0.") && !row.contains("0.5"),
+        "the badge row types no version:\n{row}"
+    );
+    // The licence is the file in the repository.
+    let licence = find("/github/license/");
+    assert!(
+        licence.contains(&format!("/github/license/{REPO}")),
+        "the licence badge reads the repository's licence:\n{licence}"
+    );
+    let text = read(&root().join("LICENSE"));
+    assert!(
+        text.contains("Apache License") && text.contains("Version 2.0"),
+        "LICENSE is Apache-2.0, as the badge says"
+    );
+    // The Pages site is the one PAGES_URL names.
+    let pages_url = read(&root().join("tools/graph/build_architecture.py"))
+        .lines()
+        .find_map(|l| l.strip_prefix("PAGES_URL = \""))
+        .map(|rest| rest.trim_end_matches('"').to_owned())
+        .expect("build_architecture.py names PAGES_URL");
+    let pages = find("/website");
+    let encoded = pages_url.replace(':', "%3A").replace('/', "%2F");
+    assert!(
+        pages.contains(&format!("url={encoded}")) && pages.contains(&format!("]({pages_url}/)")),
+        "the Pages badge reads and links {pages_url}/:\n{pages}"
+    );
+    assert_eq!(badges.len(), 4, "CI, release, licence, Pages: {badges:?}");
 }
 
 /// The three-row table: each edit's verdict is the word `req satisfy` printed for it, read from the committed output.
@@ -259,13 +480,16 @@ fn each_verdict_in_the_table_is_the_word_req_printed() {
     assert_eq!(end - start + 1, 5, "a header, its rule and three rows");
 }
 
-/// The diagram, the quickstart script and the honest limits are all still on the page.
+/// The how-it-works picture (P-3-fix: it replaced a Mermaid block, whose pan-and-zoom buttons covered the right-hand boxes on
+/// GitHub, with a static picture in the replay's visual language), the quickstart script and the honest limits are all still on
+/// the page. What the Mermaid block pinned, the four steps and the outcome, the picture's alt text now pins: the picture
+/// is a file in the repository and its alt text states every step in order.
 #[test]
-fn the_diagram_the_script_and_status_are_there() {
+fn the_how_it_works_picture_the_script_and_status_are_there() {
     let readme = readme();
     assert!(
-        readme.contains("```mermaid"),
-        "the how-it-works diagram is a Mermaid block (it renders on GitHub)"
+        !readme.contains("```mermaid"),
+        "the how-it-works diagram is a picture now: a Mermaid block's buttons cover the boxes on GitHub"
     );
     assert!(
         readme.contains("tools/demo/try_drift.py"),
@@ -279,6 +503,45 @@ fn the_diagram_the_script_and_status_are_there() {
         readme.contains("docs/adopting.md"),
         "the quickstart is a demonstration: adopting req is linked, not restated"
     );
+    let heading = readme
+        .lines()
+        .position(|l| l == "## How it works")
+        .expect("the How it works heading");
+    let lines: Vec<&str> = readme.lines().collect();
+    let picture = lines[heading + 1..]
+        .iter()
+        .take_while(|l| !l.starts_with("## "))
+        .find(|l| l.contains(HOW_IT_WORKS))
+        .expect("the picture is under How it works");
+    assert!(
+        picture.starts_with("![") && picture.ends_with(&format!("]({HOW_IT_WORKS})")),
+        "a plain image (no link: nothing to click through to):\n{picture}"
+    );
+    assert!(
+        root().join(HOW_IT_WORKS).is_file(),
+        "{HOW_IT_WORKS} is committed"
+    );
+    // The four steps, in order, then the outcome: the Mermaid block's nodes, now in the alt text.
+    let alt = picture
+        .trim_start_matches("![")
+        .split(&format!("]({HOW_IT_WORKS})"))
+        .next()
+        .expect("alt text");
+    let mut at = 0;
+    for step in [
+        "A requirement is edited",
+        "Its meaning fingerprint is derived again",
+        "The direction of the change is classified: same, looser, tighter, or another direction (a polarity flip or a scope change)",
+        "Each recorded design link is judged by that direction",
+        "HOLDS or HOLDS (weakened)",
+        "SUSPECT",
+        "framed in red for a human to re-check",
+    ] {
+        let found = alt[at..]
+            .find(step)
+            .unwrap_or_else(|| panic!("the alt text must state, in order, `{step}`:\n{alt}"));
+        at += found + step.len();
+    }
 }
 
 /// The sections come in the order the page promises: the outcome first, the depth after.
@@ -395,25 +658,6 @@ fn status_numbers_are_the_repositorys() {
     );
 }
 
-/// The before picture's alt text must not say every part holds: parts with no linked requirement read "no claim".
-#[test]
-fn the_before_pictures_alt_text_is_true_of_the_picture() {
-    let readme = readme();
-    let line = readme
-        .lines()
-        .find(|l| l.contains(BEFORE))
-        .expect("the line with the before picture");
-    let alt = line.split("](").next().expect("alt text").to_lowercase();
-    assert!(
-        !alt.contains("every one holding"),
-        "five of the twelve parts read `no claim`; the alt text must not say every one holds:\n{alt}"
-    );
-    assert!(
-        alt.contains("linked requirement"),
-        "the alt text says what holds: every part with a linked requirement:\n{alt}"
-    );
-}
-
 /// The guided page reserves the pictures' own aspect ratio; a different one stretches them.
 #[test]
 fn the_guided_pages_aspect_ratio_is_the_pictures() {
@@ -423,4 +667,195 @@ fn the_guided_pages_aspect_ratio_is_the_pictures() {
         template.contains(&format!("aspect-ratio: {width} / {height}")),
         "tools/demo/drift.html must reserve aspect-ratio: {width} / {height}"
     );
+}
+
+/// GitHub's anchor for a heading: lower-cased, punctuation dropped, spaces to hyphens.
+fn slug(heading: &str) -> String {
+    heading
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-')
+        .collect::<String>()
+        .replace(' ', "-")
+}
+
+/// The NOTE callout follows the three-row table and its sentence, and is two plain sentences: the re-wording and the
+/// loosening raised nothing, because req judges the direction of a change, not the fact of it.
+#[test]
+fn the_note_follows_the_table_and_is_two_plain_sentences() {
+    let readme = readme();
+    let lines: Vec<&str> = readme.lines().collect();
+    let table_end = lines
+        .iter()
+        .rposition(|l| l.starts_with('|') && l.contains("satisfy.txt"))
+        .expect("the three-row table");
+    let at = lines
+        .iter()
+        .position(|l| *l == "> [!NOTE]")
+        .expect("a `> [!NOTE]` callout");
+    assert!(at > table_end, "the NOTE comes after the table");
+    assert_eq!(
+        lines.iter().filter(|l| **l == "> [!NOTE]").count(),
+        1,
+        "one NOTE"
+    );
+    let body: Vec<&str> = lines[at + 1..]
+        .iter()
+        .take_while(|l| l.starts_with('>'))
+        .map(|l| l.trim_start_matches('>').trim())
+        .collect();
+    assert!(!body.is_empty(), "the NOTE has a body");
+    let text = body.join(" ");
+    let sentences = text
+        .match_indices(['.', '?', '!'])
+        .filter(|(i, _)| text[i + 1..].is_empty() || text[i + 1..].starts_with(' '))
+        .count();
+    assert_eq!(sentences, 2, "two sentences:\n{text}");
+    for needed in ["re-wording", "loosening", "raised nothing", "direction"] {
+        assert!(
+            text.contains(needed),
+            "the NOTE must say `{needed}`:\n{text}"
+        );
+    }
+    assert!(
+        text.contains("not the fact"),
+        "the NOTE gives the reason, the direction and not the fact of a change:\n{text}"
+    );
+}
+
+/// A short Contents list follows the hero block (before the first section) and links every heading that follows; each link
+/// resolves to a heading of the page. P-3-fix (owner review of PR #100): it is a Markdown bulleted list, one heading per line,
+/// not one run-on line of middots; the depth headings are grouped as a nested list.
+#[test]
+fn the_contents_list_links_every_section_and_each_link_resolves() {
+    let readme = readme();
+    let lines: Vec<&str> = readme.lines().collect();
+    let contents = lines
+        .iter()
+        .position(|l| *l == "## Contents")
+        .expect("a `## Contents` heading");
+    let first_section = lines
+        .iter()
+        .position(|l| *l == "## Three edits, three verdicts")
+        .expect("the first section");
+    let replay = lines
+        .iter()
+        .position(|l| l.contains(REPLAY))
+        .expect("the replay");
+    assert!(
+        replay < contents && contents < first_section,
+        "the Contents follow the hero block and come before the first section"
+    );
+    let block: Vec<&str> = lines[contents + 1..first_section]
+        .iter()
+        .copied()
+        .filter(|l| !l.trim().is_empty())
+        .collect();
+    assert!(
+        block
+            .iter()
+            .all(|l| l.starts_with("- ") || l.starts_with("  - ")),
+        "the Contents are a bulleted list, nested one level at most:\n{}",
+        block.join("\n")
+    );
+    assert!(
+        block.iter().all(|l| !l.contains(" · ")),
+        "no run-on line of middots:\n{}",
+        block.join("\n")
+    );
+    assert!(
+        block.iter().all(|l| l.matches("](#").count() <= 1),
+        "one heading per line:\n{}",
+        block.join("\n")
+    );
+    assert!(
+        block.iter().any(|l| l.starts_with("  - ")),
+        "the depth headings are nested under a group"
+    );
+    let mut linked: Vec<String> = Vec::new();
+    for line in &block {
+        if let Some(at) = line.find("](#") {
+            let tail = &line[at + 3..];
+            let close = tail.find(')').expect("a closed link");
+            linked.push(tail[..close].to_owned());
+        }
+    }
+    let headings: Vec<&str> = lines
+        .iter()
+        .skip(first_section)
+        .filter(|l| l.starts_with("## "))
+        .map(|l| &l[3..])
+        .collect();
+    let slugs: Vec<String> = headings.iter().map(|h| slug(h)).collect();
+    assert_eq!(
+        linked, slugs,
+        "the Contents link every heading that follows, in order, and each anchor is that heading's"
+    );
+    assert!(
+        block.len() <= 18,
+        "the Contents are short ({} lines):\n{}",
+        block.len(),
+        block.join("\n")
+    );
+}
+
+/// The folds: each `<details>` is closed, has a one-line `<summary>` and a blank line after it (or the Markdown inside does
+/// not render), and none hides the honest limits (*Status*), the diagram or the three-row table.
+#[test]
+fn the_folds_are_balanced_and_hide_neither_the_limits_nor_the_diagram() {
+    let readme = readme();
+    let lines: Vec<&str> = readme.lines().collect();
+    let mut depth = 0usize;
+    let mut folded: Vec<usize> = Vec::new();
+    let mut folds = 0;
+    for (n, line) in lines.iter().enumerate() {
+        if *line == "<details>" {
+            folds += 1;
+            depth += 1;
+            let summary = lines.get(n + 1).copied().unwrap_or("");
+            assert!(
+                summary.starts_with("<summary>")
+                    && summary.ends_with("</summary>")
+                    && summary.len() > "<summary></summary>".len(),
+                "line {}: a one-line summary follows `<details>`:\n{summary}",
+                n + 1
+            );
+            assert!(
+                lines.get(n + 2).is_some_and(|l| l.is_empty()),
+                "line {}: a blank line follows the summary",
+                n + 1
+            );
+        } else if *line == "</details>" {
+            assert!(depth > 0, "line {}: `</details>` closes nothing", n + 1);
+            depth -= 1;
+        } else if depth > 0 {
+            folded.push(n);
+        }
+    }
+    assert_eq!(depth, 0, "every `<details>` is closed");
+    assert!(folds >= 2, "the depth is behind folds ({folds})");
+    for must_show in [
+        "## Status",
+        "[![A replay of three edits",
+        "![How req judges an edit",
+        "| **re-word**",
+        "> [!NOTE]",
+    ] {
+        let hit = lines
+            .iter()
+            .position(|l| l.starts_with(must_show))
+            .unwrap_or_else(|| panic!("`{must_show}` is on the page"));
+        assert!(
+            !folded.contains(&hit),
+            "`{must_show}` is outside every fold (line {})",
+            hit + 1
+        );
+    }
+    for heading in lines.iter().filter(|l| l.starts_with("## ")) {
+        let at = lines.iter().position(|l| l == heading).expect("a heading");
+        assert!(
+            !folded.contains(&at),
+            "`{heading}` is outside every fold: Contents must reach it"
+        );
+    }
 }

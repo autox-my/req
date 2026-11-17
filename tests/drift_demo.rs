@@ -533,6 +533,10 @@ fn the_corpus_is_untouched_after_the_build() {
                 || name == "req-before.png.json"
                 || name == "req-loosening.png.json"
                 || name == "req-tightening.png.json"
+                || name == "req-replay.gif"
+                || name == "req-replay.gif.json"
+                || name == "req-how-it-works.png"
+                || name == "req-how-it-works.png.json"
                 || EXPECTED.iter().any(|(id, _, _)| *id == edit)
                     && ["overlay.json", "matrix.md", "satisfy.txt"].contains(&name))
         })
@@ -701,7 +705,8 @@ fn the_page_is_the_tightening_overlay_and_says_it_is_a_demonstration() {
 
 /// The README names the three outcomes in req's words, taken from the generated files, and links the page and the three
 /// `satisfy.txt` files; the image is there and small. (P-1: the table moved from the architecture section to the front of the
-/// README, so the whole README is read; the matched pair `req-before.png` / `req-tightening.png` replaced `req-drift.png`.)
+/// README, so the whole README is read; the matched pair `req-before.png` / `req-tightening.png` replaced `req-drift.png`.
+/// P-3: the animated replay, under 3 MB, replaced the pair on the README.)
 #[test]
 fn the_readme_shows_the_three_outcomes_in_the_words_req_printed() {
     let section = read(&root().join("README.md"));
@@ -742,15 +747,19 @@ fn the_readme_shows_the_three_outcomes_in_the_words_req_printed() {
         section.contains("numeric_tightening"),
         "the README names the direction req gave the tightening"
     );
+    // P-3: the README shows the replay, not the tightened picture (which `docs/drift.html` still shows).
     assert!(
-        section.contains(&format!("{DRIFT}/req-tightening.png")),
-        "the README shows the tightened picture"
+        section.contains(&format!("{DRIFT}/req-replay.gif")),
+        "the README shows the replay"
     );
-    let image = root().join(DRIFT).join("req-tightening.png");
+    let image = root().join(DRIFT).join("req-replay.gif");
     let size = fs::metadata(&image)
         .unwrap_or_else(|error| panic!("{} cannot be read: {error}", image.display()))
         .len();
-    assert!(size > 0 && size < 600 * 1024, "the image is {size} bytes");
+    assert!(
+        size > 0 && size < 3 * 1024 * 1024,
+        "the replay is {size} bytes"
+    );
 }
 
 /// The Pages index gains one link, inside the architecture item.

@@ -1,14 +1,32 @@
 # req
 
+[![gate](https://img.shields.io/github/actions/workflow/status/autox-my/req/ci.yml?branch=main&label=gate)](https://github.com/autox-my/req/actions/workflows/ci.yml) [![latest release](https://img.shields.io/github/v/release/autox-my/req)](https://github.com/autox-my/req/releases/latest) [![licence: Apache-2.0](https://img.shields.io/github/license/autox-my/req)](LICENSE) [![Pages site](https://img.shields.io/website?url=https%3A%2F%2Fautox-my.github.io%2Freq%2F&label=pages)](https://autox-my.github.io/req/)
+
 When a requirement's meaning changes, req tells you which parts of your design need a second look, and only those.
 
 **[Live demo](https://fadasr.github.io/req-demo/)** (135 requirements from a public Sphinx-Needs project, put through req) · **[What drift looks like](https://autox-my.github.io/req/drift.html)** (one of req's own requirements, edited three ways)
 
-| Before | After one edit |
-| --- | --- |
-| [![req's architecture diagram before any edit: twelve parts; every part with a linked requirement holds](docs/architecture/drift/req-before.png)](https://autox-my.github.io/req/drift.html) | [![the same diagram after one requirement is tightened: the Evidence box reads SUSPECT and is framed in red, every other part is unchanged](docs/architecture/drift/req-tightening.png)](https://autox-my.github.io/req/drift.html) |
+[![A replay of three edits to one requirement, REQ-0010, with a generic baseline that flags every edit on the left and req on the right. The baseline raises the alarm three times, once per edit. req holds twice, on the re-word (HOLDS) and the loosening (HOLDS (weakened)), and marks the Evidence box SUSPECT once, on the tightening, framed in red.](docs/architecture/drift/req-replay.gif)](https://autox-my.github.io/req/drift.html)
 
-One requirement (REQ-0010) is tightened on a copy of req's own corpus; the part that implements it is framed in red for re-check; nothing else changes.
+*A schematic replay, not a recording: the left panel is a generic baseline, not a named tool, and every word of req's output is its committed `req satisfy` output, read from [`edits.json`](docs/architecture/drift/edits.json) and the three `satisfy.txt` files under [`docs/architecture/drift/`](docs/architecture/drift/); the parts and their status words come from the committed overlays (each edit's `overlay.json` and [`overview-overlay.json`](docs/architecture/overview-overlay.json)).*
+
+## Contents
+
+- [Three edits, three verdicts](#three-edits-three-verdicts)
+- [What SUSPECT means](#what-suspect-means)
+- [Try it in three commands](#try-it-in-three-commands)
+- [How it works](#how-it-works)
+- [Where to look next](#where-to-look-next)
+- The depth
+  - [What a claim is](#what-a-claim-is)
+  - [The bet, stated so it can fail](#the-bet-stated-so-it-can-fail)
+  - [What it does](#what-it-does)
+  - [The two differentiators](#the-two-differentiators)
+  - [Status](#status)
+- Using it
+  - [Install](#install)
+  - [Development](#development)
+  - [Licence](#licence)
 
 ## Three edits, three verdicts
 
@@ -21,6 +39,9 @@ The same requirement, REQ-0010 (the false-split bound, linked from `src/bench.rs
 | **tighten**: `at most 0.30` becomes `at most 0.20` | `SUSPECT`, `numeric_tightening` | the design may no longer meet it; a human re-checks it, then runs the `req satisfy --record` command req prints | SUSPECT · 1 of 4 claims | [satisfy.txt](docs/architecture/drift/tightening/satisfy.txt) |
 
 A tool that flags every edit would raise the alarm three times; req raises it once, because it judges the *direction* of the change ([ADR 0040](docs/adr/0040-a-design-satisfies-a-claim-at-a-meaning.md)). A re-wording keeps its meaning fingerprint and raises none; an admitted loosening is reported by name and does not re-open the link.
+
+> [!NOTE]
+> The re-wording and the loosening raised nothing, because req judges the direction of a change, not the fact of it. A loosening is still reported, by name, as `HOLDS (weakened)`; it just does not re-open the link.
 
 ## What SUSPECT means
 
@@ -44,14 +65,7 @@ This is a demonstration, not the adopter's loop: to use req on your own requirem
 
 ## How it works
 
-```mermaid
-flowchart LR
-    A["a requirement is edited"] --> B["its meaning fingerprint is derived again"]
-    B --> C["the direction of the change is classified: same, looser, tighter, or another direction (a polarity flip, a scope change)"]
-    C --> D["each recorded design link is judged by that direction"]
-    D --> E["HOLDS, or HOLDS (weakened)"]
-    D --> F["SUSPECT: framed for a human to re-check"]
-```
+![How req judges an edit in four steps, then the outcome: 1. A requirement is edited. 2. Its meaning fingerprint is derived again. 3. The direction of the change is classified: same, looser, tighter, or another direction (a polarity flip or a scope change). 4. Each recorded design link is judged by that direction. The outcome is HOLDS or HOLDS (weakened), or SUSPECT, framed in red for a human to re-check.](docs/architecture/drift/req-how-it-works.png)
 
 A person links a part of the design to a requirement (a `req-satisfies: REQ-0010` line in the source file) and records, with `req satisfy --record`, the statement it was judged against; req never records a link on its own. When the requirement is edited, req derives the meaning of the recorded and the current statement under the same rules and classifies the change. The same meaning holds; a loosening that has been measured to be safe holds (weakened); every other direction is suspect until a human re-records it ([ADR 0040](docs/adr/0040-a-design-satisfies-a-claim-at-a-meaning.md)). The diagram's red frame is the same verdict drawn on the architecture ([ADR 0052](docs/adr/0052-an-architecture-diagram-shows-the-claims-its-components-satisfy.md)).
 
@@ -117,6 +131,9 @@ identity ([ADR 0020](docs/adr/0020-the-address-is-a-meaning-fingerprint.md), acc
 
 ## What it does
 
+<details>
+<summary>The commands, and the question each answers</summary>
+
 | command | the question it answers |
 | --- | --- |
 | `req init` | start a corpus here — a starter claim whose pins hold, its registry, and the authoring README |
@@ -131,6 +148,8 @@ identity ([ADR 0020](docs/adr/0020-the-address-is-a-meaning-fingerprint.md), acc
 | `req baseline`, `req audit` | the canonical manifest a human signs, drift verification, and the audit packet |
 | `req decision` | the decision log and its hash chain — TAMPERED is a finding, a truncated history is unanswerable |
 | `req propose <a> <b>` | one pair put to an external provider: its answer is an unratified proposal, never an edit — UNVERIFIABLE with no provider |
+
+</details>
 
 Tri-state is a discipline here, not a garnish: PASS, FAIL and UNVERIFIABLE are kept apart,
 because "we could not tell" is a different answer from both "it passed" and "it is broken".
@@ -179,8 +198,12 @@ Git-native storage is table stakes, not the moat.
 
 req is not on crates.io (`publish = false`): you pin a commit, and the commit is the provenance. A release also carries a
 semantic version and is tagged `v<VERSION>` (ADR 0055); the version names it, the commit proves it. **The newest prebuilt
-release is `v0.5.0`** (rev `ddcd056`, Linux x86_64 and macOS arm64, Apple silicon only), the first versioned one. Four earlier
-releases are tagged `rev-<REV>`: `rev-ec87808`, `rev-6b74f51` and `rev-aeaf987` predate `req.claim/3`, and `rev-3294a46` is
+release is `v0.5.0`** (rev `ddcd056`, Linux x86_64 and macOS arm64, Apple silicon only), the first versioned one.
+
+<details>
+<summary>Earlier releases, other machines, and building from source</summary>
+
+Four earlier releases are tagged `rev-<REV>`: `rev-ec87808`, `rev-6b74f51` and `rev-aeaf987` predate `req.claim/3`, and `rev-3294a46` is
 the first that reads it. A release is not today's `main`, so a command added since is not in it. There is no Intel Mac build and no native Windows build (on Windows, run the Linux tarball under
 WSL2: `docs/adopting.md`, *Windows*). For any other rev, or any other machine, the install is a build from source
 at a rev you choose:
@@ -188,6 +211,8 @@ at a rev you choose:
 ```bash
 cargo install --git https://github.com/autox-my/req.git --rev <REV> --locked req
 ```
+
+</details>
 
 `docs/adopting.md` (*Install req*) explains the pin, the prebuilt-binary path,
 and the air-gapped route. req is early, maintained by one person, and its claims are bounded as
@@ -213,11 +238,16 @@ record in `docs/design.md`, and the decisions in `docs/adr/`.
 How it works: `docs/how-it-works.md` (diagrams, for engineers) and `docs/overview.html` ([read it rendered](https://autox-my.github.io/req/overview.html); one page for
 non-developers, generated from the real tool by `tools/overview/build.py`, never hand-edited).
 
+<details>
+<summary>Importing the requirements you already have</summary>
+
 Existing requirements need not be retyped: `tools/adopt.py` (markdown lists), `tools/needs_import.py`
 (a Sphinx-Needs `needs.json`) and `tools/reqif_import.py` (a ReqIF file, as DOORS, Polarion and Eclipse ProR
 export) draft claims from them, copy-and-adjust scripts whose drafts are proposals for a human to ratify
 (`docs/adopting.md`). The ReqIF reader has been run on three small public sample files only; its yield on a real
 specification is unmeasured.
+
+</details>
 
 Adopting req in a project — as a human or as an agent — starts at `docs/adopting.md` (its
 "For an agent" section is the five-minute path): the CI snippet is `examples/github-workflows/req.yml`,
