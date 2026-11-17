@@ -38,9 +38,9 @@ Three more surfaces turned out to matter, none named by the spec:
 - **Derived facts that `Derived` computes (`src/canon.rs:1742`) but no JSON document carries:** `lints`, and the derived
   `operator`/`value`/`unit`. They appear only in `req canon` text. `UNSTRUCTURED` is the one exception: it is the `modality`
   label of a node (`Derived::modality_label`), and `jq` finds it: `REQ-0007 area=authoring`.
-- **`rationale.rejected_alternatives`, `rationale.assumptions`, `rationale.date` and the pins are in no JSON document**
-  (`render` carries `source` and `date` only; `trace` carries `source` only). They exist in the authored file and in
-  `rationale_hash`.
+- **`rationale.rejected_alternatives`, `rationale.assumptions` and the pins are in no JSON document.** `render --format json` carries
+  `rationale{source, date}` and `trace` carries `source`, so `rationale.date` is available; the other three exist in the authored
+  file (the first two also in `rationale_hash`).
 - **No command computes "this claim has an accepting Decision at its current address".** `audit.rs`, `gate.rs`, `view.rs`
   and `check.rs` do not read the decision log per claim (`grep -n "decision::" src/audit.rs src/gate.rs src/view.rs
   src/check.rs` finds nothing); `req decision` verifies the hash chain and lists records. The pieces exist: `decisions/DEC-*.yml`
@@ -161,8 +161,9 @@ generic automotive-style integrity level `QM < A < B < C < D`, used only as an i
 - **UNVERIFIABLE when.** The claim file does not load (`req canon` exit 3, NOT JUDGED); a `req.claim/<n>` schema this build does not
   write.
 - **Measured here.** `ruby -ryaml -rdate -rjson ... Dir["claims/REQ-*.yml"]` finds `rationale.rejected_alternatives` empty on
-  **4 of 40** claims (REQ-0006, REQ-0009, REQ-0010, REQ-0014); of the 34 claims whose trace `modality` is `SHALL` under the first
-  declared variant, 3 are among them.
+  **4 of 40** claims (REQ-0006, REQ-0009, REQ-0010, REQ-0014). The 34 and the 3 come from `req trace --format json <variant 1> | jq
+  '[.nodes[]|select(.modality=="SHALL")]|length'` (34) intersected, in the same `ruby` run, with the four ids above: the 3 SHALL claims among
+  them are REQ-0006, REQ-0009 and REQ-0014 (REQ-0010 is not `SHALL`).
 
 ### R4. Relation cardinality: allocated to at most one component
 
@@ -175,7 +176,7 @@ generic automotive-style integrity level `QM < A < B < C < D`, used only as an i
 ```
 
 - **Data.** `edges[]` of the trace document. The loader does not restrict relation types: `Relation.kind` is a `String`
-  (`src/model.rs:34`), and only `supersedes` and `conflicts-with` carry meaning.
+  (`src/model.rs:37`), and only `supersedes` and `conflicts-with` carry meaning.
 - **Class.** Expressible on today's data **with a modelling caveat**, which I tested. Each relation's `to` must be a claim.
   On a temporary copy I added `allocated-to` to REQ-0001 twice, once to `COMP-ENGINE` (not a claim) and once to REQ-0002.
   `req trace --format json` prints both edges, but `findings.dangling` is `["allocated-to -> COMP-ENGINE (referenced by REQ-0001,
@@ -262,7 +263,7 @@ generic automotive-style integrity level `QM < A < B < C < D`, used only as an i
   message: "{claim.id}: statement carries an untestable qualifier"
 ```
 
-- **Data.** `claim.lints[]`: computed (`Derived::lints`, `src/canon.rs:1750`, six codes: `ambiguous_modality`,
+- **Data.** `claim.lints[]`: computed (`Derived::lints`, `src/canon.rs:1747`, in `struct Derived` at `:1742`; six codes: `ambiguous_modality`,
   `multiple_obligations`, `uncovered_content`, `untestable_comparator`, `untestable_qualifier`, `untestable_quantity`), but
   printed only in `req canon` text (a `lints <codes>` column).
 - **Class.** **Needs a new derived datum on a machine surface:** per-claim lints in a JSON document. The first
@@ -370,10 +371,18 @@ subject kind is the link, not the claim.
   require: not is_empty(claim.rationale.source) and source_anchor_ok(claim.rationale.source)
 ```
 
-The first half is writable. The second needs a built-in, `source_anchor_ok(path#Lnn)` (ADR 0048): a repository path with a line
-anchor must exist, be a file and have that many lines; one that exists and cannot be read is UNVERIFIABLE; prose, URLs, absolute or
-`..` paths, heading anchors and a path without an anchor are **not judged**; and paths are looked up from the corpus root and from the
-checkout root when the corpus sits in a subdirectory. That needs the filesystem and a path grammar, which are not core.
+The first half is writable. The second needs a built-in, `source_anchor_ok(...)`, and the built-in has to implement **one** of two
+rules, which differ:
+
+- **Today's rule** (`src/sources.rs`, `docs/claim-format.md`): only a repository path **with a line anchor** is judged. It must exist,
+  be a file and have that many lines; one that exists and cannot be read is UNVERIFIABLE; prose, URLs, absolute or `..` paths, heading
+  anchors and a path without an anchor are **not judged**. Paths are looked up from the corpus root and from the checkout root when
+  the corpus sits in a subdirectory.
+- **ADR 0048's rule** (status **proposed**, not accepted): decisions 1-2 judge any *path-shaped* source, anchored or not, so a bare
+  `docs/x.md` must exist, and a claim id is judged as a member of the corpus (decision 3).
+
+The built-in would implement today's rule, because a check must not judge more than the gate does; if ADR 0048 is accepted, both move
+together. Either needs the filesystem and a path grammar, which are not core.
 
 **`tests_linked`**:
 
@@ -423,8 +432,9 @@ Of the ten rules:
 - **2 need a new built-in** (R5, R6).
 - **0 cannot be expressed three-valued.**
 
-So **7 of 10 need a change to req beyond the check language itself**, and of those only R5 and R6 are a function in the language; the
-other five are data or schema work that the typed-fields and canon-JSON decisions would do anyway. Three-valuedness itself was never
+So **7 of 10 need a change to req beyond the check language itself**, and of those only R5 and R6 are a function in the language. Of
+the other five, R1 and R2 are the typed-fields decision and R8 and R10 are a canon JSON view that req already has the data for; **R9 is
+neither**: per-claim ratification state is a new computation with a new meaning (§3, R9), and no planned decision covers it. Three-valuedness itself was never
 the obstacle: every rule had a natural UNKNOWN. The obstacle was that the published surfaces do not yet carry the facts that
 organisations' rules are about.
 
@@ -458,9 +468,9 @@ $ $R canon --format json ; echo $?                       -> unrecognized or repe
 $ $R trace --format json <variant 1>                      -> exit 0; keys: schema generator rules_v selection nodes areas edges derived_incoming findings
 $ $R trace --format json                                  -> exit 3 (5 claims unknown with no context); JSON still printed
 $ $R gate --format json <variant 1>                       -> exit 3, verdict unverifiable: tests_linked has no --test-report; the other seven policies pass
-$ $R satisfy --format json                                -> exit 0, verdict pass, 29 links
+$ $R satisfy --format json | jq '.links|length'            -> 30   (exit 0, verdict pass; the gate's `design_satisfied` `checked: 29` counts only links of applying claims)
 $ $R audit --baseline baselines/air-gapped.json --format json -> exit 0; coverage.signed 36 claims, drifted/uncovered/missing empty
-$ $R canon --by-area | tail                               -> claims: 40 (1 unstructured); pins: 9 on 5 claim(s), 0 flagged; lints on 2 claim(s)
+$ $R canon --by-area | grep '^claims: '                     -> (line 66 of 75) claims: 40 (1 unstructured); pins: 9 on 5 claim(s), 0 flagged; lints on 2 claim(s)
 $ bash m3.sh   (trace --format json per .req/variants line)
 variant 1: applies 39, does_not_apply 1 ; variant 2: applies 39, does_not_apply 1 ; union applying: 40
 $ $R decision                                              -> - DEC-0001  accept REQ-0016  by fdx (maintainer)  2026-10-15 ... [VALID]
