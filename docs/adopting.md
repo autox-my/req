@@ -15,10 +15,11 @@ a build of the revision that introduced it.
 req is deliberately not published to crates.io (`publish = false`), so **the rev is the provenance**: you pin a
 commit. A release also has a semantic version and is tagged `v<VERSION>` (ADR 0055), which names it for a reader and
 builds the download URL; it is never the proof. Two ways honour the pin: a **prebuilt, checksummed binary** for the
-rev (below; four releases exist so far) and a **build from source** at the rev ([From source](#from-source)).
+rev (below; five releases exist so far) and a **build from source** at the rev ([From source](#from-source)).
 
-> **Status: four releases exist, all tagged `rev-<REV>`; no `v<VERSION>` release exists yet** (ADR 0055 decision 8
-> names 0.5.0 as the first: the four `rev-*` releases count as 0.1 to 0.4). `rev-ec87808` (Linux x86_64 only), `rev-6b74f51` and `rev-aeaf987` (Linux x86_64
+> **Status: five releases exist. The newest is `v0.5.0` (rev `ddcd056`, both targets, 2026-11-17), the first versioned
+> release and the one `examples/install-req.sh` on `main` installs; the four before it are tagged `rev-<REV>` and count as
+> 0.1 to 0.4 (ADR 0055 decision 8). `rev-ec87808` (Linux x86_64 only), `rev-6b74f51` and `rev-aeaf987` (Linux x86_64
 > and macOS arm64, Apple silicon only; no Intel Mac, no native Windows: see [Windows](#windows)) predate `req.claim/3`;
 > for those use [From source](#from-source) if your corpus is at that schema. **`rev-3294a46` is the first release
 > that reads `req.claim/3`**, the schema `req init` writes, so the prebuilt path works for a corpus at that schema
