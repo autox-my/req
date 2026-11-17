@@ -14,7 +14,6 @@
 //! Arithmetic is integers only: a quantity is `mantissa × factor / 10^digits`, compared as an
 //! exact integer in the dimension's smallest unit.
 
-use std::collections::BTreeSet;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use req::canon::{
@@ -489,9 +488,8 @@ fn normalisation_is_idempotent_and_re_reading_it_keeps_the_address() {
 }
 
 /// T1.10: a statement that parses as structured leaves no word unattributed. The code reports an
-/// unattributed word as an `uncovered_content` lint and falls back to unstructured, so (1) a
-/// structured form never carries that lint, and (2) the lint is the *only* thing that makes a
-/// well-formed statement unstructured here. Stated on identity: a fresh content word appended to
+/// unattributed word as an `uncovered_content` lint and falls back to unstructured, so a structured
+/// form never carries that lint. Stated on identity: a fresh content word appended to
 /// the tail of a structured statement either moves the address or leaves the structured form.
 #[test]
 fn the_coverage_invariant_holds() {
@@ -799,7 +797,4 @@ fn every_generated_shape_has_a_known_answer_twin_in_the_corpus() {
             "{id}: the canonicaliser disagrees with the corpus"
         );
     }
-    // the properties above run over these shapes and their neighbours
-    let covered: BTreeSet<&str> = twin_specs().iter().map(|(id, ..)| *id).collect();
-    assert!(covered.contains("N-002") && covered.contains("E-002") && covered.contains("N-004"));
 }

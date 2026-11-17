@@ -2190,7 +2190,7 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
     // fully silent case, a divergent rewrite is one that would collapse two
     // meanings into one address. A file reported here is not also reported for its name.
     let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
-    let mut duplicates: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+    let mut duplicates: BTreeSet<usize> = BTreeSet::new();
     for (i, loaded_claim) in loaded.iter().enumerate() {
         if let Some(&first) = seen.get(loaded_claim.claim.claim_id.as_str()) {
             let compared = if loaded[first].text == loaded_claim.text {

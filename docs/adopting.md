@@ -907,7 +907,7 @@ views no longer count it, so the pair is no longer a contradiction, and `req ren
 REQ-0012 undecided, which the gate names. The old claim stays readable as history, and the audit packet lists it in a *Superseded*
 section. A claim that supersedes itself, or a loop of them, fails `relations_resolve`.
 
-### A provider for `req propose`
+## A provider for `req propose`
 
 `req propose` puts **one** pair of claims to a command you name and prints the answer as an unratified proposal. It ships
 no provider: the command is **your process boundary** (ADR 0021), and nothing from a model or a network reaches req's core.

@@ -98,7 +98,7 @@ claim per file in git, written in a small, reviewable format. A claim's identity
 `claim_id` — not its path and not its history, and not its wording. Its *meaning fingerprint* is
 a content address over its *canonical meaning*: a deterministic pipeline parses the statement,
 normalises it against a subject registry, and hashes the result — every time the claim is loaded,
-so a claim file stores what its author wrote and nothing derived (`req.claim/2`, ADR 0022). A rewording
+so a claim file stores what its author wrote and nothing derived (since `req.claim/2`, ADR 0022). A rewording
 that the canonicalizer's rules cover keeps its address; an edit to a bound, an actor, or a modality gets a
 new one, however similar the prose. What the fingerprint is *for* is drift and direction: between two
 revisions, which requirements changed in meaning, and whether each change loosened or tightened the
