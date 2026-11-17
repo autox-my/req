@@ -8,7 +8,7 @@ When a requirement's meaning changes, req tells you which parts of your design n
 
 [![A replay of three edits to one requirement, REQ-0010, with a generic baseline that flags every edit on the left and req on the right. The baseline raises the alarm three times, once per edit. req holds twice, on the re-word (HOLDS) and the loosening (HOLDS (weakened)), and marks the Evidence box SUSPECT once, on the tightening, framed in red.](docs/architecture/drift/req-replay.gif)](https://autox-my.github.io/req/drift.html)
 
-*A schematic replay, not a recording: the left panel is a generic baseline, not a named tool, and every word of req's output is its committed `req satisfy` output, read from [`edits.json`](docs/architecture/drift/edits.json) and the three `satisfy.txt` files under [`docs/architecture/drift/`](docs/architecture/drift/).*
+*A schematic replay, not a recording: the left panel is a generic baseline, not a named tool, and every word of req's output is its committed `req satisfy` output, read from [`edits.json`](docs/architecture/drift/edits.json) and the three `satisfy.txt` files under [`docs/architecture/drift/`](docs/architecture/drift/); the parts and their status words come from the committed overlays (each edit's `overlay.json` and [`overview-overlay.json`](docs/architecture/overview-overlay.json)).*
 
 ## Contents
 

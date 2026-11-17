@@ -199,6 +199,9 @@ fn the_record_binds_the_gif_to_the_files_it_was_made_from() {
     let inputs = record["inputs"].as_object().expect("inputs: path to hash");
     let mut required = vec![format!("{DRIFT}/edits.json")];
     required.extend(EDITS.iter().map(|e| format!("{DRIFT}/{e}/satisfy.txt")));
+    // The parts and their status words come from the overlays, so a record that dropped one would let them go stale.
+    required.extend(EDITS.iter().map(|e| format!("{DRIFT}/{e}/overlay.json")));
+    required.push("docs/architecture/overview-overlay.json".to_string());
     for path in &required {
         assert!(
             inputs.contains_key(path),
