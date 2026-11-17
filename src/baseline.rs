@@ -271,6 +271,14 @@ fn judges_signing_time(version: u32) -> bool {
     (OLDEST_VERIFIABLE_BASELINE_VERSION..=BASELINE_VERSION).contains(&version)
 }
 
+/// Whether a manifest of this envelope version must carry a `tests_hash` per claim: from the
+/// envelope that introduced the key ([`TESTS_ATTESTED_FROM`], ADR 0019) onward. Keyed on that
+/// version, not on [`BASELINE_VERSION`]: a future build writes a newer envelope, and an older one
+/// stripped of the key must still read as incomplete, not as a manifest that predates it.
+fn requires_tests_hash(version: u32) -> bool {
+    version >= TESTS_ATTESTED_FROM
+}
+
 /// Parse a manifest back. Reading is not the address path, so the ordinary JSON reader is
 /// fine here — only the *emitted* bytes have to be canonical.
 ///
@@ -322,7 +330,7 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
         .into_iter()
         .filter_map(|(field, absent)| absent.then_some(field))
         .collect();
-        if manifest.version == BASELINE_VERSION
+        if requires_tests_hash(manifest.version)
             && manifest
                 .claims
                 .iter()
@@ -331,7 +339,7 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
             missing.push("`tests_hash` for every claim");
         }
         if !missing.is_empty() {
-            let carries = if manifest.version == BASELINE_VERSION {
+            let carries = if requires_tests_hash(manifest.version) {
                 "`signed_at`, `authority` and a `tests_hash` per claim"
             } else {
                 "`signed_at` and `authority`"
@@ -2320,6 +2328,18 @@ fn civil_from_days(days: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A manifest must carry a `tests_hash` per claim from the envelope that introduced the key
+    /// onward, not only at the version this build writes. Keyed on the current version, a v4
+    /// manifest stripped of its `tests_hash` would read as complete under a v5 build (ADR 0056
+    /// review). Today both numbers are 4, so this pins the rule at a version above them.
+    #[test]
+    fn a_tests_hash_is_required_from_the_envelope_that_introduced_it_onward() {
+        assert!(!requires_tests_hash(TESTS_ATTESTED_FROM - 1));
+        assert!(requires_tests_hash(TESTS_ATTESTED_FROM));
+        assert!(requires_tests_hash(BASELINE_VERSION));
+        assert!(requires_tests_hash(BASELINE_VERSION + 1));
+    }
 
     /// A base under the real temp dir, unique to this process and moment. Absolutized for the
     /// same reason `staging_dir` does it: `TMPDIR` is returned verbatim and may be relative.
