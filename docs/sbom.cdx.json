@@ -1,7 +1,7 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:45b04ae3-73dc-58b5-8fb1-e0fe88e10290",
+  "serialNumber": "urn:uuid:84748977-5bc1-53e7-9d74-b2212b8a83ac",
   "version": 1,
   "metadata": {
     "tools": {
@@ -14,10 +14,10 @@
     },
     "component": {
       "type": "application",
-      "bom-ref": "pkg:cargo/req@0.1.0",
+      "bom-ref": "pkg:cargo/req@0.2.0",
       "name": "req",
-      "version": "0.1.0",
-      "purl": "pkg:cargo/req@0.1.0",
+      "version": "0.2.0",
+      "purl": "pkg:cargo/req@0.2.0",
       "licenses": [
         {
           "expression": "Apache-2.0"
@@ -37,7 +37,7 @@
       },
       {
         "name": "req:lock-sha256",
-        "value": "016c11a9395241c605450e53ed90f0bd6ac7163304d64979ccb920955f7deb97"
+        "value": "a20a75a650ebd2532cc16291b980d1835b1c38bc1d4898662d73e60095431166"
       },
       {
         "name": "req:scope",
@@ -968,7 +968,7 @@
       ]
     },
     {
-      "ref": "pkg:cargo/req@0.1.0",
+      "ref": "pkg:cargo/req@0.2.0",
       "dependsOn": [
         "pkg:cargo/rust_decimal@1.43.0",
         "pkg:cargo/serde@1.0.229",

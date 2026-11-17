@@ -45,8 +45,9 @@ could carry its own key.
 ## Bump the version
 
 A release carries the version its rev declares in `Cargo.toml` (ADR 0055), so the version changes in a pull request of its own,
-merged **before** the dispatch. That pull request changes `Cargo.toml`'s `version`, req's own package entry in `Cargo.lock`
-and the regenerated `docs/sbom.cdx.json`, and nothing else; no prose document quotes the number, so none needs editing.
+merged **before** the dispatch. That pull request changes `Cargo.toml`'s `version`, req's own package entry in `Cargo.lock` and in the two experiment
+crates' lock files (`experiments/tier2`, `experiments/paraphrase`, which depend on req by path), and the regenerated
+`docs/sbom.cdx.json`, and nothing else; no prose document quotes the number, so none needs editing.
 
 1. **Pick the class** (ADR 0055 decision 2). While the major number is 0, a **minor** bump when identity moved (`RULES_V`,
    the claim schema or the Baseline envelope) or a command, a flag or an exit code was added or changed; a **patch** bump
@@ -65,13 +66,18 @@ and the regenerated `docs/sbom.cdx.json`, and nothing else; no prose document qu
    Exit 0 prints `version=` and `bump=`; exit 1 prints the refusal the workflow would. A `rev-*` release counts as 0.1.0, and a
    `v*` release's version is read from its own `Cargo.toml`. Identity `unknown` (a value that could not be read) never lets a
    patch bump through.
-3. **Make the change,** edit `Cargo.toml`, run `cargo build` so `Cargo.lock` follows, then `python3 tools/sbom.py --out
+3. **Make the change,** edit `Cargo.toml`, then run `cargo update -p req --offline` at the root and with
+   `--manifest-path experiments/tier2/Cargo.toml` and `--manifest-path experiments/paraphrase/Cargo.toml`, so each lock
+   file's req entry follows (the gate builds the experiments with `--locked`), then `python3 tools/sbom.py --out
    docs/sbom.cdx.json`. Before you push, check the lock exception (ADR 0055 decision 6): a version bump touches req's own
    entry and no other, so it is not a rules bump.
 
    ```bash
-   git show origin/main:Cargo.lock > /tmp/main.lock
-   bash scripts/release-version-check.sh lock-exception /tmp/main.lock Cargo.lock   # exit 0, or the entry that differs
+   d=$(mktemp -d)
+   for lock in Cargo.lock experiments/tier2/Cargo.lock experiments/paraphrase/Cargo.lock; do
+     git show "origin/main:$lock" > "$d/main.lock"
+     bash scripts/release-version-check.sh lock-exception "$d/main.lock" "$lock" || break   # exit 0, or the entry that differs
+   done
    ```
 
 4. Run `scripts/check.sh` in full, open the pull request, and merge it. The rev to release is then on `main` with that version.

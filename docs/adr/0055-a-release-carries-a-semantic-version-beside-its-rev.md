@@ -77,7 +77,9 @@ Two facts shape the decision:
 
    One commit's tarballs can therefore never land under a tag that names another commit.
 6. **The version bump is its own pull request.** It changes `Cargo.toml`'s `version`, req's own package entry in
-   `Cargo.lock` and the regenerated `docs/sbom.cdx.json`, and nothing else. To keep it so, no prose document carries the
+   each lock file that records it (`Cargo.lock`, and `experiments/tier2/Cargo.lock` and `experiments/paraphrase/Cargo.lock`,
+   whose crates depend on req by path; amended 2026-11-17 by the first bump, where `--locked` refused the stale entries),
+   and the regenerated `docs/sbom.cdx.json`, and nothing else. To keep it so, no prose document carries the
    version as a literal (the implementing commit makes those places version-agnostic). **req's own entry is not a dependency pin.**
    The version is compiled into the binary, since `req --version` prints it. But it reaches no address, no Baseline
    manifest and no projection header (the address is computed over the statement's canonical form; the Baseline envelope
