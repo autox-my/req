@@ -482,7 +482,7 @@ fn each_verdict_in_the_table_is_the_word_req_printed() {
 
 /// The how-it-works picture (P-3-fix: it replaced a Mermaid block, whose pan-and-zoom buttons covered the right-hand boxes on
 /// GitHub, with a static picture in the replay's visual language), the quickstart script and the honest limits are all still on
-/// the page. What the Mermaid block pinned, the five steps and the three outcomes, the picture's alt text now pins: the picture
+/// the page. What the Mermaid block pinned, the four steps and the outcome, the picture's alt text now pins: the picture
 /// is a file in the repository and its alt text states every step in order.
 #[test]
 fn the_how_it_works_picture_the_script_and_status_are_there() {
@@ -521,7 +521,7 @@ fn the_how_it_works_picture_the_script_and_status_are_there() {
         root().join(HOW_IT_WORKS).is_file(),
         "{HOW_IT_WORKS} is committed"
     );
-    // The five steps, in order, then the outcomes: the Mermaid block's nodes, now in the alt text.
+    // The four steps, in order, then the outcome: the Mermaid block's nodes, now in the alt text.
     let alt = picture
         .trim_start_matches("![")
         .split(&format!("]({HOW_IT_WORKS})"))

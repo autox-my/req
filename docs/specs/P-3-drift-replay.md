@@ -40,7 +40,11 @@ raise the alarm three times; req raises it once") as three steps.
   - **Left:** the edit itself (statement before → after, read from `edits.json`), with no verdict.
   - Every word of req's output comes from those files, never typed.
 - **Pacing:** a short hold on the starting state (all holding), about three seconds per step, and a longer hold on the final
-  frame. Under about 25 seconds in all, loops. Width 1600 to 1800 px, so it is legible on GitHub at full width. Keep it
+  frame. Under about 25 seconds in all, loops. *(Amended 2026-11-17 by the owner's review of PR #100: an intro frame that says
+  what left and right are, each edit as three beats (the edit alone, the left reaction with the right dimmed, the right
+  reaction with the left dimmed), a caption banner above the panels and a summary; 40 to 55 seconds in all. The edit moves to
+  a full-width diff card above the panels, and the left terminal shows the baseline's reaction. "How it works" becomes a
+  static picture in the same style, `req-how-it-works.png`, replacing the Mermaid block whose buttons covered its boxes.)* Width 1600 to 1800 px, so it is legible on GitHub at full width. Keep it
   under 3 MB.
 - **Visual language:** the page's own. Colours and type follow `docs/drift.html`; the red frame matches the overlay's
   `security-group` red; no decoration that implies data the files do not hold.

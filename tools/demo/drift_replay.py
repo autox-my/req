@@ -23,7 +23,7 @@ committed overlays (`overview-overlay.json` for the parts and the starting state
 edit left), the red frame's label from the overlay. What is typed here is the baseline's rule, the titles, the layout and the
 banner's framing sentences; those make no claim the files do not carry.
 
-The how-it-works picture is the README's five steps drawn in the same visual language (palette, type, box style, red frame),
+The how-it-works picture is the README's four steps and their outcome drawn in the same visual language (palette, type, box style, red frame),
 replacing a Mermaid block whose pan-and-zoom buttons covered its right-hand boxes on GitHub. Its text is fixed wording.
 
 It writes one HTML page per state (eleven), screenshots each with local headless Google Chrome and assembles the GIF with
@@ -88,7 +88,7 @@ EDIT_CAPTIONS = {
 }
 # What req's verdict word means (ADR 0040), keyed by the word `req satisfy` printed.
 RIGHT_CAPTIONS = {
-    "HOLDS": "req compares meaning, not wording. The meaning is the same, so the link holds and nothing is raised.",
+    "HOLDS": "req compares the canonical meaning, not the wording. Here it is unchanged, so the link holds and nothing is raised.",
     "HOLDS (weakened)": "req sees a looser requirement. What met the stronger one meets the weaker one, so the link holds and nothing is raised.",
     "SUSPECT": "req sees a tighter requirement. The design may no longer meet it, so the part is framed in red for a person to re-check.",
 }

@@ -65,7 +65,7 @@ This is a demonstration, not the adopter's loop: to use req on your own requirem
 
 ## How it works
 
-![How req judges an edit in five steps: 1. A requirement is edited. 2. Its meaning fingerprint is derived again. 3. The direction of the change is classified: same, looser, tighter, or another direction (a polarity flip or a scope change). 4. Each recorded design link is judged by that direction. 5. The result is HOLDS or HOLDS (weakened), or SUSPECT, framed in red for a human to re-check.](docs/architecture/drift/req-how-it-works.png)
+![How req judges an edit in four steps, then the outcome: 1. A requirement is edited. 2. Its meaning fingerprint is derived again. 3. The direction of the change is classified: same, looser, tighter, or another direction (a polarity flip or a scope change). 4. Each recorded design link is judged by that direction. The outcome is HOLDS or HOLDS (weakened), or SUSPECT, framed in red for a human to re-check.](docs/architecture/drift/req-how-it-works.png)
 
 A person links a part of the design to a requirement (a `req-satisfies: REQ-0010` line in the source file) and records, with `req satisfy --record`, the statement it was judged against; req never records a link on its own. When the requirement is edited, req derives the meaning of the recorded and the current statement under the same rules and classifies the change. The same meaning holds; a loosening that has been measured to be safe holds (weakened); every other direction is suspect until a human re-records it ([ADR 0040](docs/adr/0040-a-design-satisfies-a-claim-at-a-meaning.md)). The diagram's red frame is the same verdict drawn on the architecture ([ADR 0052](docs/adr/0052-an-architecture-diagram-shows-the-claims-its-components-satisfy.md)).
 

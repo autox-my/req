@@ -1,7 +1,7 @@
 {
   "schema": "req.drift-replay/1",
   "gif": "docs/architecture/drift/req-replay.gif",
-  "gif_sha256": "4a0e0e96cb7c38780767f2fb07aaf1359a6362cb6207c5ed2df9d42c3e39a7d5",
+  "gif_sha256": "7baf0bf15eb60096e66b57052c7b53a59b091425d3c75270aa4a7f20108fcb60",
   "inputs": {
     "docs/architecture/drift/cosmetic/overlay.json": "6f8dc663f7eca464c617d1326a3f79a73f68886ea8e21a7aaec95aa3c6e18235",
     "docs/architecture/drift/cosmetic/satisfy.txt": "b86a3faca2d53c8c5867ce63caf0a7b3b2795bcd0d03274668802c283db7b5f9",
@@ -13,7 +13,7 @@
     "docs/architecture/overview-overlay.json": "c46ee32f4e078425387310b070115f45ee82fafb3d3e71b9f86d2daa6fb64652"
   },
   "script": "tools/demo/drift_replay.py",
-  "script_sha256": "57eb7223e04576873ce1ba887ba77a2932136075cf214e07bd7de379b725e914",
+  "script_sha256": "ee7ce8abdbd8cd9209aa7d28c5f3a1f048be98056ab1c760f4475ab5b0d6b092",
   "chrome": "Google Chrome 157.0.8103.79",
   "ffmpeg": "ffmpeg version 9.0.2",
   "frame_size": [
