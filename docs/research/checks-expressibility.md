@@ -378,10 +378,10 @@ rules, which differ:
   be a file and have that many lines; one that exists and cannot be read is UNVERIFIABLE; prose, URLs, absolute or `..` paths, heading
   anchors and a path without an anchor are **not judged**. Paths are looked up from the corpus root and from the checkout root when
   the corpus sits in a subdirectory.
-- **ADR 0048's rule** (status **proposed**, not accepted): decisions 1-2 judge any *path-shaped* source, anchored or not, so a bare
+- **ADR 0048's rule** (accepted by the merge of PR #66 on 2026-11-16, **not yet implemented**): decisions 1-2 judge any *path-shaped* source, anchored or not, so a bare
   `docs/x.md` must exist, and a claim id is judged as a member of the corpus (decision 3).
 
-The built-in would implement today's rule, because a check must not judge more than the gate does; if ADR 0048 is accepted, both move
+The built-in would implement today's rule, because a check must not judge more than the gate does; when ADR 0048 is implemented, both move
 together. Either needs the filesystem and a path grammar, which are not core.
 
 **`tests_linked`**:

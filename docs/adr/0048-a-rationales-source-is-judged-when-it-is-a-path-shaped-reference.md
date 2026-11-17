@@ -5,7 +5,7 @@ something to be judged against without adding a surface. No `RULES_V` bump, no c
 change, and **no address moves**: `rationale` sits outside the canonical form and is attested by `rationale_hash`
 (ADR 0013), so editing a source cannot move an address and editing one after signing is already FAIL.
 
-**Status: proposed.** The owner ratifies it by merging the pull request that carries it. Raised from a comparative
+**Status: accepted** — ratified by the owner's merge of PR #66 (2026-11-16); not yet implemented. Raised from a comparative
 review of an adopter-surface tool (reqord, `f043777`) that records `origin.feedbackIssue` as a number —
 machine-readable and unverifiable — where req records a source it can check but does not.
 
