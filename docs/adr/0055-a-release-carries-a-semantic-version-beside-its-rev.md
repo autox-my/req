@@ -77,7 +77,9 @@ Two facts shape the decision:
 
    One commit's tarballs can therefore never land under a tag that names another commit.
 6. **The version bump is its own pull request.** It changes `Cargo.toml`'s `version`, req's own package entry in
-   `Cargo.lock` and the regenerated `docs/sbom.cdx.json`, and nothing else. To keep it so, no prose document carries the
+   each lock file that records it (`Cargo.lock`, and `experiments/tier2/Cargo.lock` and `experiments/paraphrase/Cargo.lock`,
+   whose crates depend on req by path; amended 2026-11-17 by the first bump, where `--locked` refused the stale entries),
+   and the regenerated `docs/sbom.cdx.json`, and nothing else. To keep it so, no prose document carries the
    version as a literal (the implementing commit makes those places version-agnostic). **req's own entry is not a dependency pin.**
    The version is compiled into the binary, since `req --version` prints it. But it reaches no address, no Baseline
    manifest and no projection header (the address is computed over the statement's canonical form; the Baseline envelope
@@ -90,8 +92,11 @@ Two facts shape the decision:
    gains `VERSION` in its pin table, used only to build the download URL (`…/download/v<VERSION>/req-<REV>-<TARGET>.tar.gz`).
    The SHA-256 and `built from <REV>` checks are unchanged, so a moved tag cannot change what is installed.
 8. **The existing `rev-*` releases stay as they are.** They are not renamed and not re-tagged, because pins in adopters'
-   repositories point at them. The first release under this ADR is **0.2.0**: every earlier binary printed 0.1.0, so 0.1.0
-   names all of them and cannot be reused.
+   repositories point at them. The first release under this ADR is **0.5.0** (amended 2026-11-17 by the owner, from 0.2.0, in
+   the bump pull request): the four `rev-*` releases are counted as 0.1 to 0.4 for numbering only, since each was a
+   release and `rev-3294a46` alone moved identity (the first to read `req.claim/3`). No tag and no download carries 0.2,
+   0.3 or 0.4, and they are never published. Every earlier binary printed 0.1.0, and the workflow still counts each
+   `rev-*` release as 0.1.0 (decision 4), so the first notes read "0.1.0 → 0.5.0"; that is the reason.
 
 ## Consequences
 
