@@ -24,6 +24,7 @@ const DRIFT: &str = "docs/architecture/drift";
 const BEFORE: &str = "docs/architecture/drift/req-before.png";
 const TIGHTENING: &str = "docs/architecture/drift/req-tightening.png";
 const REPLAY: &str = "docs/architecture/drift/req-replay.gif";
+const HOW_IT_WORKS: &str = "docs/architecture/drift/req-how-it-works.png";
 const REPO: &str = "autox-my/req";
 /// The three outcome words `req satisfy` prints, as ADR 0040 decision 3 names them.
 const OUTCOMES: [&str; 3] = ["HOLDS", "HOLDS (weakened)", "SUSPECT"];
@@ -479,13 +480,16 @@ fn each_verdict_in_the_table_is_the_word_req_printed() {
     assert_eq!(end - start + 1, 5, "a header, its rule and three rows");
 }
 
-/// The diagram, the quickstart script and the honest limits are all still on the page.
+/// The how-it-works picture (P-3-fix: it replaced a Mermaid block, whose pan-and-zoom buttons covered the right-hand boxes on
+/// GitHub, with a static picture in the replay's visual language), the quickstart script and the honest limits are all still on
+/// the page. What the Mermaid block pinned, the five steps and the three outcomes, the picture's alt text now pins: the picture
+/// is a file in the repository and its alt text states every step in order.
 #[test]
-fn the_diagram_the_script_and_status_are_there() {
+fn the_how_it_works_picture_the_script_and_status_are_there() {
     let readme = readme();
     assert!(
-        readme.contains("```mermaid"),
-        "the how-it-works diagram is a Mermaid block (it renders on GitHub)"
+        !readme.contains("```mermaid"),
+        "the how-it-works diagram is a picture now: a Mermaid block's buttons cover the boxes on GitHub"
     );
     assert!(
         readme.contains("tools/demo/try_drift.py"),
@@ -499,6 +503,45 @@ fn the_diagram_the_script_and_status_are_there() {
         readme.contains("docs/adopting.md"),
         "the quickstart is a demonstration: adopting req is linked, not restated"
     );
+    let heading = readme
+        .lines()
+        .position(|l| l == "## How it works")
+        .expect("the How it works heading");
+    let lines: Vec<&str> = readme.lines().collect();
+    let picture = lines[heading + 1..]
+        .iter()
+        .take_while(|l| !l.starts_with("## "))
+        .find(|l| l.contains(HOW_IT_WORKS))
+        .expect("the picture is under How it works");
+    assert!(
+        picture.starts_with("![") && picture.ends_with(&format!("]({HOW_IT_WORKS})")),
+        "a plain image (no link: nothing to click through to):\n{picture}"
+    );
+    assert!(
+        root().join(HOW_IT_WORKS).is_file(),
+        "{HOW_IT_WORKS} is committed"
+    );
+    // The five steps, in order, then the outcomes: the Mermaid block's nodes, now in the alt text.
+    let alt = picture
+        .trim_start_matches("![")
+        .split(&format!("]({HOW_IT_WORKS})"))
+        .next()
+        .expect("alt text");
+    let mut at = 0;
+    for step in [
+        "A requirement is edited",
+        "Its meaning fingerprint is derived again",
+        "The direction of the change is classified: same, looser, tighter, or another direction (a polarity flip or a scope change)",
+        "Each recorded design link is judged by that direction",
+        "HOLDS or HOLDS (weakened)",
+        "SUSPECT",
+        "framed in red for a human to re-check",
+    ] {
+        let found = alt[at..]
+            .find(step)
+            .unwrap_or_else(|| panic!("the alt text must state, in order, `{step}`:\n{alt}"));
+        at += found + step.len();
+    }
 }
 
 /// The sections come in the order the page promises: the outcome first, the depth after.
@@ -681,7 +724,8 @@ fn the_note_follows_the_table_and_is_two_plain_sentences() {
 }
 
 /// A short Contents list follows the hero block (before the first section) and links every heading that follows; each link
-/// resolves to a heading of the page.
+/// resolves to a heading of the page. P-3-fix (owner review of PR #100): it is a Markdown bulleted list, one heading per line,
+/// not one run-on line of middots; the depth headings are grouped as a nested list.
 #[test]
 fn the_contents_list_links_every_section_and_each_link_resolves() {
     let readme = readme();
@@ -702,14 +746,39 @@ fn the_contents_list_links_every_section_and_each_link_resolves() {
         replay < contents && contents < first_section,
         "the Contents follow the hero block and come before the first section"
     );
-    let block: String = lines[contents + 1..first_section].join(" ");
+    let block: Vec<&str> = lines[contents + 1..first_section]
+        .iter()
+        .copied()
+        .filter(|l| !l.trim().is_empty())
+        .collect();
+    assert!(
+        block
+            .iter()
+            .all(|l| l.starts_with("- ") || l.starts_with("  - ")),
+        "the Contents are a bulleted list, nested one level at most:\n{}",
+        block.join("\n")
+    );
+    assert!(
+        block.iter().all(|l| !l.contains(" · ")),
+        "no run-on line of middots:\n{}",
+        block.join("\n")
+    );
+    assert!(
+        block.iter().all(|l| l.matches("](#").count() <= 1),
+        "one heading per line:\n{}",
+        block.join("\n")
+    );
+    assert!(
+        block.iter().any(|l| l.starts_with("  - ")),
+        "the depth headings are nested under a group"
+    );
     let mut linked: Vec<String> = Vec::new();
-    let mut rest = block.as_str();
-    while let Some(at) = rest.find("](#") {
-        let tail = &rest[at + 3..];
-        let close = tail.find(')').expect("a closed link");
-        linked.push(tail[..close].to_owned());
-        rest = &tail[close..];
+    for line in &block {
+        if let Some(at) = line.find("](#") {
+            let tail = &line[at + 3..];
+            let close = tail.find(')').expect("a closed link");
+            linked.push(tail[..close].to_owned());
+        }
     }
     let headings: Vec<&str> = lines
         .iter()
@@ -723,9 +792,10 @@ fn the_contents_list_links_every_section_and_each_link_resolves() {
         "the Contents link every heading that follows, in order, and each anchor is that heading's"
     );
     assert!(
-        block.len() < 900,
-        "the Contents are short ({} bytes):\n{block}",
-        block.len()
+        block.len() <= 18,
+        "the Contents are short ({} lines):\n{}",
+        block.len(),
+        block.join("\n")
     );
 }
 
@@ -764,7 +834,13 @@ fn the_folds_are_balanced_and_hide_neither_the_limits_nor_the_diagram() {
     }
     assert_eq!(depth, 0, "every `<details>` is closed");
     assert!(folds >= 2, "the depth is behind folds ({folds})");
-    for must_show in ["## Status", "```mermaid", "| **re-word**", "> [!NOTE]"] {
+    for must_show in [
+        "## Status",
+        "[![A replay of three edits",
+        "![How req judges an edit",
+        "| **re-word**",
+        "> [!NOTE]",
+    ] {
         let hit = lines
             .iter()
             .position(|l| l.starts_with(must_show))

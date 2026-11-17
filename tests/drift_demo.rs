@@ -535,6 +535,8 @@ fn the_corpus_is_untouched_after_the_build() {
                 || name == "req-tightening.png.json"
                 || name == "req-replay.gif"
                 || name == "req-replay.gif.json"
+                || name == "req-how-it-works.png"
+                || name == "req-how-it-works.png.json"
                 || EXPECTED.iter().any(|(id, _, _)| *id == edit)
                     && ["overlay.json", "matrix.md", "satisfy.txt"].contains(&name))
         })

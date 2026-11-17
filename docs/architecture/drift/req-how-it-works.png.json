@@ -1,0 +1,13 @@
+{
+  "schema": "req.drift-diagram/1",
+  "png": "docs/architecture/drift/req-how-it-works.png",
+  "png_sha256": "9c4dbd5e0f3f1677da43be87477630f418338307febd7d103fc210ddd05e165a",
+  "script": "tools/demo/drift_replay.py",
+  "script_sha256": "57eb7223e04576873ce1ba887ba77a2932136075cf214e07bd7de379b725e914",
+  "chrome": "Google Chrome 157.0.8103.79",
+  "frame_size": [
+    1680,
+    372
+  ],
+  "recipe": "python3 tools/demo/drift_replay.py (the wording is fixed in the script, so the record binds the script and the PNG; one HTML page screenshotted by headless Chrome at 1680x372)"
+}

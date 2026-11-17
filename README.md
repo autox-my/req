@@ -12,7 +12,21 @@ When a requirement's meaning changes, req tells you which parts of your design n
 
 ## Contents
 
-[Three edits, three verdicts](#three-edits-three-verdicts) · [What SUSPECT means](#what-suspect-means) · [Try it in three commands](#try-it-in-three-commands) · [How it works](#how-it-works) · [Where to look next](#where-to-look-next) · [What a claim is](#what-a-claim-is) · [The bet, stated so it can fail](#the-bet-stated-so-it-can-fail) · [What it does](#what-it-does) · [The two differentiators](#the-two-differentiators) · [Status](#status) · [Install](#install) · [Development](#development) · [Licence](#licence)
+- [Three edits, three verdicts](#three-edits-three-verdicts)
+- [What SUSPECT means](#what-suspect-means)
+- [Try it in three commands](#try-it-in-three-commands)
+- [How it works](#how-it-works)
+- [Where to look next](#where-to-look-next)
+- The depth
+  - [What a claim is](#what-a-claim-is)
+  - [The bet, stated so it can fail](#the-bet-stated-so-it-can-fail)
+  - [What it does](#what-it-does)
+  - [The two differentiators](#the-two-differentiators)
+  - [Status](#status)
+- Using it
+  - [Install](#install)
+  - [Development](#development)
+  - [Licence](#licence)
 
 ## Three edits, three verdicts
 
@@ -51,14 +65,7 @@ This is a demonstration, not the adopter's loop: to use req on your own requirem
 
 ## How it works
 
-```mermaid
-flowchart LR
-    A["a requirement is edited"] --> B["its meaning fingerprint is derived again"]
-    B --> C["the direction of the change is classified: same, looser, tighter, or another direction (a polarity flip, a scope change)"]
-    C --> D["each recorded design link is judged by that direction"]
-    D --> E["HOLDS, or HOLDS (weakened)"]
-    D --> F["SUSPECT: framed for a human to re-check"]
-```
+![How req judges an edit in five steps: 1. A requirement is edited. 2. Its meaning fingerprint is derived again. 3. The direction of the change is classified: same, looser, tighter, or another direction (a polarity flip or a scope change). 4. Each recorded design link is judged by that direction. 5. The result is HOLDS or HOLDS (weakened), or SUSPECT, framed in red for a human to re-check.](docs/architecture/drift/req-how-it-works.png)
 
 A person links a part of the design to a requirement (a `req-satisfies: REQ-0010` line in the source file) and records, with `req satisfy --record`, the statement it was judged against; req never records a link on its own. When the requirement is edited, req derives the meaning of the recorded and the current statement under the same rules and classifies the change. The same meaning holds; a loosening that has been measured to be safe holds (weakened); every other direction is suspect until a human re-records it ([ADR 0040](docs/adr/0040-a-design-satisfies-a-claim-at-a-meaning.md)). The diagram's red frame is the same verdict drawn on the architecture ([ADR 0052](docs/adr/0052-an-architecture-diagram-shows-the-claims-its-components-satisfy.md)).
 

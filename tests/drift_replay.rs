@@ -9,8 +9,9 @@
 //!   each input file (`edits.json`, the three `satisfy.txt`, the overlays that give its layout and its status words), of the
 //!   script and of the GIF itself, the renderer versions, the frame size and the frame count. A changed input, a changed
 //!   script or a changed GIF fails here and names the command that regenerates it.
-//! - **The GIF is what the spec says**: 1600 to 1800 px wide, under 3 MB, under 25 s in all, looping, its last frame the
-//!   longest hold.
+//! - **The GIF is what the spec says**: 1600 to 1800 px wide, under 3 MB, paced to be followed (P-3-fix: an intro, three
+//!   beats of 3.5 to 4 s for each edit, a summary; 40 to 55 s in all), looping, its last frame the longest hold.
+//! - **The how-it-works picture** (`req-how-it-works.png`, P-3-fix) is bound to the script that drew it and to its own bytes.
 //! - **Every word of req's output is read from the committed files**: the script's HTML frames (`--html-only`, no browser) carry
 //!   the exact `req satisfy` line of each edit's `satisfy.txt` from that edit's frame on, and none before it.
 //! - **The script refuses, and says what is missing**, when Chrome or ffmpeg is absent; it never falls back to another renderer.
@@ -238,7 +239,9 @@ fn the_record_binds_the_gif_to_the_files_it_was_made_from() {
 }
 
 /// The record's frame size and frame count are the GIF's own; the GIF is the spec's: wide enough to read at full width on
-/// GitHub, small, short, looping, and its last frame is the longest hold.
+/// GitHub, small, looping, paced so a first-time viewer can follow it (P-3-fix, owner review of PR #100: an intro of about 5 s,
+/// then three beats of 3.5 to 4 s for each edit (the edit, the left reaction, the right reaction), then a summary held about
+/// 6 s; the total is 40 to 55 s), and its last frame is the longest hold.
 #[test]
 fn the_gif_is_the_size_and_pace_the_spec_asks_for() {
     let bytes = fs::read(root().join(GIF)).unwrap_or_else(|e| panic!("{GIF}: {e}"));
@@ -265,21 +268,45 @@ fn the_gif_is_the_size_and_pace_the_spec_asks_for() {
         bytes.len()
     );
     assert!(info.loops_forever, "the GIF loops");
+    assert_eq!(
+        info.delays.len(),
+        11,
+        "an intro, three beats for each of three edits, a summary: {:?}",
+        info.delays
+    );
+    // GIF delays are whole centiseconds taken from timestamp gaps, so a hold may be a few centiseconds off.
+    let within = |delay: u16, low: u16, high: u16| (low..=high).contains(&delay);
+    assert!(
+        within(info.delays[0], 480, 520),
+        "the intro is held about 5 s: {:?}",
+        info.delays
+    );
+    for edit in 0..3 {
+        for beat in 0..3 {
+            let delay = info.delays[1 + 3 * edit + beat];
+            assert!(
+                within(delay, 345, 405),
+                "edit {} beat {} is held 3.5 to 4 s, not {delay} cs: {:?}",
+                edit + 1,
+                beat + 1,
+                info.delays
+            );
+        }
+    }
     let total: u32 = info.delays.iter().map(|d| u32::from(*d)).sum();
     assert!(
-        (1500..2500).contains(&total),
-        "the replay runs {total} cs: under about 25 s, and long enough to read"
+        (4000..5500).contains(&total),
+        "the replay runs {total} cs: 40 to 55 s so each beat can be read"
     );
     let last = *info.delays.last().expect("frames");
+    assert!(
+        within(last, 580, 620),
+        "the summary is held about 6 s: {last} cs"
+    );
     assert!(
         info.delays.iter().all(|d| *d <= last),
         "the final frame is the longest hold: {:?}",
         info.delays
-    );
-    assert!(
-        info.delays.len() >= 8,
-        "a start, an edit and its verdict for each of three edits, and a final frame: {} frames",
-        info.delays.len()
     );
 }
 
@@ -343,13 +370,21 @@ fn html_frames(dir: &Path) -> Vec<String> {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .filter(|n| n.starts_with("frame-") && n.ends_with(".html"))
         .collect();
-    names.sort();
+    // Numeric order: `frame-10` follows `frame-9`.
+    names.sort_by_key(|n| {
+        n.trim_start_matches("frame-")
+            .trim_end_matches(".html")
+            .parse::<u32>()
+            .unwrap_or(u32::MAX)
+    });
     names.iter().map(|n| read(&dir.join(n))).collect()
 }
 
-/// Eight states: the start (every part holding), then for each edit the state when it is made and the state when the verdicts
-/// are in, and the last state held longest. The words of req's output are the committed ones, and appear only once req has
-/// said them; the edit's words are `edits.json`'s; the counters and the chip are what the files say.
+/// Eleven states (P-3-fix): an intro; then, for each edit, three beats (the edit alone, the left reaction with the right panel
+/// dimmed, the right reaction with the left panel dimmed); then a summary. The words of req's output are the committed
+/// ones, and appear only in the right-reaction beat and the summary; the edit's words are `edits.json`'s, shown full width
+/// from the first beat; the counters and the chip are what the files say. The banner above the panels says in plain words
+/// what each beat is.
 #[test]
 fn every_word_of_reqs_output_is_read_from_the_committed_files() {
     let scratch = Scratch::new("html");
@@ -359,19 +394,43 @@ fn every_word_of_reqs_output_is_read_from_the_committed_files() {
     let frames = html_frames(&dir);
     assert_eq!(
         frames.len(),
-        8,
-        "start, then two states per edit, then the last held"
+        11,
+        "an intro, three beats for each edit, a summary"
     );
     let edits: Value = serde_json::from_str(&read(&root().join(DRIFT).join("edits.json")))
         .expect("edits.json is JSON");
     let edits = edits["edits"].as_array().expect("edits");
     let texts: Vec<String> = frames.iter().map(|f| text_of(f)).collect();
 
-    // The start: no edit, no output from req, nothing alarmed.
+    // The banner names the beat, and the intro says in plain words what the reader is about to see.
+    let beats = [
+        "intro", "edit", "left", "right", "edit", "left", "right", "edit", "left", "right",
+        "summary",
+    ];
+    for (at, beat) in beats.iter().enumerate() {
+        assert_eq!(
+            attributes(&frames[at], "data-beat"),
+            vec![(*beat).to_owned()],
+            "frame {at} is the `{beat}` beat"
+        );
+    }
+    for needed in [
+        "The same three edits to one requirement, shown to two reviewers.",
+        "Left: a check that flags every text change.",
+        "Right: req, which judges the direction of the change.",
+    ] {
+        assert!(
+            texts[0].contains(needed),
+            "the intro says `{needed}`:\n{}",
+            texts[0]
+        );
+    }
+
+    // The intro: no edit, no output from req, nothing alarmed, both panels in the starting, all-holding state.
     for edit in EDITS {
         assert!(
             !texts[0].contains(&printed_line(edit)),
-            "{edit}: req has said nothing in the start state"
+            "{edit}: req has said nothing in the intro"
         );
     }
     assert!(texts[0].contains("Edit 0 of 3"), "{}", texts[0]);
@@ -381,8 +440,8 @@ fn every_word_of_reqs_output_is_read_from_the_committed_files() {
         let before = edit["before"].as_str().expect("a before");
         let after = edit["after"].as_str().expect("an after");
         let line = printed_line(id);
-        let (made, judged) = (1 + 2 * k, 2 + 2 * k);
-        for at in [made, judged] {
+        let (edit_beat, left_beat, right_beat) = (1 + 3 * k, 2 + 3 * k, 3 + 3 * k);
+        for at in [edit_beat, left_beat, right_beat] {
             assert!(
                 texts[at].contains(&format!("Edit {} of 3", k + 1)),
                 "frame {at} counts the edit: {}",
@@ -390,43 +449,84 @@ fn every_word_of_reqs_output_is_read_from_the_committed_files() {
             );
             assert!(
                 texts[at].contains(before) && texts[at].contains(after),
-                "frame {at}: the left terminal shows the edit, before and after, as edits.json has it"
+                "frame {at}: the edit, before and after, is shown as edits.json has it"
             );
         }
         assert!(
-            !texts[made].contains(&line),
-            "{id}: req has not said its line yet in the state where the edit is made"
+            texts[edit_beat].contains(&format!("Edit {} of 3:", k + 1)),
+            "the banner names the edit: {}",
+            texts[edit_beat]
         );
+        for at in [edit_beat, left_beat] {
+            assert!(
+                !texts[at].contains(&line),
+                "{id}: req has not said its line yet in frame {at}"
+            );
+        }
         assert!(
-            texts[judged].contains(&line),
-            "{id}: the judged state carries req's exact line from satisfy.txt:\n{line}\n{}",
-            texts[judged]
+            texts[right_beat].contains(&line),
+            "{id}: the right-reaction beat carries req's exact line from satisfy.txt:\n{line}\n{}",
+            texts[right_beat]
         );
         let outcome = line
             .trim_start_matches('[')
             .split(']')
             .next()
             .expect("a bracket");
-        let chips = attributes(&frames[judged], "data-verdict");
         assert_eq!(
-            chips,
+            attributes(&frames[right_beat], "data-verdict"),
             vec![outcome.to_owned()],
             "{id}: the status chip carries the word req printed"
         );
+        // The chip has not moved before req has spoken.
+        let start_word = attributes(&frames[0], "data-verdict");
+        for at in [edit_beat, left_beat] {
+            assert_eq!(
+                attributes(&frames[at], "data-verdict"),
+                start_word,
+                "frame {at}: the chip still shows the starting state"
+            );
+        }
     }
+    assert!(
+        texts[1].contains("Edit 1 of 3: the wording changes, the meaning does not"),
+        "the re-word's caption says it in plain words: {}",
+        texts[1]
+    );
 
-    // The final frame keeps the third edit's output and says nothing req did not.
-    assert!(texts[7].contains(&printed_line("tightening")));
+    // The summary keeps req's last line, and recaps each edit with the word req printed for it.
+    assert!(texts[10].contains(&printed_line("tightening")));
+    for edit in EDITS {
+        let line = printed_line(edit);
+        let word = line
+            .trim_start_matches('[')
+            .split(']')
+            .next()
+            .expect("a bracket");
+        assert!(
+            texts[10].contains(&format!("req: {word}")),
+            "the summary recaps {edit} with `{word}`:\n{}",
+            texts[10]
+        );
+    }
+    assert!(
+        texts[10].contains("three times") && texts[10].contains("once"),
+        "the summary counts the alarms: {}",
+        texts[10]
+    );
 
-    // Counters: the baseline's alarm rises once per edit; req's is raised once, by the tightening only.
+    // Counters: the baseline's alarm rises once per edit, in its own beat; req's is raised once, by the tightening only.
     let counters = |at: usize| -> Vec<String> { attributes(&frames[at], "data-alarms") };
-    let expected: [(&str, &str); 8] = [
+    let expected: [(&str, &str); 11] = [
         ("0", "0"),
         ("0", "0"),
         ("1", "0"),
         ("1", "0"),
+        ("1", "0"),
         ("2", "0"),
         ("2", "0"),
+        ("2", "0"),
+        ("3", "0"),
         ("3", "1"),
         ("3", "1"),
     ];
@@ -438,17 +538,80 @@ fn every_word_of_reqs_output_is_read_from_the_committed_files() {
         );
     }
 
-    // ADR 0052's red frame: only the tightening's verdict frames carry it, with the label the overlay gives it.
+    // The panel not being talked about is dimmed: the right one while the left reacts, the left one while the right reacts.
+    let dim = |at: usize| -> Vec<String> { attributes(&frames[at], "data-dim") };
+    for (at, beat) in beats.iter().enumerate() {
+        let want: [&str; 2] = match *beat {
+            "left" => ["false", "true"],
+            "right" => ["true", "false"],
+            _ => ["false", "false"],
+        };
+        assert_eq!(
+            dim(at),
+            want.iter().map(|d| (*d).to_owned()).collect::<Vec<_>>(),
+            "frame {at} ({beat}): which panel is dimmed"
+        );
+    }
+
+    // ADR 0052's red frame: only the tightening's right reaction and the summary carry it, with the overlay's label.
     let overlay: Value = serde_json::from_str(&read(
         &root().join(DRIFT).join("tightening").join("overlay.json"),
     ))
     .expect("the overlay is JSON");
     let label = overlay["boundaries"][0]["label"].as_str().expect("a label");
-    let framed: Vec<usize> = (0..8).filter(|at| texts[*at].contains(label)).collect();
+    let framed: Vec<usize> = (0..11).filter(|at| texts[*at].contains(label)).collect();
     assert_eq!(
         framed,
-        vec![6, 7],
+        vec![9, 10],
         "the red frame is drawn for the tightening and only there"
+    );
+}
+
+const HOW_PNG: &str = "docs/architecture/drift/req-how-it-works.png";
+const HOW_RECORD: &str = "docs/architecture/drift/req-how-it-works.png.json";
+
+/// The README's "How it works" picture replaced a Mermaid block (P-3-fix, owner review of PR #100). Its wording is fixed in the
+/// script, so its record binds the script and the PNG, not data files; a changed script or PNG fails here and names the command.
+#[test]
+fn the_how_it_works_picture_is_bound_to_its_script_and_its_own_bytes() {
+    let record: Value = serde_json::from_str(&read(&root().join(HOW_RECORD)))
+        .unwrap_or_else(|e| panic!("{HOW_RECORD}: {e}"));
+    assert_eq!(record["schema"], "req.drift-diagram/1");
+    assert_eq!(record["png"], HOW_PNG);
+    assert_eq!(
+        record["png_sha256"].as_str().expect("a hash"),
+        sha256_hex(&root().join(HOW_PNG)),
+        "{HOW_PNG} is not the file the record describes. Regenerate both by hand: `{REGENERATE}`"
+    );
+    assert_eq!(record["script"], SCRIPT);
+    assert_eq!(
+        record["script_sha256"].as_str().expect("a hash"),
+        sha256_hex(&root().join(SCRIPT)),
+        "{SCRIPT} changed since the picture was made: it is stale. Regenerate it by hand: `{REGENERATE}`"
+    );
+    let bytes = fs::read(root().join(HOW_PNG)).unwrap_or_else(|e| panic!("{HOW_PNG}: {e}"));
+    assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n", "{HOW_PNG} is a PNG");
+    let be =
+        |at: usize| u32::from_be_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
+    assert_eq!(
+        record["frame_size"],
+        serde_json::json!([be(16), be(20)]),
+        "the record's size is the PNG's"
+    );
+    assert!(
+        (1600..=1800).contains(&be(16)),
+        "{} px wide: it shows at the README's full width",
+        be(16)
+    );
+    assert!(
+        bytes.len() < 600 * 1024,
+        "{} bytes: a picture beside the GIF stays small",
+        bytes.len()
+    );
+    let version = record["chrome"].as_str().unwrap_or("");
+    assert!(
+        version.to_lowercase().contains("chrome") && version.chars().any(|c| c.is_ascii_digit()),
+        "the record carries the chrome version: `{version}`"
     );
 }
 
