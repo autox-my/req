@@ -8,7 +8,8 @@ side is `examples/install-req.sh` and [`docs/adopting.md`](adopting.md) § *Inst
 cuts the release. Nothing here changes req: the binary gains no command and no network client, and nothing is
 released until a person asks.
 
-**Status.** Four releases exist: `rev-ec87808`, `rev-6b74f51`, `rev-aeaf987` and `rev-3294a46`.
+**Status.** Five releases exist: `rev-ec87808`, `rev-6b74f51`, `rev-aeaf987`, `rev-3294a46` and **`v0.5.0`**, the first
+versioned release (ADR 0055).
 `.github/workflows/release.yml` was dispatched on 2026-11-09 for `ec87808`
 (<https://github.com/autox-my/req/actions/runs/42568766890>) and for `6b74f51`
 (<https://github.com/autox-my/req/actions/runs/42622634900>), and on 2026-11-16 for `3294a46`. The
@@ -21,15 +22,24 @@ no-overwrite refusal: the publish job refused, and the release was left unchange
 before a runner takes it; wait, and do not dispatch again. `examples/install-req.sh` was run against `rev-ec87808` on Ubuntu 22.04, 24.04
 and latest runners (the floor note below) and against `rev-6b74f51`'s macOS tarball on one macOS arm64 machine.
 
-All four releases are tagged `rev-<REV>`. ADR 0055 (accepted 2026-11-16) changes the next one: it is tagged `v<VERSION>`, with
-the version read from the rev's `Cargo.toml`, and the workflow refuses a version that does not follow from the previous
-release. **That path has been run only against a fake `gh` and fixtures** (`tests/release_publish.rs`,
-`tests/release_version.rs`), never against GitHub: no `v<VERSION>` release exists yet, and the pull request that
-implements it does not bump the version, so a dispatch at that commit fails closed at the version check (0.1.0 is not greater than
-the 0.1.0 that `rev-3294a46` counts as). The one call that touches GitHub was tried read-only on 2026-11-17: `gh api repos/autox-my/req/commits/<tag> --jq .sha`
-answered the commit of an existing tag (`rev-3294a46`) and HTTP 422 "No commit found for SHA" for an absent one, which is what the
-publish job's lookup expects. Not yet exercised on GitHub: a macOS binary on a second machine and finishing a release whose
-publish died before the upload. Intel Mac and Windows
+The four earlier releases are tagged `rev-<REV>`; from ADR 0055 (accepted 2026-11-16) on, a release is tagged `v<VERSION>`,
+with the version read from the rev's `Cargo.toml`, and the workflow refuses a version that does not follow from the previous
+release. **`v0.5.0` was the first run of that path on GitHub**, dispatched on 2026-11-17 for `ddcd056`
+(<https://github.com/autox-my/req/actions/runs/43992333953>): the version check accepted 0.1.0 → 0.5.0 as minor (identity
+unmoved since `rev-3294a46`), the tag `v0.5.0` was created at `ddcd056` and its commit read back with `gh api`, and the release
+holds both targets' three assets, named `req-ddcd056-<TARGET>.*`. The notes open with "Version 0.5.0 · rev `ddcd056` ·
+bump: minor". Its pins, from the publish log, match the release's `.sha256` assets:
+
+```text
+pin (x86_64-unknown-linux-gnu): VERSION=0.5.0 REV=ddcd056 SHA256=bea35ad17b7e0fe0c7662e7f416275ddea3b67d9fb1742fffb653bf1a0edb0bb
+pin (aarch64-apple-darwin): VERSION=0.5.0 REV=ddcd056 SHA256=814c6ac514a0fc49560494673a4eafb9adf98b4819d013bad7351085c1245bda
+```
+
+`examples/install-req.sh` at `main`, with that pin table, installed the macOS tarball from the `v0.5.0` URL on one macOS arm64
+machine and verified `built from ddcd056`. The first version bump (PR #98) found that the two experiment crates' lock files
+must follow the version too; step 3 below names them. A missing tag answers HTTP 422 "No commit found for SHA", which the
+publish job's lookup treats as absent. Not yet exercised on GitHub: a macOS binary on a second machine, and finishing a release
+whose publish died before the upload (the `v0.5.0` run took the path where no release existed). Intel Mac and Windows
 are not built; a Windows adopter runs the Linux tarball under WSL2 (`docs/adopting.md`, *Windows*). `tests/release_workflow.rs` pins the workflow's text and shape (the trigger, the
 permissions, the no-overwrite rule). The workflow fails closed, so a misconfiguration is a red run, never a
 half-published release you cannot tell from a good one.
