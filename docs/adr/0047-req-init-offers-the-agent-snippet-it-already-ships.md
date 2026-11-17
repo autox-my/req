@@ -3,7 +3,7 @@
 Extends ADR 0012 (`init` resolves no corpus) and amends `req init`'s documented contract. No `RULES_V` bump, no address
 moves, no Baseline change: `init` still writes authored fields only, and nothing it writes is derived (ADR 0022).
 
-**Status: proposed.** The owner ratifies it by merging the pull request that carries it. Raised from a comparative
+**Status: accepted** — ratified by the owner's merge of PR #66 (2026-11-16); not yet implemented. Raised from a comparative
 review of an adopter-surface tool (reqord, `f043777`) that persists an agent context directory (`product.yaml`,
 `technical.yaml`, `domain/*.md`). Revised four times after review (PR #66): decision 3 judged a file the scaffold tells
 the adopter to fill; decision 5 shut out a repository that already has an `AGENTS.md`; the context premise was wrong
