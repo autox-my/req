@@ -33,7 +33,7 @@ step 2 of [docs/design.md](../docs/design.md), executed with step 1 already on d
 
 ## Reading a file
 
-`schema` is the file-format version, `req.claim/2` ([ADR 0022](../docs/adr/0022-claims-are-authored-fingerprints-are-derived.md)).
+`schema` is the file-format version, `req.claim/3` ([ADR 0022](../docs/adr/0022-claims-are-authored-fingerprints-are-derived.md) made the parse derived; `/3` adds the optional `area`, [ADR 0051](../docs/adr/0051-a-claim-may-name-the-area-it-belongs-to.md)).
 A claim carries what its author wrote — `statement`, `applicability`, `relations`,
 `rationale`, and optionally `tests`, `evidence` and `pins` — and nothing derived: the parse,
 the canonical form and the address are computed from `statement` when the corpus is loaded

@@ -907,6 +907,29 @@ views no longer count it, so the pair is no longer a contradiction, and `req ren
 REQ-0012 undecided, which the gate names. The old claim stays readable as history, and the audit packet lists it in a *Superseded*
 section. A claim that supersedes itself, or a loop of them, fails `relations_resolve`.
 
+### A provider for `req propose`
+
+`req propose` puts **one** pair of claims to a command you name and prints the answer as an unratified proposal. It ships
+no provider: the command is **your process boundary** (ADR 0021), and nothing from a model or a network reaches req's core.
+`examples/propose-provider.sh` is a stand-in that shows the contract, nothing more. It calls no model and no network; it
+reads the pair from stdin and answers `equivalent` when the two statements differ in no word, `related` otherwise, and never
+`unrelated`:
+
+```sh
+req propose claims/REQ-0004.yml claims/REQ-0021.yml --provider-cmd examples/propose-provider.sh
+```
+
+```text
+proposal (unratified): related (confidence 60%)
+  provider: cmd:examples/propose-provider.sh
+  nothing was written; a human ratifies
+```
+
+The command runs through `sh -c` and reads `ID:`, `A:`, `B:`, `DIFF:` and `CHOOSE:` lines on stdin. It answers with a label
+(`equivalent`, `related`, `unrelated`) or a JSON object `{"choice": "...", "confidence": 60}`, and the line above records the
+command verbatim. A command that fails, declines or answers with no readable label is UNVERIFIABLE (exit 3), never
+"unrelated". Replace the script with your own, behind the same boundary; `req propose --help` is the contract.
+
 ## CI
 
 Save this as `.github/workflows/req.yml`. The summary step below targets GitHub's
