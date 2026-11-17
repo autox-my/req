@@ -196,7 +196,7 @@ pub fn canonical_bytes(manifest: &Manifest) -> String {
             // four-key shape, because that is the byte string its signature covers — adding a
             // key with a null value would silently stop every old signature from verifying.
             let tests = match &claim.tests_hash {
-                Some(tests_hash) if manifest.version >= 4 => {
+                Some(tests_hash) if manifest.version >= TESTS_ATTESTED_FROM => {
                     format!(",\"tests_hash\":{}", json_string(tests_hash))
                 }
                 _ => String::new(),
@@ -527,11 +527,11 @@ pub fn drift(rows: &[Row], manifest: &Manifest) -> Drift {
                     // changed `tests_hash` after signing is FAIL — the same class as a changed
                     // address (ADR 0019).
                     // `verify` does not return early for a newer envelope before drift, so the
-                    // guard is the closed support window (4..=BASELINE_VERSION), not `>= 4`: a
+                    // guard is the closed support window (TESTS_ATTESTED_FROM..=BASELINE_VERSION), not an open `>=`: a
                     // future envelope's `tests_hash` is not this build's to compare, and reading
                     // a difference there as "edited after signing" would FAIL a manifest the
                     // build already reported UNVERIFIABLE for being newer.
-                    || ((4..=BASELINE_VERSION).contains(&manifest.version)
+                    || ((TESTS_ATTESTED_FROM..=BASELINE_VERSION).contains(&manifest.version)
                         && claim
                             .tests_hash
                             .as_deref()
@@ -2331,8 +2331,9 @@ mod tests {
 
     /// A manifest must carry a `tests_hash` per claim from the envelope that introduced the key
     /// onward, not only at the version this build writes. Keyed on the current version, a v4
-    /// manifest stripped of its `tests_hash` would read as complete under a v5 build (ADR 0056
-    /// review). Today both numbers are 4, so this pins the rule at a version above them.
+    /// manifest stripped of its `tests_hash` would read as complete under a v5 build (found while
+    /// drafting the proposed ADR 0056; the rule is ADR 0019's). Today both numbers are 4, so this
+    /// pins the rule at a version above them.
     #[test]
     fn a_tests_hash_is_required_from_the_envelope_that_introduced_it_onward() {
         assert!(!requires_tests_hash(TESTS_ATTESTED_FROM - 1));
