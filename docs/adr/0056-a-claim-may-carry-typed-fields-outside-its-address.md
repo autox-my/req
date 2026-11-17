@@ -220,7 +220,8 @@ named tests and a coverage test so that the claim is checked, not asserted.
      bytes for `version == 4`: the three committed manifests (`baselines/air-gapped.json`, `release-parity.json`,
      `release-parity-and-adversarial.json`, all `"version":4`) stay `[VERIFIED]` and need no action for the implementing change to
      land green. They do **not** attest fields (or pins, if decision 7 is kept), and the verifier says so once: `predates envelope v5: the
-     authored fields and pins are NOT attested by this manifest`, keyed on the support floor and the constant as the v4 line is
+     authored fields and pins are NOT attested by this manifest` (or, if decision 7 is struck, `… the authored fields are
+     NOT attested …`), keyed on the support floor and the constant as the v4 line is
      (`:2045`). A field or a pin edited after signing is invisible to such a manifest, which is probe C2's behaviour today.
    - **The ordering is the owner's, and release-bound.** A build that does not know v5 reports a v5 manifest `[UNVERIFIABLE]
      manifest version 5 is newer than the version this build writes (4)`, exit 3, and does not judge the signature
@@ -259,7 +260,7 @@ named tests and a coverage test so that the claim is checked, not asserted.
      (`FailOn`, `src/diff.rs:143`; the flag, `:114`) and is **opt-in per repository**, as every `--fail-on` class is (ADR 0026
      §4: nothing is on by default; a repository that wants a field edit to block a merge names it); `metadata_differs` (`:704`) compares the fields digest, so a list reordering
      is not a change. A change to the declarations is reported once at the top as `kinds: changed`, as a registry change is
-     (`registry: changed`, `src/diff.rs:849`, ADR 0026 §2), and `req.diff/1` gains a top-level boolean `kinds_changed` beside
+     (`registry: changed`, printed at `src/diff.rs:1152-1153` from the comparison at `:849`, ADR 0026 §2), and `req.diff/1` gains a top-level boolean `kinds_changed` beside
      `registry_changed` (additive; ADR 0026 §6). `same-address-as <id>` (`:121`) also names it when the added and the
      removed claim differ in kind or fields (research L11): a copy with another level is not a bare renumber.
    - **`req diff` must read each revision's declarations, and today it cannot.** It asks git for `claims` and `aliases`
@@ -269,7 +270,9 @@ named tests and a coverage test so that the claim is checked, not asserted.
      make every `req diff` over a kinded corpus exit 3, and `kinds: changed` would have no base-side bytes. So `.req/kinds/`
      joins the staged paths (the pathspec, the prefix check and `materialise`) and `Side` holds the kind files' bytes beside
      `registry`, compared for `kinds: changed`. **Each side is judged by its own declarations**, as each is derived under its
-     own registry (ADR 0026 §1); a revision with no `.req/kinds/` and no claim naming a kind loads as before.
+     own registry (ADR 0026 §1); a revision with no `.req/kinds/` and no claim naming a kind loads as before. A malformed kind
+     file at a staged revision is that side failing to load, so `req diff` exits **3** naming the file and the revision (ADR
+     0026 §3), not decision 2's exit 2, which is for the working tree a command reads directly.
    - **`req compare`** keeps its verdict, which is about direction and stays `identical` when two forms are, and prints one more
      line when the two files differ in kind or fields: `fields: changed (<names>) — not part of meaning; see req diff`. It has one
      root (`src/compare.rs:392`), so **both files are judged by the working tree's declarations**. Today a
@@ -338,13 +341,16 @@ named tests and a coverage test so that the claim is checked, not asserted.
 - **The release notes must say so, and today they say the opposite.** `scripts/release-notes.sh:143` prints "a claim file
   declaring the old schema is NOT JUDGED by this build" for any schema change, which is false for a format on `READS_AS_IS`
   (it was already false for `/2` → `/3`) and would tell every `/3` adopter that decision 1 does not hold. The implementing
-  change makes the line say "loaded as it is" when the previous schema is on `READS_AS_IS` at the rev (read from
-  `src/canon.rs` as `CLAIM_SCHEMA_V` is) and "NOT JUDGED" only otherwise, with a row in `tests/release_notes.rs` for each
+  change makes the line say "loaded as it is" when the previous schema is on the **released** rev's `READS_AS_IS` (read with
+  `const_at "$full"`, never the previous rev's, whose list is what would reprint the false line), and "NOT JUDGED" only
+  otherwise. `READS_AS_IS` is a `&[u32]` (`src/canon.rs:79`), and `const_at` matches only `pub const NAME: u32 = <digits>;`
+  (`scripts/release-notes.sh:94`), so the script needs a second, list-reading extractor, with a row in `tests/release_notes.rs` for each
   (the existing row, `:415-419`, pins `req.claim/2 → req.claim/3`).
 - **A task of its own, before any v5.** `from_json` must require `tests_hash` of every manifest at or above
   `TESTS_ATTESTED_FROM` (`src/baseline.rs:51`), not only of `BASELINE_VERSION`'s (`:325`), and `drift`'s literal `4` (`:526`)
   becomes the constant; the new keys get `FIELDS_ATTESTED_FROM` (and `PINS_ATTESTED_FROM` if decision 7 is kept). It lands as
-  its own change, with a test that a v4 manifest lacking `tests_hash` is refused by a build whose `BASELINE_VERSION` is 5,
+  its own change (PR #104), with the rule as a version-parameterised helper, `requires_tests_hash(version)`, tested at
+  `BASELINE_VERSION + 1`, since `BASELINE_VERSION` is a compile-time constant and a test against it is vacuous until it is 5,
   because once v5 ships the accepted manifest is a silent loss of an attested surface.
 - **The release is a minor bump** (ADR 0055 decision 2): the claim schema and the envelope both move. `docs/claim-format.md`
   (the *Version axes* table and the field reference), `docs/adopting.md`, the `req --help` pages (`src/main.rs:192-205`), the
