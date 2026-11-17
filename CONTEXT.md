@@ -82,6 +82,17 @@ _Avoid_: link, trace
 The justification for a claim: its source, date, rejected alternatives, and assumptions.
 _Avoid_: description, note, comment
 
+**Kind**:
+The class a claim declares for itself, naming one declaration in `.req/kinds/` that types the claim's fields: authored,
+optional, one per claim, outside identity (ADR 0056, proposed).
+_Avoid_: type (a field has a type; a claim has a kind), category, area (where a claim is filed)
+
+**Field**:
+A typed attribute a claim carries under its kind: a safety level, a verification method, a review date. Authored,
+outside the address and attested in the signed Baseline. An absent field is UNKNOWN, never a default; a field is
+never ratification, which stays a signed Decision (ADR 0056, proposed).
+_Avoid_: status, approval (a field value is not authority), tag (a list field holds many), slot (the `req.claim/1` notion), pin
+
 **Decision**:
 A recorded accept, reject, or merge event carrying authority, role, meaning, and
 timestamp, together with the dissent and the road not taken.
