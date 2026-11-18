@@ -548,6 +548,20 @@ including the tri-state — and `req <command> --help` works before a corpus exi
    re-filing a claim needs no re-signature, and a statement still has to stand alone without its heading. A path
    `.req/areas` does not declare is listed by `req check` as `undeclared_area` and fails only if
    `.req/completeness` says `strict areas`. The format is in `docs/claim-format.md`, *Area*.
+9. **File an attribute that is not the requirement: a field.** An integrity level, a verification method or a
+   review date goes in `fields:` on the claim, under one `kind:`, and the kind is declared in
+   `.req/kinds/<kind>.yml` (the field names, their types and which are `required`; a declaration, not a claim).
+   Set the claim's `schema: req.claim/4`; a `/2` or `/3` claim stays as it is until you file a field on it. Four
+   things to know. (1) **What a Baseline attests:** a v5 Baseline (`req baseline` writes one) attests the kind and
+   every field, so an edit after signing is a FAIL; an older manifest does not, and says so once. The declarations in
+   `.req/kinds/` are attested by no Baseline: `req diff` prints `kinds: changed` when they move. (2)
+   **`req diff --fail-on fields-changed`** turns any edit to a claim's kind or fields into exit 1 on the pull
+   request, under any class; nothing is on by default, and a reordered list is no change. (3) **Absent is
+   UNKNOWN:** a claim that carries no value for a field has none, never a default; `req check` lists a missing
+   `required` field as `missing_field` (3, or 1 with `strict fields`) and a `ref` to no claim as `dangling_field_ref`
+   (3). (4) **A field is never ratification:** `status: approved` is data an author wrote, no signed Decision,
+   and nothing reads it to accept, merge or release a claim; a Decision stays valid across a field edit, which is
+   why (2) exists. The format is in `docs/claim-format.md`, *Kinds and fields*.
 
 ## Sign the Baseline
 
@@ -1304,7 +1318,8 @@ release lines, the claims and `baselines/`:
   `derives-from`, or declare it a root in `.req/completeness`.
 
 `.req/completeness` is optional and has the same grammar as the other two lists. Each line is one root
-claim id, `strict unrelated` (which turns every unlisted unrelated claim into a 1) or `need design`
+claim id, `strict unrelated` (which turns every unlisted unrelated claim into a 1), `strict areas`, `strict fields`
+(which turns a `missing_field`, a claim lacking a field its kind declares `required`, from a 3 into a 1) or `need design`
 (which adds `unsatisfied`, a 3 for an applying claim no design element declares: *Satisfaction links*). An unknown word or
 an id the corpus does not hold is exit 2. A claim a line leaves undecided is that gate's 3 and is not named
 here again. None of this certifies the requirements **complete**: req holds no hazard list, stakeholder
@@ -1406,7 +1421,7 @@ fail-on: weakened,removed,pins-changed,tests-lost — 1 triggered
 ```
 
 **`--fail-on` decides what blocks a merge.** Its value is a comma-separated subset of `weakened`, `removed`,
-`reshaped`, `not-judged`, `pins-changed`, `pin-flagged`, `tests-lost`, `contradiction-added`; any other spelling, or an empty list, is
+`reshaped`, `not-judged`, `pins-changed`, `pin-flagged`, `tests-lost`, `contradiction-added`, `fields-changed`; any other spelling, or an empty list, is
 exit 2. Nothing is on by default, and an unlisted class is still printed. A reasonable first set is
 `weakened,removed,pins-changed,tests-lost`: the movements a team most often wants a second pair of eyes on.
 Widen it (`reshaped`, `not-judged`, `pin-flagged`) once the reports have been read for a while, or narrow it;
@@ -1425,6 +1440,10 @@ What to keep in mind when reading it:
 - **The direction is exactly as good as `req compare`'s.** The classifier is Tier-1 structure (modality,
   comparator and bound, scope). A pair it cannot read is `not-judged`, not a quiet "changed"; a pair it
   reads wrongly is a `req compare` defect, and the place to report it.
+- **`fields-changed` is opt-in and has no direction.** A claim whose `kind` or typed fields differ is `metadata`
+  (or carries the flag beside its class), naming the fields; `--fail-on fields-changed` makes it block. The kind
+  declarations are not attested, so `kinds: changed` (printed once, only when true) is the only place a reordered
+  `enum` or a relaxed `required` is told.
 - **A registry change is reported once, at the top** (`registry: changed`). An edit to `aliases/subjects.yml`
   can move many addresses at once; read the claims below it in that light, because they are not many edited
   statements. Each side is derived under **that side's own registry** and this binary's rules.

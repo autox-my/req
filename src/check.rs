@@ -616,6 +616,10 @@ pub fn run(args: &[String], root: &Path) -> i32 {
             Err(errors) => malformed.extend(errors),
         }
     }
+    // ADR 0056 decision 4: the two field findings exist only when the repository declares a kind. The command's
+    // boundary has already refused a declaration that cannot be judged, so an error here means "none".
+    policy.kinds =
+        crate::kinds::Declarations::read(root).is_ok_and(|declared| !declared.is_empty());
     if !malformed.is_empty() {
         for error in &malformed {
             eprintln!("{error}");

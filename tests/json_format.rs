@@ -485,6 +485,8 @@ fn render_json_has_the_pinned_shape_and_keeps_the_sections_apart() {
             "applies",
             "area",
             "claim_id",
+            "fields",
+            "kind",
             "modality",
             "rationale",
             "relations",

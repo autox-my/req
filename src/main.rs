@@ -219,7 +219,7 @@ naming the claim and the key.
 A `req.claim/4` claim's optional `kind` (one name, `[a-z][a-z0-9_]*`) and `fields` (field name to value) are
 printed after the area as `kind <name>` and `fields <name>=<value> ...`, sorted by name; an absent field shows
 nothing, never a default. Both are outside identity — no parse, address or applicability moves with them — and the
-Baseline attests nothing about them in this build. A field is data an author wrote, never ratification (ADR 0056,
+Baseline attests them from envelope v5 on (`fields_hash`; an older manifest says it does not). A field is data an author wrote, never ratification (ADR 0056,
 ADR 0005): nothing reads one to accept, merge or release a claim. Every value is judged against
 `.req/kinds/<kind>.yml` (`schema: req.kind/1`; `label`, and per field `type` — string, integer, decimal, bool, enum,
 ref, date, list — plus `values`, `ordered`, `required` and `of`). An undeclared kind or field, a value of the wrong
@@ -262,7 +262,10 @@ Under a SHALL NOT the bound's senses swap (ADR 0044). A classification is for a 
 never an approval.
 
 A `req.claim/4` side's `kind` and `fields` are judged against the working tree's `.req/kinds/`
-declarations (`compare` holds one root), and never change the verdict, which is about meaning.
+declarations (`compare` holds one root), and never change the verdict, which is about meaning. When the two
+files differ in kind or fields, one more line follows the verdict: `fields: changed (<names>) — not part of
+meaning; see req diff` (`kind` first, then the field names sorted). It gives no direction, even for an ordered
+enum, and the verdict and the exit code do not move.
 
 exit: 0 classified, 3 UNVERIFIABLE (a side that will not load, or that declares a file
 format this build does not write, so its parse is NOT JUDGED; a side whose kind has no
@@ -309,8 +312,8 @@ the corpus; a short SHA is ambiguous and a branch or tag moves); blank lines and
 allowed and anything else is refused. `--root` (or `REQ_ROOT`) names the corpus checkout.
 
 `--verify` says whether the corpus at the root is exactly that commit: `HEAD` equals the pin, and
-`claims/` and `aliases/` hold no uncommitted or untracked change (a gate would judge something other
-than the pin). It prints `corpus pinned: <repo> @ <sha>` first, so a gate log names the policy it
+`claims/`, `aliases/` and `.req/kinds/` (the kind declarations, ADR 0056) hold no uncommitted or untracked
+change (a gate would judge something other than the pin). It prints `corpus pinned: <repo> @ <sha>` first, so a gate log names the policy it
 judged; run it before `req gate`. req never fetches: the consumer's CI gets the commit into the
 checkout (`git fetch`, `git checkout <sha>`), and a pinned commit that is not there is UNVERIFIABLE.
 
@@ -324,7 +327,7 @@ it does not need the checkout to be at the pin; `<rev>` is any revision of that 
 removed; nothing is fetched and no hook runs.
 
 exit: 0 verified, or a drift report was produced; 1 only with `--verify`, when the corpus is not
-the pinned commit (ahead, behind or diverged) or `claims/` or `aliases/` has an uncommitted change;
+the pinned commit (ahead, behind or diverged) or `claims/`, `aliases/` or `.req/kinds/` has an uncommitted change;
 3 UNVERIFIABLE (the pin file is unreadable or malformed, the pinned commit is not in the checkout or
 is not a commit, `git` is missing or failing, the corpus is not inside a git work tree, or a drift
 revision does not resolve or a side does not load); 2 usage.
@@ -342,12 +345,18 @@ widening, a condition added to a SHALL, SHOULD or SHALL NOT), `tightened` (the r
 `reshaped` (a different obligation: polarity flip, scope divergence, unrelated, a condition
 changed on a MAY, a change on several axes that point different ways), `not-judged` (the meaning changed but a side has no structured
 form), `reworded` (the text changed, the meaning fingerprint did not) or `metadata` (only
-relations, rationale, tests, evidence or pins changed). Identical claims are counted, not
+relations, rationale, tests, evidence, pins, `kind` or fields changed). Identical claims are counted, not
 listed. A claim also carries flags: `pins-changed` (the authored pins differ, structurally),
+`fields-changed <name>[,<name>…]` (the names of the fields whose value was added, removed or changed, and `kind`
+when the kind changed, sorted by byte; raised under any class, so a field edit beside a reworded statement is still
+shown; a list is a set, so a reordering is no change; no direction is given for a field, even an ordered enum's),
 `pin-flagged` (a head-side pin disagrees with the parse), `tests-lost` and `tests-added`
 (linked test ids), and `same-address-as <id>` on an added claim whose meaning fingerprint a
-removed claim had (a candidate renumber, never inferred as a rename). `registry: changed`
-is reported once, at the top: a changed `aliases/subjects.yml` can move many addresses. A change
+removed claim had (a candidate renumber, never inferred as a rename; when the two differ in kind or
+fields it says so, `same-address-as REQ-0002 (fields differ: asil)`). `registry: changed`
+is reported once, at the top: a changed `aliases/subjects.yml` can move many addresses. `kinds: changed` is
+reported once beside it, only when it is true: the declarations under `.req/kinds/` are not attested by any
+Baseline, so a changed one (a reordered enum, a relaxed `required`) is told here and nowhere else. A change
 on several axes is named beside its class (`also: ...`), and `--format json` lists every moved axis
 in `axes` (ADR 0044).
 
@@ -372,8 +381,10 @@ tree; its direction quality is exactly `req compare`'s.
 
 `--fail-on <list>` names classes that turn the run into exit 1: a comma-separated subset of
 `weakened`, `removed`, `reshaped`, `not-judged`, `pins-changed`, `pin-flagged`, `tests-lost`,
-`contradiction-added`. Nothing is on by default; an unlisted class is still printed. `--format json` prints one
-`req.diff/1` document, the same classes as the text.
+`contradiction-added`, `fields-changed`. Nothing is on by default (a repository that wants a field edit to
+block a merge names `fields-changed`); an unlisted class is still printed. `--format json` prints one
+`req.diff/1` document, the same classes as the text, with the top-level booleans `registry_changed` and
+`kinds_changed`.
 
 The output is a description, not a verdict: it never says PASS or FAIL, and `weakened` is a
 prompt for a human, not a rejection.
@@ -459,7 +470,9 @@ it must name the selection the header records or it is a second question (3).
 `--format text|json` selects the rendering (default `text`). `--format json` prints the same
 matrix as a `req.trace/1` document on stdout: schema, generator, `rules_v`, the selection, the
 nodes (every claim, with its statement, modality, address, applicability, the successors that
-withdrew it, the `area` it is filed under, `null` when none — ADR 0051 — and, after it, `source` (its
+withdrew it, the `area` it is filed under, `null` when none — ADR 0051 — then its `kind` (`null` when none) and `fields` (an
+object holding only the fields it carries, keys sorted; integers and decimals as their canonical strings, a bool as
+a JSON boolean, a list as its sorted elements; an absent field is absent, never `null` — ADR 0056), and, after them, `source` (its
 `rationale.source`, `null` when empty), `evidence` (`machine` or `process`: the loaded value, `machine` when the file declares none, never `null`)
 and `tests` (its `tests:` ids in file order, `[]` when none) — ADR 0053), `areas` (the lines of
 `.req/areas` as `path` and `label`, in the registry's order, `[]` with no registry: a renderer
@@ -619,15 +632,20 @@ for — which is 3. `undeclared_area` (ADR 0051) names each claim whose `area` t
 `.req/areas` does not declare (one `<path> <label>` per line, the label any text, `#` at the start of a
 line a comment): listed and changing nothing, unless `.req/completeness` says `strict areas` (then 1).
 With no `.req/areas` there is no such finding; a malformed path, a path declared twice or an empty label
-is exit 2 naming `<file>:<line>`, every bad line in one run. `.req/completeness` lists, one per line,
-root claim ids `unrelated` spares, `strict unrelated`, `strict areas` and `need design`; an unknown
+is exit 2 naming `<file>:<line>`, every bad line in one run. With `.req/kinds/` two more findings exist (ADR 0056):
+`missing_field` names each claim whose kind declares a field `required: true` and that carries no value for it
+(absent is UNKNOWN, never a default) — 3, UNVERIFIABLE, as `in_no_baseline` is, unless `.req/completeness` says
+`strict fields` (then 1) — and `dangling_field_ref` names each claim with a `ref` field (or a list of them) that
+names a claim the corpus does not hold, 3. A `ref` field is not a relation and adds no edge to `trace` or `impact`.
+With no `.req/kinds/` neither finding exists. `.req/completeness` lists, one per line,
+root claim ids `unrelated` spares, `strict unrelated`, `strict areas`, `strict fields` and `need design`; an unknown
 word or an id the corpus does not hold is exit 2 naming `<file>:<line>`. A malformed `.req/design` line is exit 2 too. A claim a line leaves undecided is that gate's 3, never named
 here. Nothing says the requirements are complete: req holds nothing to be complete against.
 
 `verdict: PASS` is printed only when every declared step ran and passed. There is no `--only`,
 no `--skip` and no flag that narrows what is examined. `--format json` prints one `req.check/1`
 document on stdout — the folded verdict and, per step, its kind, its line or path, its exit and,
-for a gate step, the whole `req.gate/2` document, and for the completeness step its lists (three, `undeclared_area` with `.req/areas`, and `unsatisfied` with `need design`) —
+for a gate step, the whole `req.gate/2` document, and for the completeness step its lists (three, `undeclared_area` with `.req/areas`, `missing_field` and `dangling_field_ref` with `.req/kinds/`, and `unsatisfied` with `need design`) —
 with the same fold and the same exit as the text.
 
 exit: 0 every declared step ran and passed; 1 a defect in any step (a gate that fails, a stale or
@@ -814,7 +832,9 @@ findings in order, each carrying the class the text packet prints, and `unrelate
 An applying claim with no relation in or out (minus the roots `.req/completeness` lists) is printed
 under *Structural omissions* (ADR 0039), and so is an applying claim no design element declares a link
 for when `.req/completeness` says `need design` (`unsatisfied`, ADR 0040; `req check` judges it
-UNVERIFIABLE). It is reported and never part of the verdict; the release-wide omissions are `req check`'s.
+UNVERIFIABLE). With `.req/kinds/` it also prints the two field findings of ADR 0056 for its selection,
+`missing_field` and `dangling_field_ref`, naming the claim, the kind and the field and **never a field value**
+(a `ref`'s target is a value). It is reported and never part of the verdict; the release-wide omissions are `req check`'s.
 
 exit: 0 every applying claim covered and still matching, 1 a defect (drift, or no
 provenance), 3 nothing ratified, something uncovered, or coverage NOT JUDGED because the

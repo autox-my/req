@@ -8,7 +8,7 @@ fields`: its word list is closed, `src/completeness.rs:135-147`, so this is a ch
 identity. Decision 7 also closes the loss ADR 0022 named, the unattested pin set. Line numbers below are for
 `960e7ed` (`req 0.5.0`, `rules_v 9`, `baseline_envelope 4`, `claim_schema req.claim/3`).
 
-**Status: accepted** — ratified by the owner's merge of PR #103 (2026-11-18); not yet implemented. Asked for by the owner on 2026-11-17 (task D-1), the first of two
+**Status: accepted** — ratified by the owner's merge of PR #103 (2026-11-18); implemented by PRs #106, #107 and #108. Asked for by the owner on 2026-11-17 (task D-1), the first of two
 decisions informed by the X-1 experiments; the second, repository-defined checks, depends on this one and is not drafted
 here. Date proposed: 2026-11-17.
 
@@ -420,3 +420,41 @@ This decision is wrong if any of these is observed:
 12. an edit to a `.req/kinds/` file between two revisions is not reported by `req diff` as `kinds: changed`, or `req diff` over a
     kinded corpus exits 3 for want of a revision's declarations;
 13. the release notes of the release that ships `req.claim/4` say a `/3` file is NOT JUDGED.
+
+## Implementation note — 2026-11-18 (F-1, F-2 and F-3)
+
+Not an edit of the decisions above; where they now live. The work was three units, in this order (`docs/specs/F-*.md`).
+
+- **F-1, PR #106 — the format and the loader.** `req.claim/4` and `READS_AS_IS = [2, 3]` (decision 1); `.req/kinds/` and its
+  strict reader, `src/kinds.rs` (decision 2); the eight types and the one function that judges a claim's values against the
+  declarations, shared by the corpus loader and `req compare` (decisions 3 and 4); `req diff` staging `.req/kinds/` beside
+  `claims/` and `aliases/`, each side judged by its own declarations (decision 8, the staging half); `req canon`'s display;
+  the release-notes line (*Falsification* 13).
+- **F-2, PR #107 — the Baseline.** Envelope v5, `fields_hash` and `pins_hash` (decisions 6 and 7: decision 7 was kept, so v5
+  attests the pins as well), `FIELDS_ATTESTED_FROM` and `PINS_ATTESTED_FROM`, the verify failure naming the surface, the
+  one-line disclosure on a v4 manifest, the coverage test over `ClaimFile`'s keys (decision 5) and leaks L7 to L9. Task PR #104 had landed first: `from_json` requires `tests_hash` from the envelope that
+  introduced it.
+- **F-3, PR #108 — reporting.** `req diff`'s `fields-changed` flag, `--fail-on fields-changed`, `kinds: changed` and
+  `kinds_changed`, and `same-address-as <id> (fields differ: …)` (decision 8, L10 and L11); `req compare`'s one added line;
+  the `kind` and `fields` keys of the JSON views (L5); `missing_field`, `dangling_field_ref` and `strict fields` in
+  `req check`'s completeness step, and the audit packet's names (decision 4); `req pin --verify` covering `.req/kinds/` (a
+  finding deferred from F-1's review); and the readers-closed test (decision 9, *Falsification* 9), which scans the gate, the
+  selectors, the contradiction detector and the text renderers for any read of a kind or a field.
+
+Where the work departed from the ADR's wording, or chose where it was silent:
+- **`kinds: changed` is printed only when it is true.** `registry:` prints `unchanged` as well; a second always-printed line would
+  change every `req diff` of a corpus with no kinds. `req.diff/1`'s `kinds_changed` is always present, `false` when nothing changed.
+- **`fields-changed` names `kind` among the field names, sorted by byte** (decision 8: "`kind` when the kind changed, sorted"); a
+  field a kind declares under the name `kind` would be indistinguishable in the flag, and the declaration grammar permits it. It is
+  recorded, not prevented.
+- **The audit packet names the claim, the kind and the field for `dangling_field_ref`, and not the missing id**, because a `ref`
+  target is a field value and decision 4 keeps the value out of the packet (decision 10). `req check` names the id, as decision 4
+  says. The packet's findings are reported, not judged, as its `unrelated` is.
+- **`strict fields` promotes `missing_field` only.** A dangling `ref` stays UNVERIFIABLE under every policy, the class of a dangling
+  relation; the ADR states it for `missing_field` and is silent on whether the word reaches both.
+- **The completeness step's label counts one more check when `.req/kinds/` declares a kind** (`structural omissions (4 checks)`),
+  as `.req/areas` does; a corpus with no kind prints the label it always printed.
+- **`req compare`'s `fields:` line follows the verdict and its accompanying lines**, and is printed on a pair the classifier
+  cannot read as well, before its exit 3.
+- **`req canon`'s help said the Baseline attests nothing about a field in this build**; the sentence predated envelope v5 and was false once F-2 merged.
+  It now says the Baseline attests them from envelope v5.

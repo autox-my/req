@@ -371,7 +371,7 @@ fn a_field_changes_neither_the_applicability_verdict_nor_the_derived_parse() {
         assert_eq!(a.code, b.code, "{args:?}");
         let (a_out, b_out) = (a.stdout, b.stdout);
         if args.contains(&"json") {
-            // L5 is F-3's: the JSON views gain `kind` and `fields` there. Here only the address and
+            // L5 (`tests/field_reporting.rs`): the JSON views gain `kind` and `fields`. Here only the address and
             // the applicability sections are compared.
             let (da, db): (serde_json::Value, serde_json::Value) = (
                 serde_json::from_str(&a_out).expect("json"),
@@ -387,10 +387,15 @@ fn a_field_changes_neither_the_applicability_verdict_nor_the_derived_parse() {
         } else {
             assert_eq!(a_out, b_out, "no text projection prints a field: {args:?}");
         }
-        assert!(
-            !b_out.contains("asil") && !b_out.contains("safety") && !b_out.contains("2027-03-01"),
-            "{args:?}:\n{b_out}"
-        );
+        if !args.contains(&"json") {
+            // The JSON views display `kind` and `fields` (L5, `tests/field_reporting.rs`); no text view does.
+            assert!(
+                !b_out.contains("asil")
+                    && !b_out.contains("safety")
+                    && !b_out.contains("2027-03-01"),
+                "{args:?}:\n{b_out}"
+            );
+        }
     }
     let strip = |text: &str| {
         text.lines()

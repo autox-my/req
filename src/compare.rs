@@ -415,17 +415,21 @@ pub fn run(path_a: &str, path_b: &str, root: &std::path::Path) -> i32 {
         }
     };
     let mut refused = false;
+    let mut judged = Vec::new();
     for (path, claim) in [(path_a, &a), (path_b, &b)] {
-        if let Err(errors) = crate::kinds::judge_fields(
+        match crate::kinds::judge_fields(
             &claim.claim_id,
             claim.kind.as_deref(),
             &claim.fields,
             &declarations,
         ) {
-            for error in errors {
-                eprintln!("[UNVERIFIABLE] {path}: {error}");
+            Ok(fields) => judged.push(fields),
+            Err(errors) => {
+                for error in errors {
+                    eprintln!("[UNVERIFIABLE] {path}: {error}");
+                }
+                refused = true;
             }
-            refused = true;
         }
     }
     if refused {
@@ -454,6 +458,26 @@ pub fn run(path_a: &str, path_b: &str, root: &std::path::Path) -> i32 {
             );
         }
         Effect::NoDirection => {}
+    }
+    // ADR 0056 decision 8: the verdict is about direction and stays `identical` when two forms are, so a kind or a
+    // field that differs gets one more line and never a direction. The names are `req diff`'s, with `kind` first.
+    if let [fields_a, fields_b] = judged.as_slice() {
+        let mut names = crate::diff::changed_field_names(
+            a.kind.as_deref(),
+            fields_a,
+            b.kind.as_deref(),
+            fields_b,
+        );
+        if !names.is_empty() {
+            if let Some(at) = names.iter().position(|name| name == "kind") {
+                let kind = names.remove(at);
+                names.insert(0, kind);
+            }
+            println!(
+                "fields: changed ({}) — not part of meaning; see req diff",
+                names.join(", ")
+            );
+        }
     }
     if direction == Direction::Unclassifiable {
         println!("  one side has no structured form, so there is nothing to compare");

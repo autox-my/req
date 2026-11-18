@@ -45,6 +45,8 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
         rationale_date: provenance.date,
         superseded_by: Vec::new(),
         area: None,
+        kind: None,
+        fields: Vec::new(),
     }
 }
 

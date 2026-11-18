@@ -94,6 +94,12 @@ pub struct Row {
     /// only — outside identity and in no attested hash, so nothing but the JSON documents and
     /// `req canon` reads it, and no text projection changes.
     pub area: Option<String>,
+    /// The claim's `kind` and its judged typed fields (`req.claim/4`, ADR 0056): outside identity, attested by
+    /// `fields_hash`, and read by the JSON documents (display), `req check`'s two findings and the audit packet's
+    /// names only. **No text projection, gate policy or selector reads either** (decision 9: a field is never
+    /// ratification); `tests/field_reporting.rs` scans for it.
+    pub kind: Option<String>,
+    pub fields: Vec<crate::kinds::JudgedField>,
 }
 
 /// What a trace could not settle. Both are outcomes, not warnings: `dangling` is
@@ -329,7 +335,7 @@ impl Serialize for Row {
             source: &self.rationale_source,
             date: &self.rationale_date,
         };
-        let mut row = serializer.serialize_struct("Row", 10)?;
+        let mut row = serializer.serialize_struct("Row", 12)?;
         row.serialize_field("claim_id", &self.claim_id)?;
         row.serialize_field("statement", &self.statement)?;
         row.serialize_field("modality", &self.modality)?;
@@ -344,7 +350,41 @@ impl Serialize for Row {
         // ADR 0051: additive, after `superseded_by` (the ADR 0049 precedent); `null` when absent, so a
         // consumer never has to tell a missing key from an unfiled claim.
         row.serialize_field("area", &self.area)?;
+        // ADR 0056 decision 8, additive after `area`: `kind` is `null` when absent, and `fields` holds only the
+        // fields the claim carries (an absent field is absent, never `null`).
+        row.serialize_field("kind", &self.kind)?;
+        row.serialize_field("fields", &FieldsDocument(&self.fields))?;
         row.end()
+    }
+}
+
+/// A claim's judged fields as the documents carry them (ADR 0056 decision 8): an object holding only the fields
+/// present, keys sorted by byte. An `integer` and a `decimal` are their canonical **strings**, a `bool` is a JSON
+/// boolean, and a `list` is an array of its element texts sorted by byte (a list is a set).
+struct FieldsDocument<'a>(&'a [crate::kinds::JudgedField]);
+
+impl Serialize for FieldsDocument<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use crate::kinds::FieldValue;
+        use serde::ser::SerializeMap;
+        let mut sorted: Vec<&crate::kinds::JudgedField> = self.0.iter().collect();
+        sorted.sort_by(|a, b| a.name.cmp(&b.name));
+        let mut map = serializer.serialize_map(Some(sorted.len()))?;
+        for field in sorted {
+            match &field.value {
+                FieldValue::Text(text) => map.serialize_entry(&field.name, text)?,
+                FieldValue::Bool(flag) => map.serialize_entry(&field.name, flag)?,
+                FieldValue::List(items) => {
+                    let mut elements: Vec<&String> = items.iter().collect();
+                    elements.sort();
+                    map.serialize_entry(&field.name, &elements)?;
+                }
+            }
+        }
+        map.end()
     }
 }
 
@@ -383,6 +423,9 @@ struct NodeDocument<'a> {
     applies: &'static str,
     superseded_by: &'a [String],
     area: Option<&'a str>,
+    /// ADR 0056 decision 8: right after `area`, `null` when absent; `fields` holds only the fields present.
+    kind: Option<&'a str>,
+    fields: FieldsDocument<'a>,
     /// What the coverage matrix reads (ADR 0053 decision 4): the claim's `rationale.source` (`null` when empty), its
     /// evidence declaration (an absent one is the default, `machine`) and its `tests:` ids in file order.
     source: Option<&'a str>,
@@ -474,6 +517,8 @@ pub fn trace_document(
             applies: row.applies.as_str(),
             superseded_by: &row.superseded_by,
             area: row.area.as_deref(),
+            kind: row.kind.as_deref(),
+            fields: FieldsDocument(&row.fields),
             source: Some(row.rationale_source.as_str()).filter(|source| !source.is_empty()),
             evidence: row.evidence.as_str(),
             tests: &row.tests,
@@ -1252,6 +1297,8 @@ pub fn load_rows(context: &Context, root: &std::path::Path) -> Result<Vec<Row>, 
             rationale_date: claim.rationale.date.clone(),
             superseded_by: Vec::new(),
             area: claim.area.clone(),
+            kind: claim.kind.clone(),
+            fields: loaded.fields.clone(),
         });
     }
     withdraw_superseded(&mut rows);

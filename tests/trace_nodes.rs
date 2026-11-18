@@ -198,7 +198,7 @@ fn nodes_lists_every_claim_including_one_with_no_relation_sorted_by_claim_id() {
 }
 
 #[test]
-fn a_node_carries_its_ten_fields_in_order() {
+fn a_node_carries_its_twelve_fields_in_order() {
     let s = Scratch::new("six-fields");
     three(&s);
     let document = s.document(&[]);
@@ -221,6 +221,8 @@ fn a_node_carries_its_ten_fields_in_order() {
             "area",
             "claim_id",
             "evidence",
+            "fields",
+            "kind",
             "modality",
             "source",
             "statement",
@@ -306,6 +308,8 @@ fn nodes_sit_between_selection_and_edges_and_a_node_keeps_its_field_order_in_the
         "applies",
         "superseded_by",
         "area",
+        "kind",
+        "fields",
         "source",
         "evidence",
         "tests",
