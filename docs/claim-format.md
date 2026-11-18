@@ -199,7 +199,8 @@ fields:
 **Outside identity.** Neither key is an input to the canonical form, so a claim with a kind, without one, or with another value has
 one address and one canonical form; `derive` does not read them, `req selftest` and `req bench` do not move, and `RULES_V` stays 9.
 No text projection prints a field, no gate policy, selector, projection or exit code reads a value, and the only readers are the
-loader (validation), `fields_hash` (the Baseline's digest, below), `req compare` (validation), `req canon` (display) and the findings F-3 adds. Two claims with the same statement
+loader (validation), `fields_hash` (the Baseline's digest, below), `req diff` and `req compare` (reporting: they name what changed and
+give no direction), `req canon` and the JSON views (display), and the two findings `missing_field` and `dangling_field_ref`. Two claims with the same statement
 and different fields share an address, as two that differ only in rationale do: the address is a drift signal and the `claim_id` is
 the identity. **The Baseline attests the kind and the fields from envelope v5** (`fields_hash`, ADR 0056 decision 6):
 `sha256("req.fields.v1\0" ‖ bytes)` over the compact JSON
@@ -219,6 +220,20 @@ Decision (ADR 0005), and nothing reads it to accept, merge or release a claim.
 a default (a `default:` is refused in a declaration). `asil: null` is refused too — omit the key. A required field a claim does not
 carry loads; reporting it is a finding, not a load error, so a claim written before its kind gained a required field still loads. A
 `ref` that points at no claim loads for the same reason.
+
+**Reported, never defaulted.** `req check`'s completeness step (ADR 0039, ADR 0056) names two findings, only when `.req/kinds/`
+declares a kind. `missing_field` is each claim whose kind declares a field `required: true` and that carries no value for it, naming
+the claim, the kind and the field: UNVERIFIABLE (exit 3), as `in_no_baseline` is, and FAIL (exit 1) only when `.req/completeness`
+says `strict fields`. `dangling_field_ref` is each `ref` field, or list of them, naming a claim the corpus does not hold, naming the
+claim, the field and the missing id: UNVERIFIABLE, whatever the policy. A `ref` field is not a relation: it adds no edge to `trace`,
+`impact` or the graph. `req audit` prints both for its selection, with the claim, kind and field names only and **no field value**.
+In the JSON views (`render`, `trace`'s nodes and the other documents that carry a row) `kind` and `fields` follow `area`: `kind` is
+`null` when absent; `fields` is an object holding only the fields present, keys sorted, an `integer` and a `decimal` as their canonical
+strings, a `bool` as a JSON boolean, a `list` as an array of its element texts sorted. An absent field is absent from `fields`, never
+`null`. No text projection prints either. `req diff` flags a claim whose kind or fields differ as `fields-changed <name>,…` under any
+class (`--fail-on fields-changed` turns it into exit 1), prints `kinds: changed` once when `.req/kinds/` differs between the two
+sides, and says `(fields differ: …)` on a `same-address-as` flag whose two claims differ in kind or fields; `req compare` prints
+`fields: changed (<names>) — not part of meaning; see req diff` beside an unchanged verdict. Neither gives a field change a direction.
 
 **The declaration** is one file per kind, `.req/kinds/<kind>.yml`; the stem is the kind's name:
 

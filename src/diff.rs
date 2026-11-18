@@ -30,6 +30,7 @@ use crate::check::{self, Listing};
 use crate::compare::{self, Direction, Effect};
 use crate::contradict::{self, Contradiction, Findings};
 use crate::format::{self, Format};
+use crate::kinds::FieldValue;
 use crate::select::Context;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
@@ -116,9 +117,15 @@ enum Flag {
     PinFlagged,
     TestsLost,
     TestsAdded,
+    /// The claim's `kind` or typed fields differ (ADR 0056 decision 8): the field names whose value was added,
+    /// removed or changed, and `kind` when the kind changed, sorted by byte. Raised under any class, as
+    /// `pins-changed` is. A field has no direction, so none is given.
+    FieldsChanged(Vec<String>),
     /// An added claim has the meaning fingerprint of a removed one: a candidate renumber, reported
-    /// as a candidate and never inferred as a rename (ADR 0017 §2).
-    SameAddressAs(String),
+    /// as a candidate and never inferred as a rename (ADR 0017 §2). The second part names the fields (and `kind`)
+    /// that differ between the two, empty for a bare renumber (ADR 0056 research L11: a copy with another level
+    /// is not a bare renumber).
+    SameAddressAs(String, Vec<String>),
     /// This claim is one side of a contradiction the change introduced, under some line of the
     /// head's `.req/variants`; the other side is named (ADR 0045 decision 3). Raised only while the
     /// detector is admitted ([`flagged_claims`]).
@@ -132,7 +139,16 @@ impl Flag {
             Flag::PinFlagged => "pin-flagged".to_string(),
             Flag::TestsLost => "tests-lost".to_string(),
             Flag::TestsAdded => "tests-added".to_string(),
-            Flag::SameAddressAs(id) => format!("same-address-as {id}"),
+            Flag::FieldsChanged(names) => format!("fields-changed {}", names.join(",")),
+            Flag::SameAddressAs(id, differing) if differing.is_empty() => {
+                format!("same-address-as {id}")
+            }
+            Flag::SameAddressAs(id, differing) => {
+                format!(
+                    "same-address-as {id} (fields differ: {})",
+                    differing.join(",")
+                )
+            }
             Flag::ContradictionAdded(id) => format!("contradiction-added {id}"),
         }
     }
@@ -149,11 +165,12 @@ enum FailOn {
     PinFlagged,
     TestsLost,
     ContradictionAdded,
+    FieldsChanged,
 }
 
 impl FailOn {
     /// Every spelling, in the order the help page lists and the report prints them.
-    const ALL: [FailOn; 8] = [
+    const ALL: [FailOn; 9] = [
         FailOn::Weakened,
         FailOn::Removed,
         FailOn::Reshaped,
@@ -162,6 +179,7 @@ impl FailOn {
         FailOn::PinFlagged,
         FailOn::TestsLost,
         FailOn::ContradictionAdded,
+        FailOn::FieldsChanged,
     ];
 
     fn parse(word: &str) -> Option<FailOn> {
@@ -180,6 +198,7 @@ impl FailOn {
             FailOn::PinFlagged => "pin-flagged",
             FailOn::TestsLost => "tests-lost",
             FailOn::ContradictionAdded => "contradiction-added",
+            FailOn::FieldsChanged => "fields-changed",
         }
     }
 
@@ -193,6 +212,10 @@ impl FailOn {
             FailOn::PinFlagged => entry.flags.contains(&Flag::PinFlagged),
             FailOn::TestsLost => entry.flags.contains(&Flag::TestsLost),
             FailOn::ContradictionAdded => entry.flags.iter().any(is_contradiction_flag),
+            FailOn::FieldsChanged => entry
+                .flags
+                .iter()
+                .any(|flag| matches!(flag, Flag::FieldsChanged(_))),
         }
     }
 }
@@ -630,6 +653,27 @@ struct Side {
     claims: Vec<LoadedClaim>,
     /// `aliases/subjects.yml` as bytes (`None` when absent), compared for `registry: changed`.
     registry: Option<Vec<u8>>,
+    /// The kind declarations (`.req/kinds/*`) as `(file name, bytes)`, sorted by name (empty when there are none),
+    /// compared as bytes for `kinds: changed` (ADR 0056 decision 8).
+    kinds: Vec<(String, Vec<u8>)>,
+}
+
+/// The declaration files under `dir`'s `.req/kinds/`, by name, as bytes. A directory that is missing or unreadable
+/// is no declaration: the loader has already judged the files, and refused any it could not use.
+fn read_kind_files(dir: &Path) -> Vec<(String, Vec<u8>)> {
+    let Ok(listing) = std::fs::read_dir(dir.join(KINDS_PATH)) else {
+        return Vec::new();
+    };
+    let mut files: Vec<(String, Vec<u8>)> = listing
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_file())
+        .filter_map(|entry| {
+            let bytes = std::fs::read(entry.path()).ok()?;
+            Some((entry.file_name().to_string_lossy().into_owned(), bytes))
+        })
+        .collect();
+    files.sort();
+    files
 }
 
 impl Side {
@@ -648,6 +692,7 @@ impl Side {
             dir: dir.to_path_buf(),
             claims,
             registry,
+            kinds: read_kind_files(dir),
         })
     }
 
@@ -677,6 +722,9 @@ struct Report {
     entries: Vec<Entry>,
     counts: BTreeMap<Class, usize>,
     registry_changed: bool,
+    /// Whether the kind declarations (`.req/kinds/`) differ between the two sides, as bytes (ADR 0056 decision 8):
+    /// the declarations are not attested, so this is the one place a reviewer is told.
+    kinds_changed: bool,
     /// The contradictions the change added and resolved, under the head's selections (ADR 0045).
     contradictions: ContradictionDelta,
     /// How many selections (distinct lines of the head's `.req/variants`) were judged.
@@ -710,12 +758,57 @@ fn test_ids(loaded: &LoadedClaim) -> BTreeSet<&str> {
 /// by the digests the Baseline attests, which already treat the link list as order-free), and the
 /// pins (compared structurally, never by file bytes).
 fn metadata_differs(base: &LoadedClaim, head: &LoadedClaim) -> bool {
-    use crate::model::{rationale_digest, relations_digest, tests_digest};
+    use crate::model::{fields_digest, rationale_digest, relations_digest, tests_digest};
     let (b, h) = (&base.claim, &head.claim);
     relations_digest(&b.relations) != relations_digest(&h.relations)
         || rationale_digest(&b.rationale) != rationale_digest(&h.rationale)
         || tests_digest(&b.tests, b.evidence) != tests_digest(&h.tests, h.evidence)
         || pin_entries(base) != pin_entries(head)
+        // The kind and every typed field, by the digest the Baseline attests: a list is a set, so a reordering is
+        // not a change (ADR 0056 decision 8; research L10).
+        || fields_digest(b.kind.as_deref(), &base.fields) != fields_digest(h.kind.as_deref(), &head.fields)
+}
+
+/// What a judged field says for a comparison: its type, element type and value, with a list as a set (sorted).
+fn comparable(
+    field: &crate::kinds::JudgedField,
+) -> (&'static str, Option<&'static str>, FieldValue) {
+    let value = match &field.value {
+        FieldValue::List(items) => {
+            let mut sorted = items.clone();
+            sorted.sort();
+            FieldValue::List(sorted)
+        }
+        other => other.clone(),
+    };
+    (field.type_name, field.of, value)
+}
+
+/// The names of what differs between two claims' kinds and typed fields (ADR 0056 decision 8): a field whose value
+/// was added, removed or changed, and `kind` when the kind changed, sorted by byte. Empty when nothing differs.
+/// `req compare` names the same set, so the two commands cannot disagree about what changed.
+pub(crate) fn changed_field_names(
+    base_kind: Option<&str>,
+    base: &[crate::kinds::JudgedField],
+    head_kind: Option<&str>,
+    head: &[crate::kinds::JudgedField],
+) -> Vec<String> {
+    let mut names: BTreeSet<String> = BTreeSet::new();
+    if base_kind != head_kind {
+        names.insert("kind".to_string());
+    }
+    let find = |fields: &'_ [crate::kinds::JudgedField], name: &str| {
+        fields
+            .iter()
+            .find(|field| field.name == name)
+            .map(comparable)
+    };
+    for field in base.iter().chain(head.iter()) {
+        if find(base, &field.name) != find(head, &field.name) {
+            names.insert(field.name.clone());
+        }
+    }
+    names.into_iter().collect()
 }
 
 /// Classify one claim id present on both sides.
@@ -764,6 +857,15 @@ fn classify_pair(base: &LoadedClaim, head: &LoadedClaim) -> Entry {
     }
     if after.difference(&before).next().is_some() {
         flags.push(Flag::TestsAdded);
+    }
+    let changed = changed_field_names(
+        b.kind.as_deref(),
+        &base.fields,
+        h.kind.as_deref(),
+        &head.fields,
+    );
+    if !changed.is_empty() {
+        flags.push(Flag::FieldsChanged(changed));
     }
     Entry {
         claim_id: b.claim_id.clone(),
@@ -843,7 +945,22 @@ fn compare_sides(
     for entry in entries.iter_mut().filter(|e| e.class == Class::Added) {
         for (removed_id, address) in &removed {
             if entry.head_address.as_ref() == Some(address) {
-                entry.flags.push(Flag::SameAddressAs(removed_id.clone()));
+                // A copy with another kind or other fields is not a bare renumber (research L11): say what differs.
+                let differing = match (
+                    base_by_id.get(removed_id.as_str()),
+                    head_by_id.get(entry.claim_id.as_str()),
+                ) {
+                    (Some(old), Some(new)) => changed_field_names(
+                        old.claim.kind.as_deref(),
+                        &old.fields,
+                        new.claim.kind.as_deref(),
+                        &new.fields,
+                    ),
+                    _ => Vec::new(),
+                };
+                entry
+                    .flags
+                    .push(Flag::SameAddressAs(removed_id.clone(), differing));
             }
         }
     }
@@ -855,6 +972,7 @@ fn compare_sides(
         entries,
         counts,
         registry_changed: base.registry != head.registry,
+        kinds_changed: base.kinds != head.kinds,
         contradictions,
         selections,
         admitted,
@@ -1162,6 +1280,10 @@ fn render_text(
     } else {
         "registry: unchanged\n"
     });
+    // Printed only when it changed, so a corpus with no kinds (and a change that leaves them alone) reads as before.
+    if report.kinds_changed {
+        out.push_str("kinds: changed\n");
+    }
     for entry in &report.entries {
         out.push_str(entry.class.as_str());
         out.push(' ');
@@ -1276,6 +1398,7 @@ fn render_json(
         "base": side(Some(base)),
         "head": side(head),
         "registry_changed": report.registry_changed,
+        "kinds_changed": report.kinds_changed,
         "fail_on": words,
         "triggered": matched,
         "counts": counts,

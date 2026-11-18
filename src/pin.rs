@@ -4,8 +4,8 @@
 //! ADR 0012 lets the corpus root be anywhere; nothing said *which commit* of it a green gate was
 //! about. The pin is a small file in the consumer's repository naming a full commit SHA. Two modes:
 //!
-//! * `--verify <file>` — the corpus at the resolved root is exactly that commit, and `claims/` and
-//!   `aliases/` have no uncommitted change. A gate run after this passes is a statement about the
+//! * `--verify <file>` — the corpus at the resolved root is exactly that commit, and `claims/`,
+//!   `aliases/` and `.req/kinds/` (the kind declarations, ADR 0056) have no uncommitted change. A gate run after this passes is a statement about the
 //!   pinned policy and about nothing else. 0 verified, 1 the corpus is not the pin, 3 it cannot be told.
 //! * `--drift <file> --against <rev>` — how the corpus moved from the pin to `<rev>`: exactly the
 //!   report `req diff --base <pin> --head <rev>` prints, per claim with its direction, never a verdict.
@@ -193,6 +193,7 @@ fn verify(root: &Path, pin: &Pin) -> Result<i32, String> {
             "--",
             "claims",
             "aliases",
+            crate::kinds::KINDS_DIR,
         ],
     )?;
     let dirty = String::from_utf8_lossy(&dirty).into_owned();
@@ -202,7 +203,7 @@ fn verify(root: &Path, pin: &Pin) -> Result<i32, String> {
             .map(|l| l.get(3..).unwrap_or(l).trim().to_string())
             .collect();
         findings.push(format!(
-            "uncommitted change under claims/ or aliases/ — a gate would judge something other than the pin: {}",
+            "uncommitted change under claims/, aliases/ or .req/kinds/ — a gate would judge something other than the pin: {}",
             files.join(", ")
         ));
     }

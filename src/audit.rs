@@ -153,6 +153,90 @@ pub fn packet_with_contradictions(
     unsatisfied: &[String],
     contradictions: Option<&crate::contradict::Findings>,
 ) -> String {
+    packet_with_field_findings(
+        rows,
+        context,
+        baseline,
+        roots,
+        unsatisfied,
+        contradictions,
+        None,
+    )
+}
+
+/// What the packet prints of a field finding (ADR 0056 decision 4): the claim, the kind and the field's **name**.
+/// Never a value: a `ref` field's target is a value (decision 10), so a dangling finding names no target here.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct FieldNamed {
+    pub claim_id: String,
+    pub kind: String,
+    pub field: String,
+}
+
+/// The two field findings of the packet's selection, as names only. `None` when the repository declares no kind:
+/// nothing is printed, and an absent section is not "none found".
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct FieldFindingNames {
+    pub missing_field: Vec<FieldNamed>,
+    pub dangling_field_ref: Vec<FieldNamed>,
+}
+
+/// The field findings of `rows`' **applying** claims (the packet's selection), judged against `declarations`, as
+/// names only. `rows` holds the whole corpus, so a `ref` to a claim outside the selection is not dangling.
+pub fn field_finding_names(
+    rows: &[Row],
+    declarations: &crate::kinds::Declarations,
+) -> Option<FieldFindingNames> {
+    if declarations.is_empty() {
+        return None;
+    }
+    let applying: Vec<Row> = rows
+        .iter()
+        .filter(|row| row.applies == Applies::Yes)
+        .cloned()
+        .collect();
+    let universe: BTreeSet<&str> = rows.iter().map(|row| row.claim_id.as_str()).collect();
+    let kind_of = |claim_id: &str| {
+        rows.iter()
+            .find(|row| row.claim_id == claim_id)
+            .and_then(|row| row.kind.clone())
+            .unwrap_or_default()
+    };
+    let mut dangling: Vec<FieldNamed> =
+        crate::completeness::dangling_field_refs(&applying, &universe)
+            .into_iter()
+            .map(|found| FieldNamed {
+                kind: kind_of(&found.claim_id),
+                claim_id: found.claim_id,
+                field: found.field,
+            })
+            .collect();
+    dangling.sort();
+    dangling.dedup();
+    Some(FieldFindingNames {
+        missing_field: crate::completeness::missing_fields(&applying, declarations)
+            .into_iter()
+            .map(|found| FieldNamed {
+                claim_id: found.claim_id,
+                kind: found.kind,
+                field: found.field,
+            })
+            .collect(),
+        dangling_field_ref: dangling,
+    })
+}
+
+/// [`packet_with_contradictions`], with the two field findings of ADR 0056 decision 4 printed beside the other
+/// structural omissions: the claim, the kind and the field names, and no value.
+pub fn packet_with_field_findings(
+    rows: &[Row],
+    context: &Context,
+    baseline: Option<&Manifest>,
+    roots: &BTreeSet<String>,
+    unsatisfied: &[String],
+    contradictions: Option<&crate::contradict::Findings>,
+    field_findings: Option<&FieldFindingNames>,
+) -> String {
     // Sorted here rather than assumed: the packet is read by someone else, and its order must
     // not depend on the order the caller happened to load claims in. (`view::load_rows` returns
     // sorted claims today, which is exactly why an unsorted packet would hide until a different
@@ -314,7 +398,13 @@ pub fn packet_with_contradictions(
     // which is `req check`'s question; what remains per selection is an applying claim with no
     // relation. Reported, never part of the verdict: a top-level obligation is legitimate.
     let unrelated = unrelated_in_selection(rows, roots);
-    if !unrelated.is_empty() || !unsatisfied.is_empty() {
+    let no_fields = FieldFindingNames::default();
+    let field_findings = field_findings.unwrap_or(&no_fields);
+    if !unrelated.is_empty()
+        || !unsatisfied.is_empty()
+        || !field_findings.missing_field.is_empty()
+        || !field_findings.dangling_field_ref.is_empty()
+    {
         out.push_str("\n## Structural omissions (reported, not judged)\n");
     }
     if !unrelated.is_empty() {
@@ -332,6 +422,30 @@ pub fn packet_with_contradictions(
             unsatisfied.join(", "),
             crate::completeness::COMPLETENESS,
             crate::satisfy::DESIGN
+        ));
+    }
+
+    // ADR 0056 decision 4: names only (decision 10 keeps a field's value out of the packet).
+    let named = |found: &[FieldNamed]| {
+        found
+            .iter()
+            .map(|n| format!("{} ({}: {})", n.claim_id, n.kind, n.field))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    if !field_findings.missing_field.is_empty() {
+        out.push_str(&format!(
+            "- missing_field: {} — the kind declares the field `required: true` and the claim carries no value; \
+             `req check` judges it UNVERIFIABLE (FAIL with `strict fields` in {})\n",
+            named(&field_findings.missing_field),
+            crate::completeness::COMPLETENESS
+        ));
+    }
+    if !field_findings.dangling_field_ref.is_empty() {
+        out.push_str(&format!(
+            "- dangling_field_ref: {} — a `ref` field names a claim this corpus does not hold; `req check` judges \
+             it UNVERIFIABLE\n",
+            named(&field_findings.dangling_field_ref)
         ));
     }
 
@@ -514,6 +628,13 @@ struct AuditDocument<'a> {
     /// Reported, not part of the verdict; absent unless the policy asks.
     #[serde(skip_serializing_if = "Option::is_none")]
     unsatisfied: Option<Vec<String>>,
+    /// With `.req/kinds/` (ADR 0056 decision 4): the applying claims missing a required field, and those with a
+    /// `ref` field naming no claim. Names only, never a value; reported, not part of the verdict; absent when the
+    /// repository declares no kind.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    missing_field: Option<Vec<FieldNamed>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dangling_field_ref: Option<Vec<FieldNamed>>,
 }
 
 /// `req audit [--baseline <file>] [--format text|json] [key=value ...]`
@@ -639,6 +760,15 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
     } else {
         None
     };
+    let field_findings = match crate::kinds::Declarations::read(root) {
+        Ok(declarations) => field_finding_names(&rows, &declarations),
+        Err(error) => {
+            for line in error.messages() {
+                eprintln!("[UNVERIFIABLE] {line}");
+            }
+            return 3;
+        }
+    };
     let coverage = manifest.as_ref().map(|manifest| coverage(&rows, manifest));
     let (failed, open) = findings(&rows, manifest.as_ref(), coverage.as_ref());
     // Computed once, before either rendering: the verdict is the same fold in both, and the exit
@@ -667,6 +797,10 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
                 .collect(),
             unrelated: unrelated_in_selection(&rows, &roots),
             unsatisfied: unsatisfied.clone(),
+            missing_field: field_findings.as_ref().map(|f| f.missing_field.clone()),
+            dangling_field_ref: field_findings
+                .as_ref()
+                .map(|f| f.dangling_field_ref.clone()),
         };
         println!("{}", format::document(&document));
         return code;
@@ -678,13 +812,14 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
         .map(|forms| crate::contradict::find(&rows, &forms));
     print!(
         "{}",
-        packet_with_contradictions(
+        packet_with_field_findings(
             &rows,
             &effective,
             manifest.as_ref(),
             &roots,
             unsatisfied.as_deref().unwrap_or(&[]),
-            contradictions.as_ref()
+            contradictions.as_ref(),
+            field_findings.as_ref()
         )
     );
     println!(
