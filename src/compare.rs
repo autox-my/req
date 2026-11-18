@@ -404,6 +404,33 @@ pub fn run(path_a: &str, path_b: &str, root: &std::path::Path) -> i32 {
             return 3;
         }
     };
+    // Both files are judged by the working tree's declarations (ADR 0056 decision 8): `compare` holds one root. A wrong
+    // value or an undeclared kind is a claim that will not load, exit 3, as it is at load; the verdict stays about
+    // meaning and is untouched by a field.
+    let declarations = match crate::kinds::Declarations::read(root) {
+        Ok(declarations) => declarations,
+        Err(e) => {
+            eprintln!("[UNVERIFIABLE] {e}");
+            return 3;
+        }
+    };
+    let mut refused = false;
+    for (path, claim) in [(path_a, &a), (path_b, &b)] {
+        if let Err(errors) = crate::kinds::judge_fields(
+            &claim.claim_id,
+            claim.kind.as_deref(),
+            &claim.fields,
+            &declarations,
+        ) {
+            for error in errors {
+                eprintln!("[UNVERIFIABLE] {path}: {error}");
+            }
+            refused = true;
+        }
+    }
+    if refused {
+        return 3;
+    }
     let (va, vb) = (
         crate::canon::derive(&a, &registry),
         crate::canon::derive(&b, &registry),

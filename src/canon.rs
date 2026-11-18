@@ -71,12 +71,17 @@ pub const RULES_V: u32 = 9;
 /// filed), outside identity and in no attested hash, so the bump moves no address either. Unlike the
 /// bumps before it, `/2` is **not** a migration candidate: it is on [`READS_AS_IS`], which a `/3`
 /// build loads as a `/3` file with no area. Only a `/3` file may carry `area`.
-pub const CLAIM_SCHEMA_V: u32 = 3;
+///
+/// 3 -> 4 (ADR 0056): `req.claim/4` is `req.claim/3` plus the optional `kind` and `fields` (typed attributes,
+/// declared by `.req/kinds/<kind>.yml`), outside identity, so the bump moves no address and no `RULES_V`.
+/// `/3` and `/2` stay on [`READS_AS_IS`]: an adopter who files no kind never edits a claim. Only a `/4` file may
+/// carry `kind` or `fields`.
+pub const CLAIM_SCHEMA_V: u32 = 4;
 /// The formats older than [`CLAIM_SCHEMA_V`] that this build **loads as they are** (ADR 0051 decision
 /// 6): no migration message, nothing rewritten, no address moved. Stated once, as data — a later
 /// format that keeps an earlier one readable adds its number here, and no judgement is re-derived.
 /// Every older format not listed is a migration candidate ([`ClaimSchema::Older`]).
-pub const READS_AS_IS: &[u32] = &[2];
+pub const READS_AS_IS: &[u32] = &[2, 3];
 /// The schema `tools/migrate_claims.py` writes. It migrates `req.claim/1` to `req.claim/2` and stops
 /// there, because `/2` is on [`READS_AS_IS`]: a build that reads `/2` as it is needs no second hop.
 pub const MIGRATION_TARGET: &str = "req.claim/2";
@@ -1904,7 +1909,7 @@ pub fn evaluate_pins(pins: &crate::model::Pins, form: &CanonicalForm) -> Vec<Pin
         .collect()
 }
 
-/// Parse one claim file's text under this build's contract (`req.claim/3`, and `/2` as it is), in the order a
+/// Parse one claim file's text under this build's contract (`req.claim/4`, and `/3` and `/2` as they are), in the order a
 /// reader needs the answers:
 ///
 /// 1. the declared `schema:` — a file of another format is NOT JUDGED
@@ -1915,7 +1920,10 @@ pub fn evaluate_pins(pins: &crate::model::Pins, form: &CanonicalForm) -> Vec<Pin
 /// 3. the strict [`crate::model::ClaimFile`] (a misspelled key, a missing `relations:`);
 /// 4. the `pins:` values and the `tests:` declaration;
 /// 5. the `area`: only a `req.claim/3` file may carry it (ADR 0051 decision 6), and its value is a
-///    path of stable keys ([`crate::model::validate_area`]).
+///    path of stable keys ([`crate::model::validate_area`]);
+/// 6. the `kind` and `fields`: only a `req.claim/4` file may carry either (ADR 0056 decision 1), judged on the key,
+///    and their names are `[a-z][a-z0-9_]*`. `fields` without `kind` is refused. Judging a value against the
+///    declaration is [`crate::kinds::judge_fields`], not this function: it needs a root.
 ///
 /// The one parse every reader calls — the corpus loader and `compare`'s two paths — so the
 /// judgement has one home.
@@ -1991,6 +1999,58 @@ pub fn parse_claim(text: &str) -> Result<crate::model::ClaimFile, String> {
         crate::model::validate_area(area)
             .map_err(|e| format!("{} has a malformed `area`: {e}", claim.claim_id))?;
     }
+    // The same judgement for `kind` and `fields`, on the KEY and not its value: a `/3` build would reject the
+    // file as an unknown key, so a `/4` build must not read `kind: ~` in a `/3` file as "no kind" and let one
+    // file mean two things (ADR 0056 decision 1).
+    if declared_v < crate::model::KIND_SINCE_FORMAT {
+        let carried: Vec<&str> = ["kind", "fields"]
+            .into_iter()
+            .filter(|key| keys.as_ref().is_some_and(|keys| keys.contains_key(*key)))
+            .collect();
+        if !carried.is_empty() {
+            return Err(format!(
+                "carries {}, which needs the `req.claim/{v}` declaration: this file declares {declared} (ADR \
+                 0056). Declare `schema: req.claim/{v}` to give {id} a kind and fields, or remove the key",
+                carried
+                    .iter()
+                    .map(|key| format!("`{key}`"))
+                    .collect::<Vec<_>>()
+                    .join(" and "),
+                v = crate::model::KIND_SINCE_FORMAT,
+                declared = claim.schema,
+                id = claim.claim_id
+            ));
+        }
+    }
+    if let Some(kind) = &claim.kind
+        && !crate::kinds::is_name(kind)
+    {
+        return Err(format!(
+            "{} has a malformed `kind`: {kind:?} is not a name `{}` (ASCII, lower case)",
+            claim.claim_id,
+            crate::kinds::name_grammar()
+        ));
+    }
+    if claim.kind.is_none()
+        && keys
+            .as_ref()
+            .is_some_and(|keys| keys.contains_key("fields"))
+    {
+        return Err(format!(
+            "{} carries `fields` without a `kind`: a value has no type until a kind declares it (ADR 0056). \
+             Name the kind, or remove `fields`",
+            claim.claim_id
+        ));
+    }
+    for name in claim.fields.keys() {
+        if !crate::kinds::is_name(name) {
+            return Err(format!(
+                "{} has a malformed field name: {name:?} is not a name `{}` (ASCII, lower case)",
+                claim.claim_id,
+                crate::kinds::name_grammar()
+            ));
+        }
+    }
     Ok(claim)
 }
 
@@ -2005,11 +2065,15 @@ pub struct LoadedClaim {
     pub text: String,
     pub claim: crate::model::ClaimFile,
     pub derived: Derived,
+    /// The claim's `fields` judged against its kind's declaration (ADR 0056), sorted by name: the declared
+    /// type with the value in canonical text, one per carried field and none for an absent one. Outside
+    /// identity, and hashed by nothing in this build.
+    pub fields: Vec<crate::kinds::JudgedField>,
 }
 
 /// The canonical `REQ-<digits>` stem: uppercase exactly, because the canonical
 /// filename is `REQ-<digits>.yml` (claim-format.md). This is the *naming* rule.
-fn is_claim_stem(stem: &str) -> bool {
+pub(crate) fn is_claim_stem(stem: &str) -> bool {
     let Some(digits) = stem.strip_prefix("REQ-") else {
         return false;
     };
@@ -2091,6 +2155,11 @@ fn looks_like_claim_file(name: &str) -> bool {
 /// UNVERIFIABLE), and every claim's [`Derived`] is computed against it.
 pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
     let registry = load_registry(root)?;
+    // The declarations, read once per load next to the registry (ADR 0056 decision 2). A malformed or unreadable
+    // set refuses the load: no claim is judged against a declaration nobody could read. The CLI decides the
+    // exit class (2 for a malformed one) before a command runs ([`crate::kinds::precheck`]); a staged revision
+    // of `req diff` meets this as a side that fails to load, exit 3.
+    let declarations = crate::kinds::Declarations::read(root).map_err(|e| e.to_string())?;
     let dir = root.join("claims");
     // Every per-file problem, keyed by the path it is about: the report is every one of them, in
     // path order, so an author fixes the corpus in one pass rather than meeting the next problem
@@ -2176,6 +2245,22 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
                 continue;
             }
         };
+        // The fields against the kind's declaration: one function, shared with `req compare`. Every problem of
+        // every claim is collected, like every other per-file problem here.
+        let fields = match crate::kinds::judge_fields(
+            &claim.claim_id,
+            claim.kind.as_deref(),
+            &claim.fields,
+            &declarations,
+        ) {
+            Ok(fields) => fields,
+            Err(errors) => {
+                for error in errors {
+                    problems.push((path.clone(), format!("{}: {error}", path.display())));
+                }
+                continue;
+            }
+        };
         let derived = derive(&claim, &registry);
         loaded.push(LoadedClaim {
             path,
@@ -2183,6 +2268,7 @@ pub fn load_claims(root: &std::path::Path) -> Result<Vec<LoadedClaim>, String> {
             text,
             claim,
             derived,
+            fields,
         });
     }
 
@@ -2401,6 +2487,17 @@ pub fn run_claim_diagnostics_with_options(
         if let Some(area) = &loaded.claim.area {
             print!(" area {area}");
         }
+        // The kind and the fields after it (ADR 0056), sorted by name, as diagnostics: values are read only to
+        // be shown, and an absent field shows nothing — never a default.
+        if let Some(kind) = &loaded.claim.kind {
+            print!(" kind {kind}");
+        }
+        if !loaded.fields.is_empty() {
+            print!(" fields");
+            for field in &loaded.fields {
+                print!(" {}={}", field.name, field.value);
+            }
+        }
         println!();
         // What the row cannot hold: the words a lint names, and the identity-bearing parts of the
         // form (a condition or qualifier that reached the address, or did not).
@@ -2431,7 +2528,7 @@ pub fn run_claim_diagnostics_with_options(
         "claims: {} ({unstructured} unstructured); pins: {pins} on {pinned_claims} claim(s), \
          {flagged} flagged; lints on {linted} claim(s) \
          (diagnostics: the parse is derived from `statement` at load and stored nowhere \
-         (req.claim/3); a pin agrees or is a flag — a contradiction, or a slot the parse does \
+         (req.claim/4); a pin agrees or is a flag — a contradiction, or a slot the parse does \
          not carry; `req canon` reports and fails on a flag only with `--fail-on-flag`; the check that gates a \
          release is `req gate` (pins_hold))",
         claims.len()

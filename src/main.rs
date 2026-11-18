@@ -51,8 +51,8 @@
 //! the address computation.
 //! req-satisfies: REQ-0040 — an unrecognized subcommand is a usage error, exit 2
 use req::{
-    audit, baseline, bench, canon, check, compare, decision, diff, gate, impact, init, next_id,
-    pin, propose, root, satisfy, select, selftest, view,
+    audit, baseline, bench, canon, check, compare, decision, diff, gate, impact, init, kinds,
+    next_id, pin, propose, root, satisfy, select, selftest, view,
 };
 use std::path::Path;
 use std::process::exit;
@@ -155,6 +155,11 @@ struct Command {
     name: &'static str,
     run: Handler,
     help: &'static str,
+    /// Whether the command loads claims (directly, or through a view). The kind declarations under
+    /// `.req/kinds/` are then judged once, before it runs, so a malformed one is exit 2 in every such command
+    /// and none folds it into 3 (ADR 0056 decision 2, [`req::kinds::precheck`]). `req diff` is `false`: it reads
+    /// each staged revision's declarations, and a bad one there is that side failing to load, exit 3.
+    loads_claims: bool,
 }
 
 // The pages. Each is the command's reference and the one home of its contract: the exit codes
@@ -189,7 +194,7 @@ usage: req canon [--fail-on-flag] [--by-area]
 
 Prints, per claim, the parse its `statement` derives — structured or unstructured, modality,
 subject, operator, value, unit, and the lints the canonicalizer raised — and each pin's
-verdict. Nothing derived is stored in a claim file (`req.claim/3`, ADR 0022): the parse, the
+verdict. Nothing derived is stored in a claim file (`req.claim/4`, ADR 0022): the parse, the
 canonical form and the address are computed when the claim is loaded, so there is nothing to
 fill and nothing to verify; `--fill` and `--verify` are removed and answer a usage error.
 
@@ -199,15 +204,28 @@ to. It agrees, or it is a flag: a *contradiction* (the parse says something else
 flagged pin moves no address — it reports here, and `req gate` fails on it (`pins_hold`). A
 file whose declared `schema:` is not the one this build writes (`req --version` reports it as
 `claim_schema`) is NOT JUDGED: an older one is a migration candidate
-(`tools/migrate_claims.py`) — except `req.claim/2`, which this build loads as it is, with no area —
+(`tools/migrate_claims.py`) — except `req.claim/2` and `req.claim/3`, which this build loads as they are, with
+no area (`/2`) and no kind or fields (`/2` and `/3`) —
 a newer one is a question for a build that writes it, and a value of no `req.claim/<n>` shape is a
 broken file. A `req.claim/2` file carrying a removed `req.claim/1` key is a parse error that names
-the key, and so is one carrying `area`, which needs the `req.claim/3` declaration.
+the key, and so is one carrying `area`, which needs the `req.claim/3` declaration, or `kind` or `fields`,
+which need `req.claim/4`.
 
 A claim's optional `area` (ADR 0051: where it is filed, a path of stable keys such as
 `diagnostics/startup`, each segment `[a-z0-9][a-z0-9-]*`) is printed at the end of its line when it has
 one. It is placement only: it enters no parse, address or Baseline, and a malformed one is a load error
 naming the claim and the key.
+
+A `req.claim/4` claim's optional `kind` (one name, `[a-z][a-z0-9_]*`) and `fields` (field name to value) are
+printed after the area as `kind <name>` and `fields <name>=<value> ...`, sorted by name; an absent field shows
+nothing, never a default. Both are outside identity — no parse, address or applicability moves with them — and the
+Baseline attests nothing about them in this build. A field is data an author wrote, never ratification (ADR 0056,
+ADR 0005): nothing reads one to accept, merge or release a claim. Every value is judged against
+`.req/kinds/<kind>.yml` (`schema: req.kind/1`; `label`, and per field `type` — string, integer, decimal, bool, enum,
+ref, date, list — plus `values`, `ordered`, `required` and `of`). An undeclared kind or field, a value of the wrong
+type or outside its enum, a list duplicate, a `null` and `fields` without `kind` are each exit 3, NOT JUDGED, naming
+the claim, the kind, the field and the declared alternatives; a malformed declaration is exit 2, every bad file and
+key in one run.
 
 `--fail-on-flag` is the opt-in for the window between \"pinned\" and \"every claim has a linked
 test\", when `req gate` cannot yet be green: the output is unchanged, and the exit is 1 when any
@@ -798,7 +816,7 @@ Decision signature that cannot be judged), 2 usage.
 const INIT_HELP: &str = "\
 usage: req init
 
-Creates a corpus in the current directory: a `req.claim/3` starter claim (authored fields and
+Creates a corpus in the current directory: a `req.claim/4` starter claim (no kind is needed) (authored fields and
 pins, nothing derived) read back through the loader every command uses with its pins held, the
 claims README, and the subject registry. It
 refuses rather than overwrite an existing corpus, and it reads no root — it creates one, so it
@@ -825,66 +843,79 @@ const COMMANDS: &[Command] = &[
         name: "bench",
         run: |args, corpus| bench::run(args.first().map(String::as_str), corpus),
         help: BENCH_HELP,
+        loads_claims: false,
     },
     Command {
         name: "select",
         run: |args, corpus| select::run(args, corpus),
         help: SELECT_HELP,
+        loads_claims: true,
     },
     Command {
         name: "render",
         run: |args, corpus| view::run_render(args, corpus),
         help: RENDER_HELP,
+        loads_claims: true,
     },
     Command {
         name: "trace",
         run: |args, corpus| view::run_trace(args, corpus),
         help: TRACE_HELP,
+        loads_claims: true,
     },
     Command {
         name: "impact",
         run: |args, corpus| impact::run(args, corpus),
         help: IMPACT_HELP,
+        loads_claims: true,
     },
     Command {
         name: "satisfy",
         run: |args, corpus| satisfy::run(args, corpus),
         help: SATISFY_HELP,
+        loads_claims: true,
     },
     Command {
         name: "gate",
         run: |args, corpus| gate::run(args, corpus),
         help: GATE_HELP,
+        loads_claims: true,
     },
     Command {
         name: "check",
         run: |args, corpus| check::run(args, corpus),
         help: CHECK_HELP,
+        loads_claims: true,
     },
     Command {
         name: "next-id",
         run: |args, corpus| next_id::run(args, corpus),
         help: NEXT_ID_HELP,
+        loads_claims: false,
     },
     Command {
         name: "propose",
         run: |args, corpus| propose::run(args, corpus),
         help: PROPOSE_HELP,
+        loads_claims: false,
     },
     Command {
         name: "baseline",
         run: |args, corpus| baseline::run(args, corpus),
         help: BASELINE_HELP,
+        loads_claims: true,
     },
     Command {
         name: "audit",
         run: |args, corpus| audit::run(args, corpus),
         help: AUDIT_HELP,
+        loads_claims: true,
     },
     Command {
         name: "decision",
         run: |args, corpus| decision::run(args, corpus),
         help: DECISION_HELP,
+        loads_claims: false,
     },
     Command {
         name: "compare",
@@ -896,16 +927,19 @@ const COMMANDS: &[Command] = &[
             }
         },
         help: COMPARE_HELP,
+        loads_claims: true,
     },
     Command {
         name: "diff",
         run: |args, corpus| diff::run(args, corpus),
         help: DIFF_HELP,
+        loads_claims: false,
     },
     Command {
         name: "pin",
         run: |args, corpus| pin::run(args, corpus),
         help: PIN_HELP,
+        loads_claims: false,
     },
     Command {
         name: "canon",
@@ -935,6 +969,7 @@ const COMMANDS: &[Command] = &[
             canon::run_claim_diagnostics_with_options(corpus, fail_on_flag, by_area)
         },
         help: CANON_HELP,
+        loads_claims: true,
     },
 ];
 
@@ -1055,6 +1090,15 @@ fn main() {
     // Exactly once per invocation, on stderr: a silently-chosen root is the failure mode
     // ADR 0012 exists to remove, and stdout carries the bytes a human signs (`req baseline`).
     eprintln!("corpus root: {}", corpus.display());
+
+    // The kind declarations, judged once for a command that loads claims (ADR 0056 decision 2): a malformed one is
+    // exit 2 naming every bad file and key, a newer or unreadable one exit 3. Decided here so that no command's own
+    // load error can fold the one class into the other.
+    if command.loads_claims
+        && let Some(code) = kinds::precheck(&corpus)
+    {
+        exit(code);
+    }
 
     // The handler found above, run from the one table: there is no second dispatch to keep
     // in step with it.

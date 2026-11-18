@@ -1,10 +1,11 @@
-# Claim-file format — v3
+# Claim-file format — v4
 
-Status: `req.claim/3`. Implements docs/adr/0002-git-is-transport-not-identity.md
+Status: `req.claim/4`. Implements docs/adr/0002-git-is-transport-not-identity.md
 (one claim per file), docs/adr/0019-claims-carry-authored-test-links.md (authored test
 links, attested and outside identity), docs/adr/0022-claims-are-authored-fingerprints-are-derived.md
 (a claim is authored, its parse is derived at load, no fingerprint is stored),
-docs/adr/0051-a-claim-may-name-the-area-it-belongs-to.md (an optional `area`, outside identity) and
+docs/adr/0051-a-claim-may-name-the-area-it-belongs-to.md (an optional `area`, outside identity),
+docs/adr/0056-a-claim-may-carry-typed-fields-outside-its-address.md (an optional `kind` and `fields`, outside identity) and
 docs/canonical-hashing.md (identity, tiers, freeze).
 
 ## Layout
@@ -41,7 +42,7 @@ reader is `src/decision.rs`, whose `log_paths` reads `root.join("decisions")`.
 
 | Axis | Where | Effect of a bump |
 |---|---|---|
-| File format | `schema: req.claim/3` | a migration where one is needed; addresses unchanged — v2 removed the authored slots and the stored fingerprint (ADR 0022), v3 adds the optional `area` and nothing else (ADR 0051). An older declaration is a migration candidate (exit 3, `tools/migrate_claims.py`) **except v2, which a v3 build loads as it is**; no `RULES_V` moves |
+| File format | `schema: req.claim/4` | a migration where one is needed; addresses unchanged — v2 removed the authored slots and the stored fingerprint (ADR 0022), v3 adds the optional `area` and nothing else (ADR 0051), v4 adds the optional `kind` and `fields` and nothing else (ADR 0056). An older declaration is a migration candidate (exit 3, `tools/migrate_claims.py`) **except v2 and v3, which a v4 build loads as they are**; no `RULES_V` moves |
 | Normalization rules | the build (`RULES_V`, `req --version`) | moves the derived addresses of affected claims → *candidates* needing re-ratification, seen as drift against the signed manifest (hashing spec §5); history never silently rewritten |
 | Subject registry | `aliases/subjects.yml` version | same effect as a rules bump, scoped to claims using affected subjects |
 
@@ -53,12 +54,13 @@ The declared `schema:` is **judged when a file is loaded**, first, against the v
 writes (`CLAIM_SCHEMA_V` in `src/canon.rs`, reported by `req --version` as `claim_schema`). A file
 declaring an *older* format is a migration candidate — the message names
 `tools/migrate_claims.py` — **unless that format is one this build reads as it is**: the set is
-`READS_AS_IS` in `src/canon.rs`, stated once as data, and today it holds `/2`. A `/2` file loads as a
-`/3` file with no area: no message, nothing rewritten, no address moved (ADR 0051 decision 6), so
-`req.claim/2` needs **no migration**. It is still judged under its own declaration: a `/2` file may not
-carry `area`, a key only `/3` has, and one that does is a parse error naming the key and the format it
-needs. A *newer* format is a question this build cannot answer, because the file
-is not wrong — the reader is old (a `/2` build reading a `/3` file says exactly this, never a parse
+`READS_AS_IS` in `src/canon.rs`, stated once as data, and today it holds `/2` and `/3`. A `/2` or `/3` file loads as a
+`/4` file with no kind and no fields (and a `/2` file with no area): no message, nothing rewritten, no address moved
+(ADR 0051 decision 6, ADR 0056 decision 1), so `req.claim/2` and `req.claim/3` need **no migration**. Each is still judged
+under its own declaration: a `/2` file may not carry `area`, a key only `/3` and later have, a `/2` or `/3` file may not
+carry `kind` or `fields`, keys only `/4` has, and one that does is a parse error naming the key and the format it
+needs (judged on the key, not its value). A *newer* format is a question this build cannot answer, because the file
+is not wrong — the reader is old (a `/3` build reading a `/4` file says exactly this, never a parse
 error); and a value that is not of the `req.claim/<n>` shape at all is a
 broken file, not a version question. The three that are reported — older, newer, malformed — are
 **NOT JUDGED** (exit 3): nothing inside the
@@ -78,9 +80,12 @@ reports it the same way. The two classes are therefore **coupled**: if either ev
 A claim file carries what a human **authors**, and nothing derived.
 
 ```yaml
-schema: req.claim/3
+schema: req.claim/4
 claim_id: REQ-0009
 area: evidence
+kind: verification
+fields:
+  method: test
 statement: >-
   The benchmark harness shall classify direction of change on the structural
   direction gold set with accuracy of at least 0.95.
@@ -104,7 +109,7 @@ pins:
 
 | Field | Meaning | Notes |
 |---|---|---|
-| `schema` | `req.claim/3` (or `req.claim/2`, loaded as it is) | judged first, by direction (above) |
+| `schema` | `req.claim/4` (or `req.claim/3` or `req.claim/2`, loaded as they are) | judged first, by direction (above) |
 | `claim_id` | stable human label | never derived — it survives rewording (CONTEXT.md) |
 | `statement` | the human sentence | **the source of truth**: its parse, canonical form and address are derived from it at load |
 | `applicability[]` | variant predicates (`applies_when`) — the **selector slot** | **required** (an omitted key is a parse error, never `[]`); part of identity (ADR 0003): an *input* to the canonical form, because the statement carries no formal selector syntax — the sorted authored list is hashed |
@@ -112,7 +117,9 @@ pins:
 | `tests` | the test ids that prove the claim — **authored**, optional | `[String]` of `classname::name` ids (the `classname` and the test's `name` the JUnit report writes, joined by `::`); **outside the canonical form**, so adding, removing or renaming a link moves no address (ADR 0019); on a **machine** claim (the default) absent or `[]` = no linked test, which the gate names (a finding, never a parse error); under `evidence: process` the list is empty by definition; attested in the signed Baseline by `tests_hash`, hashed over the **sorted** list; an empty or duplicated string in the list is a load error — a link that names no test, or names one twice, is not a link |
 | `evidence` | how the claim's evidence is established — `machine` (default) or `process` | authored, optional (omitted = `machine`); `process` is an explicit declaration that the **process itself** establishes the claim — a Decision, a signature, a workflow — and it must carry **no** `tests:` (naming both is a load error: machine or process, never both); **outside identity**, attested together with the links by `tests_hash`; an empty `tests:` list never implies `process` — that is the *no linked test* finding, not a declaration |
 | `rationale` | object: `source`, `date`, `rejected_alternatives[]`, `assumptions[]` | all four **required** (an omitted list is a parse error, not an empty one); the losing side is preserved — never a string field |
-| `area` | the one place the claim is filed in the reader's layout — optional, **`req.claim/3` only** | a path of stable keys: segments joined by `/`, each `[a-z0-9][a-z0-9-]*`, no empty segment and no leading or trailing `/` (`diagnostics/startup`); anything else is a load error naming the claim and `area`, and a `/2` file carrying it is a parse error naming the key (*Area*, below); **outside the canonical form** and in no attested hash, so adding, changing or removing it moves no address and breaks no Baseline (ADR 0051) |
+| `area` | the one place the claim is filed in the reader's layout — optional, **`req.claim/3` and later** | a path of stable keys: segments joined by `/`, each `[a-z0-9][a-z0-9-]*`, no empty segment and no leading or trailing `/` (`diagnostics/startup`); anything else is a load error naming the claim and `area`, and a `/2` file carrying it is a parse error naming the key (*Area*, below); **outside the canonical form** and in no attested hash, so adding, changing or removing it moves no address and breaks no Baseline (ADR 0051) |
+| `kind` | the claim's class — optional, **`req.claim/4` only** | one name, `[a-z][a-z0-9_]*`, whose declaration is `.req/kinds/<kind>.yml` (*Kinds and fields*, below); a `/3` or `/2` file carrying the key is a parse error naming it and `req.claim/4`; **outside the canonical form**, so adding, changing or removing it moves no address; **never ratification** — nothing reads it to accept, merge or release a claim (ADR 0056 decision 9) |
+| `fields` | the claim's typed attributes — optional, **`req.claim/4` only**, and only with a `kind` | a map of field name (`[a-z][a-z0-9_]*`) to a value the kind's declaration types; `fields` without `kind` is a load error; **outside the canonical form**, so a value edit moves no address; a field is data an author wrote, never ratification, and an **absent** field is UNKNOWN, never a default; as of this unit the Baseline attests nothing about them (*Kinds and fields*, below) |
 | `pins` | what the parse **must** be, where it is load-bearing — optional | an object with any of `modality`, `subject`, `operator`, `value`, `unit` (any other key is a parse error); judged against the derived parse, never part of identity (see *Pins* below) |
 
 Reference types (`to`, `source`) use `claim_id`s, addresses, or repo paths —
@@ -171,6 +178,86 @@ claim and the area. It is reported and does not change the verdict, unless `.req
 areas` (then FAIL, exit 1). With no `.req/areas` there is no finding at all. `req canon` prints a claim's area at
 the end of its line, and the `--format json` rows of `render`, and `trace`'s nodes, carry it as `area` (`null`
 when the claim names none); no text projection changes.
+
+## Kinds and fields (`kind`, `fields`, `.req/kinds/`)
+
+An organisation's requirements carry attributes that are not the requirement: an integrity level, a verification method, a review
+date, the claims that mitigate this one. A `req.claim/4` claim files them as `fields`, under one `kind` that declares what each
+field is (ADR 0056):
+
+```yaml
+schema: req.claim/4
+claim_id: REQ-0101
+kind: safety
+fields:
+  asil: C
+  mitigated_by: [REQ-0102, REQ-0107]
+  review_due: 2027-03-01
+```
+
+**Outside identity.** Neither key is an input to the canonical form, so a claim with a kind, without one, or with another value has
+one address and one canonical form; `derive` does not read them, `req selftest` and `req bench` do not move, and `RULES_V` stays 9.
+No text projection prints a field, no gate policy, selector, projection or exit code reads a value, and the only readers are the
+loader (validation), `req compare` (validation), `req canon` (display) and the findings F-3 adds. Two claims with the same statement
+and different fields share an address, as two that differ only in rationale do: the address is a drift signal and the `claim_id` is
+the identity. **The Baseline attests nothing about a kind or a field yet** (as of this unit; the next unit gives envelope v5 a
+`fields_hash`): an edit after signing is invisible to a manifest until then.
+
+**A field is never ratification.** A field named `status` with the value `approved` is data an author wrote. It is not a signed
+Decision (ADR 0005), and nothing reads it to accept, merge or release a claim.
+
+**Absent is UNKNOWN.** A field a claim does not carry has no value: it is missing from the claim, never `null`, never `false`, never
+a default (a `default:` is refused in a declaration). `asil: null` is refused too — omit the key. A required field a claim does not
+carry loads; reporting it is a finding, not a load error, so a claim written before its kind gained a required field still loads. A
+`ref` that points at no claim loads for the same reason.
+
+**The declaration** is one file per kind, `.req/kinds/<kind>.yml`; the stem is the kind's name:
+
+```yaml
+schema: req.kind/1
+label: Safety-related requirement      # optional; the reader-facing name, any language
+fields:
+  asil:
+    type: enum
+    values: [QM, A, B, C, D]
+    ordered: true                       # the order of `values` is the order, ascending (declared; nothing reads it yet)
+    required: true
+  mitigated_by:
+    type: list
+    of: ref
+  review_due:
+    type: date
+```
+
+The keys are exactly `schema`, `label` and `fields`, and per field `type`, `values`, `ordered`, `required` and `of`; any other key
+(`default:` among them) is refused. `ordered` is valid on an `enum` only, `values` on an `enum` or a list of `enum` only, `of` on a
+`list` only; an `enum` has at least one value, each a distinct token `[A-Za-z0-9][A-Za-z0-9_.-]*`, compared exactly and case-sensitively;
+a list of `bool` or of `list` is refused. A kind and a field name are `[a-z][a-z0-9_]*`. A stray entry under `.req/kinds/` (a file that
+is not `*.yml`, a subdirectory, a symlink) is refused naming it. A **malformed** declaration is exit 2, naming `<file>` and the key,
+every bad one in one run; an unreadable one, or one declaring a newer `req.kind/<n>` (NOT JUDGED), is exit 3. The declarations are not
+attested either, and a corpus with no `.req/kinds/` and no claim naming a kind loads exactly as it did.
+
+**The eight types**, each a canonical spelling — the file carries a value as text wherever YAML would guess, and `yaml_serde` tells a
+quoted `"3"` (a string) from an unquoted `3` (a number):
+
+| `type` | the value in a claim | refused |
+| --- | --- | --- |
+| `string` | one line of text; a plain scalar YAML would type (`true`, `3`, `1.5`, `null`) is **quoted** | empty, a newline or other control character, leading or trailing space, an unquoted boolean, number or null |
+| `integer` | a **quoted** canonical integer within `i64`: `"3"`, `"-12"` | `3` unquoted, `"007"`, `"+1"`, `"-0"` |
+| `decimal` | a **quoted** canonical exact decimal (`is_canonical_decimal`): `"0.3"` | `0.3` unquoted, `"0.30"`, `".3"`, any exponent |
+| `bool` | a scalar delivered as a YAML boolean; `true`, `True` and `TRUE` are **one value**, and the raw spelling is not kept | `yes`, `on`, `"true"`, any other scalar |
+| `enum` | one of the kind's `values` (a token YAML would type is quoted, as a `string` is) | a value not in the list |
+| `ref` | the id of a claim, in the id grammar (`REQ-<digits>`) | a malformed id |
+| `date` | `YYYY-MM-DD`, read as **text** (never a timestamp), calendar-valid including leap years, no clock and no zone | any other spelling or an impossible date |
+| `list` | a **set** of one element type, `of:` one of `string`, `integer`, `decimal`, `enum` (with its own `values`), `ref`, `date` | a duplicate element, a list of `bool` or of `list` |
+
+A refusal at load is exit 3, NOT JUDGED, and names the claim, the kind, the field and the declared alternatives (the `values`, or the
+type): a `kind` with no declaration (and every kind when `.req/kinds/` does not exist — with no declaration there is no type, so no
+claim is accepted untyped), a field the kind does not declare, a value of the wrong type or outside its `enum`, a list with a
+duplicate, a `null`, and `fields` without a `kind`. Every problem is collected, in path order, and a load that found any returns no
+claims. `req compare` judges both files by the working tree's declarations, and `req diff` loads each revision under its own
+(`.req/kinds/` is staged beside `claims/` and `aliases/`; a malformed declaration at a revision is that side failing to load, exit 3).
+`req canon` prints `kind <name>` and `fields <name>=<value> …`, sorted by name, after the area.
 
 ## The derived view (computed at load, stored nowhere)
 
@@ -333,8 +420,9 @@ gate needs no `--test-report`.
 
 ## Migrating from `req.claim/1`
 
-`req.claim/2` needs none: a `req.claim/3` build loads it as it is (see *Version axes*). Declare `/3` only
-when a claim is first filed under an `area`, and change nothing else in the file.
+`req.claim/2` and `req.claim/3` need none: a `req.claim/4` build loads them as they are (see *Version axes*). Declare `/3` only
+when a claim is first filed under an `area`, and `/4` only when a claim first gets a `kind` and `fields` (with its
+`.req/kinds/<kind>.yml`); change nothing else in the file.
 
 A `req.claim/1` file is a migration candidate: every command reports it NOT JUDGED (exit 3) and
 names the tool. `tools/migrate_claims.py` (a starting point an adopter copies, like

@@ -94,6 +94,13 @@ const_at() { # const_at <commit> <file> <NAME>
   { git show "$1:$2" 2>/dev/null | sed -n "s/^pub const $3: u32 = \([0-9][0-9]*\);.*/\1/p" | head -n 1; } || true
 }
 
+# `READS_AS_IS` is a list, `pub const READS_AS_IS: &[u32] = &[2, 3];`, so `const_at`'s `u32` pattern cannot read it
+# (ADR 0056 *Consequences*). Prints the numbers one per line, or nothing: an absent constant and an empty list
+# are told apart by `list_at` below, which prints `-` for a list it found.
+list_at() { # list_at <commit> <file> <NAME> -> `-` then each number, or nothing when the constant is not there
+  { git show "$1:$2" 2>/dev/null | sed -n "s/^pub const $3: &\[u32\] = &\[\([0-9, ]*\)\];.*/-,\1/p" | head -n 1 | tr ',' '\n' | tr -d ' ' | sed '/^$/d'; } || true
+}
+
 # --- a title as safe text ----------------------------------------------------------------------------
 zw=$(printf '\342\200\213') # U+200B, which breaks an @mention or a URL without deleting a character
 clean() { # clean <title> -> one line, no control bytes, no HTML, no live link, no mention, at most 200 bytes
@@ -140,8 +147,20 @@ trap 'rm -f "$tmp"; [ -z "$ftmp" ] || rm -f "$ftmp"' EXIT
     if [ -z "$p_schema" ] || [ -z "$n_schema" ]; then
       printf -- '- the claim schema could not be determined (previous `%s`, this rev `%s`).\n' "${p_schema:-?}" "${n_schema:-?}"; unknown=1
     elif [ "$p_schema" != "$n_schema" ]; then
-      printf -- '- claim schema req.claim/%s → req.claim/%s — **changed**: a claim file declaring the old schema is NOT JUDGED by this build; see `docs/claim-format.md`.\n' \
-        "$p_schema" "$n_schema"; changed=1
+      # What the old schema means to THIS build is decided by the released rev's own `READS_AS_IS` (`$full`), never by
+      # the previous rev's list, whose contents are what would reprint the false line (ADR 0056 falsification 13).
+      reads=$(list_at "$full" src/canon.rs READS_AS_IS)
+      if [ -z "$reads" ]; then
+        printf -- '- claim schema req.claim/%s → req.claim/%s — **changed**: whether a claim file declaring req.claim/%s is loaded as it is could not be determined from `READS_AS_IS` at this rev; see `docs/claim-format.md`.\n' \
+          "$p_schema" "$n_schema" "$p_schema"
+      elif printf '%s\n' "$reads" | grep -qx "$p_schema"; then
+        printf -- '- claim schema req.claim/%s → req.claim/%s — **changed**: a claim file declaring req.claim/%s is loaded as it is by this build — no migration, no message, no address moved; see `docs/claim-format.md`.\n' \
+          "$p_schema" "$n_schema" "$p_schema"
+      else
+        printf -- '- claim schema req.claim/%s → req.claim/%s — **changed**: a claim file declaring the old schema is NOT JUDGED by this build; see `docs/claim-format.md`.\n' \
+          "$p_schema" "$n_schema"
+      fi
+      changed=1
     fi
     if [ -z "$p_env" ] || [ -z "$n_env" ]; then
       printf -- '- the baseline envelope could not be determined (previous `%s`, this rev `%s`).\n' "${p_env:-?}" "${n_env:-?}"; unknown=1

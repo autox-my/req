@@ -299,7 +299,7 @@ pub fn validate_pins(pins: &Pins) -> Result<(), String> {
     Ok(())
 }
 
-/// A claim file, strictly (`req.claim/2` and `/3`, ADR 0022 and 0051): what a human **authors**, and
+/// A claim file, strictly (`req.claim/2`, `/3` and `/4`, ADR 0022, 0051 and 0056): what a human **authors**, and
 /// nothing derived. The parse, the canonical form and the address are computed at load
 /// ([`crate::canon::load_claims`]) and stored nowhere.
 ///
@@ -345,7 +345,27 @@ pub struct ClaimFile {
     /// before the key existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub area: Option<String>,
+    /// The claim's class (`req.claim/4`, ADR 0056): one name, `[a-z][a-z0-9_]*`, declared by
+    /// `.req/kinds/<kind>.yml`. **Authored, optional and outside identity**: not an input to the canonical
+    /// form, so adding, changing or removing it moves no address. Judged for its shape by
+    /// [`crate::canon::parse_claim`] and against the declaration by [`crate::kinds::judge_fields`].
+    ///
+    /// Not serialised when absent: a claim without a kind serialises as it did before the key existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// The claim's typed fields (`req.claim/4`, ADR 0056): field name to the **raw** YAML value, an ordered
+    /// map. Authored, optional and outside identity, like [`ClaimFile::kind`], and meaningless without one
+    /// (`fields` without `kind` is a load error). The raw value is kept because a value has no type until the
+    /// kind declares it; [`crate::kinds::judge_fields`] judges it. A field is data an author wrote and never
+    /// ratification (ADR 0056 decision 9).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fields: BTreeMap<String, yaml_serde::Value>,
 }
+
+/// The first claim file format that carries [`ClaimFile::kind`] and [`ClaimFile::fields`] (ADR 0056
+/// decision 1). A file that declares an earlier format and still carries either key is a parse error naming
+/// the key and this format.
+pub const KIND_SINCE_FORMAT: u32 = 4;
 
 /// The first claim file format that carries [`ClaimFile::area`] (ADR 0051 decision 6). A file that
 /// declares an earlier format and still carries the key is a parse error naming it.
