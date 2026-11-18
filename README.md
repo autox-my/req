@@ -14,6 +14,7 @@ When a requirement's meaning changes, req tells you which parts of your design n
 
 - [Three edits, three verdicts](#three-edits-three-verdicts)
 - [What SUSPECT means](#what-suspect-means)
+- [Which drift req catches](#which-drift-req-catches)
 - [Try it in three commands](#try-it-in-three-commands)
 - [How it works](#how-it-works)
 - [Where to look next](#where-to-look-next)
@@ -46,6 +47,27 @@ A tool that flags every edit would raise the alarm three times; req raises it on
 ## What SUSPECT means
 
 SUSPECT means the part was recorded against a claim whose meaning has since tightened or changed in another direction. It does not mean the part is wrong; it means a person must re-check it and re-record the link.
+
+## Which drift req catches
+
+"Requirement drift" names two different things, and req is built for the first:
+
+1. **The requirement moves.** Its text is edited, and the obligation gets stronger, weaker or different. A diff shows that
+   the text changed; req says **which way the meaning moved** (`req diff`, `req compare`), so a quiet weakening is never
+   reported as no change.
+2. **The code drifts from a requirement that did not move.** req does **not** judge code: there is no model in its core,
+   and a person decides (ADR 0004). It reaches this kind in two narrow ways only:
+   - **Linked tests.** A claim names the tests that prove it, and `req gate` requires them to pass in the JUnit report.
+     Code that stops satisfying the claim shows up as far as those tests catch it, and no further.
+   - **SUSPECT links.** When a claim tightens, `req satisfy` marks the design elements linked to it SUSPECT. That does not
+     say the code is wrong; it says which code now needs judging, so a reviewer, human or automated, re-checks those
+     links instead of everything.
+
+**Who it is for.** Teams that already keep requirements traceable, such as automotive and other safety work, already pay
+for claims, links, baselines and decision logs in heavier tools; req is a way to do that work in git. If your
+requirements are prose in an issue tracker and you need none of that evidence, adopting a claim corpus costs more than
+the first kind of drift is worth to you. The smallest adoption, `req diff` on pull requests and nothing else, opens
+[`docs/adopting.md`](docs/adopting.md#the-smallest-adoption-req-diff-on-pull-requests).
 
 ## Try it in three commands
 

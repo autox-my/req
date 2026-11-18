@@ -292,7 +292,7 @@ named tests and a coverage test so that the claim is checked, not asserted.
      (`fields-separation.md` §1, the table): today a reader cannot tell. `req audit` takes its coverage from `drift`
      (`fields-separation.md` §2.3) and so follows.
    - The JSON views (`req.trace/1`, `req.render/1` and the others that serialise a row) gain `kind` (`null` when absent)
-     and `fields` (an object holding only the fields present) after `area`, additively under ADR 0046 decision 7. Integers
+     and `fields` (an object holding only the fields present) after `area`, additively under ADR 0046 decision 9. Integers
      and decimals are the canonical *strings*, booleans JSON booleans, lists arrays. No text projection changes. `req canon` prints `kind <name>` and `fields <name>=<value> …` after `area`, as diagnostics
      (`src/canon.rs:2402` prints `area` the same way); it reads the values only to show them.
 

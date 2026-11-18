@@ -10,6 +10,44 @@ of a test link. A command's exit codes live on its own `req <command> --help` pa
 The commands below were run in a scratch corpus: the install form at `2afbd68`, and `req init` with
 a build of the revision that introduced it.
 
+## The smallest adoption: `req diff` on pull requests
+
+Most of this page is for a team that wants release gates, signed Baselines and an audit packet. You do not need any of
+that to get the first signal req gives: **which requirements moved in a pull request, and in which direction**. That
+takes a corpus and one command.
+
+1. Install req (the next section).
+2. Start a corpus with `req init` (*Start a corpus*, below), or draft one from documents you already have (*Adopting from
+   documents you already have*). Commit `claims/` and `aliases/subjects.yml`.
+3. On every pull request, run:
+
+   ```text
+   req diff --base origin/main --fail-on weakened,removed
+   ```
+
+   It exits 1 when a claim got weaker or disappeared, and 0 otherwise; every class it can report is in *On a pull
+   request*, below.
+
+From a scratch corpus made by `req init` with `req 0.6.0`, with the starter claim's bound edited from 200 ms to 300 ms and
+its pin edited to match:
+
+```text
+weakened REQ-0001 numeric_loosening pins-changed
+fail-on: weakened,removed — 1 triggered
+```
+
+What this rung leaves out, and what each later rung adds:
+
+| left out at this rung | what it adds when you take it |
+| --- | --- |
+| test links (`tests:`) and `req gate` | the release policies: each claim's proving test must pass (*Link each claim to its proving test*) |
+| `.req/variants` and `req check` | one gate per release line, plus the structural omissions (*CI*) |
+| `req-satisfies:` links and `req satisfy` | the design elements a tightened claim makes SUSPECT (*Satisfaction links*) |
+| a signed Baseline and the decision log | provenance an auditor can verify, and the audit packet (*Sign the Baseline*) |
+
+Without test links, `req gate` and `req check` answer UNVERIFIABLE (exit 3), by design: an unexercised policy is never a
+pass. At this rung you do not run them.
+
 ## Install req
 
 req is deliberately not published to crates.io (`publish = false`), so **the rev is the provenance**: you pin a
