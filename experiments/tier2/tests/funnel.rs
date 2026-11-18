@@ -38,6 +38,8 @@ fn row(id: &str, statement: &str, address: &str) -> Row {
         tests: Vec::new(),
         tests_hash: req::model::tests_digest(&[], req::model::Evidence::Machine),
         evidence: req::model::Evidence::Machine,
+        fields_hash: req::model::fields_digest(None, &[]),
+        pins_hash: req::model::pins_digest(None),
         pins: Vec::new(),
         rationale_source: provenance.source,
         rationale_date: provenance.date,

@@ -43,6 +43,7 @@ reader is `src/decision.rs`, whose `log_paths` reads `root.join("decisions")`.
 | Axis | Where | Effect of a bump |
 |---|---|---|
 | File format | `schema: req.claim/4` | a migration where one is needed; addresses unchanged — v2 removed the authored slots and the stored fingerprint (ADR 0022), v3 adds the optional `area` and nothing else (ADR 0051), v4 adds the optional `kind` and `fields` and nothing else (ADR 0056). An older declaration is a migration candidate (exit 3, `tools/migrate_claims.py`) **except v2 and v3, which a v4 build loads as they are**; no `RULES_V` moves |
+| Baseline envelope | the manifest's `"version"` (`baseline_envelope` in `req --version`) | what a signature covers. v3 attests the Decision-log head and `signed_at` (ADR 0016), v4 adds `tests_hash` (ADR 0019), **v5 adds `fields_hash` (the `kind` and the typed fields) and `pins_hash` (the authored pins), ADR 0056**; `.req/kinds/` is not attested. An older manifest still verifies over the bytes it was signed over and says once what it predates (`predates envelope v4` / `predates envelope v5`: that surface is *not attested*, not a FAIL); this build writes v5, so the owner re-emits and re-signs a repository's manifests after the build that reads v5 is released (`docs/releasing.md`). No `RULES_V` moves and no address moves |
 | Normalization rules | the build (`RULES_V`, `req --version`) | moves the derived addresses of affected claims → *candidates* needing re-ratification, seen as drift against the signed manifest (hashing spec §5); history never silently rewritten |
 | Subject registry | `aliases/subjects.yml` version | same effect as a rules bump, scoped to claims using affected subjects |
 
@@ -118,9 +119,9 @@ pins:
 | `evidence` | how the claim's evidence is established — `machine` (default) or `process` | authored, optional (omitted = `machine`); `process` is an explicit declaration that the **process itself** establishes the claim — a Decision, a signature, a workflow — and it must carry **no** `tests:` (naming both is a load error: machine or process, never both); **outside identity**, attested together with the links by `tests_hash`; an empty `tests:` list never implies `process` — that is the *no linked test* finding, not a declaration |
 | `rationale` | object: `source`, `date`, `rejected_alternatives[]`, `assumptions[]` | all four **required** (an omitted list is a parse error, not an empty one); the losing side is preserved — never a string field |
 | `area` | the one place the claim is filed in the reader's layout — optional, **`req.claim/3` and later** | a path of stable keys: segments joined by `/`, each `[a-z0-9][a-z0-9-]*`, no empty segment and no leading or trailing `/` (`diagnostics/startup`); anything else is a load error naming the claim and `area`, and a `/2` file carrying it is a parse error naming the key (*Area*, below); **outside the canonical form** and in no attested hash, so adding, changing or removing it moves no address and breaks no Baseline (ADR 0051) |
-| `kind` | the claim's class — optional, **`req.claim/4` only** | one name, `[a-z][a-z0-9_]*`, whose declaration is `.req/kinds/<kind>.yml` (*Kinds and fields*, below); a `/3` or `/2` file carrying the key is a parse error naming it and `req.claim/4`; **outside the canonical form**, so adding, changing or removing it moves no address; **never ratification** — nothing reads it to accept, merge or release a claim (ADR 0056 decision 9) |
-| `fields` | the claim's typed attributes — optional, **`req.claim/4` only**, and only with a `kind` | a map of field name (`[a-z][a-z0-9_]*`) to a value the kind's declaration types; `fields` without `kind` is a load error; **outside the canonical form**, so a value edit moves no address; a field is data an author wrote, never ratification, and an **absent** field is UNKNOWN, never a default; as of this unit the Baseline attests nothing about them (*Kinds and fields*, below) |
-| `pins` | what the parse **must** be, where it is load-bearing — optional | an object with any of `modality`, `subject`, `operator`, `value`, `unit` (any other key is a parse error); judged against the derived parse, never part of identity (see *Pins* below) |
+| `kind` | the claim's class — optional, **`req.claim/4` only** | one name, `[a-z][a-z0-9_]*`, whose declaration is `.req/kinds/<kind>.yml` (*Kinds and fields*, below); a `/3` or `/2` file carrying the key is a parse error naming it and `req.claim/4`; **outside the canonical form**, so adding, changing or removing it moves no address; **attested by envelope v5**: the signed manifest's `fields_hash` covers the kind with the fields, so an edit after signing is FAIL (a v4 manifest does not attest it); **never ratification** — nothing reads it to accept, merge or release a claim (ADR 0056 decision 9) |
+| `fields` | the claim's typed attributes — optional, **`req.claim/4` only**, and only with a `kind` | a map of field name (`[a-z][a-z0-9_]*`) to a value the kind's declaration types; `fields` without `kind` is a load error; **outside the canonical form**, so a value edit moves no address; a field is data an author wrote, never ratification, and an **absent** field is UNKNOWN, never a default; **attested by envelope v5** (`fields_hash`, with the `kind`): an edit after signing is FAIL, a v4 manifest does not attest it, and the declarations in `.req/kinds/` are not attested (*Kinds and fields*, below) |
+| `pins` | what the parse **must** be, where it is load-bearing — optional | an object with any of `modality`, `subject`, `operator`, `value`, `unit` (any other key is a parse error); judged against the derived parse, never part of identity; **attested by envelope v5** (`pins_hash`, over what the author pinned and never the verdict): a pin edited or deleted after signing is FAIL, a v4 manifest does not attest it (see *Pins* below) |
 
 Reference types (`to`, `source`) use `claim_id`s, addresses, or repo paths —
 whatever stays stable under rewording.
@@ -198,10 +199,18 @@ fields:
 **Outside identity.** Neither key is an input to the canonical form, so a claim with a kind, without one, or with another value has
 one address and one canonical form; `derive` does not read them, `req selftest` and `req bench` do not move, and `RULES_V` stays 9.
 No text projection prints a field, no gate policy, selector, projection or exit code reads a value, and the only readers are the
-loader (validation), `req compare` (validation), `req canon` (display) and the findings F-3 adds. Two claims with the same statement
+loader (validation), `fields_hash` (the Baseline's digest, below), `req compare` (validation), `req canon` (display) and the findings F-3 adds. Two claims with the same statement
 and different fields share an address, as two that differ only in rationale do: the address is a drift signal and the `claim_id` is
-the identity. **The Baseline attests nothing about a kind or a field yet** (as of this unit; the next unit gives envelope v5 a
-`fields_hash`): an edit after signing is invisible to a manifest until then.
+the identity. **The Baseline attests the kind and the fields from envelope v5** (`fields_hash`, ADR 0056 decision 6):
+`sha256("req.fields.v1\0" ‖ bytes)` over the compact JSON
+`{"kind":<name or null>,"fields":{<name>:{"type":<type>[,"of":<type>],"value":<canonical value>},…}}`, field names sorted by byte,
+`integer` and `decimal` as their canonical strings, a `bool` as a JSON boolean, a `list` as its canonical element texts sorted by
+byte (a list is a set), strings escaped as JSON escapes them (UTF-8 verbatim), no whitespace. A claim with no kind and no fields
+hashes `{"kind":null,"fields":{}}`, so *adding* a kind later is a change; an absent field is not in the object and an empty list is
+`"value":[]`, so the two differ. An edit after signing is FAIL, and the failure names the surface (`the fields`), never a hash. A v3
+or v4 manifest does not attest them and says so once (`predates envelope v5`): an edit after such a manifest was signed is
+invisible to it. **The declarations in `.req/kinds/` are not attested** (a named loss, in the manner of ADR 0022's): relaxing a
+`required` or reordering an `enum` after signing changes no `fields_hash`.
 
 **A field is never ratification.** A field named `status` with the value `approved` is data an author wrote. It is not a signed
 Decision (ADR 0005), and nothing reads it to accept, merge or release a claim.
@@ -308,9 +317,13 @@ canon` prints each pin's verdict (and exits 0 unless `--fail-on-flag` asks for e
 `pins_hold` policy fails (exit 1) on any flagged pin of an applying claim, naming it. With no
 pin in the selection, `pins_hold` passes and says it held zero pins — exercised, not skipped.
 
-**Pins are not attested by the Baseline** (ADR 0022, a named loss). Unlike a test link, a pin is outside the
-signed manifest: removing or editing a pin after signing leaves `baseline --verify` at `[VERIFIED]`, and
-`pins_hold` then judges the pins that remain. Only the pins present at gate time are held to the parse.
+**Pins are attested by the Baseline from envelope v5** (`pins_hash`, ADR 0056 decision 7, which closes the loss ADR 0022
+named): `sha256("req.pins.v1\0" ‖ bytes)` over the compact JSON array of `[key, value]` pairs in the order `modality`, `subject`,
+`operator`, `value`, `unit`, only the keys present (`pins: {}` and no `pins:` are the same `[]`). It covers what the author
+**pinned** and never the verdict against the parse, which is derived at load. Removing or editing a pin after signing is FAIL,
+and the failure says `the pins`. A **v3 or v4** manifest does not attest pins (it says so once, `predates envelope v5`): removing
+or editing a pin after such a manifest was signed leaves `baseline --verify` at `[VERIFIED]`, and `pins_hold` then judges the pins
+that remain. Only the pins present at gate time are held to the parse.
 
 ## Authoring rules
 
@@ -486,8 +499,8 @@ genuine paraphrases).
 - A formal timestamp authority for the signing time (RFC 3161). Envelope v3 (ADR 0016)
   records `signed_at` and the Decision-log head; the time is the signer's assertion, and
   replacing it with an externally attested one is still open. (The envelope itself is no
-  longer deferred — this build writes **v4** (ADR 0019 adds `tests_hash`), and a v3
-  manifest still verifies on its historical signed bytes with its tests *not attested*.)
+  longer deferred — this build writes **v5** (ADR 0019 adds `tests_hash`, ADR 0056 adds `fields_hash` and
+  `pins_hash`), and an older manifest still verifies on its historical signed bytes with what it predates *not attested*.)
 - A lint rule comparing a claim's statement against its `rationale.source` ADR
   narrative — the human keeps them consistent for now; the check is proposal-tier
   work.

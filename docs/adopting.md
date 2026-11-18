@@ -517,8 +517,9 @@ including the tri-state — and `req <command> --help` works before a corpus exi
    `unit`) states what the statement must parse to. A pin agrees, or it is a flag — a
    *contradiction* (the parse says something else) or *not carried* (the parse holds no such
    value); there is no third category. A flagged pin moves no address; `req gate` fails on it
-   (`pins_hold`, exit 1). A pin is **not attested by the Baseline**: deleting one after signing
-   still verifies, so a pin is a check at gate time, not a signed promise.
+   (`pins_hold`, exit 1). A pin is **attested by an envelope v5 Baseline** (`pins_hash`, ADR 0056): deleting
+   or editing one after signing is FAIL. A v3 or v4 manifest (the released v0.5.0 build writes v4) does not attest
+   pins, so such a manifest still verifies after a pin is deleted; it says once that it predates v5.
 3. **Values are canonical SI.** `within 200 ms` parses to `value "0.2"`, `unit s`: pin the exact
    decimal string the parser derives, not the units the prose used. `unit: ms` is a contradiction,
    and `"0.30"` is not a canonical decimal (`"0.3"` is), so it cannot be pinned.
@@ -550,7 +551,7 @@ including the tri-state — and `req <command> --help` works before a corpus exi
 
 ## Sign the Baseline
 
-`req baseline --at <ts>` prints the canonical manifest (envelope v4, ADRs 0016 and 0019) — the exact
+`req baseline --at <ts>` prints the canonical manifest (envelope v5, ADRs 0016, 0019 and 0056) — the exact
 bytes a signature covers — and **req never signs**: the signature is the human's act, and a key the tool could
 reach would prove nothing (ADR 0010). A manifest with no valid signature over it is *not yet a Baseline*,
 and verification says so.
@@ -601,6 +602,13 @@ req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not y
   an edited address. A v3 manifest still
   verifies on its historical signed bytes and says **once** that it predates v4: its tests are *not
   attested*, which is not a failure, and a release that wants attestation re-emits and re-signs as v4.
+- **v5 attests the claim's kind and fields and its pins.** A v5 manifest records each claim's `fields_hash`
+  (the `kind` and every field, ADR 0056) and `pins_hash` (the pins the author wrote), so editing a field or a
+  kind, or deleting or editing a pin, after signing is **FAIL**, and the failure names the surface
+  (`the fields`, `the pins`) and says the manifest's own signature verified. A v3 or v4 manifest (the released
+  v0.5.0 build writes v4) still verifies and says **once** that it predates v5: its fields and pins are *not
+  attested*. Re-emit and re-sign as v5 once your build reads it. The declarations in `.req/kinds/` are not
+  attested.
 - **A `rules_v` mismatch is UNVERIFIABLE** with the re-sign remedy: an address is derived from the rules
   version, so the comparison is void rather than failed. A v2 manifest still parses and is reported as
   *predates … re-issue and re-sign* — re-emit with `--at` and sign again.

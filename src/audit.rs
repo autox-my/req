@@ -32,8 +32,8 @@ use std::collections::BTreeSet;
 pub struct Coverage {
     /// In the Baseline and still matching — address *and* the attested audit surface.
     pub signed: Vec<String>,
-    /// In the Baseline but changed: the address, or the attested audit surface
-    /// (relations/rationale, ADR 0013) — edited after signing.
+    /// In the Baseline but changed: the address, or an attested audit surface (relations, rationale,
+    /// test links, fields, pins; ADR 0013, ADR 0019, ADR 0056) — edited after signing.
     pub drifted: Vec<String>,
     /// Applying now and not in the Baseline.
     pub uncovered: Vec<String>,
@@ -69,7 +69,7 @@ pub fn coverage(rows: &[Row], manifest: &Manifest) -> Coverage {
     // accepts it, and the returned ids are built first for the same reason.
     let signed: Vec<String> = {
         let changed: BTreeSet<&str> = drift.changed.iter().map(String::as_str).collect();
-        let attested: BTreeSet<&str> = drift.attested_changed.iter().map(String::as_str).collect();
+        let attested: BTreeSet<&str> = drift.attested_ids().collect();
         let missing: BTreeSet<&str> = drift.missing.iter().map(String::as_str).collect();
         manifest
             .claims
@@ -90,7 +90,12 @@ pub fn coverage(rows: &[Row], manifest: &Manifest) -> Coverage {
     // Sorted after the merge: each half is in manifest-claims order, but their concatenation
     // is not, and the packet's findings are read in id order.
     let mut drifted = drift.changed;
-    drifted.extend(drift.attested_changed);
+    drifted.extend(
+        drift
+            .attested_changed
+            .into_iter()
+            .map(|change| change.claim_id),
+    );
     drifted.sort();
     Coverage {
         signed,
@@ -442,10 +447,11 @@ pub fn findings(
         }
         (Some(_), Some(coverage)) => {
             for id in &coverage.drifted {
-                // `drifted` merges the two drift classes (the address, and the attested
-                // relations/rationale), so the wording covers both: for an attested-only edit
-                // the ratified *text* is untouched — what no longer recomputes is the claim as
-                // it was ratified.
+                // `drifted` merges the two drift classes (the address, and an attested surface:
+                // relations, rationale, test links, fields or pins), so the wording covers both:
+                // for an attested-only edit the ratified *text* is untouched — what no longer
+                // recomputes is the claim as it was ratified. It names no surface because the
+                // packet's finding is per claim; `req baseline --verify` names which one moved.
                 failed.push(format!(
                     "{id}: edited after signing — the ratified claim no longer recomputes"
                 ));

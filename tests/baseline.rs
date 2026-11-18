@@ -217,6 +217,8 @@ fn row(id: &str, address: &str, applies: Applies) -> Row {
         tests: Vec::new(),
         evidence: req::model::Evidence::Machine,
         tests_hash: EMPTY_TESTS_DIGEST.to_string(),
+        fields_hash: common::EMPTY_FIELDS_DIGEST.to_string(),
+        pins_hash: common::EMPTY_PINS_DIGEST.to_string(),
         pins: Vec::new(),
         rationale_source: provenance.source,
         rationale_date: provenance.date,
@@ -351,7 +353,7 @@ fn canonical_bytes_do_not_depend_on_input_order() {
     // fixture's real digests in the bytes — all interpolated from the named oracles at the top
     // of this file, so the pin has one home rather than a hand-copy per claim. The key order is
     // ADR 0016's, extended by ADR 0019: version, signed_at, authority, rules_v, selection,
-    // claims, with `tests_hash` last in each claim record.
+    // claims, with `tests_hash`, `fields_hash` and `pins_hash` last in each claim record (ADR 0056).
     let head = fixture_head();
     assert_eq!(
         head.hash, FIXTURE_HEAD_HASH,
@@ -361,18 +363,25 @@ fn canonical_bytes_do_not_depend_on_input_order() {
     assert_eq!(
         canonical_bytes(&forward),
         format!(
-            "{{\"version\":4,\"signed_at\":\"{FIXTURE_SIGNED_AT}\",\
+            "{{\"version\":5,\"signed_at\":\"{FIXTURE_SIGNED_AT}\",\
              \"authority\":{{\"head\":\"{}\",\"entries\":{}}},\"rules_v\":5,\
              \"selection\":{{\"a\":\"1\",\"b\":\"2\"}},\
              \"claims\":[{{\"claim_id\":\"REQ-A\",\"address\":\"aaa\",\
              \"relations_hash\":\"{EMPTY_RELATIONS_DIGEST}\",\
              \"rationale_hash\":\"{FIXTURE_RATIONALE_DIGEST}\",\
-             \"tests_hash\":\"{EMPTY_TESTS_DIGEST}\"}},\
+             \"tests_hash\":\"{EMPTY_TESTS_DIGEST}\",\
+             \"fields_hash\":\"{}\",\"pins_hash\":\"{}\"}},\
              {{\"claim_id\":\"REQ-B\",\"address\":\"bbb\",\
              \"relations_hash\":\"{EMPTY_RELATIONS_DIGEST}\",\
              \"rationale_hash\":\"{FIXTURE_RATIONALE_DIGEST}\",\
-             \"tests_hash\":\"{EMPTY_TESTS_DIGEST}\"}}]}}\n",
-            FIXTURE_HEAD_HASH, FIXTURE_HEAD_ENTRIES
+             \"tests_hash\":\"{EMPTY_TESTS_DIGEST}\",\
+             \"fields_hash\":\"{}\",\"pins_hash\":\"{}\"}}]}}\n",
+            FIXTURE_HEAD_HASH,
+            FIXTURE_HEAD_ENTRIES,
+            common::EMPTY_FIELDS_DIGEST,
+            common::EMPTY_PINS_DIGEST,
+            common::EMPTY_FIELDS_DIGEST,
+            common::EMPTY_PINS_DIGEST,
         ),
         "the exact bytes are the stability pin: `canonical_bytes` is pure, so re-calling it \
          with the same argument would assert nothing"
@@ -754,8 +763,8 @@ fn an_edited_relation_after_signing_fails_verification() {
     let reasons = outcome.reasons().join(" ");
     assert!(reasons.contains("REQ-B"), "{reasons}");
     assert!(
-        reasons.contains("authored test links"),
-        "the attested surface is named, including the evidence added by ADR 0019: {reasons}"
+        reasons.contains("REQ-B: the relations no longer recompute"),
+        "the surface that moved is named, and only that one (ADR 0056 decision 8): {reasons}"
     );
 }
 
@@ -787,8 +796,8 @@ fn an_edited_rationale_after_signing_fails_verification() {
     let reasons = outcome.reasons().join(" ");
     assert!(reasons.contains("REQ-A"), "{reasons}");
     assert!(
-        reasons.contains("authored test links"),
-        "the attested surface is named, including the evidence added by ADR 0019: {reasons}"
+        reasons.contains("REQ-A: the rationale no longer recomputes"),
+        "the surface that moved is named, and only that one (ADR 0056 decision 8): {reasons}"
     );
 }
 
@@ -1643,7 +1652,11 @@ fn a_key_expired_today_but_valid_at_signing_verifies_through_the_cli() {
     // today and reports only the version.
     let versioned = std::fs::read_to_string(&manifest_path)
         .expect("reads the emitted manifest")
-        .replacen("\"version\":4", "\"version\":5", 1)
+        .replacen(
+            &format!("\"version\":{BASELINE_VERSION}"),
+            &format!("\"version\":{}", BASELINE_VERSION + 1),
+            1,
+        )
         .replacen(
             &format!("\"signed_at\":\"{FIXTURE_SIGNED_AT}\""),
             "\"signed_at\":\"9999-01-01T00:00:00Z\"",

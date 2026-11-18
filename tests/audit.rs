@@ -41,6 +41,8 @@ fn row(id: &str, address: &str, applies: Applies, rationale: &str) -> Row {
         tests: Vec::new(),
         tests_hash: req::model::tests_digest(&[], req::model::Evidence::Machine),
         evidence: req::model::Evidence::Machine,
+        fields_hash: common::EMPTY_FIELDS_DIGEST.to_string(),
+        pins_hash: common::EMPTY_PINS_DIGEST.to_string(),
         pins: Vec::new(),
         rationale_source: provenance.source,
         rationale_date: provenance.date,

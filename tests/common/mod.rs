@@ -30,6 +30,23 @@ pub fn rationale_of(source: &str, date: &str) -> Rationale {
     }
 }
 
+/// The digests of an empty declaration on each attested surface, computed **outside this crate** (`printf
+/// 'req.<surface>.v1\0<bytes>' | shasum -a 256`, the `\0` a literal NUL), so a fixture that carries one
+/// does not agree with the function it exercises by construction.
+///
+/// `[]` under `req.relations.v1`:
+pub const EMPTY_RELATIONS_DIGEST: &str =
+    "479fcec2cd9b2af0bc13fa4054307413459ae1ad7ca6344435530570226dc1af";
+/// `{"evidence":"machine","tests":[]}` under `req.tests.v1`:
+pub const EMPTY_TESTS_DIGEST: &str =
+    "f70c34ce463f8c0294ac8846abea5b911d5933c42a9d978522bff8c6b5445d53";
+/// `{"kind":null,"fields":{}}` under `req.fields.v1`:
+pub const EMPTY_FIELDS_DIGEST: &str =
+    "bd8eccf8db138c1b17e3ecfa21353e83bb838fd0e25bb0ab05440b32969a7318";
+/// `[]` under `req.pins.v1`:
+pub const EMPTY_PINS_DIGEST: &str =
+    "5cbd189c50e965f5a3d0b885802ef340255946b2fb3fae1d58c3345dacf19e04";
+
 /// The date every fixture's provenance carries — one home, so the bare literal is not repeated
 /// at every call site across the fixture files.
 pub const FIXTURE_DATE: &str = "2026-10-07";
@@ -95,6 +112,8 @@ pub fn row(id: &str, applies: Applies, rels: &[(&str, &str)]) -> Row {
         tests: Vec::new(),
         tests_hash: req::model::tests_digest(&[], req::model::Evidence::Machine),
         evidence: req::model::Evidence::Machine,
+        fields_hash: EMPTY_FIELDS_DIGEST.to_string(),
+        pins_hash: EMPTY_PINS_DIGEST.to_string(),
         pins: Vec::new(),
         rationale_source: provenance.source,
         rationale_date: provenance.date,

@@ -41,22 +41,33 @@ use std::path::{Path, PathBuf};
 
 /// The manifest format's own version — distinct from `RULES_V`, because the *envelope* and
 /// the *rules* move independently.
-/// The manifest schema this build writes. v4 attests the claim's authored test links
-/// (`tests_hash`, ADR 0019); v3 attests the Decision log's chain head and the signer's timestamp
-/// (ADR 0016); v2 attests the audit surface (ADR 0013).
-pub const BASELINE_VERSION: u32 = 4;
+/// The manifest schema this build writes. v5 attests the claim's `kind` and typed fields
+/// (`fields_hash`, ADR 0056 decision 6) and its authored pins (`pins_hash`, decision 7); v4 attests the
+/// claim's authored test links (`tests_hash`, ADR 0019); v3 attests the Decision log's chain head and the
+/// signer's timestamp (ADR 0016); v2 attests the audit surface (ADR 0013).
+pub const BASELINE_VERSION: u32 = 5;
 /// The first envelope that attests each claim's authored test links (ADR 0019). A manifest older
 /// than this predates the disclosure, and the disclosure is about tests — not about whatever the
 /// oldest supported envelope happens to be.
 pub const TESTS_ATTESTED_FROM: u32 = 4;
+/// The first envelope that attests each claim's `kind` and typed fields (ADR 0056 decision 6). A manifest
+/// older than this predates the disclosure about fields.
+pub const FIELDS_ATTESTED_FROM: u32 = 5;
+/// The first envelope that attests each claim's authored pins (ADR 0056 decision 7). Its own constant,
+/// because the decision is severable from the fields one and each hash is gated on the version that
+/// introduced it, never on [`BASELINE_VERSION`].
+pub const PINS_ATTESTED_FROM: u32 = 5;
+// The disclosure prints one line for fields **and** pins (they arrived in one envelope). If a later
+// envelope separates them, the line must be split first; this makes that a compile error, not a silence.
+const _: () = assert!(FIELDS_ATTESTED_FROM == PINS_ATTESTED_FROM);
 
 /// The **oldest envelope this build still verifies**.
 ///
 /// A bump is not a cliff for signed history: a v3 manifest's historical signed bytes are
 /// unchanged by v4, and the one thing v4 adds — the attested `tests_hash` — is simply *not
-/// attested* by a v3 manifest, which is reported once rather than guessed at. That is why the
-/// support floor moves independently of [`BASELINE_VERSION`]: v4 is what this build writes, v3
-/// is what it still honours. A v2 manifest (ADR 0013) predates the authority and signing time a
+/// attested* by a v3 manifest, which is reported once rather than guessed at; v5 adds
+/// `fields_hash` and `pins_hash` the same way. That is why the support floor moves independently of
+/// [`BASELINE_VERSION`]: v5 is what this build writes, v3 is what it still honours. A v2 manifest (ADR 0013) predates the authority and signing time a
 /// v3 Baseline attests, so it remains a re-issue candidate — UNVERIFIABLE, never silently
 /// re-signed by this build.
 pub const OLDEST_VERIFIABLE_BASELINE_VERSION: u32 = 3;
@@ -78,6 +89,16 @@ pub struct ManifestClaim {
     /// must carry it for every claim, and [`from_json`] refuses one that does not.
     #[serde(default)]
     pub tests_hash: Option<String>,
+    /// The claim's `kind` and typed fields' digest (v5, ADR 0056 decision 6). `Option` for the reason
+    /// `tests_hash` is: a **v3 or v4** manifest never attested it and still parses and verifies over its
+    /// historical bytes; a v5 manifest must carry it for every claim, and [`from_json`] refuses one
+    /// that does not.
+    #[serde(default)]
+    pub fields_hash: Option<String>,
+    /// The claim's authored pins' digest (v5, ADR 0056 decision 7); `Option` and required from v5 on, as
+    /// `fields_hash` is.
+    #[serde(default)]
+    pub pins_hash: Option<String>,
 }
 
 /// The authority a v3 signature is tied to (ADR 0016): the Decision log's chain head and how
@@ -111,10 +132,10 @@ pub struct Manifest {
 /// Build a manifest from the claims that apply in `selection`, sorted by id and deduplicated
 /// so the bytes never depend on input order.
 ///
-/// The result is an **unattested** v4 envelope: `signed_at` and `authority` are filled by
+/// The result is an **unattested** v5 envelope: `signed_at` and `authority` are filled by
 /// [`attest`], which only the emit path calls (`req baseline --at <ts>`). A draft is never
 /// emitted — [`canonical_bytes`] leaves the attestation out until it is present, and
-/// [`from_json`] rejects a v4 manifest that lacks it.
+/// [`from_json`] rejects a v3-or-later manifest that lacks it.
 pub fn manifest(rows: &[Row], rules_v: u32, selection: &Context) -> Manifest {
     let mut claims: Vec<ManifestClaim> = rows
         .iter()
@@ -125,6 +146,8 @@ pub fn manifest(rows: &[Row], rules_v: u32, selection: &Context) -> Manifest {
             relations_hash: row.relations_hash.clone(),
             rationale_hash: row.rationale_hash.clone(),
             tests_hash: Some(row.tests_hash.clone()),
+            fields_hash: Some(row.fields_hash.clone()),
+            pins_hash: Some(row.pins_hash.clone()),
         })
         .collect();
     claims.sort_by(|a, b| a.claim_id.cmp(&b.claim_id));
@@ -175,12 +198,12 @@ pub fn attest(
 /// what is signed must be reproducible byte for byte by anyone.
 ///
 /// v3's fixed key order is `version, signed_at, authority, rules_v, selection, claims`
-/// (ADR 0016), and v4 appends `tests_hash` to each claim record (ADR 0019). Both are pinned by
-/// tests because this byte string is what the human signs.
-/// A **v2** manifest keeps its historical shape (no `signed_at`/`authority` keys), and a **v3**
-/// manifest keeps its four-key claim records (no `tests_hash`), so an old signature still
-/// verifies over the bytes it was made over and a stale envelope is reported as *predates*,
-/// never as a signature failure.
+/// (ADR 0016), v4 appends `tests_hash` to each claim record (ADR 0019), and v5 appends `fields_hash`
+/// and then `pins_hash` (ADR 0056). All are pinned by tests because this byte string is what the human
+/// signs. A **v2** manifest keeps its historical shape (no `signed_at`/`authority` keys), a **v3**
+/// manifest keeps its four-key claim records (no `tests_hash`) and a **v4** one its five (no
+/// `fields_hash`, no `pins_hash`), so an old signature still verifies over the bytes it was made over
+/// and a stale envelope is reported as *predates*, never as a signature failure.
 pub fn canonical_bytes(manifest: &Manifest) -> String {
     let selection = manifest
         .selection
@@ -201,8 +224,22 @@ pub fn canonical_bytes(manifest: &Manifest) -> String {
                 }
                 _ => String::new(),
             };
+            // v5 appends `fields_hash` then `pins_hash`, each gated on the version that introduced it
+            // for the same reason: a key added for old claims would stop every old signature verifying.
+            let fields = match &claim.fields_hash {
+                Some(fields_hash) if manifest.version >= FIELDS_ATTESTED_FROM => {
+                    format!(",\"fields_hash\":{}", json_string(fields_hash))
+                }
+                _ => String::new(),
+            };
+            let pins = match &claim.pins_hash {
+                Some(pins_hash) if manifest.version >= PINS_ATTESTED_FROM => {
+                    format!(",\"pins_hash\":{}", json_string(pins_hash))
+                }
+                _ => String::new(),
+            };
             format!(
-                "{{\"claim_id\":{},\"address\":{},\"relations_hash\":{},\"rationale_hash\":{}{tests}}}",
+                "{{\"claim_id\":{},\"address\":{},\"relations_hash\":{},\"rationale_hash\":{}{tests}{fields}{pins}}}",
                 json_string(&claim.claim_id),
                 json_string(&claim.address),
                 json_string(&claim.relations_hash),
@@ -279,6 +316,19 @@ fn requires_tests_hash(version: u32) -> bool {
     version >= TESTS_ATTESTED_FROM
 }
 
+/// Whether a manifest of this envelope version must carry a `fields_hash` per claim: from
+/// [`FIELDS_ATTESTED_FROM`] (ADR 0056 decision 6) onward, keyed on that constant and never on
+/// [`BASELINE_VERSION`], for the reason [`requires_tests_hash`] gives.
+fn requires_fields_hash(version: u32) -> bool {
+    version >= FIELDS_ATTESTED_FROM
+}
+
+/// Whether a manifest of this envelope version must carry a `pins_hash` per claim: from
+/// [`PINS_ATTESTED_FROM`] (ADR 0056 decision 7) onward, on its own constant.
+fn requires_pins_hash(version: u32) -> bool {
+    version >= PINS_ATTESTED_FROM
+}
+
 /// Parse a manifest back. Reading is not the address path, so the ordinary JSON reader is
 /// fine here — only the *emitted* bytes have to be canonical.
 ///
@@ -330,19 +380,50 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
         .into_iter()
         .filter_map(|(field, absent)| absent.then_some(field))
         .collect();
-        if requires_tests_hash(manifest.version)
-            && manifest
-                .claims
-                .iter()
-                .any(|claim| claim.tests_hash.is_none())
-        {
-            missing.push("`tests_hash` for every claim");
-        }
+        // The per-claim digests, each required from the envelope that introduced it (and named, in
+        // the message, so a manifest that lost exactly one says which).
+        let per_claim: [(&str, bool, bool); 3] = [
+            (
+                "tests_hash",
+                requires_tests_hash(manifest.version),
+                manifest.claims.iter().any(|c| c.tests_hash.is_none()),
+            ),
+            (
+                "fields_hash",
+                requires_fields_hash(manifest.version),
+                manifest.claims.iter().any(|c| c.fields_hash.is_none()),
+            ),
+            (
+                "pins_hash",
+                requires_pins_hash(manifest.version),
+                manifest.claims.iter().any(|c| c.pins_hash.is_none()),
+            ),
+        ];
+        let required: Vec<&str> = per_claim
+            .iter()
+            .filter(|(_, required, _)| *required)
+            .map(|(name, _, _)| *name)
+            .collect();
+        let missing_hashes: Vec<String> = per_claim
+            .iter()
+            .filter(|(_, required, absent)| *required && *absent)
+            .map(|(name, _, _)| format!("`{name}` for every claim"))
+            .collect();
+        missing.extend(missing_hashes.iter().map(String::as_str));
         if !missing.is_empty() {
-            let carries = if requires_tests_hash(manifest.version) {
-                "`signed_at`, `authority` and a `tests_hash` per claim"
+            let carries = if required.is_empty() {
+                "`signed_at` and `authority`".to_string()
             } else {
-                "`signed_at` and `authority`"
+                let hashes: Vec<String> = required.iter().map(|name| format!("`{name}`")).collect();
+                format!(
+                    "`signed_at`, `authority` and a {} per claim",
+                    match hashes.split_last() {
+                        Some((last, rest)) if !rest.is_empty() =>
+                            format!("{} and {last}", rest.join(", ")),
+                        Some((last, _)) => last.clone(),
+                        None => String::new(),
+                    }
+                )
             };
             return Err(format!(
                 "manifest is not readable: this manifest declares version {} but does not \
@@ -373,25 +454,62 @@ pub fn from_json(text: &str) -> Result<Manifest, String> {
     Ok(manifest)
 }
 
+/// One attested surface of a claim: a digest the Baseline records beside its address (ADR 0013, ADR
+/// 0019, ADR 0056). The declaration order is the order a failure names them in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Surface {
+    Relations,
+    Rationale,
+    /// The authored test links and the evidence mode (`tests_hash`).
+    Tests,
+    /// The claim's `kind` and typed fields (`fields_hash`).
+    Fields,
+    /// The authored pins (`pins_hash`).
+    Pins,
+}
+
+impl Surface {
+    /// How a failure names the surface, with the article, so a list of them reads as prose.
+    fn phrase(self) -> &'static str {
+        match self {
+            Surface::Relations => "the relations",
+            Surface::Rationale => "the rationale",
+            Surface::Tests => "the authored test links",
+            Surface::Fields => "the fields",
+            Surface::Pins => "the pins",
+        }
+    }
+}
+
+/// A claim whose address still recomputes but whose attested surface moved, with **which** surfaces.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttestedChange {
+    pub claim_id: String,
+    /// The surfaces whose digests no longer recompute, in [`Surface`] order; never empty.
+    pub surfaces: Vec<Surface>,
+}
+
 /// What the working tree says about a signed manifest.
 ///
 /// The categories are **mutually exclusive, by precedence**: a claim whose address no longer
 /// recomputes is recorded in `changed` alone, even when its attested surface moved too —
 /// identity first, as in [`drift`]. Consumers merge the lists (`audit::coverage` extends
-/// `drifted` with `attested_changed`) and rely on that exclusivity to avoid double-counting an
-/// id, so a claim whose address *and* attested surface both moved is reported as `changed`
-/// only; `reasons()` says the address no longer recomputes and does not separately name the
+/// `drifted` with the ids in `attested_changed`) and rely on that exclusivity to avoid
+/// double-counting an id, so a claim whose address *and* attested surface both moved is reported as
+/// `changed` only; `reasons()` says the address no longer recomputes and does not separately name the
 /// audit surface. Reporting both would mean pushing to both lists and de-duplicating at every
 /// merge site.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Drift {
     /// In the manifest, applying now, but at a different address — an edited claim.
     pub changed: Vec<String>,
-    /// In the manifest at the same address, but the attested surface (relations, rationale, or
-    /// — in a v4 envelope — the authored test links; ADR 0013, ADR 0019) no longer recomputes —
-    /// edited after signing. Identity stayed put, which is exactly why this is its own category:
-    /// the edit is not a reworded requirement, it is a changed record of what was ratified.
-    pub attested_changed: Vec<String>,
+    /// In the manifest at the same address, but an attested surface — relations, rationale, and, in the
+    /// envelopes that attest them, the authored test links (v4, ADR 0019), the fields (v5, ADR 0056) and
+    /// the pins (v5) — no longer recomputes: edited after signing. Identity stayed put, which is exactly
+    /// why this is its own category: the edit is not a reworded requirement, it is a changed record of
+    /// what was ratified. Each entry says **which** surfaces moved, because four or five surfaces
+    /// cannot share one sentence a reader can act on.
+    pub attested_changed: Vec<AttestedChange>,
     /// In the manifest, no longer applying at all.
     pub missing: Vec<String>,
     /// Applying now and not in the manifest — a claim added after signing.
@@ -406,6 +524,13 @@ impl Drift {
             && self.added.is_empty()
     }
 
+    /// The ids whose attested surface moved, in the order they were found (the manifest's).
+    pub fn attested_ids(&self) -> impl Iterator<Item = &str> {
+        self.attested_changed
+            .iter()
+            .map(|change| change.claim_id.as_str())
+    }
+
     pub fn reasons(&self) -> Vec<String> {
         let mut out = Vec::new();
         for id in &self.changed {
@@ -413,10 +538,32 @@ impl Drift {
                 "{id}: the address no longer recomputes — edited after signing"
             ));
         }
-        for id in &self.attested_changed {
+        for AttestedChange { claim_id, surfaces } in &self.attested_changed {
+            // A failure names the surfaces, in a fixed order, and never a hash value. ADR 0056 is
+            // cited only when a fields or pins surface is among them: it is the record that attests
+            // those two.
+            let named: Vec<&str> = surfaces.iter().map(|surface| surface.phrase()).collect();
+            let named = match named.split_last() {
+                Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+                Some((last, _)) => (*last).to_string(),
+                None => String::new(),
+            };
+            // "the rationale" is the one singular noun among them, and it reads alone.
+            let verb = if surfaces.as_slice() == [Surface::Rationale] {
+                "recomputes"
+            } else {
+                "recompute"
+            };
+            let adrs = if surfaces
+                .iter()
+                .any(|surface| matches!(surface, Surface::Fields | Surface::Pins))
+            {
+                "ADR 0013, ADR 0019, ADR 0056"
+            } else {
+                "ADR 0013, ADR 0019"
+            };
             out.push(format!(
-                "{id}: the relations, rationale or authored test links no longer recompute — \
-                 edited after signing (ADR 0013, ADR 0019)"
+                "{claim_id}: {named} no longer {verb} — edited after signing ({adrs})"
             ));
         }
         for id in &self.missing {
@@ -493,51 +640,66 @@ pub fn rules_mismatch(manifest: &Manifest) -> Option<RulesMismatch> {
 /// first — [`verify`] returns before it judges drift, and `audit::coverage` reports NOT JUDGED —
 /// rather than reading this alone.
 pub fn drift(rows: &[Row], manifest: &Manifest) -> Drift {
-    let current: BTreeMap<&str, (&str, &str, &str, &str)> = rows
+    let current: BTreeMap<&str, &Row> = rows
         .iter()
         .filter(|row| row.applies == Applies::Yes)
-        .map(|row| {
-            (
-                row.claim_id.as_str(),
-                (
-                    row.address.as_str(),
-                    row.relations_hash.as_str(),
-                    row.rationale_hash.as_str(),
-                    row.tests_hash.as_str(),
-                ),
-            )
-        })
+        .map(|row| (row.claim_id.as_str(), row))
         .collect();
+    // A hash is judged only by an envelope that **attested** it, and only inside the closed window
+    // `introduced..=BASELINE_VERSION`, never an open `>=`. A v3 manifest (or one parsed from a v3 file
+    // that happens to carry the key) did not sign `tests_hash`, a v4 one did not sign `fields_hash` or
+    // `pins_hash`, and comparing an unsigned field would invent a tampering. `verify` does not return
+    // early for a newer envelope before drift, so a future envelope's hash is not this build's to
+    // compare either: reading a difference there as "edited after signing" would FAIL a manifest the
+    // build already reported UNVERIFIABLE for being newer. A manifest in the window always carries the
+    // hash (`from_json` enforces it), so a changed digest after signing is FAIL — the same class as a
+    // changed address (ADR 0019, ADR 0056).
+    let judged = |introduced: u32| (introduced..=BASELINE_VERSION).contains(&manifest.version);
+    let moved = |signed: &Option<String>, now: &str, introduced: u32| {
+        judged(introduced) && signed.as_deref().is_some_and(|signed| signed != now)
+    };
     let mut out = Drift::default();
     for claim in &manifest.claims {
         match current.get(claim.claim_id.as_str()) {
-            // Identity first; the audit surface only attests when the identity still matches.
-            // The precedence is **structural** — nested, not match-arm order — so the
-            // exclusivity the categories are documented to have (and `audit::coverage`'s merge
-            // relies on) does not depend on which arm happens to come first.
-            Some((address, relations, rationale, tests)) => {
-                if *address != claim.address {
+            // Identity first; the audit surface only attests when the identity still matches. The
+            // precedence is **structural** — nested, not match-arm order — so the exclusivity the
+            // categories are documented to have (and `audit::coverage`'s merge relies on) does not
+            // depend on which arm happens to come first.
+            Some(row) => {
+                if row.address != claim.address {
                     out.changed.push(claim.claim_id.clone())
-                } else if *relations != claim.relations_hash
-                    || *rationale != claim.rationale_hash
-                    // Only a v4 manifest **attests** the tests digest, so only there is it
-                    // judged: a v3 manifest (or one parsed from a v3 file that happens to carry
-                    // the key) did not sign it, and comparing an unsigned field would invent a
-                    // tampering. A v4 manifest always carries one (from_json enforces it), so a
-                    // changed `tests_hash` after signing is FAIL — the same class as a changed
-                    // address (ADR 0019).
-                    // `verify` does not return early for a newer envelope before drift, so the
-                    // guard is the closed support window (TESTS_ATTESTED_FROM..=BASELINE_VERSION), not an open `>=`: a
-                    // future envelope's `tests_hash` is not this build's to compare, and reading
-                    // a difference there as "edited after signing" would FAIL a manifest the
-                    // build already reported UNVERIFIABLE for being newer.
-                    || ((TESTS_ATTESTED_FROM..=BASELINE_VERSION).contains(&manifest.version)
-                        && claim
-                            .tests_hash
-                            .as_deref()
-                            .is_some_and(|signed| signed != *tests))
-                {
-                    out.attested_changed.push(claim.claim_id.clone())
+                } else {
+                    let surfaces: Vec<Surface> = [
+                        (
+                            Surface::Relations,
+                            row.relations_hash != claim.relations_hash,
+                        ),
+                        (
+                            Surface::Rationale,
+                            row.rationale_hash != claim.rationale_hash,
+                        ),
+                        (
+                            Surface::Tests,
+                            moved(&claim.tests_hash, &row.tests_hash, TESTS_ATTESTED_FROM),
+                        ),
+                        (
+                            Surface::Fields,
+                            moved(&claim.fields_hash, &row.fields_hash, FIELDS_ATTESTED_FROM),
+                        ),
+                        (
+                            Surface::Pins,
+                            moved(&claim.pins_hash, &row.pins_hash, PINS_ATTESTED_FROM),
+                        ),
+                    ]
+                    .into_iter()
+                    .filter_map(|(surface, differs)| differs.then_some(surface))
+                    .collect();
+                    if !surfaces.is_empty() {
+                        out.attested_changed.push(AttestedChange {
+                            claim_id: claim.claim_id.clone(),
+                            surfaces,
+                        })
+                    }
                 }
             }
             None => out.missing.push(claim.claim_id.clone()),
@@ -1555,9 +1717,10 @@ fn verify_inner(
     // would FAIL a manifest the build cannot read. The version dispatch above already answered
     // UNVERIFIABLE with the "verify with a build that writes it" remedy, so the signature is left
     // unjudged rather than misjudged.
+    // The keys whose signature verified under a trusted key: the set a policy line is met from, and
+    // what lets a drift failure say the manifest itself was untouched.
+    let mut verified: BTreeSet<String> = BTreeSet::new();
     if manifest.version <= BASELINE_VERSION {
-        // The keys whose signature verified under a trusted key: the set a policy line is met from.
-        let mut verified: BTreeSet<String> = BTreeSet::new();
         if let Some(signature) = signature {
             if judge_signature(
                 manifest,
@@ -1661,6 +1824,17 @@ fn verify_inner(
     let drift = drift(rows, manifest);
     if !drift.is_clean() {
         failed.extend(drift.reasons());
+        // When drift is the reason, say once that the manifest's own signature held: the manifest was
+        // untouched and the working tree moved. Without it a reader cannot tell a forged Baseline from
+        // an edited claim (ADR 0056 decision 8). Only a signature that verified under a trusted key
+        // may say it; a bad one is its own finding above.
+        if !verified.is_empty() {
+            failed.push(
+                "the manifest's signature itself verified — the manifest is as it was signed, and the \
+                 working tree has moved since"
+                    .to_string(),
+            );
+        }
     }
 
     if !failed.is_empty() {
@@ -2043,17 +2217,23 @@ pub fn run(args: &[String], root: &std::path::Path) -> i32 {
             manifest.rules_v
         ),
     }
-    // A v3 manifest is honoured, but it cannot attest what v4 added, and the reader is owed
-    // that fact **once** rather than a per-claim silence that could read as coverage. This is a
-    // disclosure, not a finding: the drifted addresses and audit surface are still judged, and
-    // the verdict is not rewritten by it (ADR 0019).
-    // "Predates what this build writes" is a relationship, not the coincidence that the oldest
-    // supported envelope happens to be one below the write version: key it off both constants so
-    // a future bump cannot tell a freshly written manifest that it predates itself.
+    // An older manifest is honoured, but it cannot attest what a later envelope added, and the reader
+    // is owed that fact **once** rather than a per-claim silence that could read as coverage. This is a
+    // disclosure, not a finding: the drifted addresses and audit surface are still judged, and the
+    // verdict is not rewritten by it (ADR 0019, ADR 0056).
+    // "Predates" is a relationship between the manifest and the envelope that **introduced** the thing,
+    // keyed on that envelope's own constant: not on what this build writes, so no manifest is told it
+    // predates itself, and not on the support floor, so the line stays true when the floor moves.
     if (OLDEST_VERIFIABLE_BASELINE_VERSION..TESTS_ATTESTED_FROM).contains(&manifest.version) {
         println!(
-            "  - predates envelope v{BASELINE_VERSION}: the authored test links are NOT attested \
+            "  - predates envelope v{TESTS_ATTESTED_FROM}: the authored test links are NOT attested \
              by this manifest (ADR 0019) — re-issue and re-sign to attest them"
+        );
+    }
+    if (OLDEST_VERIFIABLE_BASELINE_VERSION..FIELDS_ATTESTED_FROM).contains(&manifest.version) {
+        println!(
+            "  - predates envelope v{FIELDS_ATTESTED_FROM}: the authored fields and pins are NOT \
+             attested by this manifest (ADR 0056) — re-issue and re-sign to attest them"
         );
     }
     println!("[{}]", outcome.as_str());
@@ -2332,14 +2512,30 @@ mod tests {
     /// A manifest must carry a `tests_hash` per claim from the envelope that introduced the key
     /// onward, not only at the version this build writes. Keyed on the current version, a v4
     /// manifest stripped of its `tests_hash` would read as complete under a v5 build (found while
-    /// drafting the proposed ADR 0056; the rule is ADR 0019's). Today both numbers are 4, so this
-    /// pins the rule at a version above them.
+    /// drafting ADR 0056; the rule is ADR 0019's). The two numbers now differ (4 and 5), so this pins
+    /// the rule at a version above the first.
     #[test]
     fn a_tests_hash_is_required_from_the_envelope_that_introduced_it_onward() {
         assert!(!requires_tests_hash(TESTS_ATTESTED_FROM - 1));
         assert!(requires_tests_hash(TESTS_ATTESTED_FROM));
         assert!(requires_tests_hash(BASELINE_VERSION));
         assert!(requires_tests_hash(BASELINE_VERSION + 1));
+    }
+
+    /// The same rule for the two v5 hashes (ADR 0056), each on its own constant: at its constant minus
+    /// one, the constant, the version this build writes, and the one above it. Keyed on
+    /// `BASELINE_VERSION`, a v5 manifest stripped of either hash would read as complete the day the
+    /// build writes v6.
+    #[test]
+    fn a_fields_hash_and_a_pins_hash_are_required_from_the_envelope_that_introduced_them_onward() {
+        assert!(!requires_fields_hash(FIELDS_ATTESTED_FROM - 1));
+        assert!(requires_fields_hash(FIELDS_ATTESTED_FROM));
+        assert!(requires_fields_hash(BASELINE_VERSION));
+        assert!(requires_fields_hash(BASELINE_VERSION + 1));
+        assert!(!requires_pins_hash(PINS_ATTESTED_FROM - 1));
+        assert!(requires_pins_hash(PINS_ATTESTED_FROM));
+        assert!(requires_pins_hash(BASELINE_VERSION));
+        assert!(requires_pins_hash(BASELINE_VERSION + 1));
     }
 
     /// A base under the real temp dir, unique to this process and moment. Absolutized for the

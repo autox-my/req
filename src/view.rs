@@ -68,13 +68,19 @@ pub struct Row {
     /// consumer reads (`claim_id`, `statement`, `modality`, `address`, `applies`, `selectors`,
     /// `relations`, `rationale`), and the evidence declaration is audit-surface data like
     /// `relations_hash`/`rationale_hash` — it rides the Baseline, not the projection. (`pins` are
-    /// judged by the gate but not attested by the Baseline: ADR 0022's named loss.)
+    /// judged by the gate and attested by envelope v5's `pins_hash`: ADR 0056 decision 7.)
     /// Adding them would be a document-shape change, not a rendering detail.
     pub tests: Vec<String>,
     /// The declared evidence mode (machine by default, process when a human said so), and the
     /// digest over the whole evidence declaration — both outside identity (ADR 0019).
     pub evidence: Evidence,
     pub tests_hash: String,
+    /// The claim's `kind` and typed fields' attested digest (ADR 0056 decision 6), computed from the
+    /// judged fields. Not serialised: like the other row hashes it rides the Baseline, never a projection
+    /// or a JSON view.
+    pub fields_hash: String,
+    /// The authored pins' attested digest (ADR 0056 decision 7): what the author pinned, never the verdict.
+    pub pins_hash: String,
     /// Each authored pin's verdict against the parse derived at load (ADR 0022): the release
     /// gate's `pins_hold` reads it. Empty when the claim pins nothing.
     pub pins: Vec<crate::canon::PinCheck>,
@@ -1239,6 +1245,8 @@ pub fn load_rows(context: &Context, root: &std::path::Path) -> Result<Vec<Row>, 
             tests: claim.tests.clone(),
             evidence: claim.evidence,
             tests_hash: crate::model::tests_digest(&claim.tests, claim.evidence),
+            fields_hash: crate::model::fields_digest(claim.kind.as_deref(), &loaded.fields),
+            pins_hash: crate::model::pins_digest(claim.pins.as_ref()),
             pins: derived.pins.clone(),
             rationale_source: claim.rationale.source.clone(),
             rationale_date: claim.rationale.date.clone(),
