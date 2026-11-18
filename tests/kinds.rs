@@ -1298,53 +1298,124 @@ fn req_init_reads_a_malformed_declaration_as_exit_2_and_writes_nothing() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// The modules of `src/` that call the loader (`load_claims` or `load_rows`) directly, and the subcommand(s) that
-/// reach each one — **the table a new caller must join**. A subcommand that loads claims must hold the exit-2 class
-/// for a malformed declaration (spec F-1 choice 2: no caller folds 2 into 3), which is `Command::loads_claims` in
-/// `src/main.rs` (and, for `init`, which is answered before the table, `kinds::precheck` in `src/init.rs`).
-const LOADER_CALLERS: &[(&str, &[&str])] = &[
-    ("audit.rs", &["audit"]),
-    ("baseline.rs", &["baseline"]),
-    ("canon.rs", &["canon"]),
-    ("completeness.rs", &["check"]),
-    ("contradict.rs", &["gate", "check"]),
-    ("gate.rs", &["gate", "check"]),
-    ("impact.rs", &["impact"]),
-    ("satisfy.rs", &["satisfy"]),
-    ("select.rs", &["select"]),
-    ("view.rs", &["render", "trace", "check"]),
-    // `diff` reads each staged revision's declarations itself, and the working tree through `produce`.
-    ("diff.rs", &[]),
-    ("init.rs", &["init"]),
+/// The subcommand names in `src/main.rs`'s command table, in table order.
+fn table_commands() -> Vec<String> {
+    let main = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/main.rs"))
+        .expect("reads main.rs");
+    main.lines()
+        .filter_map(|line| {
+            line.trim()
+                .strip_prefix("name: \"")
+                .and_then(|rest| rest.strip_suffix("\","))
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+/// The minimal arguments that get each subcommand past its own usage check, so that it runs. **A subcommand missing
+/// here fails the guard below**: a new command must be classified, here, by someone who has read what it needs. The
+/// guard needs no list of which commands load claims: it runs every one.
+fn probe_args(command: &str) -> Option<Vec<&'static str>> {
+    Some(match command {
+        "impact" => vec!["impact", "REQ-0001"],
+        "baseline" => vec!["baseline", "--at", "2026-11-18T00:00:00Z"],
+        "compare" => vec!["compare", "a.yml", "b.yml"],
+        "diff" => vec!["diff", "--base", "HEAD"],
+        "propose" => vec!["propose", "a.yml", "b.yml"],
+        "bench" => vec!["bench"],
+        "select" => vec!["select"],
+        "render" => vec!["render"],
+        "trace" => vec!["trace"],
+        "satisfy" => vec!["satisfy"],
+        "gate" => vec!["gate"],
+        "check" => vec!["check"],
+        "next-id" => vec!["next-id"],
+        "audit" => vec!["audit"],
+        "decision" => vec!["decision"],
+        "pin" => vec!["pin"],
+        "canon" => vec!["canon"],
+        _ => return None,
+    })
+}
+
+#[test]
+fn no_subcommand_that_reads_a_malformed_declaration_folds_it_into_exit_3() {
+    // ADR 0056 decision 2 / spec F-1 choice 2: no caller folds the exit-2 class into 3. The guard runs EVERY subcommand
+    // of the command table against a corpus whose `.req/kinds/` holds a malformed declaration, and requires that any
+    // run whose output names the declaration exits 2. A command that loads claims and was not given the class (a new
+    // `loads_claims: false` entry that calls the loader) names the file with exit 3 and fails here, with no hand list
+    // of which commands load claims to forget to extend.
+    let commands = table_commands();
+    assert!(
+        commands.len() >= 15,
+        "the command table was found and enumerated: {commands:?}"
+    );
+    for known in [
+        "canon", "gate", "render", "trace", "check", "baseline", "diff",
+    ] {
+        assert!(
+            commands.iter().any(|c| c == known),
+            "`{known}` is in the table: {commands:?}"
+        );
+    }
+    let s = Scratch::new("every-subcommand");
+    s.claim("REQ-0001", "req.claim/4", "");
+    s.write("a.yml", &claim_text("REQ-0001", "req.claim/4", ""));
+    s.write("b.yml", &claim_text("REQ-0001", "req.claim/4", ""));
+    s.write(
+        ".req/kinds/safety.yml",
+        "schema: req.kind/1\ndefault: x\nfields: {}\n",
+    );
+    let mut named = Vec::new();
+    for command in &commands {
+        let args = probe_args(command).unwrap_or_else(|| {
+            panic!("`{command}` is a subcommand with no entry in probe_args: classify it (give it the arguments that make it run)")
+        });
+        let out = s.req(&args);
+        if out.all().contains("safety.yml") {
+            named.push(command.clone());
+            assert_eq!(
+                out.code,
+                2,
+                "`req {}` reads `.req/kinds/` and must hold the exit-2 class, never 3:\n{}",
+                args.join(" "),
+                out.all()
+            );
+        }
+    }
+    // The guard cannot pass vacuously: the commands every release depends on read the declarations.
+    for loader in [
+        "canon", "gate", "render", "trace", "select", "check", "audit", "baseline", "impact",
+        "compare", "diff",
+    ] {
+        assert!(
+            named.iter().any(|c| c == loader),
+            "`{loader}` should have named the malformed declaration (named: {named:?})"
+        );
+    }
+}
+
+/// The modules of `src/` that call the loader (`load_claims` or `load_rows`) directly: a new caller must be added
+/// here, and the guard above is what then judges the command that reaches it.
+const LOADER_CALLERS: &[&str] = &[
+    "audit.rs",
+    "baseline.rs",
+    "canon.rs",
+    "completeness.rs",
+    "contradict.rs",
+    "diff.rs",
+    "gate.rs",
+    "impact.rs",
+    "init.rs",
+    "satisfy.rs",
+    "select.rs",
+    "view.rs",
 ];
 
 #[test]
-fn every_subcommand_whose_implementation_loads_claims_holds_the_exit_2_class() {
+fn a_module_that_calls_the_claim_loader_is_classified() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let main = fs::read_to_string(src.join("main.rs")).expect("reads main.rs");
-    // The table's entries: name -> loads_claims.
-    let mut table: std::collections::BTreeMap<String, bool> = std::collections::BTreeMap::new();
-    let lines: Vec<&str> = main.lines().collect();
-    for (i, line) in lines.iter().enumerate() {
-        let Some(name) = line
-            .trim()
-            .strip_prefix("name: \"")
-            .and_then(|rest| rest.strip_suffix("\","))
-        else {
-            continue;
-        };
-        // The entry runs to the next `name:` line: a handler may span many lines (`compare`, `canon`).
-        let flag = lines[i + 1..]
-            .iter()
-            .take_while(|l| !l.trim().starts_with("name: \""))
-            .find_map(|l| l.trim().strip_prefix("loads_claims: "))
-            .unwrap_or_else(|| panic!("`{name}` has no loads_claims entry"));
-        table.insert(name.to_string(), flag.trim_end_matches(',') == "true");
-    }
-    assert!(table.len() >= 15, "the table was found: {table:?}");
-
-    // (a) A module that calls the loader but is not classified fails: a new caller must join LOADER_CALLERS.
-    let known: Vec<&str> = LOADER_CALLERS.iter().map(|(file, _)| *file).collect();
+    let mut callers = Vec::new();
     for entry in fs::read_dir(&src).expect("reads src/") {
         let path = entry.expect("an entry").path();
         let Some(file) = path.file_name().and_then(|f| f.to_str()) else {
@@ -1362,30 +1433,54 @@ fn every_subcommand_whose_implementation_loads_claims_holds_the_exit_2_class() {
                 && (t.contains("load_claims(") || t.contains("load_rows("))
         });
         if calls {
-            assert!(
-                known.contains(&file),
-                "src/{file} calls the claim loader: add it to LOADER_CALLERS with the subcommands that reach it, \
-                 and make sure each holds the exit-2 class (`loads_claims: true`)"
-            );
+            callers.push(file.to_string());
         }
     }
-    // (b) Every subcommand that reaches a loader caller is in the table with `loads_claims: true`; `init` is
-    // answered before the table and calls the precheck itself.
-    for (file, commands) in LOADER_CALLERS {
-        for command in *commands {
-            if *command == "init" {
-                let init = fs::read_to_string(src.join("init.rs")).expect("reads init.rs");
-                assert!(
-                    init.contains("kinds::precheck("),
-                    "init must call kinds::precheck"
-                );
-                continue;
-            }
-            assert_eq!(
-                table.get(*command),
-                Some(&true),
-                "`{command}` reaches the loader through src/{file}: it needs `loads_claims: true`"
-            );
-        }
+    // Positive count: a renamed loader leaves the scan with nothing to say, and that must fail, not pass.
+    assert!(
+        callers.len() >= 8,
+        "the scan found the loader's callers (found {callers:?}); did `load_claims` or `load_rows` change name?"
+    );
+    for file in &callers {
+        assert!(
+            LOADER_CALLERS.contains(&file.as_str()),
+            "src/{file} calls the claim loader: add it to LOADER_CALLERS (and give the subcommand that reaches it \
+             the exit-2 class: `no_subcommand_that_reads_a_malformed_declaration_folds_it_into_exit_3` runs it)"
+        );
+    }
+}
+
+#[test]
+fn the_help_pages_state_the_declarations_and_the_exit_classes() {
+    // The help page is the contract (AGENTS.md): each page states what the code does with `.req/kinds/`.
+    let page = |command: &str| run(Path::new("."), &[command, "--help"]).stdout;
+    let diff = page("diff");
+    assert!(
+        diff.contains("`.req/kinds/`"),
+        "diff stages the declarations:\n{diff}"
+    );
+    assert!(
+        diff.contains("working tree") && diff.contains("staged revision"),
+        "diff names both classes of declaration failure:\n{diff}"
+    );
+    let compare = page("compare");
+    assert!(
+        compare.contains("`.req/kinds/`") && compare.contains("malformed"),
+        "compare states its declaration contract and its exit 2:\n{compare}"
+    );
+    let init = page("init");
+    assert!(
+        init.contains("req.kind/2") && init.contains("malformed `.req/kinds/`"),
+        "init names the 3 and the 2 of an unusable declaration:\n{init}"
+    );
+    for command in [
+        "select", "render", "trace", "gate", "check", "satisfy", "impact", "baseline", "audit",
+        "canon",
+    ] {
+        let text = page(command);
+        assert!(
+            text.contains(".req/kinds/") && text.contains("exit 2"),
+            "`req {command} --help` states the malformed-declaration exit:\n{text}"
+        );
     }
 }

@@ -261,9 +261,14 @@ others are named after `also:`, and a change whose axes point different ways is 
 Under a SHALL NOT the bound's senses swap (ADR 0044). A classification is for a human to ratify,
 never an approval.
 
+A `req.claim/4` side's `kind` and `fields` are judged against the working tree's `.req/kinds/`
+declarations (`compare` holds one root), and never change the verdict, which is about meaning.
+
 exit: 0 classified, 3 UNVERIFIABLE (a side that will not load, or that declares a file
-format this build does not write, so its parse is NOT JUDGED; a pair with no structured form
-to compare), 2 usage.
+format this build does not write, so its parse is NOT JUDGED; a side whose kind has no
+declaration or whose field value its declaration refuses; a declaration that is newer or
+unreadable; a pair with no structured form to compare), 2 usage, or a malformed `.req/kinds/`
+declaration (every bad file and key named, nothing compared).
 
 `docs/adopting.md` for the loop.";
 
@@ -357,8 +362,8 @@ a `conflicts-with` Conflict at head). Each claim in an added pair carries the fl
 detector is not admitted the pairs are marked `(reported, not judged)` and no flag is raised.
 `--format json` adds `contradictions: {added, resolved}`.
 
-Each side is read from git without checking anything out: only `claims/` and `aliases/`, as
-raw blobs, into a temporary directory that is removed on every exit, then loaded by the same
+Each side is read from git without checking anything out: only `claims/`, `aliases/` and `.req/kinds/` (the kind
+declarations, ADR 0056: each side is judged by its own), as raw blobs, into a temporary directory that is removed on every exit, then loaded by the same
 loaders every command uses and derived under this binary's rules and that side's own
 registry. `git` is run as a local process with `GIT_*` redirections, user and system
 configuration removed; nothing is fetched, no hook runs, and the base revision must be in
@@ -376,9 +381,12 @@ prompt for a human, not a rejection.
 exit: 0 the report was produced (whatever it lists); 1 only with `--fail-on`, when a named
 class or flag is present; 3 UNVERIFIABLE (`git` missing or failing, the corpus not inside a
 git work tree, a revision that does not resolve, a side whose claims or registry do not
-load, including a claim declaring a file format this build does not write, or an empty
+load, including a claim declaring a file format this build does not write, a malformed,
+newer or unreadable kind declaration at a staged revision (named with the revision), or an empty
 `claims/`, or a head `.req/variants` that cannot be read, naming its line); 2 usage (a missing
-`--base`, a revision beginning with `-`, an empty or unknown `--fail-on` class).
+`--base`, a revision beginning with `-`, an empty or unknown `--fail-on` class) or, with no `--head`,
+a malformed `.req/kinds/` declaration in the working tree, which `diff` reads directly (every bad
+file and key named, nothing compared; the same file at a staged revision is 3).
 
 `docs/adopting.md` for the loop.";
 
@@ -393,6 +401,8 @@ anything else is UNKNOWN, with its text shown. A claim whose successor (`superse
 in the variant is withdrawn: it does not apply, and its line names the successor.
 
 exit: 0 every claim decided, 3 at least one claim left undecided, 2 usage.
+A malformed `.req/kinds/` declaration is exit 2, naming every bad file and key, before anything is judged; one that
+is newer or unreadable is exit 3, NOT JUDGED (ADR 0056).
 
 `docs/adopting.md` for the loop.";
 
@@ -424,6 +434,8 @@ exit: 0 settled (plain), written (--out), or current (--check); 1 a committed pr
 stale or was hand-edited (--check); 3 anything an undecided claim leaves open (plain), a
 projection that cannot be written (--out), or one this build cannot judge — no header, another
 build's rules_v, an unreproducible selection, or another command's projection (--check); 2 usage.
+A malformed `.req/kinds/` declaration is exit 2, naming every bad file and key, before anything is judged; one that
+is newer or unreadable is exit 3, NOT JUDGED (ADR 0056).
 
 `docs/adopting.md` for the loop.";
 
@@ -461,6 +473,8 @@ projection is stale or was hand-edited (--check); 3 an edge into a claim the cor
 hold or into one the variant leaves undecided leaves the matrix open (plain), a projection that
 cannot be written (--out), or one this build cannot judge — no header, another build's rules_v,
 an unreproducible selection, or another command's projection (--check); 2 usage.
+A malformed `.req/kinds/` declaration is exit 2, naming every bad file and key, before anything is judged; one that
+is newer or unreadable is exit 3, NOT JUDGED (ADR 0056).
 
 `docs/adopting.md` for the loop.";
 
@@ -554,6 +568,8 @@ exit: 0 every policy passed and every claim decided, 1 a defect (a flagged pin a
 something that cannot be confirmed (a relation that does not resolve, a dependency left
 undecided, an entry the corpus cannot confirm, an empty selection) or any claim left undecided — named
 with the remedy; 2 usage. Fail outranks Unverifiable, and an undecided claim outranks a pass.
+A malformed `.req/kinds/` declaration is exit 2, naming every bad file and key, before anything is judged; one that
+is newer or unreadable is exit 3, NOT JUDGED (ADR 0056).
 
 `docs/adopting.md` for the loop.";
 
@@ -620,6 +636,8 @@ that cannot be confirmed — an undecided claim, a missing test report, a list t
 be read, a projection `render --check` cannot judge, a shipped claim no signed Baseline names); 2
 usage or a malformed list, decided before any step runs.
 Fail outranks Unverifiable.
+A malformed `.req/kinds/` declaration is exit 2, naming every bad file and key, before anything is judged; one that
+is newer or unreadable is exit 3, NOT JUDGED (ADR 0056).
 
 `docs/adopting.md` for the loop.";
 
@@ -660,6 +678,8 @@ The release gate's `design_satisfied` policy and `.req/completeness`'s `need des
 
 exit: 0 every declared link holds (or there are none, said so), 3 UNVERIFIABLE (a suspect, unratified
 or unknown-claim link, an unreadable design file or record), 2 usage or a malformed `.req/design`.
+A malformed `.req/kinds/` declaration is exit 2, naming every bad file and key, before anything is judged; one that
+is newer or unreadable is exit 3, NOT JUDGED (ADR 0056).
 
 `docs/adopting.md` for the loop.";
 
@@ -672,6 +692,8 @@ claim nearest-first, with its state in the selection.
 exit: 0 complete and settled, 3 UNVERIFIABLE (a missing target, an undecided target or
 dependent, or a relation that does not resolve — an answer a broken relation could have
 shortened says so instead of reading as complete), 2 usage.
+A malformed `.req/kinds/` declaration is exit 2, naming every bad file and key, before anything is judged; one that
+is newer or unreadable is exit 3, NOT JUDGED (ADR 0056).
 
 `docs/adopting.md` for the loop.";
 
@@ -759,6 +781,8 @@ exit: 0 emitted or VERIFIED, 1 FAIL (drift, a signature or authority that does n
 decision log, or an `--out` target that cannot be written), 2 usage (emitting without `--at`, an
 unreadable timestamp, `--at` on the verification path, `--out` on the verification path or with no
 file, any other option-shaped argument such as `--out=file`).
+A malformed `.req/kinds/` declaration is exit 2, naming every bad file and key, before anything is judged; one that
+is newer or unreadable is exit 3, NOT JUDGED (ADR 0056).
 
 `docs/adopting.md` for the loop.";
 
@@ -786,6 +810,8 @@ UNVERIFIABLE). It is reported and never part of the verdict; the release-wide om
 exit: 0 every applying claim covered and still matching, 1 a defect (drift, or no
 provenance), 3 nothing ratified, something uncovered, or coverage NOT JUDGED because the
 manifest's `rules_v` disagrees with this build's, 2 usage.
+A malformed `.req/kinds/` declaration is exit 2, naming every bad file and key, before anything is judged; one that
+is newer or unreadable is exit 3, NOT JUDGED (ADR 0056).
 
 `docs/adopting.md` for the loop.";
 
@@ -816,8 +842,8 @@ Decision signature that cannot be judged), 2 usage.
 const INIT_HELP: &str = "\
 usage: req init
 
-Creates a corpus in the current directory: a `req.claim/4` starter claim (no kind is needed) (authored fields and
-pins, nothing derived) read back through the loader every command uses with its pins held, the
+Creates a corpus in the current directory: a `req.claim/4` starter claim (authored fields and
+pins, nothing derived; no kind is needed) read back through the loader every command uses with its pins held, the
 claims README, and the subject registry. It
 refuses rather than overwrite an existing corpus, and it reads no root — it creates one, so it
 announces none. It prints the next steps to stdout: the CI snippet, the
@@ -825,9 +851,10 @@ per-variant rule, and where a req bug is reported.
 
 exit: 0 created, 1 refused (`claims/` or `aliases/subjects.yml` already exists, or `aliases`
 is a symlink), 3 UNVERIFIABLE (the starter claim's pins do not hold, or the target cannot
-be written — whatever it wrote is removed), 2 usage (an argument, or `--root`: run `init`
-where the corpus should live) or a malformed `.req/kinds/` declaration in the current directory,
-judged first so nothing is written (ADR 0056).
+be written — whatever it wrote is removed; or a `.req/kinds/` declaration in the current
+directory that is newer, e.g. `req.kind/2`, or unreadable), 2 usage (an argument, or `--root`: run
+`init` where the corpus should live) or a malformed `.req/kinds/` declaration in the current
+directory (every bad file and key named), judged first so nothing is written (ADR 0056).
 
 `docs/adopting.md` for the loop.";
 
