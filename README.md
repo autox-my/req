@@ -51,7 +51,7 @@ SUSPECT means the part was recorded against a claim whose meaning has since tigh
 
 ```bash
 git clone https://github.com/autox-my/req.git && cd req
-cargo build --release   # from source, today's `main`; or install the prebuilt `v0.5.0` (see Install)
+cargo build --release   # from source, today's `main`; or install the prebuilt `v0.6.0` (see Install)
 python3 tools/demo/try_drift.py
 ```
 
@@ -198,7 +198,8 @@ Git-native storage is table stakes, not the moat.
 
 req is not on crates.io (`publish = false`): you pin a commit, and the commit is the provenance. A release also carries a
 semantic version and is tagged `v<VERSION>` (ADR 0055); the version names it, the commit proves it. **The newest prebuilt
-release is `v0.5.0`** (rev `ddcd056`, Linux x86_64 and macOS arm64, Apple silicon only), the first versioned one.
+release is `v0.6.0`** (rev `161c336`, Linux x86_64 and macOS arm64, Apple silicon only), the first that reads
+`req.claim/4`; `v0.5.0` (rev `ddcd056`) was the first versioned one.
 
 <details>
 <summary>Earlier releases, other machines, and building from source</summary>

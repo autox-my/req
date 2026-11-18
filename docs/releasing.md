@@ -8,8 +8,8 @@ side is `examples/install-req.sh` and [`docs/adopting.md`](adopting.md) § *Inst
 cuts the release. Nothing here changes req: the binary gains no command and no network client, and nothing is
 released until a person asks.
 
-**Status.** Five releases exist: `rev-ec87808`, `rev-6b74f51`, `rev-aeaf987`, `rev-3294a46` and **`v0.5.0`**, the first
-versioned release (ADR 0055).
+**Status.** Six releases exist: `rev-ec87808`, `rev-6b74f51`, `rev-aeaf987`, `rev-3294a46`, `v0.5.0`, the first
+versioned release (ADR 0055), and **`v0.6.0`**, the newest.
 `.github/workflows/release.yml` was dispatched on 2026-11-09 for `ec87808`
 (<https://github.com/autox-my/req/actions/runs/42568766890>) and for `6b74f51`
 (<https://github.com/autox-my/req/actions/runs/42622634900>), and on 2026-11-16 for `3294a46`. The
@@ -34,6 +34,23 @@ bump: minor". Its pins, from the publish log, match the release's `.sha256` asse
 pin (x86_64-unknown-linux-gnu): VERSION=0.5.0 REV=ddcd056 SHA256=bea35ad17b7e0fe0c7662e7f416275ddea3b67d9fb1742fffb653bf1a0edb0bb
 pin (aarch64-apple-darwin): VERSION=0.5.0 REV=ddcd056 SHA256=814c6ac514a0fc49560494673a4eafb9adf98b4819d013bad7351085c1245bda
 ```
+
+**`v0.6.0` was the first release whose identity moved under ADR 0055**, dispatched on 2026-11-18 for `161c336`
+(<https://github.com/autox-my/req/actions/runs/44255850285>). It ships ADR 0056: the claim schema `req.claim/3` → `/4` and
+the Baseline envelope 4 → 5. The version check accepted 0.5.0 → 0.6.0 as minor, the tag `v0.6.0` reads back as `161c336`, and
+the notes open with "Version 0.6.0 · rev `161c336` · bump: minor". Their identity section says a `req.claim/3` file is
+**loaded as it is** (the line the ADR 0056 implementation corrected; before it, every schema change was printed as NOT
+JUDGED). Its pins, from the publish log, match the release's `.sha256` assets and a local `shasum -a 256` of both tarballs:
+
+```text
+pin (x86_64-unknown-linux-gnu): VERSION=0.6.0 REV=161c336 SHA256=e54c46a0e5dd0cb843e4b01c098698196cc04e613acd451c383411a266e33d51
+pin (aarch64-apple-darwin): VERSION=0.6.0 REV=161c336 SHA256=b924d762dbdc68e7fc42e7feaf7f96e68ecd77cff510f3b795b0565b0907d171
+```
+
+`examples/install-req.sh`, with that pin table filled in, installed the macOS tarball from the `v0.6.0` URL on one macOS
+arm64 machine and verified `built from 161c336`. **The three committed Baselines are still envelope v4** and verify under
+`v0.6.0` with the line that fields and pins are not attested; the owner's re-emit and re-sign (the step after a release
+that moves the envelope, below) is the next change.
 
 `examples/install-req.sh` at `main`, with that pin table, installed the macOS tarball from the `v0.5.0` URL on one macOS arm64
 machine and verified `built from ddcd056`. The first version bump (PR #98) found that the two experiment crates' lock files
