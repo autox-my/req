@@ -232,23 +232,32 @@ fn each_address_equals_the_one_req_trace_reports() {
 }
 
 #[test]
-fn form_re_serialised_compactly_equals_the_claims_canonical_bytes() {
-    let doc = run(repo(), &["canon", "--format", "json"]).json();
+fn form_is_the_claims_canonical_bytes_parsed_and_verbatim() {
+    let out = run(repo(), &["canon", "--format", "json"]);
+    let doc = out.json();
+    let raw = out.stdout.as_str();
     let loaded = req::canon::load_claims(repo()).expect("this repository loads");
     assert!(!loaded.is_empty());
+    let mut checked = 0;
     for claim in &loaded {
         let id = claim.claim.claim_id.as_str();
         let form = &claim_of(&doc, id)["form"];
-        // `serde_json` sorts the keys of an object (no `preserve_order`), and the T1.9 bytes are sorted too.
-        assert_eq!(
-            serde_json::to_string(form).expect("serialises"),
-            claim.derived.canonical,
-            "{id}: the form is the canonical bytes, parsed"
-        );
         let bytes: Value =
             serde_json::from_str(&claim.derived.canonical).expect("T1.9 bytes are JSON");
-        assert_eq!(form, &bytes, "{id}");
+        assert_eq!(
+            form, &bytes,
+            "{id}: the form is the canonical bytes, parsed"
+        );
+        // And in their own spelling, key order included: the document embeds the frozen bytes, not a
+        // re-sorted rendering of them.
+        let embedded = format!("\"form\":{}", claim.derived.canonical);
+        assert!(
+            raw.contains(&embedded),
+            "{id}: the document carries the T1.9 bytes verbatim"
+        );
+        checked += 1;
     }
+    assert_eq!(checked, loaded.len());
 }
 
 /// One text line of `req canon`, read back as the five derived slots and the lint codes.
@@ -363,21 +372,37 @@ fn assert_text_agrees(dir: &Path) -> usize {
     assert_eq!(claims.len(), rows.len(), "one text line per claim");
     for claim in claims {
         let id = claim["claim_id"].as_str().expect("id");
-        let row = rows.get(id).unwrap_or_else(|| panic!("{id} has a text line"));
+        let row = rows
+            .get(id)
+            .unwrap_or_else(|| panic!("{id} has a text line"));
         let form = &claim["form"];
         assert_eq!(claim["structured"], row.structured, "{id} structured");
         if row.structured {
             assert_eq!(form["modality"], row.modality.as_str(), "{id} modality");
-            assert_eq!(dash(form["subject"].as_str().unwrap_or("")), row.subject, "{id} subject");
+            assert_eq!(
+                dash(form["subject"].as_str().unwrap_or("")),
+                row.subject,
+                "{id} subject"
+            );
             assert_eq!(
                 dash(form["operator"].as_str().unwrap_or("")),
                 row.operator,
                 "{id} operator"
             );
             assert_eq!(value_as_text(form), row.value, "{id} value");
-            assert_eq!(dash(form["unit"].as_str().unwrap_or("")), row.unit, "{id} unit");
+            assert_eq!(
+                dash(form["unit"].as_str().unwrap_or("")),
+                row.unit,
+                "{id} unit"
+            );
         } else {
-            for slot in [&row.modality, &row.subject, &row.operator, &row.value, &row.unit] {
+            for slot in [
+                &row.modality,
+                &row.subject,
+                &row.operator,
+                &row.value,
+                &row.unit,
+            ] {
                 assert_eq!(slot, "-", "{id}: an unstructured line shows dashes");
             }
         }
@@ -394,9 +419,17 @@ fn assert_text_agrees(dir: &Path) -> usize {
             let key = pin["key"].as_str().expect("key");
             let pinned = pin["pinned"].as_str().expect("pinned");
             assert_eq!(&format!("{key} {pinned}"), said, "{id}");
-            assert_eq!(pin["verdict"].as_str(), Some(verdict.as_str()), "{id} {key}");
+            assert_eq!(
+                pin["verdict"].as_str(),
+                Some(verdict.as_str()),
+                "{id} {key}"
+            );
             if verdict == "contradiction" {
-                assert_eq!(pin["derived"].as_str(), Some(derived.as_str()), "{id} {key}");
+                assert_eq!(
+                    pin["derived"].as_str(),
+                    Some(derived.as_str()),
+                    "{id} {key}"
+                );
             } else {
                 assert!(pin["derived"].is_null(), "{id} {key}: derived is null");
             }
@@ -471,7 +504,10 @@ fn pins_carry_a_verdict_and_derived_only_for_a_contradiction() {
     assert_eq!(value["derived"], "0.2", "the parsed value, named");
     let operator = by_key("operator");
     assert_eq!(operator["verdict"], "agrees");
-    assert!(operator["derived"].is_null(), "an agreeing pin has no derived");
+    assert!(
+        operator["derived"].is_null(),
+        "an agreeing pin has no derived"
+    );
     assert_eq!(
         keys(&operator),
         ["derived", "key", "pinned", "verdict"],
@@ -543,7 +579,7 @@ fn kind_and_fields_equal_the_req_trace_node() {
         "REQ-0001",
         "req.claim/4",
         HEALTH,
-        "area: diagnostics/startup\nkind: audit\nfields:\n  tags: [zeta, alpha]\n  reviewed: true\n  count: 7\n  ratio: \"0.3\"\n  note: hello\n",
+        "area: diagnostics/startup\nkind: audit\nfields:\n  tags: [zeta, alpha]\n  reviewed: true\n  count: \"7\"\n  ratio: \"0.3\"\n  note: hello\n",
     );
     s.claim("REQ-0002", "req.claim/4", HEALTH, "");
     s.claim("REQ-0003", "req.claim/3", HEALTH, "");
@@ -565,9 +601,15 @@ fn kind_and_fields_equal_the_req_trace_node() {
     let kinded = claim_of(&canon, "REQ-0001");
     assert_eq!(kinded["kind"], "audit");
     assert_eq!(kinded["area"], "diagnostics/startup");
-    assert_eq!(kinded["fields"]["reviewed"], true, "a bool is a JSON boolean");
+    assert_eq!(
+        kinded["fields"]["reviewed"], true,
+        "a bool is a JSON boolean"
+    );
     assert_eq!(kinded["fields"]["count"], "7", "an integer is a string");
-    assert_eq!(kinded["fields"]["ratio"], "0.3", "a decimal is its canonical string");
+    assert_eq!(
+        kinded["fields"]["ratio"], "0.3",
+        "a decimal is its canonical string"
+    );
     assert_eq!(
         kinded["fields"]["tags"],
         serde_json::json!(["alpha", "zeta"]),
@@ -605,7 +647,12 @@ fn fail_on_flag_with_json_exits_1_and_still_prints_the_whole_document() {
     let text = s.req(&["canon", "--fail-on-flag"]);
     assert_eq!(text.code, 1, "the same exit under both formats");
 
-    s.claim("REQ-0001", "req.claim/4", HEALTH, "pins:\n  value: \"0.2\"\n");
+    s.claim(
+        "REQ-0001",
+        "req.claim/4",
+        HEALTH,
+        "pins:\n  value: \"0.2\"\n",
+    );
     let clean = s.req(&["canon", "--fail-on-flag", "--format", "json"]);
     assert_eq!(clean.code, 0, "{}", clean.all());
 }
@@ -660,7 +707,11 @@ fn a_corpus_that_cannot_load_is_exit_3_with_the_texts_message_and_no_stdout() {
     let text = s.req(&["canon"]);
     assert_eq!(json.code, 3, "{}", json.all());
     assert_eq!(text.code, 3);
-    assert!(json.stdout.is_empty(), "no JSON on stdout: {:?}", json.stdout);
+    assert!(
+        json.stdout.is_empty(),
+        "no JSON on stdout: {:?}",
+        json.stdout
+    );
     assert!(json.stderr.contains("[UNVERIFIABLE]"), "{}", json.stderr);
     assert!(json.stderr.contains("REQ-0002"), "{}", json.stderr);
     assert_eq!(
@@ -702,16 +753,15 @@ fn two_runs_are_byte_identical() {
 
 #[test]
 fn format_text_is_the_bare_command_byte_for_byte() {
-    for dir in [repo().to_path_buf()] {
-        let bare = run(&dir, &["canon"]);
-        let text = run(&dir, &["canon", "--format", "text"]);
-        assert_eq!(bare.code, 0);
-        assert!(!bare.stdout.is_empty());
-        assert_eq!((bare.code, &bare.stdout), (text.code, &text.stdout));
-        let by_area = run(&dir, &["canon", "--by-area"]);
-        let by_area_text = run(&dir, &["canon", "--format", "text", "--by-area"]);
-        assert_eq!(by_area.stdout, by_area_text.stdout);
-    }
+    let dir = repo();
+    let bare = run(dir, &["canon"]);
+    let text = run(dir, &["canon", "--format", "text"]);
+    assert_eq!(bare.code, 0);
+    assert!(!bare.stdout.is_empty());
+    assert_eq!((bare.code, &bare.stdout), (text.code, &text.stdout));
+    let by_area = run(dir, &["canon", "--by-area"]);
+    let by_area_text = run(dir, &["canon", "--format", "text", "--by-area"]);
+    assert_eq!(by_area.stdout, by_area_text.stdout);
 }
 
 #[test]
@@ -729,4 +779,32 @@ fn claims_are_ordered_by_id_whatever_order_the_files_were_written_in() {
         .map(|c| c["claim_id"].as_str().expect("id"))
         .collect();
     assert_eq!(ids, ["REQ-0001", "REQ-0002", "REQ-0009", "REQ-0010"]);
+}
+
+#[test]
+fn the_form_is_the_canonical_bytes_even_where_a_json_library_would_respell_them() {
+    let s = Scratch::new("escapes");
+    // A backspace (`\u{8}`) is spelled `\u0008` in the T1.9 bytes and `\b` by a re-serialiser; `é` and a
+    // quote must pass through unchanged.
+    s.claim(
+        "REQ-0001",
+        "req.claim/4",
+        "Caf\\u00e9 \\b \\\"quoted\\\" prose",
+        "",
+    );
+    let out = s.req(&["canon", "--format", "json"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let loaded = req::canon::load_claims(&s.0).expect("the scratch corpus loads");
+    assert_eq!(loaded.len(), 1);
+    let canonical = &loaded[0].derived.canonical;
+    assert!(
+        canonical.contains("\\u0008"),
+        "the fixture reaches the escape: {canonical}"
+    );
+    assert!(
+        out.stdout.contains(&format!("\"form\":{canonical},")),
+        "the T1.9 bytes verbatim:\n{}",
+        out.stdout
+    );
+    out.json();
 }

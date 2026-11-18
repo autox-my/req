@@ -26,6 +26,8 @@ use serde::Serialize;
 /// One schema string per command, versioned independently of `RULES_V` (see the module doc).
 pub const SCHEMA_RENDER: &str = "req.render/1";
 pub const SCHEMA_TRACE: &str = "req.trace/1";
+/// `req canon --format json`: what a statement derives, per claim (C-1). Additive-only within `/1`.
+pub const SCHEMA_CANON: &str = "req.canon/1";
 pub const SCHEMA_AUDIT: &str = "req.audit/1";
 /// `/2` (ADR 0022): the first policy is `pins_hold`, where `/1` had `addresses_current` — a
 /// policy was renamed, so the shape moved; the exit contract did not.

@@ -1606,6 +1606,10 @@ step's `req.gate/2` inside it. A `req.gate/2` document carries **eight** `polici
 would overstate what was proven. Read the artifact, not the log; the `req check` step remains what decides
 the build.
 
+`req canon --format json` prints the `req.canon/1` document: per claim, the parse its statement derives (the
+canonical form, the lints and each pin's verdict), which `req canon` otherwise prints as text only. It shows what is
+derived and writes nothing; its keys and refusals are on `req canon --help`.
+
 The exit contract is on `req --help` and each command's `exit:` line: an agent consumes the exit code and
 the named line, not the prose. `req render --check <path>` is the drift alarm — 0 current, 1 stale or
 hand-edited, 3 cannot judge; treat 3 as not current, and never as a pass.

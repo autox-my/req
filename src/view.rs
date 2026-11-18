@@ -361,7 +361,7 @@ impl Serialize for Row {
 /// A claim's judged fields as the documents carry them (ADR 0056 decision 8): an object holding only the fields
 /// present, keys sorted by byte. An `integer` and a `decimal` are their canonical **strings**, a `bool` is a JSON
 /// boolean, and a `list` is an array of its element texts sorted by byte (a list is a set).
-struct FieldsDocument<'a>(&'a [crate::kinds::JudgedField]);
+pub(crate) struct FieldsDocument<'a>(pub(crate) &'a [crate::kinds::JudgedField]);
 
 impl Serialize for FieldsDocument<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
