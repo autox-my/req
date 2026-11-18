@@ -8,7 +8,7 @@ fields`: its word list is closed, `src/completeness.rs:135-147`, so this is a ch
 identity. Decision 7 also closes the loss ADR 0022 named, the unattested pin set. Line numbers below are for
 `960e7ed` (`req 0.5.0`, `rules_v 9`, `baseline_envelope 4`, `claim_schema req.claim/3`).
 
-**Status: proposed.** The owner ratifies it by merging. Asked for by the owner on 2026-11-17 (task D-1), the first of two
+**Status: accepted** — ratified by the owner's merge of PR #103 (2026-11-18); not yet implemented. Asked for by the owner on 2026-11-17 (task D-1), the first of two
 decisions informed by the X-1 experiments; the second, repository-defined checks, depends on this one and is not drafted
 here. Date proposed: 2026-11-17.
 
