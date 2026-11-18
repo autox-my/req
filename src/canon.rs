@@ -2574,6 +2574,12 @@ pub fn run_claim_diagnostics_with_options(
     if !fail_on_flag {
         return 0;
     }
+    fail_on_flag_verdict(flagged, &flagged_claims)
+}
+
+/// The `--fail-on-flag` verdict, one home for both renderings: the same stderr and the same exit whether stdout
+/// carried the text or the `req.canon/1` document.
+fn fail_on_flag_verdict(flagged: usize, flagged_claims: &[&str]) -> i32 {
     if flagged_claims.is_empty() {
         eprintln!(
             "--fail-on-flag: no pin is flagged on any claim. This is not a release verdict: \
@@ -2588,6 +2594,130 @@ pub fn run_claim_diagnostics_with_options(
             flagged_claims.join(", ")
         );
         1
+    }
+}
+
+/// `req canon --format json` (C-1): the `req.canon/1` document on stdout — what each statement derives, in
+/// the same order and from the same [`Derived`] the text path prints. It renders and writes nothing (ADR 0022).
+///
+/// Exit codes are the text path's: 0 reported, 1 with `--fail-on-flag` and a flagged pin (the whole document is
+/// still printed), 3 a corpus that cannot be read — with **no document on stdout**, the same message as text.
+/// A malformed `.req/kinds/` declaration is refused (exit 2) by [`crate::kinds::precheck`] before any command
+/// runs, so this function never sees one. `--by-area` has no JSON rendering; `main.rs` refuses the pair.
+pub fn run_claim_diagnostics_json(root: &std::path::Path, fail_on_flag: bool) -> i32 {
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    struct LintDocument<'a> {
+        code: &'a str,
+        detail: &'a str,
+    }
+    #[derive(Serialize)]
+    struct PinDocument<'a> {
+        key: &'a str,
+        pinned: &'a str,
+        verdict: &'static str,
+        derived: Option<&'a str>,
+    }
+    // A claim object is written in three pieces — head, `form`, tail — because the canonical bytes (T1.9) go in
+    // **verbatim**. A parse-and-reserialise would re-sort their keys (the frozen order is not alphabetical:
+    // `unstructured` precedes `unit`) and respell an escape (`\u0008` against `\b`), so the document would carry a
+    // rendering of the form that is not the bytes the address hashes.
+    #[derive(Serialize)]
+    struct ClaimHead<'a> {
+        claim_id: &'a str,
+        address: String,
+        structured: bool,
+    }
+    #[derive(Serialize)]
+    struct ClaimTail<'a> {
+        lints: Vec<LintDocument<'a>>,
+        pins: Vec<PinDocument<'a>>,
+        area: Option<&'a str>,
+        kind: Option<&'a str>,
+        fields: crate::view::FieldsDocument<'a>,
+    }
+
+    /// `{"a":1}` and `{"b":2}` as `{"a":1,"b":2}` after `form` is spliced in between: the head's object without
+    /// its closing brace, the form, then the tail's object without its opening brace.
+    fn claim_object(head: &ClaimHead<'_>, canonical: &str, tail: &ClaimTail<'_>) -> String {
+        let head = serde_json::to_string(head).expect("strings and booleans serialize");
+        let tail = serde_json::to_string(tail).expect("strings, maps and vectors serialize");
+        format!(
+            "{},\"form\":{canonical},{}",
+            head.strip_suffix('}').expect("an object ends with a brace"),
+            tail.strip_prefix('{')
+                .expect("an object opens with a brace"),
+        )
+    }
+
+    let claims = match load_claims(root) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[UNVERIFIABLE] {e}");
+            return 3;
+        }
+    };
+    let mut sorted: Vec<&LoadedClaim> = claims.iter().collect();
+    sorted.sort_by(|a, b| a.claim.claim_id.cmp(&b.claim.claim_id));
+
+    let mut flagged = 0usize;
+    let mut flagged_claims: Vec<&str> = Vec::new();
+    let mut objects: Vec<String> = Vec::with_capacity(sorted.len());
+    for loaded in sorted {
+        let derived = &loaded.derived;
+        let before = flagged;
+        flagged += derived.flagged_pins().count();
+        if flagged > before {
+            flagged_claims.push(loaded.claim.claim_id.as_str());
+        }
+        let head = ClaimHead {
+            claim_id: &loaded.claim.claim_id,
+            // Spelled as `req.trace/1` and `req.render/1` spell it.
+            address: format!("sha256:{}", derived.address),
+            structured: !derived.unstructured(),
+        };
+        let tail = ClaimTail {
+            lints: derived
+                .lints
+                .iter()
+                .map(|lint| LintDocument {
+                    code: &lint.code,
+                    detail: &lint.detail,
+                })
+                .collect(),
+            pins: derived
+                .pins
+                .iter()
+                .map(|check| PinDocument {
+                    key: check.key,
+                    pinned: &check.pinned,
+                    verdict: match check.verdict {
+                        PinVerdict::Agrees => "agrees",
+                        PinVerdict::Contradiction(_) => "contradiction",
+                        PinVerdict::NotCarried => "not_carried",
+                    },
+                    derived: match &check.verdict {
+                        PinVerdict::Contradiction(value) => Some(value.as_str()),
+                        PinVerdict::Agrees | PinVerdict::NotCarried => None,
+                    },
+                })
+                .collect(),
+            area: loaded.claim.area.as_deref(),
+            kind: loaded.claim.kind.as_deref(),
+            fields: crate::view::FieldsDocument(&loaded.fields),
+        };
+        objects.push(claim_object(&head, &derived.canonical, &tail));
+    }
+    println!(
+        "{{\"schema\":\"{}\",\"generator\":\"canon\",\"rules_v\":{RULES_V},\"claims\":[{}]}}",
+        crate::format::SCHEMA_CANON,
+        objects.join(",")
+    );
+    if fail_on_flag {
+        fail_on_flag_verdict(flagged, &flagged_claims)
+    } else {
+        0
     }
 }
 

@@ -406,15 +406,14 @@ fn json_beside_out_or_check_is_a_usage_error_and_writes_nothing() {
     );
 }
 
-/// The scope is exactly the four commands. `select`, `impact`, `canon`, `baseline` and
-/// `decision` keep their own contracts; `--format` there is an unknown argument, exit 2.
+/// `select`, `impact`, `baseline` and `decision` keep their own contracts; `--format` there is an unknown
+/// argument, exit 2. (`canon` left this list in C-1: it prints `req.canon/1`, `tests/canon_json.rs`.)
 #[test]
-fn format_json_is_scoped_to_the_four_commands() {
+fn format_json_is_scoped_to_the_commands_that_have_a_document() {
     let corpus = Corpus::new("format-scope");
     for argv in [
         &["select", "--format", "json"][..],
         &["impact", "REQ-0001", "--format", "json"][..],
-        &["canon", "--format", "json"][..],
         &["baseline", "--format", "json"][..],
         &["decision", "--format", "json"][..],
     ] {

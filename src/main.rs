@@ -2,7 +2,7 @@
 //!
 //! Subcommands:
 //!   req [--root <dir>] bench [corpus.yml] — run the FMR gate (default: bench/corpus/parity.yml)
-//!   req [--root <dir>] canon               — the derived parse and each pin's verdict, per claim
+//!   req [--root <dir>] canon [--format text|json] — the derived parse and each pin's verdict, per claim
 //!   req [--root <dir>] compare A.yml B.yml — what kind of change is this between two claims?
 //!   req [--root <dir>] diff --base <rev> [--head <rev>] [--fail-on <classes>] [--format text|json]
 //!                                          — what changed in meaning between two revisions (ADR 0026)
@@ -51,8 +51,8 @@
 //! the address computation.
 //! req-satisfies: REQ-0040 — an unrecognized subcommand is a usage error, exit 2
 use req::{
-    audit, baseline, bench, canon, check, compare, decision, diff, gate, impact, init, kinds,
-    next_id, pin, propose, root, satisfy, select, selftest, view,
+    audit, baseline, bench, canon, check, compare, decision, diff, format, gate, impact, init,
+    kinds, next_id, pin, propose, root, satisfy, select, selftest, view,
 };
 use std::path::Path;
 use std::process::exit;
@@ -64,7 +64,7 @@ const USAGE: &str = "\
 usage: req [--root <dir>] <command> [args]
 
   bench [corpus.yml]              the FMR gate (default: bench/corpus/parity.yml)
-  canon                           the derived parse and each pin's verdict (diagnostics)
+  canon [--format text|json]      the derived parse and each pin's verdict (diagnostics)
   compare <a.yml> <b.yml>         what kind of change is this between two claims?
   diff --base <rev> [...]         what changed in meaning between two revisions (ADR 0026)
   pin --verify <file>             the corpus is exactly the commit a consumer pinned (ADR 0033)
@@ -190,7 +190,7 @@ denominator). A run that found a defect is 1 even when it was degraded.
 `docs/adopting.md` for the loop.";
 
 const CANON_HELP: &str = "\
-usage: req canon [--fail-on-flag] [--by-area]
+usage: req canon [--fail-on-flag] [--by-area] [--format text|json]
 
 Prints, per claim, the parse its `statement` derives — structured or unstructured, modality,
 subject, operator, value, unit, and the lints the canonicalizer raised — and each pin's
@@ -242,10 +242,28 @@ malformed `.req/areas` is refused before anything is printed (exit 3); plain `re
 read it. It is placement only, so it changes no parse and no address; plain `req canon` output is
 byte-for-byte unchanged.
 
+`--format json` prints the `req.canon/1` document on stdout instead of the lines (`--format text` is the
+default, byte for byte the bare command). One compact JSON line and a trailing newline, with no float and no
+unordered map, so two runs are byte-identical. Its keys are `schema`, `generator` (`canon`), `rules_v` and
+`claims`: one object per claim, ordered by `claim_id`, holding in this order `claim_id`; `address`
+(`sha256:<hex>`, as `req trace --format json` spells it); `structured` (false exactly when the statement
+takes the unstructured fallback); `form`, the claim's canonical form as the JSON object of its canonical bytes
+(docs/canonical-hashing.md T1.9, the bytes the address hashes, parsed and not re-rendered); `lints`, an array of
+`{code, detail}` in the order the canonicalizer raised them; `pins`, an array of
+`{key, pinned, verdict, derived}` in the order `pins:` lists them, where `verdict` is `agrees`,
+`contradiction` or `not_carried` and `derived` is the parse's value for a contradiction and `null` otherwise
+(`[]` for a claim that pins nothing); `area` (`null` when absent); and `kind` and `fields` as `req trace
+--format json` renders them (`null` and `{}` when absent). Nothing else is in it: no statement, rationale,
+relations, tests, Baseline or decision. It shows what is derived and writes nothing (ADR 0022). `--format`
+never changes an exit code: `--fail-on-flag` works under both formats and still prints the whole document
+before it exits 1. `--format json` with `--by-area` is a usage error (the area summary stays text-only). A
+corpus that cannot be read is exit 3 with the text's message on stderr and **nothing on stdout**; a malformed
+`.req/kinds/` declaration is exit 2 before the command runs, as for every command.
+
 exit: 0 diagnostics reported — not a pass: it reports, and it never gates; with `--fail-on-flag`,
 0 means no pin is flagged and 1 means at least one is; 3 a registry or claim file that cannot be
-read (or is NOT JUDGED), including `.req/areas` with `--by-area`; 2 usage, including `--fill` and
-`--verify`.
+read (or is NOT JUDGED), including `.req/areas` with `--by-area`; 2 usage, including `--fill`,
+`--verify`, an unknown `--format` value and `--format json --by-area`.
 
 `docs/adopting.md` for the loop.";
 
@@ -1001,29 +1019,41 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "canon",
         run: |args, corpus| {
+            const USAGE: &str =
+                "usage: req canon [--fail-on-flag] [--by-area] [--format text|json]";
+            let (format, args) = match format::take_format(args, USAGE) {
+                Ok(parsed) => parsed,
+                Err(code) => return code,
+            };
             let (mut fail_on_flag, mut by_area) = (false, false);
-            for arg in args {
+            for arg in &args {
                 match arg.as_str() {
                     "--fail-on-flag" if !fail_on_flag => fail_on_flag = true,
                     "--by-area" if !by_area => by_area = true,
                     // Removed in `req.claim/2` (ADR 0022): there is nothing stored to write or check.
                     "--fill" | "--verify" => {
-                        eprintln!(
-                            "{}\nusage: req canon [--fail-on-flag] [--by-area]",
-                            canon::FILL_VERIFY_REMOVED
-                        );
+                        eprintln!("{}\n{USAGE}", canon::FILL_VERIFY_REMOVED);
                         return 2;
                     }
                     other => {
-                        eprintln!(
-                            "unrecognized or repeated flag: {other}\n\
-                             usage: req canon [--fail-on-flag] [--by-area]"
-                        );
+                        eprintln!("unrecognized or repeated flag: {other}\n{USAGE}");
                         return 2;
                     }
                 }
             }
-            canon::run_claim_diagnostics_with_options(corpus, fail_on_flag, by_area)
+            match format {
+                format::Format::Text => {
+                    canon::run_claim_diagnostics_with_options(corpus, fail_on_flag, by_area)
+                }
+                format::Format::Json if by_area => {
+                    eprintln!(
+                        "{USAGE}\n`--by-area` has no JSON rendering: `--format json` with `--by-area` is a \
+                         usage error (the area summary stays text-only)"
+                    );
+                    2
+                }
+                format::Format::Json => canon::run_claim_diagnostics_json(corpus, fail_on_flag),
+            }
         },
         help: CANON_HELP,
         loads_claims: true,
