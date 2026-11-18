@@ -142,10 +142,14 @@ lint or Tier-2. A rule that *might* change meaning is not a Tier-1 rule.
 - **T1.9 Assembly + digest** — fixed schema
   ``{action, applicability, conditions, exception, modality, operator, qualifier, raw,
   subject, temporal, unstructured, unit, value}``: every key always present (null when
-  unset), **valid JSON with sorted keys**, no insignificant whitespace, canonical number
+  unset), **valid JSON with its keys in exactly this order**, no insignificant whitespace, canonical number
   format (``value`` is a decimal string, or — for the operator ``IN`` only — a sorted array of
   member strings) → canonical form bytes →
   ``address = sha256("req.claim.v1\0" || canonical_form_bytes)``.
+  - **The key order is frozen, and it is not a sort.** It is alphabetical except that
+    ``unstructured`` precedes ``unit``. An implementation that re-sorts the keys hashes
+    different bytes for every claim, so every address would split; the order above is the
+    contract (`tests/canonical_form.rs` reads it from this list and from the raw bytes).
   - **`applicability` is an input, not a derivation.** The statement carries no formal
     selector syntax yet (ADR 0003 defers it), so the form takes the sorted authored list.
     Rules v5 — before that the form had **no applicability field at all**, which meant two
