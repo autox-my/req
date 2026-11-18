@@ -15,15 +15,16 @@ a build of the revision that introduced it.
 req is deliberately not published to crates.io (`publish = false`), so **the rev is the provenance**: you pin a
 commit. A release also has a semantic version and is tagged `v<VERSION>` (ADR 0055), which names it for a reader and
 builds the download URL; it is never the proof. Two ways honour the pin: a **prebuilt, checksummed binary** for the
-rev (below; five releases exist so far) and a **build from source** at the rev ([From source](#from-source)).
+rev (below; six releases exist so far) and a **build from source** at the rev ([From source](#from-source)).
 
-> **Status: five releases exist. The newest is `v0.5.0` (rev `ddcd056`, both targets, 2026-11-17), the first versioned
-> release and the one `examples/install-req.sh` on `main` installs; the four before it are tagged `rev-<REV>` and count as
+> **Status: six releases exist. The newest is `v0.6.0` (rev `161c336`, both targets, 2026-11-18), the first that reads
+> `req.claim/4` and writes Baseline envelope v5; `v0.5.0` (rev `ddcd056`, 2026-11-17) was the first versioned release.
+> `examples/install-req.sh` on `main` downloads `v<VERSION>` releases; the four before them are tagged `rev-<REV>` and count as
 > 0.1 to 0.4 (ADR 0055 decision 8). `rev-ec87808` (Linux x86_64 only), `rev-6b74f51` and `rev-aeaf987` (Linux x86_64
 > and macOS arm64, Apple silicon only; no Intel Mac, no native Windows: see [Windows](#windows)) predate `req.claim/3`;
 > for those use [From source](#from-source) if your corpus is at that schema. **`rev-3294a46` is the first release
-> that reads `req.claim/3`** (the schema `req init` wrote then; this build's `req init` writes `req.claim/4`, which no release
-> above reads), so the prebuilt path works for a corpus at `req.claim/3` without a toolchain: it holds both targets, built by the release workflow's own jobs (dispatched 2026-11-16). It is
+> that reads `req.claim/3`** (the schema `req init` wrote then; `req init` now writes `req.claim/4`, which `v0.6.0` is the first
+> release to read), so the prebuilt path works for a corpus at `req.claim/3` without a toolchain: it holds both targets, built by the release workflow's own jobs (dispatched 2026-11-16). It is
 > not today's `main`: `req --version`'s `built from` says which commit a binary is, and a command added after that
 > rev is not in it. A `rev-*` release is downloaded from `rev-<REV>`, so take `examples/install-req.sh` from the
 > checkout at that rev (its pin table has no `VERSION`); the script on `main` downloads `v<VERSION>` releases only.
@@ -518,7 +519,7 @@ including the tri-state — and `req <command> --help` works before a corpus exi
    *contradiction* (the parse says something else) or *not carried* (the parse holds no such
    value); there is no third category. A flagged pin moves no address; `req gate` fails on it
    (`pins_hold`, exit 1). A pin is **attested by an envelope v5 Baseline** (`pins_hash`, ADR 0056): deleting
-   or editing one after signing is FAIL. A v3 or v4 manifest (the released v0.5.0 build writes v4) does not attest
+   or editing one after signing is FAIL. A v3 or v4 manifest (the v0.5.0 release writes v4; v0.6.0 writes v5) does not attest
    pins, so such a manifest still verifies after a pin is deleted; it says once that it predates v5.
 3. **Values are canonical SI.** `within 200 ms` parses to `value "0.2"`, `unit s`: pin the exact
    decimal string the parser derives, not the units the prose used. `unit: ms` is a contradiction,
@@ -620,7 +621,7 @@ req baseline --verify baselines/release.json    # [VERIFIED] once signed, "not y
   (the `kind` and every field, ADR 0056) and `pins_hash` (the pins the author wrote), so editing a field or a
   kind, or deleting or editing a pin, after signing is **FAIL**, and the failure names the surface
   (`the fields`, `the pins`) and says the manifest's own signature verified. A v3 or v4 manifest (the released
-  v0.5.0 build writes v4) still verifies and says **once** that it predates v5: its fields and pins are *not
+  v0.5.0 release writes v4) still verifies and says **once** that it predates v5: its fields and pins are *not
   attested*. Re-emit and re-sign as v5 once your build reads it. The declarations in `.req/kinds/` are not
   attested.
 - **A `rules_v` mismatch is UNVERIFIABLE** with the re-sign remedy: an address is derived from the rules
