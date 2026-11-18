@@ -50,6 +50,7 @@ flowchart LR
         RA["rationale: source, date, alternatives, assumptions"]
         TE["tests + evidence (machine | process)"]
         PI["pins (optional): modality, subject, operator, value, unit"]
+        KF["kind + fields (optional, outside identity)"]
     end
     subgraph DER["derived at load, stored nowhere"]
         PA["parse: modality, subject, operator, value, unit"]
@@ -58,17 +59,21 @@ flowchart LR
     end
     S --> PA --> CF --> AD
     PI -. "must agree with" .-> PA
-    subgraph BASE["attested by a signed Baseline (envelope v4)"]
+    subgraph BASE["attested by a signed Baseline (envelope v5)"]
         B1["address"]
         B2["relations_hash"]
         B3["rationale_hash"]
         B4["tests_hash (evidence mode + sorted test ids)"]
+        B5["fields_hash (kind + typed fields, ADR 0056)"]
+        B6["pins_hash (the pins as authored, ADR 0056)"]
     end
     AD --> B1
     RL --> B2
     RA --> B3
     TE --> B4
-    PI -. "NOT attested (named loss, ADR 0022)" .-x BASE
+    KF --> B5
+    PI --> B6
+    KD[".req/kinds/ declarations"] -. "NOT attested (named loss, ADR 0056)" .-x BASE
 ```
 
 The address is a **meaning fingerprint**: two wordings with the same canonical meaning share it, and a

@@ -2067,7 +2067,8 @@ pub struct LoadedClaim {
     pub derived: Derived,
     /// The claim's `fields` judged against its kind's declaration (ADR 0056), sorted by name: the declared
     /// type with the value in canonical text, one per carried field and none for an absent one. Outside
-    /// identity, and hashed by nothing in this build.
+    /// identity: it is what [`crate::model::fields_digest`] hashes, with the kind, into the Baseline's
+    /// `fields_hash` (envelope v5, ADR 0056), and no address reads it.
     pub fields: Vec<crate::kinds::JudgedField>,
 }
 

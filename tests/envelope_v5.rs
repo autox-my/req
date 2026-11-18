@@ -111,6 +111,33 @@ fn the_fields_digest_matches_an_independent_oracle() {
     );
 }
 
+/// A string value is written as `serde_json` writes it, and the bytes are part of what a signature
+/// covers, so they are pinned: **non-ASCII text is written as raw UTF-8, never as `\uXXXX`**, a quote and
+/// a backslash are escaped (`\"`, `\\`), and no other character is. The oracle is Python's
+/// `json.dumps(value, ensure_ascii=False)` over the ADR's compact JSON, hashed with `hashlib`:
+///
+/// ```text
+/// {"kind":"safety","fields":{"path":{"type":"string","value":"C:\\temp \"x\""},"title":{"type":"string","value":"Längsbeschleunigung ≤ 2 m/s²"}}}
+/// ```
+///
+/// A later switch to a JSON writer that escapes non-ASCII (`ensure_ascii=True`, `\u00e4`) would give
+/// `cb74a7e3…` instead and move every signed fields digest holding such text: this test fails first.
+const NON_ASCII_DIGEST: &str = "d4e537f46ca7ee3dc03fc930e531b11370fa2a8ea0adc6c93f721ec6b138ef5c";
+
+#[test]
+fn string_values_are_written_as_raw_utf8_with_only_a_quote_and_a_backslash_escaped() {
+    let fields = [
+        field(
+            "title",
+            "string",
+            None,
+            text("Längsbeschleunigung ≤ 2 m/s²"),
+        ),
+        field("path", "string", None, text("C:\\temp \"x\"")),
+    ];
+    assert_eq!(fields_digest(Some("safety"), &fields), NON_ASCII_DIGEST);
+}
+
 #[test]
 fn the_fields_digest_does_not_depend_on_the_order_fields_or_list_elements_are_given_in() {
     let mut reordered = every_type();

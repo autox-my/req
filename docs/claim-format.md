@@ -199,7 +199,7 @@ fields:
 **Outside identity.** Neither key is an input to the canonical form, so a claim with a kind, without one, or with another value has
 one address and one canonical form; `derive` does not read them, `req selftest` and `req bench` do not move, and `RULES_V` stays 9.
 No text projection prints a field, no gate policy, selector, projection or exit code reads a value, and the only readers are the
-loader (validation), `req compare` (validation), `req canon` (display) and the findings F-3 adds. Two claims with the same statement
+loader (validation), `fields_hash` (the Baseline's digest, below), `req compare` (validation), `req canon` (display) and the findings F-3 adds. Two claims with the same statement
 and different fields share an address, as two that differ only in rationale do: the address is a drift signal and the `claim_id` is
 the identity. **The Baseline attests the kind and the fields from envelope v5** (`fields_hash`, ADR 0056 decision 6):
 `sha256("req.fields.v1\0" ‖ bytes)` over the compact JSON
