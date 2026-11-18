@@ -29,10 +29,12 @@ fn canonical_bytes_are_valid_json() {
     }
 }
 
-/// Every field the spec's T1.9 schema names must be present in the bytes, and the
-/// keys must be in sorted order (the spec's "JSON with sorted keys").
+/// Every field the spec's T1.9 schema names must be present in the bytes, **in the order
+/// the spec lists them**. That order is frozen and is not byte-sorted: `unstructured`
+/// precedes `unit`. The order is read from the raw bytes, never from a parsed
+/// `serde_json::Map`, which sorts its keys and so could not see it.
 #[test]
-fn canonical_bytes_carry_the_documented_schema_keys_sorted() {
+fn canonical_bytes_carry_the_documented_schema_keys_in_the_documented_order() {
     for json in cases() {
         let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         let obj = v.as_object().expect("a JSON object");
@@ -61,9 +63,69 @@ fn canonical_bytes_carry_the_documented_schema_keys_sorted() {
             );
         }
         assert_eq!(obj.len(), expected.len(), "unexpected field in {json}");
-        let keys: Vec<&String> = obj.keys().collect();
-        let mut sorted = keys.clone();
-        sorted.sort();
-        assert_eq!(keys, sorted, "keys are not sorted in {json}");
+        assert_eq!(
+            top_level_keys_in_byte_order(&json),
+            expected,
+            "keys are not in the T1.9 order in {json}"
+        );
+        assert_eq!(
+            expected.to_vec(),
+            documented_t19_keys(),
+            "the test's list is the one docs/canonical-hashing.md states"
+        );
     }
+}
+
+/// The top-level keys of a canonical form, in the order they appear in its bytes.
+fn top_level_keys_in_byte_order(json: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let (mut depth, mut in_string, mut escaped) = (0usize, false, false);
+    let mut current = String::new();
+    let mut expect_key = false;
+    for c in json.chars() {
+        if in_string {
+            if escaped {
+                escaped = false;
+                current.push(c);
+            } else if c == '\\' {
+                escaped = true;
+                current.push(c);
+            } else if c == '"' {
+                in_string = false;
+                if expect_key {
+                    keys.push(std::mem::take(&mut current));
+                    expect_key = false;
+                }
+                current.clear();
+            } else {
+                current.push(c);
+            }
+            continue;
+        }
+        match c {
+            '"' => in_string = true,
+            '{' | '[' => {
+                depth += 1;
+                expect_key = depth == 1 && c == '{';
+            }
+            '}' | ']' => depth -= 1,
+            ',' => expect_key = depth == 1,
+            _ => {}
+        }
+    }
+    keys
+}
+
+/// The T1.9 key list as `docs/canonical-hashing.md` writes it: ``{action, …, value}``.
+fn documented_t19_keys() -> Vec<String> {
+    let doc = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/canonical-hashing.md"),
+    )
+    .expect("reads docs/canonical-hashing.md");
+    let start = doc.find("``{action,").expect("the T1.9 schema list") + 3;
+    let end = start + doc[start..].find("}``").expect("the list ends");
+    doc[start..end]
+        .split(',')
+        .map(|k| k.trim().to_string())
+        .collect()
 }
