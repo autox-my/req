@@ -754,9 +754,18 @@ every address under the selection the manifest records, so a claim edited after 
 FAIL; an explicit context that contradicts the recorded selection is a usage error (exit 2),
 never drift. A v3-or-later manifest also attests the decision log's chain head at a position:
 a rewritten prefix or a truncated log is FAIL, decisions appended after it are not. A v4
-manifest attests each claim's `tests_hash` (its evidence declaration and links); a v3 one says
-once that it predates v4, so its tests are not attested — not a FAIL. A claim's `pins:` are not
-attested by any version (ADR 0022): deleting one after signing still verifies. A manifest whose `rules_v`
+manifest attests each claim's `tests_hash` (its evidence declaration and links); a v5 one adds a
+`fields_hash` (its `kind` and typed fields, ADR 0056) and a `pins_hash` (the pins the author wrote, never
+the verdict against the parse). A claim edited in any of them after signing is FAIL, and the failure
+names the surface that moved (`the fields`, `the pins`, ...), never a hash, and says once that the
+manifest's own signature verified: the manifest is as it was signed and the working tree moved. An older
+manifest still verifies over the bytes it was signed over, and says once what it predates — a v3 one
+`predates envelope v4` (its test links are not attested), a v3 or v4 one `predates envelope v5` (its
+fields and pins are not attested: a pin deleted or a field edited after signing is invisible to it) — a
+disclosure, not a FAIL. A v4 manifest that carries either new hash is verified as it was signed, so
+neither is judged. The declarations in `.req/kinds/` are not attested by any envelope (ADR 0056's named
+loss): editing a kind after signing changes no `fields_hash`; the witnesses are git history and the load-time
+refusal of a value the new declaration rejects. A manifest whose `rules_v`
 differs from this build's is UNVERIFIABLE, not judged: an older one is re-signed, a newer one
 is verified with a build that writes it. Trust is read from `baselines/trust.yml` (ADR 0010),
 by calendar date: a key expired at the signing time, or revoked at or before it, is FAIL; one

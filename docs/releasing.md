@@ -223,6 +223,26 @@ the `gh release create` line above, used when no release exists yet, gives a one
 There is no `--clobber` here, on purpose. If the Linux release for the same rev exists already, the release is
 simply reused, and the macOS names differ from the Linux ones, so the two paths never contend for a name.
 
+## After a release that moves the Baseline envelope (ADR 0056)
+
+A release whose notes say the **Baseline envelope** moved (here: v4 to v5, which attests each claim's `fields_hash` and
+`pins_hash`) leaves every committed manifest valid and `[VERIFIED]`, each saying once that it predates the new envelope
+(`predates envelope v5`: that surface is *not attested*). That is a disclosure and not a defect, and nothing blocks on it, so
+the step below is the owner's and is taken **after** the release, never before:
+
+1. Pin the release (the section below) and confirm the build that reads the new envelope is the one in use: a build that
+   does not know v5 reports a v5 manifest `[UNVERIFIABLE] manifest version 5 is newer than the version this build writes (4)`
+   and does not judge its signature, so the reader ships before the writer.
+2. Re-emit each manifest under `baselines/` with the released build (`req baseline --at <ts> [key=value …] --out <file>`, the
+   selection each one records), and re-sign it (`minisign -Sm <file>`; req never signs). A party's signature is
+   `<file>.<key-id>.minisig`, as before.
+3. Do it in a pull request of its own, with nothing else in it, so the diff is the manifests and their signatures. The trust
+   anchor is taken from `origin/main`, not the PR (rotation is two PRs); re-signing under the same key needs no rotation.
+
+Every adopter does the same for their manifests, in their own time: a v4 manifest keeps verifying. Because this build writes the
+new envelope by default, a consumer still pinned to an older build turns red on the first manifest it re-emits, which is why
+the pin moves with the release (ADR 0055 decision 7).
+
 ## What to pin in an adopter afterwards
 
 The `pin (<target>):` line the workflow prints: `VERSION=<VERSION> REV=<REV> SHA256=<hex> TARGET=<target>` (the script's

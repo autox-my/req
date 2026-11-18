@@ -55,6 +55,13 @@ pub const RATIONALE_TAG: &[u8] = b"req.rationale.v1\0";
 /// never trade hashes with the relations or rationale surfaces it sits beside.
 pub const TESTS_TAG: &[u8] = b"req.tests.v1\0";
 
+/// The claim's `kind` and typed fields' domain prefix (ADR 0056 decision 6): the fields digest must never
+/// trade hashes with another surface it sits beside.
+pub const FIELDS_TAG: &[u8] = b"req.fields.v1\0";
+
+/// The authored pins' domain prefix (ADR 0056 decision 7), for the same reason.
+pub const PINS_TAG: &[u8] = b"req.pins.v1\0";
+
 /// The relations as the manifest attests them: `sha256(RELATIONS_TAG ‖ serde_json::to_string(
 /// relations))` — **plain serde JSON** of the typed struct, fields in declaration order. Not
 /// `canon::canonical_json`, which normalizes numbers and strings and produces different bytes;
@@ -78,6 +85,90 @@ pub fn rationale_digest(rationale: &Rationale) -> String {
             .expect("Rationale serializes infallibly")
             .as_bytes(),
     )
+}
+
+/// A string as a JSON string literal, written by the JSON writer every other attested surface uses
+/// (`serde_json`): `"` and `\` and the control characters escaped, every other character verbatim UTF-8.
+fn json_text(text: &str) -> String {
+    serde_json::to_string(text).expect("a string serializes infallibly")
+}
+
+/// The claim's `kind` and fields as the manifest attests them (ADR 0056 decision 6):
+/// `sha256(FIELDS_TAG ‖ bytes)` over the compact JSON
+///
+/// ```text
+/// {"kind":<name or null>,"fields":{<name>:{"type":<type>[,"of":<type>],"value":<canonical value>},…}}
+/// ```
+///
+/// Field names sorted by byte and the keys of each object in the order shown; an `integer` and a
+/// `decimal` as their canonical **strings** (no number is parsed, so no float exists on this path), a `bool`
+/// as a JSON boolean, a `list` as the array of its canonical element texts **sorted by byte** (a list is a
+/// set, as `tests:` is: a meaningless reordering must not change what is attested); no whitespace.
+///
+/// A claim with no kind and no fields hashes `{"kind":null,"fields":{}}`, so every claim in a v5 manifest
+/// carries a digest and *adding* a kind later is a change. An absent field is not in the object, and an
+/// empty list is `"value":[]`: the two differ. The type tag rides in the hash, so a field redeclared as
+/// another type changes it.
+///
+/// Built from the **judged** fields ([`crate::kinds::JudgedField`]) and never from the raw YAML, so the
+/// spellings the loader normalises (`true`, `True`, `TRUE`) are one value. Deterministic: sorted
+/// sequences and a hand-written object writer, with no `HashMap` and no float.
+pub fn fields_digest(kind: Option<&str>, fields: &[crate::kinds::JudgedField]) -> String {
+    use crate::kinds::FieldValue;
+    let mut sorted: Vec<&crate::kinds::JudgedField> = fields.iter().collect();
+    sorted.sort_by(|a, b| a.name.cmp(&b.name));
+    let rendered: Vec<String> = sorted
+        .iter()
+        .map(|field| {
+            let of = field
+                .of
+                .map(|of| format!(",\"of\":{}", json_text(of)))
+                .unwrap_or_default();
+            let value = match &field.value {
+                FieldValue::Text(text) => json_text(text),
+                FieldValue::Bool(flag) => flag.to_string(),
+                FieldValue::List(items) => {
+                    let mut elements: Vec<&String> = items.iter().collect();
+                    elements.sort();
+                    format!(
+                        "[{}]",
+                        elements
+                            .iter()
+                            .map(|element| json_text(element))
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
+                }
+            };
+            format!(
+                "{}:{{\"type\":{}{of},\"value\":{value}}}",
+                json_text(&field.name),
+                json_text(field.type_name)
+            )
+        })
+        .collect();
+    let kind = kind.map_or_else(|| "null".to_string(), json_text);
+    let bytes = format!("{{\"kind\":{kind},\"fields\":{{{}}}}}", rendered.join(","));
+    crate::digest::sha256_hex_prefixed(FIELDS_TAG, bytes.as_bytes())
+}
+
+/// The authored pins as the manifest attests them (ADR 0056 decision 7): `sha256(PINS_TAG ‖ bytes)` over
+/// the compact JSON array of `[key, value]` pairs in [`Pins::entries`] order, only the keys present.
+/// `pins: {}` and no `pins:` are the same empty array `[]`.
+///
+/// It attests **what the author pinned**, never a verdict against the parse, which is derived at load: a
+/// pin edited to fit a parse, or deleted to silence a flag, is a change here (ADR 0022's named loss).
+pub fn pins_digest(pins: Option<&Pins>) -> String {
+    let entries = pins.map(Pins::entries).unwrap_or_default();
+    let bytes = format!(
+        "[{}]",
+        entries
+            .iter()
+            .map(|(key, value)| format!("[{},{}]", json_text(key), json_text(value)))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    crate::digest::sha256_hex_prefixed(PINS_TAG, bytes.as_bytes())
 }
 
 /// How a claim's evidence is established (ADR 0019).
