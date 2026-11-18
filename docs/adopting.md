@@ -22,8 +22,8 @@ rev (below; five releases exist so far) and a **build from source** at the rev (
 > 0.1 to 0.4 (ADR 0055 decision 8). `rev-ec87808` (Linux x86_64 only), `rev-6b74f51` and `rev-aeaf987` (Linux x86_64
 > and macOS arm64, Apple silicon only; no Intel Mac, no native Windows: see [Windows](#windows)) predate `req.claim/3`;
 > for those use [From source](#from-source) if your corpus is at that schema. **`rev-3294a46` is the first release
-> that reads `req.claim/3`**, the schema `req init` writes, so the prebuilt path works for a corpus at that schema
-> without a toolchain: it holds both targets, built by the release workflow's own jobs (dispatched 2026-11-16). It is
+> that reads `req.claim/3`** (the schema `req init` wrote then; this build's `req init` writes `req.claim/4`, which no release
+> above reads), so the prebuilt path works for a corpus at `req.claim/3` without a toolchain: it holds both targets, built by the release workflow's own jobs (dispatched 2026-11-16). It is
 > not today's `main`: `req --version`'s `built from` says which commit a binary is, and a command added after that
 > rev is not in it. A `rev-*` release is downloaded from `rev-<REV>`, so take `examples/install-req.sh` from the
 > checkout at that rev (its pin table has no `VERSION`); the script on `main` downloads `v<VERSION>` releases only.

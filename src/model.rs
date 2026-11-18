@@ -335,11 +335,11 @@ pub struct ClaimFile {
     /// What the claim must parse to, where the parse is load-bearing (optional; ADR 0022).
     #[serde(default)]
     pub pins: Option<Pins>,
-    /// The one place the claim is filed in the reader's layout (`req.claim/3`, ADR 0051): a path of
+    /// The one place the claim is filed in the reader's layout (`req.claim/3` and later, ADR 0051): a path of
     /// stable keys, `diagnostics/startup`. **Authored, optional and outside identity** — not an
     /// input to the canonical form and in no attested hash, so re-filing a claim moves no address
-    /// and needs no signature. Judged at load by [`validate_area`] and, because only `req.claim/3`
-    /// carries it, by [`crate::canon::parse_claim`] against the declared format.
+    /// and needs no signature. Judged at load by [`validate_area`] and, because `req.claim/2` may not
+    /// carry it (`/3` and `/4` do), by [`crate::canon::parse_claim`] against the declared format.
     ///
     /// Not serialised when absent: the serialisation of a claim without an area is the one it had
     /// before the key existed.

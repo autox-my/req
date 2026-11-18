@@ -1310,6 +1310,22 @@ pub fn run(args: &[String], root: &Path) -> i32 {
         Ok(options) => options,
         Err(code) => return code,
     };
+    // With no `--head` the head side is the working tree, which this command reads directly: a malformed declaration
+    // there is decision 2's exit 2, as under every other command. A staged revision is ADR 0026 §3's side that fails to
+    // load, exit 3, and stays so.
+    if options.head.is_none()
+        && let Err(error) = crate::kinds::Declarations::read(root)
+        && error.exit_code() == 2
+    {
+        for message in error.messages() {
+            eprintln!("{message}");
+        }
+        eprintln!(
+            "nothing was compared: a malformed `{}` is refused, never read around",
+            crate::kinds::KINDS_DIR
+        );
+        return 2;
+    }
     match produce(&options, root) {
         Ok(output) => {
             let (text, exit) = output;

@@ -98,6 +98,13 @@ pub fn run(args: &[String], cli_root: Option<&Path>) -> i32 {
         eprintln!("usage: req init\nunexpected argument: {arg}");
         return 2;
     }
+    // `init` loads the claims it wrote back through the loader, which reads `.req/kinds/` (ADR 0056 decision 2). It is
+    // answered before the command table, so it holds the exit-2 class for a malformed declaration here, as every command
+    // in the table does through `Command::loads_claims`: judged first, so nothing is written for a corpus that cannot
+    // be read.
+    if let Some(code) = crate::kinds::precheck(Path::new(".")) {
+        return code;
+    }
     match init_at(Path::new(".")) {
         Ok(()) => {
             print_next_steps();

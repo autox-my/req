@@ -826,7 +826,8 @@ per-variant rule, and where a req bug is reported.
 exit: 0 created, 1 refused (`claims/` or `aliases/subjects.yml` already exists, or `aliases`
 is a symlink), 3 UNVERIFIABLE (the starter claim's pins do not hold, or the target cannot
 be written — whatever it wrote is removed), 2 usage (an argument, or `--root`: run `init`
-where the corpus should live).
+where the corpus should live) or a malformed `.req/kinds/` declaration in the current directory,
+judged first so nothing is written (ADR 0056).
 
 `docs/adopting.md` for the loop.";
 

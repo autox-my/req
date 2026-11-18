@@ -1206,12 +1206,15 @@ fn a_malformed_declaration_at_a_staged_revision_is_exit_3_naming_the_file_and_th
         out.all()
     );
     assert!(
-        out.all().contains("safety.yml") && out.all().contains("head"),
+        out.all().contains("head:.req/kinds/safety.yml"),
         "names the file and the revision:\n{}",
         out.all()
     );
+    // The staging directory is `req-baseline-<pid>-…` (`baseline::staging_dir_name`). The scratch repository's own
+    // root is printed on the `corpus root:` line and may sit under any temporary directory, so the test names the
+    // staging directory and never the location of `$TMPDIR`.
     assert!(
-        !out.all().contains("tmp"),
+        !out.all().contains("req-baseline-"),
         "never the staging path:\n{}",
         out.all()
     );
@@ -1227,4 +1230,162 @@ fn a_malformed_declaration_at_a_staged_revision_is_exit_3_naming_the_file_and_th
         "{}",
         out.all()
     );
+}
+
+#[test]
+fn a_malformed_declaration_in_the_working_tree_is_exit_2_for_diff_and_a_staged_one_stays_3() {
+    // ADR 0056 decision 8: exit 3 is for a staged revision; decision 2's exit 2 is for the working tree a command
+    // reads directly. `req diff` with no `--head` reads the working tree as its head side.
+    let s = kinded_repo("diff-working-tree");
+    s.write(".req/kinds/safety.yml", &format!("{SAFETY}colour: red\n"));
+    let out = s.req(&["diff", "--base", "base"]);
+    assert_eq!(
+        out.code,
+        2,
+        "the working tree's bad declaration: {}",
+        out.all()
+    );
+    assert!(
+        out.all().contains("safety.yml") && out.all().contains("colour"),
+        "{}",
+        out.all()
+    );
+
+    // The same file, staged at a revision, is the side failing to load.
+    commit(&s, "head");
+    fs::write(s.path().join(".req/kinds/safety.yml"), SAFETY).expect("repairs the working tree");
+    let out = s.req(&["diff", "--base", "base", "--head", "head"]);
+    assert_eq!(out.code, 3, "{}", out.all());
+    // And a repaired working tree against a clean base is not refused.
+    let out = s.req(&["diff", "--base", "base"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+
+    // A newer declaration in the working tree is NOT JUDGED, exit 3, as it is everywhere else.
+    s.write(
+        ".req/kinds/safety.yml",
+        &SAFETY.replace("req.kind/1", "req.kind/2"),
+    );
+    let out = s.req(&["diff", "--base", "base"]);
+    assert_eq!(out.code, 3, "{}", out.all());
+}
+
+#[test]
+fn req_init_reads_a_malformed_declaration_as_exit_2_and_writes_nothing() {
+    let dir = std::env::temp_dir().join(format!("req-kinds-init-malformed-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join(".req/kinds")).expect("makes the dir");
+    fs::write(
+        dir.join(".req/kinds/safety.yml"),
+        "schema: req.kind/1\ndefault: x\nfields: {}\n",
+    )
+    .expect("writes a malformed declaration");
+    let out = run(&dir, &["init"]);
+    assert_eq!(
+        out.code,
+        2,
+        "init loads claims, so it holds the same class as canon:\n{}",
+        out.all()
+    );
+    assert!(
+        out.all().contains("safety.yml") && out.all().contains("default"),
+        "{}",
+        out.all()
+    );
+    assert!(
+        !dir.join("claims").exists() && !dir.join("aliases").exists(),
+        "nothing was written"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// The modules of `src/` that call the loader (`load_claims` or `load_rows`) directly, and the subcommand(s) that
+/// reach each one — **the table a new caller must join**. A subcommand that loads claims must hold the exit-2 class
+/// for a malformed declaration (spec F-1 choice 2: no caller folds 2 into 3), which is `Command::loads_claims` in
+/// `src/main.rs` (and, for `init`, which is answered before the table, `kinds::precheck` in `src/init.rs`).
+const LOADER_CALLERS: &[(&str, &[&str])] = &[
+    ("audit.rs", &["audit"]),
+    ("baseline.rs", &["baseline"]),
+    ("canon.rs", &["canon"]),
+    ("completeness.rs", &["check"]),
+    ("contradict.rs", &["gate", "check"]),
+    ("gate.rs", &["gate", "check"]),
+    ("impact.rs", &["impact"]),
+    ("satisfy.rs", &["satisfy"]),
+    ("select.rs", &["select"]),
+    ("view.rs", &["render", "trace", "check"]),
+    // `diff` reads each staged revision's declarations itself, and the working tree through `produce`.
+    ("diff.rs", &[]),
+    ("init.rs", &["init"]),
+];
+
+#[test]
+fn every_subcommand_whose_implementation_loads_claims_holds_the_exit_2_class() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let main = fs::read_to_string(src.join("main.rs")).expect("reads main.rs");
+    // The table's entries: name -> loads_claims.
+    let mut table: std::collections::BTreeMap<String, bool> = std::collections::BTreeMap::new();
+    let lines: Vec<&str> = main.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        let Some(name) = line
+            .trim()
+            .strip_prefix("name: \"")
+            .and_then(|rest| rest.strip_suffix("\","))
+        else {
+            continue;
+        };
+        // The entry runs to the next `name:` line: a handler may span many lines (`compare`, `canon`).
+        let flag = lines[i + 1..]
+            .iter()
+            .take_while(|l| !l.trim().starts_with("name: \""))
+            .find_map(|l| l.trim().strip_prefix("loads_claims: "))
+            .unwrap_or_else(|| panic!("`{name}` has no loads_claims entry"));
+        table.insert(name.to_string(), flag.trim_end_matches(',') == "true");
+    }
+    assert!(table.len() >= 15, "the table was found: {table:?}");
+
+    // (a) A module that calls the loader but is not classified fails: a new caller must join LOADER_CALLERS.
+    let known: Vec<&str> = LOADER_CALLERS.iter().map(|(file, _)| *file).collect();
+    for entry in fs::read_dir(&src).expect("reads src/") {
+        let path = entry.expect("an entry").path();
+        let Some(file) = path.file_name().and_then(|f| f.to_str()) else {
+            continue;
+        };
+        if file == "kinds.rs" || path.extension().is_none_or(|e| e != "rs") {
+            continue;
+        }
+        let text = fs::read_to_string(&path).expect("reads a module");
+        // A call, not a definition or a doc mention.
+        let calls = text.lines().any(|l| {
+            let t = l.trim_start();
+            !t.starts_with("//")
+                && !t.starts_with("pub fn load_")
+                && (t.contains("load_claims(") || t.contains("load_rows("))
+        });
+        if calls {
+            assert!(
+                known.contains(&file),
+                "src/{file} calls the claim loader: add it to LOADER_CALLERS with the subcommands that reach it, \
+                 and make sure each holds the exit-2 class (`loads_claims: true`)"
+            );
+        }
+    }
+    // (b) Every subcommand that reaches a loader caller is in the table with `loads_claims: true`; `init` is
+    // answered before the table and calls the precheck itself.
+    for (file, commands) in LOADER_CALLERS {
+        for command in *commands {
+            if *command == "init" {
+                let init = fs::read_to_string(src.join("init.rs")).expect("reads init.rs");
+                assert!(
+                    init.contains("kinds::precheck("),
+                    "init must call kinds::precheck"
+                );
+                continue;
+            }
+            assert_eq!(
+                table.get(*command),
+                Some(&true),
+                "`{command}` reaches the loader through src/{file}: it needs `loads_claims: true`"
+            );
+        }
+    }
 }

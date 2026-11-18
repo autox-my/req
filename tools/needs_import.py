@@ -1128,7 +1128,8 @@ def read_axes(areas=False):
     The schema a draft declares is `DRAFT_SCHEMA`, always — never the one the binary reports (a
     draft with an area declares `AREA_SCHEMA`, see `render_claim`). The reported `claim_schema` only
     decides whether this tool may draft against that build at all (`ACCEPTED_SCHEMAS`); with
-    `areas` it must be `AREA_SCHEMA`, since a `req.claim/2` build would refuse `area`.
+    `areas` it must be one of `AREA_ACCEPTED_SCHEMAS` (`AREA_SCHEMA` or a `req.claim/4` build, which loads it as it is), since a
+    `req.claim/2` build would refuse `area`.
     `rules_v` is the rules version the drafts' parse is derived under (reported)."""
     binary = req_binary()
     try:
