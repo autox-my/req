@@ -23,7 +23,7 @@
 //!
 //! # The starter claim is derived by the real path, and asserted green
 //!
-//! A claim (`req.claim/2` or `/3`) carries nothing derived (ADR 0022): `init` writes the authored fields
+//! A claim (`req.claim/2`, `/3` or `/4`) carries nothing derived (ADR 0022): `init` writes the authored fields
 //! only — statement, applicability, relations, rationale, and a `pins:` block stating what the
 //! statement must parse to — and then reads the corpus back through [`load_claims`], the loader
 //! every other command uses, which derives the parse, the form and the address and judges the
@@ -97,6 +97,13 @@ pub fn run(args: &[String], cli_root: Option<&Path>) -> i32 {
     if let Some(arg) = args.first() {
         eprintln!("usage: req init\nunexpected argument: {arg}");
         return 2;
+    }
+    // `init` loads the claims it wrote back through the loader, which reads `.req/kinds/` (ADR 0056 decision 2). It is
+    // answered before the command table, so it holds the exit-2 class for a malformed declaration here, as every command
+    // in the table does through `Command::loads_claims`: judged first, so nothing is written for a corpus that cannot
+    // be read.
+    if let Some(code) = crate::kinds::precheck(Path::new(".")) {
+        return code;
     }
     match init_at(Path::new(".")) {
         Ok(()) => {
@@ -699,7 +706,7 @@ jobs:
 /// text: nothing here is derived from the corpus, so it cannot drift from what was written.
 const CLAIMS_README_TEMPLATE: &str = r#"# claims/ — this project's requirement corpus
 
-One claim per file, in the req claim-file format (`req.claim/3`). The file name is the
+One claim per file, in the req claim-file format (`req.claim/4`). The file name is the
 `claim_id` it declares (`REQ-0001.yml`), the corpus is flat, and this README is not a claim
 (it is not claim-shaped, so the loader leaves it alone).
 

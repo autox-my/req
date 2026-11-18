@@ -214,6 +214,28 @@ fn cargo(version: &str) -> (&'static str, String) {
     )
 }
 
+/// `constants`, and the `READS_AS_IS` list of `src/canon.rs` as the released rev writes it
+/// (`pub const READS_AS_IS: &[u32] = &[2, 3];`, ADR 0056 *Consequences*).
+fn constants_reading(
+    rules: u32,
+    schema: u32,
+    envelope: u32,
+    reads_as_is: &[u32],
+) -> [(&'static str, String); 2] {
+    let list: Vec<String> = reads_as_is.iter().map(u32::to_string).collect();
+    let [(canon, canon_text), baseline] = constants(rules, schema, envelope);
+    [
+        (
+            canon,
+            format!(
+                "{canon_text}pub const READS_AS_IS: &[u32] = &[{}];\n",
+                list.join(", ")
+            ),
+        ),
+        baseline,
+    ]
+}
+
 /// A world with a first release tagged, then `rules` etc. at the new rev. Returns (world, new full sha).
 fn released(old: (u32, u32, u32), new: (u32, u32, u32)) -> (World, String) {
     let w = World::new();
@@ -413,17 +435,75 @@ fn a_rules_version_bump_says_what_an_adopter_must_do() {
 
 #[test]
 fn a_claim_schema_or_envelope_change_is_named_separately() {
-    let (w, head) = released((7, 2, 4), (7, 3, 5));
+    // `/2 -> /3`: the released rev reads `/2` as it is (ADR 0051), so the line says that and not NOT JUDGED.
+    let (w, head) = released_reading((7, 2, 4), &[], (7, 3, 5), &[2]);
     let text = w.text(&head);
     assert!(
         text.contains("claim schema req.claim/2 → req.claim/3"),
         "{text}"
     );
+    assert!(text.contains("loaded as it is"), "{text}");
     assert!(text.contains("baseline envelope 4 → 5"), "{text}");
     assert!(
         !text.contains("rules_v 7 → 7"),
         "an unmoved value is not an arrow: {text}"
     );
+}
+
+/// A world whose previous release declares `old` and whose new rev declares `new`, with the list of
+/// formats the **new** rev loads as they are (the released rev's list, never the previous one's).
+fn released_reading(
+    old: (u32, u32, u32),
+    old_list: &[u32],
+    new: (u32, u32, u32),
+    new_list: &[u32],
+) -> (World, String) {
+    let w = World::new();
+    w.set(&constants_reading(old.0, old.1, old.2, old_list));
+    let first = w.commit("initial");
+    w.tag(&format!("rev-{}", &first[..7]));
+    w.set(&constants_reading(new.0, new.1, new.2, new_list));
+    let head = w.commit("the new rev");
+    (w, head)
+}
+
+#[test]
+fn a_previous_schema_the_released_rev_reads_as_is_is_not_called_not_judged() {
+    // ADR 0056, falsification 13: `/3 -> /4` with `READS_AS_IS = [2, 3]` at the released rev says "loaded as it
+    // is", and never that the old schema is NOT JUDGED.
+    let (w, head) = released_reading((9, 3, 4), &[2], (9, 4, 5), &[2, 3]);
+    let text = w.text(&head);
+    assert!(
+        text.contains("claim schema req.claim/3 → req.claim/4"),
+        "{text}"
+    );
+    assert!(text.contains("loaded as it is"), "{text}");
+    assert!(
+        !text.contains("NOT JUDGED"),
+        "a /3 file is loaded as it is by this build: {text}"
+    );
+}
+
+#[test]
+fn a_previous_schema_the_released_rev_does_not_read_as_is_is_not_judged() {
+    let (w, head) = released_reading((9, 1, 4), &[], (9, 3, 4), &[2]);
+    let text = w.text(&head);
+    assert!(
+        text.contains("claim schema req.claim/1 → req.claim/3"),
+        "{text}"
+    );
+    assert!(text.contains("NOT JUDGED"), "{text}");
+    assert!(!text.contains("loaded as it is"), "{text}");
+}
+
+#[test]
+fn the_list_is_read_at_the_released_rev_not_at_the_previous_one() {
+    // The previous rev lists `[3]`, the released rev lists `[2]`: a `/3` file is NOT JUDGED by the released
+    // build. Reading the previous rev's list would print the false "loaded as it is".
+    let (w, head) = released_reading((9, 3, 4), &[3], (9, 5, 4), &[2]);
+    let text = w.text(&head);
+    assert!(text.contains("NOT JUDGED"), "{text}");
+    assert!(!text.contains("loaded as it is"), "{text}");
 }
 
 #[test]

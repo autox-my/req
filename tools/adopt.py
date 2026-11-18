@@ -44,7 +44,7 @@ Exit codes, the same three-state discipline as req:
 Nothing derived is ever written, and no pin is guessed. This tool drafts `req.claim/2` claims
 only (`DRAFT_SCHEMA`), whatever the build writes: it asks `req --version` which schema the binary
 reports and refuses (UNVERIFIABLE, exit 3) any it cannot draft against (`ACCEPTED_SCHEMAS`:
-`req.claim/2`, and `req.claim/3`, which loads a `/2` draft as it is), so a format bump fails loud
+`req.claim/2`, and `req.claim/3` and `req.claim/4`, which load a `/2` draft as it is), so a format bump fails loud
 instead of leaving this template behind; the report names the build's `rules_v` it ran against.
 """
 import argparse
@@ -83,11 +83,11 @@ VERSION_SCHEMA_RE = re.compile(r"^[ \t]*claim_schema[ \t]+(?P<value>\S+)[ \t]*$"
 CLAIM_SCHEMA_RE = re.compile(r"^req\.claim/\d+$")
 # The one schema `CLAIM_TEMPLATE` writes; a binary reporting another cannot load the draft.
 DRAFT_SCHEMA = "req.claim/2"
-# The schemas a `req` may report for this tool to draft against (ADR 0051 decision 6): a `req.claim/3`
-# build loads a `req.claim/2` draft as it is, and the draft carries no area, so the tool keeps
-# drafting `DRAFT_SCHEMA` and accepts either. Any other value is refused. A later format that keeps
-# `req.claim/2` readable is added here deliberately, not discovered.
-ACCEPTED_SCHEMAS = (DRAFT_SCHEMA, "req.claim/3")
+# The schemas a `req` may report for this tool to draft against (ADR 0051 decision 6, ADR 0056 decision 1): a
+# `req.claim/3` or `req.claim/4` build loads a `req.claim/2` draft as it is, and the draft carries no area, kind or
+# fields, so the tool keeps drafting `DRAFT_SCHEMA` and accepts any of them. Any other value is refused. A later
+# format that keeps `req.claim/2` readable is added here deliberately, not discovered.
+ACCEPTED_SCHEMAS = (DRAFT_SCHEMA, "req.claim/3", "req.claim/4")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 CLAIMS_DIR = "claims"

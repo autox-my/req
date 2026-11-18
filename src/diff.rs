@@ -392,7 +392,11 @@ struct TreeEntry {
     oid: String,
 }
 
-/// List `claims/` and `aliases/` of a revision's corpus tree. Only regular files are accepted: a
+/// The kind declarations' path in a corpus, staged beside `claims/` and `aliases/` (ADR 0056 decision 8): each side
+/// is judged by its own declarations.
+const KINDS_PATH: &str = ".req/kinds";
+
+/// List `claims/`, `aliases/` and `.req/kinds/` of a revision's corpus tree. Only regular files are accepted: a
 /// symlink would let a revision point the loader at any file this process can read, and a
 /// submodule is not a claim.
 fn list_corpus(root: &Path, revision: &Revision, prefix: &str) -> Result<Vec<TreeEntry>, String> {
@@ -409,6 +413,7 @@ fn list_corpus(root: &Path, revision: &Revision, prefix: &str) -> Result<Vec<Tre
             "--",
             "claims",
             "aliases",
+            KINDS_PATH,
         ],
     )
     .map_err(|first| {
@@ -434,9 +439,12 @@ fn list_corpus(root: &Path, revision: &Revision, prefix: &str) -> Result<Vec<Tre
         let [mode, kind, oid] = fields.as_slice() else {
             return Err(format!("unreadable `git ls-tree` record: {record:?}"));
         };
-        if !(path.starts_with("claims/") || path.starts_with("aliases/")) {
+        if !(path.starts_with("claims/")
+            || path.starts_with("aliases/")
+            || path.starts_with(".req/kinds/"))
+        {
             return Err(format!(
-                "{}: {path:?} is not a directory — `claims/` and `aliases/` are directories",
+                "{}: {path:?} is not a directory — `claims/`, `aliases/` and `.req/kinds/` are directories",
                 revision.label
             ));
         }
@@ -539,7 +547,7 @@ fn parse_batch(bytes: &[u8], oids: &[&str]) -> Result<Vec<Vec<u8>>, String> {
     Ok(blobs)
 }
 
-/// Write a revision's `claims/` and `aliases/` under `dest`, and return how many entries were
+/// Write a revision's `claims/`, `aliases/` and `.req/kinds/` under `dest`, and return how many entries were
 /// written.
 fn materialise(
     root: &Path,
@@ -1302,6 +1310,22 @@ pub fn run(args: &[String], root: &Path) -> i32 {
         Ok(options) => options,
         Err(code) => return code,
     };
+    // With no `--head` the head side is the working tree, which this command reads directly: a malformed declaration
+    // there is decision 2's exit 2, as under every other command. A staged revision is ADR 0026 §3's side that fails to
+    // load, exit 3, and stays so.
+    if options.head.is_none()
+        && let Err(error) = crate::kinds::Declarations::read(root)
+        && error.exit_code() == 2
+    {
+        for message in error.messages() {
+            eprintln!("{message}");
+        }
+        eprintln!(
+            "nothing was compared: a malformed `{}` is refused, never read around",
+            crate::kinds::KINDS_DIR
+        );
+        return 2;
+    }
     match produce(&options, root) {
         Ok(output) => {
             let (text, exit) = output;

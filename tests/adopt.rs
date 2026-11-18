@@ -313,12 +313,12 @@ fn the_draft_path_is_green_end_to_end() {
     );
 
     // The drafts are legal and carry nothing derived (ADR 0022): no parse, no address, no pin. They
-    // are `req.claim/2` drafts: they carry no area, and a build that writes `req.claim/3` loads
-    // `req.claim/2` as it is (ADR 0051 decision 6, task A-1 choice 7), so the draft schema is the
+    // are `req.claim/2` drafts: they carry no area, kind or fields, and a build that writes `req.claim/4` loads
+    // `req.claim/2` as it is (ADR 0051 decision 6, ADR 0056 decision 1), so the draft schema is the
     // one the tool is written for and no longer the one the binary reports.
     let (_rules_v, reported) = version_axes();
     assert!(
-        ["req.claim/2", "req.claim/3"].contains(&reported.as_str()),
+        ["req.claim/2", "req.claim/3", "req.claim/4"].contains(&reported.as_str()),
         "the binary under test reports a format this tool drafts for: {reported}"
     );
     let schema = "req.claim/2";
@@ -476,7 +476,7 @@ fn a_req_reporting_another_claim_schema_is_unverifiable_and_writes_nothing() {
     let fake = bin.join("req");
     std::fs::write(
         &fake,
-        "#!/bin/sh\nprintf 'req 0.1.0\\n  rules_v            6\\n  claim_schema       req.claim/4\\n'\n",
+        "#!/bin/sh\nprintf 'req 0.1.0\\n  rules_v            6\\n  claim_schema       req.claim/5\\n'\n",
     )
     .expect("fake req");
     std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
@@ -501,7 +501,7 @@ fn a_req_reporting_another_claim_schema_is_unverifiable_and_writes_nothing() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(3), "stderr:\n{stderr}");
     assert!(
-        stderr.contains("req.claim/4") && stderr.contains("req.claim/2"),
+        stderr.contains("req.claim/5") && stderr.contains("req.claim/2"),
         "the message names the schema the binary reports and the one the tool drafts:\n{stderr}"
     );
     assert!(
@@ -532,15 +532,16 @@ fn fake_req_reporting(fx: &Fixture, schema: &str) -> PathBuf {
 }
 
 /// ADR 0051 decision 6, for the importer: it drafts `req.claim/2` and accepts a `req` that reports
-/// `req.claim/2` or `req.claim/3` (a `/3` build loads the draft as it is). Any other value is refused
+/// `req.claim/2`, `req.claim/3` or `req.claim/4` (a `/3` or `/4` build loads the `/2` draft as it is). Any other value is refused
 /// with the same message as before.
 #[cfg(unix)]
 #[test]
-fn a_req_reporting_claim_schema_2_or_3_is_accepted_and_4_is_refused() {
+fn a_req_reporting_claim_schema_2_3_or_4_is_accepted_and_5_is_refused() {
     for (reported, accepted) in [
         ("req.claim/2", true),
         ("req.claim/3", true),
-        ("req.claim/4", false),
+        ("req.claim/4", true),
+        ("req.claim/5", false),
         ("req.claim/1", false),
     ] {
         let fx = Fixture::new("req-adopt-schema-accept");

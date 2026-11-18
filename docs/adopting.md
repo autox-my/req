@@ -22,8 +22,8 @@ rev (below; five releases exist so far) and a **build from source** at the rev (
 > 0.1 to 0.4 (ADR 0055 decision 8). `rev-ec87808` (Linux x86_64 only), `rev-6b74f51` and `rev-aeaf987` (Linux x86_64
 > and macOS arm64, Apple silicon only; no Intel Mac, no native Windows: see [Windows](#windows)) predate `req.claim/3`;
 > for those use [From source](#from-source) if your corpus is at that schema. **`rev-3294a46` is the first release
-> that reads `req.claim/3`**, the schema `req init` writes, so the prebuilt path works for a corpus at that schema
-> without a toolchain: it holds both targets, built by the release workflow's own jobs (dispatched 2026-11-16). It is
+> that reads `req.claim/3`** (the schema `req init` wrote then; this build's `req init` writes `req.claim/4`, which no release
+> above reads), so the prebuilt path works for a corpus at `req.claim/3` without a toolchain: it holds both targets, built by the release workflow's own jobs (dispatched 2026-11-16). It is
 > not today's `main`: `req --version`'s `built from` says which commit a binary is, and a command added after that
 > rev is not in it. A `rev-*` release is downloaded from `rev-<REV>`, so take `examples/install-req.sh` from the
 > checkout at that rev (its pin table has no `VERSION`); the script on `main` downloads `v<VERSION>` releases only.
@@ -177,7 +177,7 @@ Exit 0, and exactly three files:
 
 | path | what it is |
 | --- | --- |
-| `claims/REQ-0001.yml` | a starter claim in `req.claim/3`: its statement, provenance and `pins:` (the bound its statement must parse to) — nothing derived; the loader derives its parse and address every time it is read (ADR 0022) |
+| `claims/REQ-0001.yml` | a starter claim in `req.claim/4`: its statement, provenance and `pins:` (the bound its statement must parse to) — nothing derived; the loader derives its parse and address every time it is read (ADR 0022) |
 | `claims/README.md` | the authoring loop and its traps, in your project's tree |
 | `aliases/subjects.yml` | the subject registry: what your prose calls a thing, and the id its address covers |
 
@@ -349,7 +349,7 @@ A target that is not a draft of this run is counted, not linked to a claim id th
 `--areas` carries one thing more, the place: a
 need's `docname`, split on `/`, each part made a key (lowercase it, replace each run of characters outside `[a-z0-9]` with `-`, strip `-` from both ends), joined by `/`, becomes the
 draft's `area` (ADR 0051). The draft is then `req.claim/3`, with `area:` after `claim_id`, and needs a `req` that
-reports `claim_schema req.claim/3` (exit **3** otherwise); a need with no `docname` stays `req.claim/2` with none.
+reports `claim_schema req.claim/3` or `req.claim/4` (exit **3** otherwise); a need with no `docname` stays `req.claim/2` with none.
 A section title or number is never a key, and the statement is exactly what it is without the flag. A part that
 leaves no key, or two names that make one path, is exit **1** naming them and writes nothing. `--area-depth N`
 keeps the outermost N parts. The reader proposes the matching `.req/areas` lines (`<path> <label>`, the label the
@@ -439,7 +439,7 @@ children's paths. An object with no ancestor, one the hierarchy reaches more tha
 node that names no object, is drafted with no area (the report counts each by reason). Every ancestor chain of
 every drafted object is walked, each place of a several-places object included and filed or not, with the same
 strictness: an `IDENTIFIER` that leaves no key, or two that make one path, is exit **1** naming them, an ancestor
-the file does not declare is exit **3**, and only a node that names no object ends a chain without error. A draft with an area is `req.claim/3` and needs a `req` reporting `claim_schema req.claim/3`
+the file does not declare is exit **3**, and only a node that names no object ends a chain without error. A draft with an area is `req.claim/3` and needs a `req` reporting `claim_schema req.claim/3` or `req.claim/4`
 (exit **3** otherwise). `--area-depth N` keeps the outermost N segments, and `--area-label-attr NAME` names the
 attribute holding a heading's text, the label of its path (else the `--id-attr` value, else the last segment).
 The reader proposes the `.req/areas` lines; `--write` appends the ones the file does not declare, leaves a
@@ -506,7 +506,7 @@ Every command's `--help` carries its own `exit:` line — the codes that command
 including the tri-state — and `req <command> --help` works before a corpus exists.
 
 1. **Edit `statement`, then run `req canon` to see the parse.** Nothing derived is stored in a
-   claim file (`req.claim/3`, ADR 0022): the parse, the canonical form and the address are computed
+   claim file (`req.claim/4`, ADR 0022): the parse, the canonical form and the address are computed
    every time the claim is loaded, so there is nothing to fill and nothing to hand-write. `req canon`
    prints, per claim, the derived structure, modality, subject, operator, value, unit and lints, and
    each pin's verdict. `req canon --by-area` appends a deterministic work list: claims,
@@ -531,8 +531,8 @@ including the tri-state — and `req <command> --help` works before a corpus exi
    delete a requirement by deleting its claim, deliberately.
 6. **A `req.claim/1` file is NOT JUDGED (exit 3).** Migrate it with `tools/migrate_claims.py` from
    req's repository — a dry run by default that prints every key it drops and every pin it creates;
-   `--write` rewrites the file. A format bump moves no address. A `req.claim/2` file needs no migration:
-   a `req.claim/3` build loads it as it is.
+   `--write` rewrites the file. A format bump moves no address. A `req.claim/2` or `req.claim/3` file needs no migration:
+   a `req.claim/4` build loads it as it is.
 7. **Several authors, one id space: `req next-id`.** `req next-id --count 5` prints the next five free ids
    (highest existing number + 1; a gap is never refilled, and it reads file names, so it answers while a
    sibling claim is half-written). To hand a block to a branch, `req next-id --count 5 --reserve` also appends

@@ -40,6 +40,9 @@ pub mod impact;
 // why `--root` is a usage error there and not a second anchor.
 pub mod init;
 pub mod junit;
+// Kind declarations (`.req/kinds/`) and the one judgement of a claim's `kind` and `fields` against them
+// (ADR 0056). Nothing here is read by `canon::derive`: fields are outside identity.
+pub mod kinds;
 pub mod model;
 pub mod next_id;
 // The single-pair Tier-2 seam (ADR 0021); the funnel it replaced lives in `experiments/tier2/`.

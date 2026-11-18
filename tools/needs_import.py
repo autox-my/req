@@ -63,7 +63,7 @@ Exit codes, the same three-state discipline as req (ADR 0027 section 7):
   3  UNVERIFIABLE — the export, a JUnit report, the corpus, the subject registry or `req` cannot
      be read honestly (not JSON, no `versions`, several versions and no `current_version`, a
      corpus the loader rejects, a `req` judging another claim schema, `--areas` against a `req`
-     that does not report `claim_schema req.claim/3`, an `.req/areas` that is malformed)
+     that does not report `claim_schema req.claim/3` or `req.claim/4`, an `.req/areas` that is malformed)
 
 Nothing derived is ever written, and no pin is guessed.
 """
@@ -102,15 +102,18 @@ VERSION_SCHEMA_RE = re.compile(r"^[ \t]*claim_schema[ \t]+(?P<value>\S+)[ \t]*$"
 CLAIM_SCHEMA_RE = re.compile(r"^req\.claim/\d+$")
 # The one schema `CLAIM_TEMPLATE` writes; a binary reporting another cannot load the draft.
 DRAFT_SCHEMA = "req.claim/2"
-# The schemas a `req` may report for this tool to draft against (ADR 0051 decision 6): a `req.claim/3`
-# build loads a `req.claim/2` draft as it is, and the draft carries no area, so the tool keeps
-# drafting `DRAFT_SCHEMA` and accepts either. Any other value is refused. A later format that keeps
-# `req.claim/2` readable is added here deliberately, not discovered.
-ACCEPTED_SCHEMAS = (DRAFT_SCHEMA, "req.claim/3")
+# The schemas a `req` may report for this tool to draft against (ADR 0051 decision 6, ADR 0056 decision 1): a
+# `req.claim/3` or `req.claim/4` build loads a `req.claim/2` draft as it is, and the draft carries no area, kind or
+# fields, so the tool keeps drafting `DRAFT_SCHEMA` and accepts any of them. Any other value is refused. A later
+# format that keeps `req.claim/2` readable is added here deliberately, not discovered.
+ACCEPTED_SCHEMAS = (DRAFT_SCHEMA, "req.claim/3", "req.claim/4")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-# The one schema a draft with an `area` declares (ADR 0051 decision 6): `area` is `req.claim/3` only.
+# The one schema a draft with an `area` declares (ADR 0051 decision 6): `area` is `req.claim/3` only. A `req.claim/4`
+# build loads a `/3` draft as it is (ADR 0056 decision 1), so `--areas` accepts a req that reports either; a `req.claim/2`
+# build would refuse `area`.
 AREA_SCHEMA = "req.claim/3"
+AREA_ACCEPTED_SCHEMAS = (AREA_SCHEMA, "req.claim/4")
 AREAS_PATH = ".req/areas"
 # A key is made from an identifier by these rules, one rule in both readers (docs/specs/I-1).
 KEY_RUN_RE = re.compile(r"[^a-z0-9]+")
@@ -227,7 +230,7 @@ field is listed under "fields", so nothing is hidden; `relations` stays `[]` unl
              earlier bytes come back.
              The report gains `areas: <P> paths; filed <F> of <D> drafted`, `no area: <K> (no
              docname <n>)` when K > 0, and `registry: <A> lines to add, <E> already declared`.
-             `--areas` needs a `req` that reports `claim_schema req.claim/3`; any other is exit 3.
+             `--areas` needs a `req` that reports `claim_schema req.claim/3` or `req.claim/4`; any other is exit 3.
   --area-depth N  with --areas: keep only the outermost N parts of each docname (N >= 1).
 
 --date is the rationale date (the retrieval date of the export) and is required. It is never
@@ -1125,7 +1128,8 @@ def read_axes(areas=False):
     The schema a draft declares is `DRAFT_SCHEMA`, always — never the one the binary reports (a
     draft with an area declares `AREA_SCHEMA`, see `render_claim`). The reported `claim_schema` only
     decides whether this tool may draft against that build at all (`ACCEPTED_SCHEMAS`); with
-    `areas` it must be `AREA_SCHEMA`, since a `req.claim/2` build would refuse `area`.
+    `areas` it must be one of `AREA_ACCEPTED_SCHEMAS` (`AREA_SCHEMA` or a `req.claim/4` build, which loads it as it is), since a
+    `req.claim/2` build would refuse `area`.
     `rules_v` is the rules version the drafts' parse is derived under (reported)."""
     binary = req_binary()
     try:
@@ -1152,10 +1156,10 @@ def read_axes(areas=False):
             "another schema would not load — use a matching req build or the matching copy of "
             "this tool"
         )
-    if areas and axes[1] != AREA_SCHEMA:
+    if areas and axes[1] not in AREA_ACCEPTED_SCHEMAS:
         raise Unverifiable(
             f"`{binary}` reports claim_schema {axes[1]}, but --areas drafts {AREA_SCHEMA} claims (an "
-            f"`area` needs {AREA_SCHEMA}) and accepts only a req that reports {AREA_SCHEMA}: a draft "
+            f"`area` needs {AREA_SCHEMA}) and accepts only a req that reports {' or '.join(AREA_ACCEPTED_SCHEMAS)}: a draft "
             "with an area would not load — use a matching req build, or run without --areas"
         )
     # The binary was judged acceptable; the draft declares the schema this tool is written for.

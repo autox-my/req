@@ -174,22 +174,22 @@ fn addresses_under(s: &Scratch, selection: &[&str]) -> Vec<(String, String)> {
 // --- the format (ADR 0051 decision 6) -------------------------------------------------------------
 
 #[test]
-fn this_build_writes_claim_schema_3() {
+fn this_build_writes_claim_schema_4() {
     let version = run(Path::new("."), &["--version"]);
     assert_eq!(version.code, 0, "{}", version.all());
     assert!(
         version
             .stdout
             .lines()
-            .any(|l| l.trim().starts_with("claim_schema") && l.trim().ends_with("req.claim/3")),
-        "`req --version` reports claim_schema req.claim/3:\n{}",
+            .any(|l| l.trim().starts_with("claim_schema") && l.trim().ends_with("req.claim/4")),
+        "`req --version` reports claim_schema req.claim/4:\n{}",
         version.stdout
     );
-    assert_eq!(req::canon::claim_schema(), "req.claim/3");
+    assert_eq!(req::canon::claim_schema(), "req.claim/4");
 }
 
 #[test]
-fn req_init_starts_a_corpus_at_claim_schema_3() {
+fn req_init_starts_a_corpus_at_claim_schema_4() {
     // A fresh init shows what the bootstrap writes.
     let fresh = std::env::temp_dir().join(format!("req-area-init-{}", std::process::id()));
     let _ = fs::remove_dir_all(&fresh);
@@ -198,12 +198,12 @@ fn req_init_starts_a_corpus_at_claim_schema_3() {
     assert_eq!(init.code, 0, "{}", init.all());
     let starter = fs::read_to_string(fresh.join("claims/REQ-0001.yml")).expect("starter claim");
     assert!(
-        starter.lines().any(|l| l == "schema: req.claim/3"),
+        starter.lines().any(|l| l == "schema: req.claim/4"),
         "the starter claim declares the current format:\n{starter}"
     );
     let readme = fs::read_to_string(fresh.join("claims/README.md")).expect("claims README");
     assert!(
-        readme.contains("req.claim/3") && !readme.contains("req.claim/2"),
+        readme.contains("req.claim/4") && !readme.contains("req.claim/2"),
         "the claims README names the current format, not the previous one:\n{readme}"
     );
     let _ = fs::remove_dir_all(&fresh);
@@ -249,7 +249,7 @@ fn the_same_claim_declared_v2_or_v3_has_one_address() {
 }
 
 #[test]
-fn v1_stays_a_migration_candidate_and_v4_a_newer_format() {
+fn v1_stays_a_migration_candidate_and_v5_a_newer_format() {
     assert_eq!(classify_claim_schema("req.claim/1"), ClaimSchema::Older(1));
     let older = classify_claim_schema("req.claim/1")
         .reason("req.claim/1")
@@ -257,10 +257,10 @@ fn v1_stays_a_migration_candidate_and_v4_a_newer_format() {
     assert!(older.contains("migration candidate"), "{older}");
     assert!(older.contains("NOT JUDGED"), "{older}");
 
-    assert_eq!(classify_claim_schema("req.claim/4"), ClaimSchema::Newer(4));
-    let newer = classify_claim_schema("req.claim/4")
-        .reason("req.claim/4")
-        .expect("a /4 file is reported");
+    assert_eq!(classify_claim_schema("req.claim/5"), ClaimSchema::Newer(5));
+    let newer = classify_claim_schema("req.claim/5")
+        .reason("req.claim/5")
+        .expect("a /5 file is reported");
     assert!(newer.contains("newer"), "{newer}");
 
     // Falsification 4, the old-reader half: a /2 build reading a /3 file says "newer", nothing else.
@@ -271,7 +271,7 @@ fn v1_stays_a_migration_candidate_and_v4_a_newer_format() {
 
     for (declared, word) in [
         ("req.claim/1", "migration candidate"),
-        ("req.claim/4", "newer"),
+        ("req.claim/5", "newer"),
     ] {
         let s = Scratch::new("schema-judged");
         s.claim("REQ-0001", declared, None, "");

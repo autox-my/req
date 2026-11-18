@@ -2014,7 +2014,7 @@ fn a_req_reporting_another_claim_schema_is_unverifiable_and_writes_nothing() {
     let fake = bin.join("req");
     fs::write(
         &fake,
-        "#!/bin/sh\nprintf 'req 0.1.0\\n  rules_v            6\\n  claim_schema       req.claim/4\\n'\n",
+        "#!/bin/sh\nprintf 'req 0.1.0\\n  rules_v            6\\n  claim_schema       req.claim/5\\n'\n",
     )
     .expect("fake req");
     fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).expect("chmod");
@@ -2035,7 +2035,7 @@ fn a_req_reporting_another_claim_schema_is_unverifiable_and_writes_nothing() {
     );
     out.assert_code(3, "a req that judges another claim schema");
     assert!(
-        out.stderr.contains("req.claim/4") && out.stderr.contains("req.claim/2"),
+        out.stderr.contains("req.claim/5") && out.stderr.contains("req.claim/2"),
         "{}",
         out.stderr
     );
@@ -2043,16 +2043,17 @@ fn a_req_reporting_another_claim_schema_is_unverifiable_and_writes_nothing() {
 }
 
 /// ADR 0051 decision 6, for the importer: it drafts `req.claim/2` and accepts a `req` that reports
-/// `req.claim/2` or `req.claim/3`; any other value is refused with the message above.
+/// `req.claim/2`, `req.claim/3` or `req.claim/4`; any other value is refused with the message above.
 #[cfg(unix)]
 #[test]
-fn a_req_reporting_claim_schema_2_or_3_is_accepted_and_4_is_refused() {
+fn a_req_reporting_claim_schema_2_3_or_4_is_accepted_and_5_is_refused() {
     use std::os::unix::fs::PermissionsExt;
 
     for (reported, accepted) in [
         ("req.claim/2", true),
         ("req.claim/3", true),
-        ("req.claim/4", false),
+        ("req.claim/4", true),
+        ("req.claim/5", false),
         ("req.claim/1", false),
     ] {
         let fx = Fixture::with_public("req-reqif-schema-accept", POLARION);
@@ -3411,6 +3412,19 @@ fn areas_need_a_req_that_reports_claim_schema_3() {
         },
     );
     out.assert_code(0, "--areas against a req reporting req.claim/3");
+
+    // A `req.claim/4` build loads the `/3` area draft as it is (ADR 0056 decision 1), so it takes the flag too.
+    let fx = Fixture::with_public("req-reqif-areas-v4-req", AREAS_SAMPLE);
+    let bin = fake_req_reporting(&fx, "req.claim/4");
+    let out = import_in(
+        fx.path(),
+        &plus(base(&SAMPLE_ARGS), &["--areas", "--write"]),
+        &Env {
+            path_first: Some(&bin),
+            ..Env::default()
+        },
+    );
+    out.assert_code(0, "--areas against a req reporting req.claim/4");
 }
 
 #[test]
