@@ -424,10 +424,13 @@ fn the_committed_baselines_are_byte_for_byte_the_bytes_this_build_writes_for_the
         }
         let text = std::fs::read_to_string(&path).expect("reads");
         let parsed = from_json(&text).expect("a committed manifest parses");
+        // Re-emitted at envelope v5 and re-signed by the owner after the v0.6.0 release, the first build
+        // that reads v5 (ADR 0056 decision 6, the ordering). A v4 manifest's bytes are pinned by
+        // `a_v4_manifest_keeps_its_bytes_under_this_build` and, signed, by tests/envelope_v5_cli.rs.
         assert_eq!(
             parsed.version,
-            4,
-            "{} is not re-emitted by this unit",
+            req::baseline::BASELINE_VERSION,
+            "{} is at the envelope this build writes",
             path.display()
         );
         assert_eq!(

@@ -243,10 +243,53 @@ impl Scratch {
         manifest
     }
 
+    /// A **v4** manifest over this corpus, signed with the throwaway key: the v5 manifest
+    /// [`Self::emit_and_sign`] writes, with the version set to 4 and both v5 keys removed. That is
+    /// byte for byte what a v4 build wrote, because v5 only appends `fields_hash` and `pins_hash`
+    /// after `tests_hash` (ADR 0056 decision 6). It stands in for a v4 manifest signed before
+    /// ADR 0056, now that the committed Baselines are v5.
+    fn emit_and_sign_v4(&self) -> PathBuf {
+        let v5 = self.emit_and_sign();
+        let v4_text = v4_of(&fs::read_to_string(&v5).expect("reads the v5 manifest"));
+        let v4 = self.0.join("baseline-v4.json");
+        fs::write(&v4, v4_text).expect("writes the v4 manifest");
+        self.sign(&v4);
+        v4
+    }
+
+    fn sign(&self, manifest: &Path) {
+        let signed = Command::new("minisign")
+            .arg("-Sm")
+            .arg(manifest)
+            .arg("-s")
+            .arg(self.0.join("req.key"))
+            .output()
+            .expect("runs minisign");
+        assert!(signed.status.success(), "fixture signing failed");
+    }
+
     fn verify(&self, manifest: &Path) -> Out {
         let path = manifest.to_str().expect("a UTF-8 path");
         run(&self.0, &["baseline", "--verify", path])
     }
+}
+
+/// A v5 manifest's text as the v4 envelope wrote it: `"version":4` and no `fields_hash` or `pins_hash`.
+fn v4_of(v5: &str) -> String {
+    let mut out = v5.replacen("{\"version\":5,", "{\"version\":4,", 1);
+    assert_ne!(out, v5, "the manifest declares version 5");
+    for key in ["fields_hash", "pins_hash"] {
+        let marker = format!(",\"{key}\":\"");
+        let mut removed = 0;
+        while let Some(start) = out.find(&marker) {
+            let value = start + marker.len();
+            let end = value + out[value..].find('"').expect("a closing quote");
+            out.replace_range(start..=end, "");
+            removed += 1;
+        }
+        assert!(removed > 0, "the v5 manifest carries `{key}`");
+    }
+    out
 }
 
 /// The `fields_hash` / `pins_hash` the emitted manifest records for one claim.
@@ -563,13 +606,10 @@ fn a_v5_manifest_stripped_of_fields_hash_or_pins_hash_is_refused() {
 #[test]
 fn a_v4_manifest_stripped_of_tests_hash_is_refused() {
     let s = Scratch::new("strip-v4");
-    let committed = repo().join("baselines/air-gapped.json");
+    let v4 = s.emit_and_sign_v4();
     let stripped = s.path().join("no-tests-hash.json");
-    without_key(&committed, "tests_hash", &stripped);
-    let out = run(
-        &repo(),
-        &["baseline", "--verify", stripped.to_str().expect("UTF-8")],
-    );
+    without_key(&v4, "tests_hash", &stripped);
+    let out = s.verify(&stripped);
     assert_eq!(out.code, 3, "{}", out.all());
     assert!(out.all().contains("tests_hash"), "{}", out.all());
 }
@@ -581,9 +621,9 @@ fn a_v4_manifest_stripped_of_tests_hash_is_refused() {
 fn a_v4_manifest_carrying_the_new_hashes_does_not_judge_them() {
     require_minisign();
     let s = Scratch::new("v4-carrying");
-    let committed = repo().join("baselines/air-gapped.json");
+    let v4 = s.emit_and_sign_v4();
     let mut doc: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(&committed).expect("reads")).expect("JSON");
+        serde_json::from_str(&fs::read_to_string(&v4).expect("reads")).expect("JSON");
     for claim in doc["claims"].as_array_mut().expect("claims") {
         let record = claim.as_object_mut().expect("an object");
         record.insert("fields_hash".into(), "not-a-digest".into());
@@ -591,27 +631,53 @@ fn a_v4_manifest_carrying_the_new_hashes_does_not_judge_them() {
     }
     let carrying = s.path().join("carrying.json");
     fs::write(&carrying, doc.to_string()).expect("writes");
+    let signature = format!("{}.minisig", v4.display());
     let out = run(
-        &repo(),
+        s.path(),
         &[
             "baseline",
             "--verify",
             carrying.to_str().expect("UTF-8"),
             "--signature",
-            repo()
-                .join("baselines/air-gapped.json.minisig")
-                .to_str()
-                .expect("UTF-8"),
+            &signature,
         ],
     );
     assert_eq!(out.code, 0, "{}", out.all());
     assert!(out.stdout.contains("[VERIFIED]"), "{}", out.all());
 }
 
-// --- L9: the committed v4 Baselines ---------------------------------------------------------------------
+// --- L9: a signed v4 manifest, and the committed v5 Baselines --------------------------------------------
 
 #[test]
-fn the_three_committed_v4_baselines_stay_verified_and_say_what_they_do_not_attest() {
+fn a_signed_v4_manifest_stays_verified_and_says_once_what_it_does_not_attest() {
+    let s = Scratch::new("v4-signed");
+    let v4 = s.emit_and_sign_v4();
+    let out = s.verify(&v4);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(out.stdout.contains("[VERIFIED]"), "{}", out.stdout);
+    assert_eq!(
+        out.stdout.matches(FIELDS_LINE).count(),
+        1,
+        "says once, not per claim, that it does not attest fields and pins:\n{}",
+        out.stdout
+    );
+    assert!(
+        !out.stdout.contains(TESTS_LINE),
+        "a v4 manifest attests its test links, so it is not told it does not:\n{}",
+        out.stdout
+    );
+
+    // Unattested by v4: a pin deleted after signing leaves it VERIFIED (probe C2), which v5 catches.
+    s.write(
+        "claims/REQ-0201.yml",
+        &s.read("claims/REQ-0201.yml").replace("  unit: s\n", ""),
+    );
+    let edited = s.verify(&v4);
+    assert_eq!(edited.code, 0, "{}", edited.all());
+}
+
+#[test]
+fn the_three_committed_baselines_are_v5_verified_and_disclose_nothing() {
     require_minisign();
     let mut checked = 0;
     for name in [
@@ -622,8 +688,8 @@ fn the_three_committed_v4_baselines_stay_verified_and_say_what_they_do_not_attes
         let path = repo().join("baselines").join(name);
         let text = fs::read_to_string(&path).expect("reads the committed manifest");
         assert!(
-            text.starts_with("{\"version\":4,"),
-            "{name} is not re-emitted by this unit"
+            text.starts_with("{\"version\":5,"),
+            "{name} is at envelope v5 (re-signed after the v0.6.0 release)"
         );
         let out = run(
             &repo(),
@@ -632,18 +698,8 @@ fn the_three_committed_v4_baselines_stay_verified_and_say_what_they_do_not_attes
         assert_eq!(out.code, 0, "{name}: {}", out.all());
         assert!(out.stdout.contains("[VERIFIED]"), "{name}: {}", out.stdout);
         assert!(
-            out.stdout.contains(FIELDS_LINE),
-            "{name} says once that it does not attest fields and pins:\n{}",
-            out.stdout
-        );
-        assert_eq!(
-            out.stdout.matches(FIELDS_LINE).count(),
-            1,
-            "{name}: once, not per claim"
-        );
-        assert!(
-            !out.stdout.contains(TESTS_LINE),
-            "{name} attests its test links, so it is not told it does not:\n{}",
+            !out.stdout.contains("predates"),
+            "{name} attests every surface, so it predates nothing:\n{}",
             out.stdout
         );
         checked += 1;
